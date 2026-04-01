@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "./firebase";
-import { K, FONTS, CSS, I, Pill, DEFAULT_SCORING } from "./theme";
+import { K, FONTS, CSS, I, Pill, DEFAULT_SCORING, SEASON_WEEKS } from "./theme";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
 import StandingsView from "./pages/Standings";
 import LiveScoringView from "./pages/LiveScoring";
@@ -24,6 +24,7 @@ export default function GolfLeagueApp() {
   const [matchResults, setMatchResults] = useState([]);
   const [leagueConfig, setLeagueConfig] = useState({ name: "Golf League 2026", year: 2026 });
   const [members, setMembers] = useState([]);
+  const [membersLoaded, setMembersLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [tab, setTab] = useState("standings");
 
@@ -38,11 +39,12 @@ export default function GolfLeagueApp() {
 
   // Real-time subscriptions
   useEffect(() => {
-    if (!authUser) { setLeagueUser(null); return; }
+    if (!authUser) { setLeagueUser(null); setMembersLoaded(false); return; }
     const unsubs = [];
 
     unsubs.push(db.subscribe("league_members", LF, (docs) => {
       setMembers(docs);
+      setMembersLoaded(true);
       const me = docs.find(d => d.uid === authUser.uid);
       if (me) setLeagueUser({ playerId: me.playerId, isCommissioner: me.isCommissioner, name: me.name || authUser.displayName, email: authUser.email });
       else setLeagueUser(null);
@@ -54,7 +56,9 @@ export default function GolfLeagueApp() {
     unsubs.push(db.subscribe("league_course", LF, (docs) => { if (docs.length) setCourseData(docs[0]); }));
     unsubs.push(db.subscribe("league_scoring", LF, (docs) => { if (docs.length) setScoringRules(docs[0]); }));
 
-    unsubs.push(db.subscribe("league_hole_scores", LF, (docs, changes) => {
+    // Hole scores — only current season (weeks 0-15), not historical (100+, 200+)
+    const currentSeasonFilters = [...LF, { field: "week", op: "<=", value: SEASON_WEEKS - 1 }];
+    unsubs.push(db.subscribe("league_hole_scores", currentSeasonFilters, (docs, changes) => {
       setSyncing(true);
       setHoleScores(prev => {
         const next = { ...prev };
@@ -111,6 +115,7 @@ export default function GolfLeagueApp() {
 
   if (authLoading) return <LoadingScreen />;
   if (!authUser) return <AuthScreen onGoogle={doGoogleSignIn} onEmail={doEmailSignIn} />;
+  if (!membersLoaded) return <LoadingScreen />;
   if (!leagueUser) return <JoinScreen authUser={authUser} members={members} players={activePlayers} saveMember={saveMember} doSignOut={doSignOut} />;
 
   const tabs = [
