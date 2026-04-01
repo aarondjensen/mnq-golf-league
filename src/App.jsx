@@ -85,6 +85,7 @@ const DEFAULT_SCORING = {
   totalNetBonusWin: 3, totalNetBonusTie: 1.5, totalNetBonusLoss: 0,
   playoffMatchWin: 5, playoffMatchTie: 2.5, playoffMatchLoss: 0,
   playoffBonusWin: 3, playoffBonusTie: 1.5, playoffBonusLoss: 0,
+  hcpRecentCount: 8, hcpBestCount: 6, hcpMethod: "gross9",
 };
 
 function calcCourseHandicap(index, slope, rating, par) {
@@ -99,11 +100,15 @@ function getTeeTime(idx) {
 }
 function getWeekSide(weekNum) { return weekNum % 2 === 1 ? 'front' : 'back'; }
 function calcDifferential(gross, rating, slope) { return (113 / slope) * (gross - rating); }
-function calcHandicapIndex(diffs) {
-  if (!diffs.length) return null;
-  const s = [...diffs].sort((a, b) => a - b);
-  const ct = s.length <= 3 ? 1 : s.length <= 5 ? 2 : s.length <= 8 ? 3 : s.length <= 11 ? 4 : s.length <= 14 ? 5 : s.length <= 16 ? 6 : s.length <= 18 ? 7 : 8;
-  return Math.round(s.slice(0, ct).reduce((a, b) => a + b, 0) / ct * 10) / 10;
+// Custom handicap: best N of recent M gross 9-hole scores, minus par, rounded
+function calcLeagueHandicap(grossScores, par, recentCount, bestCount) {
+  if (!grossScores.length) return null;
+  const recent = grossScores.slice(-recentCount);
+  if (!recent.length) return null;
+  const sorted = [...recent].sort((a, b) => a - b);
+  const best = sorted.slice(0, Math.min(bestCount, sorted.length));
+  const avg = best.reduce((a, b) => a + b, 0) / best.length;
+  return Math.round(avg - par);
 }
 
 // ══════════════════════════════════════════════════════════════
@@ -118,12 +123,12 @@ const K = {
   gold: "#fbbf24", silver: "#94a3b8", bronze: "#d97706",
 };
 
-const FONTS = "https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700&family=IBM+Plex+Sans+Condensed:wght@600;700&display=swap";
+const FONTS = "https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700;800&display=swap";
 
 const CSS = `
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
   html, body { overscroll-behavior: none; background: ${K.bg}; }
-  input, select, textarea, button { font-family: 'IBM Plex Sans', sans-serif; }
+  input, select, textarea, button { font-family: 'League Spartan', sans-serif; }
   ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: ${K.bdr}; border-radius: 4px; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
@@ -131,7 +136,7 @@ const CSS = `
   .pu { animation: pulse 1.8s ease-in-out infinite; }
   input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
   input[type=number] { -moz-appearance: textfield; }
-  .app-shell { min-height: 100vh; background: ${K.bg}; color: ${K.t1}; font-family: 'IBM Plex Sans', sans-serif; display: flex; flex-direction: column; }
+  .app-shell { min-height: 100vh; background: ${K.bg}; color: ${K.t1}; font-family: 'League Spartan', sans-serif; display: flex; flex-direction: column; }
   .app-header { padding: 14px 24px 10px; background: linear-gradient(135deg, ${K.card}, ${K.bg}); border-bottom: 1px solid ${K.bdr}; display: flex; justify-content: space-between; align-items: center; }
   .app-body { display: flex; flex: 1; }
   .sidebar { display: none; }
@@ -188,7 +193,7 @@ const SaveBtn = ({ onClick, label = "Save" }) => (
   <button onClick={onClick} style={{ background: K.act, border: "none", borderRadius: 6, color: K.bg, fontSize: 12, padding: "6px 14px", cursor: "pointer", fontWeight: 600 }}>{label}</button>
 );
 const SectionTitle = ({ children }) => (
-  <div style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", fontSize: 20, fontWeight: 700, color: K.t1, letterSpacing: .5, marginBottom: 14 }}>{children}</div>
+  <div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 20, fontWeight: 700, color: K.t1, letterSpacing: .5, marginBottom: 14 }}>{children}</div>
 );
 const SubLabel = ({ children, color = K.acc, style }) => (
   <div style={{ fontSize: 10, fontWeight: 600, color, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 6, ...style }}>{children}</div>
@@ -360,7 +365,7 @@ export default function GolfLeagueApp() {
           {tab === "standings" && <StandingsView teams={teams} players={players} matchResults={matchResults} />}
           {tab === "scoring" && <LiveScoringView leagueUser={leagueUser} players={players} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={players} matchResults={matchResults} />}
-          {tab === "stats" && <StatsView players={players} holeScores={holeScores} course={courseData} schedule={schedule} />}
+          {tab === "stats" && <StatsView players={players} holeScores={holeScores} course={courseData} schedule={schedule} scoringRules={scoringRules} />}
           {tab === "ctp" && <CTPView ctpData={ctpData} players={players} />}
           {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} />}
         </div>
@@ -390,7 +395,7 @@ function LoadingScreen() {
     <div style={{ minHeight: "100vh", background: K.bg, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
       <link href={FONTS} rel="stylesheet" /><style>{CSS}</style>
       <div style={{ fontSize: 52 }}><img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ width: 220, objectFit: "contain" }} /></div>
-      <div className="pu" style={{ fontFamily: "'IBM Plex Sans', sans-serif", color: K.t3, fontSize: 13 }}>Loading...</div>
+      <div className="pu" style={{ fontFamily: "'League Spartan', sans-serif", color: K.t3, fontSize: 13 }}>Loading...</div>
     </div>
   );
 }
@@ -411,7 +416,7 @@ function AuthScreen({ onGoogle, onEmail }) {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: K.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'IBM Plex Sans', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: K.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'League Spartan', sans-serif" }}>
       <link href={FONTS} rel="stylesheet" /><style>{CSS}</style>
       <div style={{ width: 340, textAlign: "center" }} className="fi">
         <img src="/MnQ_logo_transparent_bg.png" alt="Maize-N-Que Golf" style={{ width: 280, objectFit: "contain", marginBottom: 8 }} />
@@ -449,11 +454,11 @@ function JoinScreen({ authUser, members, players, saveMember, doSignOut }) {
   const assigned = members.map(m => m.playerId).filter(Boolean);
 
   return (
-    <div style={{ minHeight: "100vh", background: K.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'IBM Plex Sans', sans-serif" }}>
+    <div style={{ minHeight: "100vh", background: K.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'League Spartan', sans-serif" }}>
       <link href={FONTS} rel="stylesheet" /><style>{CSS}</style>
       <div style={{ width: 340, textAlign: "center" }} className="fi">
         <img src="/MnQ_logo_transparent_bg.png" alt="Maize-N-Que Golf" style={{ width: 240, objectFit: "contain", marginBottom: 8 }} />
-        <div style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", fontSize: 24, color: K.acc, letterSpacing: 1, marginBottom: 4 }}>Welcome!</div>
+        <div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 24, color: K.acc, letterSpacing: 1, marginBottom: 4 }}>Welcome!</div>
         <div style={{ color: K.t3, fontSize: 12, marginBottom: 6 }}>Signed in as <span style={{ color: K.t2, fontWeight: 600 }}>{authUser.email}</span></div>
 
         {isFirstUser ? (<>
@@ -507,7 +512,7 @@ function StandingsView({ teams, players, matchResults }) {
             <Card key={s.teamId} highlight={i === 0} style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <div style={{ width: 32, height: 32, borderRadius: 8, background: i < 3 ? mc + "20" : K.inp, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: mc, border: i < 3 ? `1.5px solid ${mc}40` : "none" }}>{i + 1}</div>
               <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 700 }}>{team.name}</div><div style={{ fontSize: 11, color: K.t3 }}>{gn(team.player1)} & {gn(team.player2)}</div></div>
-              <div style={{ textAlign: "right" }}><div style={{ fontSize: 22, fontWeight: 800, color: K.acc, fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>{s.points}</div><div style={{ fontSize: 10, color: K.t3 }}>{s.w}W-{s.l}L-{s.t}T</div></div>
+              <div style={{ textAlign: "right" }}><div style={{ fontSize: 22, fontWeight: 800, color: K.acc, fontFamily: "'League Spartan', sans-serif" }}>{s.points}</div><div style={{ fontSize: 10, color: K.t3 }}>{s.w}W-{s.l}L-{s.t}T</div></div>
             </Card>
           );
         })}
@@ -645,7 +650,7 @@ function LiveScoringView({ leagueUser, players, teams, course, schedule, holeSco
       </div>
       <div style={{ background: `linear-gradient(135deg, ${K.card}, #0f2440)`, borderRadius: 12, border: `1px solid ${K.bdr}`, padding: "8px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ textAlign: "center" }}><div style={{ fontSize: 10, color: K.t3, fontWeight: 600 }}>Par</div><div style={{ fontSize: 18, fontWeight: 800, color: K.t2 }}>{par}</div></div>
-        <div style={{ textAlign: "center" }}><div style={{ fontSize: 10, color: K.t1, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Hole</div><div style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", fontSize: 38, fontWeight: 700, color: K.t1, lineHeight: 1 }}>{side === 'front' ? curHole + 1 : curHole + 10}</div></div>
+        <div style={{ textAlign: "center" }}><div style={{ fontSize: 10, color: K.t1, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Hole</div><div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 38, fontWeight: 700, color: K.t1, lineHeight: 1 }}>{side === 'front' ? curHole + 1 : curHole + 10}</div></div>
         <div style={{ textAlign: "center" }}><div style={{ fontSize: 10, color: K.t3, fontWeight: 600 }}>HCP</div><div style={{ fontSize: 18, fontWeight: 800, color: K.t2 }}>{hcp}</div></div>
       </div>
       {isPar3 && <button onClick={() => setShowCTP(!showCTP)} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 8, cursor: "pointer", background: K.acc + "12", border: `1px solid ${K.acc}35`, color: K.acc, fontSize: 12, fontWeight: 700 }}>{showCTP ? "Hide" : "Record"} Closest to Pin</button>}
@@ -758,26 +763,32 @@ function ScheduleView({ schedule, teams, players, matchResults }) {
   );
 }
 
-function StatsView({ players, holeScores, course, schedule }) {
+function StatsView({ players, holeScores, course, schedule, scoringRules }) {
+  const recentN = scoringRules.hcpRecentCount || 8;
+  const bestN = scoringRules.hcpBestCount || 6;
   const stats = useMemo(() => {
     return players.map(p => {
-      const diffs = []; let totalGross = 0, rounds = 0;
+      const grossScores = []; let totalGross = 0, rounds = 0;
       schedule.forEach(wk => {
-        const side = getWeekSide(wk.week + 1); const prs = course ? (side === 'front' ? course.frontPars : course.backPars) : [];
+        const side = getWeekSide(wk.week + 1);
+        const prs = course ? (side === 'front' ? course.frontPars : course.backPars) : [];
         let wg = 0, cnt = 0;
         for (let h = 0; h < 9; h++) { const s = holeScores[`w${wk.week}_p${p.id}_h${h}`]; if (s > 0) { wg += s; cnt++; } }
-        if (cnt === 9 && course) { totalGross += wg; rounds++; const tb = course.teeBoxes?.find(t => t.name === p.teeBox) || course.teeBoxes?.[0]; if (tb) diffs.push(calcDifferential(wg * 2, tb.rating, tb.slope)); }
+        if (cnt === 9) { grossScores.push(wg); totalGross += wg; rounds++; }
       });
-      return { ...p, diffs, idx: diffs.length ? calcHandicapIndex(diffs) : p.handicapIndex, avgGross: rounds ? (totalGross / rounds).toFixed(1) : "—", rounds };
+      const par = course ? (course.frontPars || []).reduce((a, b) => a + b, 0) : 36;
+      const calcHcp = calcLeagueHandicap(grossScores, par, recentN, bestN);
+      return { ...p, grossScores, idx: calcHcp !== null ? calcHcp : p.handicapIndex, avgGross: rounds ? (totalGross / rounds).toFixed(1) : "—", rounds };
     }).sort((a, b) => (a.idx || 99) - (b.idx || 99));
-  }, [players, holeScores, course, schedule]);
+  }, [players, holeScores, course, schedule, recentN, bestN]);
   return (
     <div><SectionTitle>Player Stats & Handicaps</SectionTitle>
+      <div style={{ fontSize: 12, color: K.t3, marginBottom: 12 }}>Best {bestN} of recent {recentN} rounds</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {stats.map(p => (
           <Card key={p.id}><div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <div><div style={{ fontSize: 14, fontWeight: 700 }}>{p.name}</div><div style={{ fontSize: 11, color: K.t3 }}>{p.teeBox || "White"} tees · {p.rounds} rds</div></div>
-            <div style={{ textAlign: "right" }}><div style={{ fontSize: 10, color: K.t3, fontWeight: 600 }}>Handicap</div><div style={{ fontSize: 22, fontWeight: 800, color: K.acc, fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>{p.idx ?? "—"}</div>{p.rounds > 0 && <div style={{ fontSize: 10, color: K.t3 }}>Avg 9: {p.avgGross}</div>}</div>
+            <div><div style={{ fontSize: 14, fontWeight: 700 }}>{p.name}</div><div style={{ fontSize: 11, color: K.t3 }}>{p.rounds} rounds played</div></div>
+            <div style={{ textAlign: "right" }}><div style={{ fontSize: 10, color: K.t3, fontWeight: 600 }}>Handicap</div><div style={{ fontSize: 22, fontWeight: 800, color: K.t1, fontFamily: "'League Spartan', sans-serif" }}>{p.idx ?? "—"}</div>{p.rounds > 0 && <div style={{ fontSize: 10, color: K.t3 }}>Avg 9: {p.avgGross}</div>}</div>
           </div></Card>
         ))}
       </div>
@@ -796,7 +807,7 @@ function CTPView({ ctpData, players }) {
           {sorted.map((e, i) => (
             <Card key={e.p.id} highlight={i === 0} style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10 }}><div style={{ width: 28, height: 28, borderRadius: 7, background: i === 0 ? K.gold + "20" : K.inp, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: i === 0 ? K.gold : K.t3 }}>{i + 1}</div><span style={{ fontSize: 14, fontWeight: 700 }}>{e.p.name}</span></div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: K.acc, fontFamily: "'IBM Plex Sans Condensed', sans-serif" }}>{e.cnt}</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: K.acc, fontFamily: "'League Spartan', sans-serif" }}>{e.cnt}</div>
             </Card>
           ))}
         </div>
@@ -845,16 +856,14 @@ function AdminView(props) {
 function AdminPlayers({ players, savePlayer, deletePlayer, course, onBack }) {
   const [ed, setEd] = useState(null);
   const [f, setF] = useState({ name: "", handicapIndex: "", teeBox: "Blue" });
-  const nameRef = useRef(null);
+  const nameRef = useCallback(node => { if (node) setTimeout(() => node.focus(), 50); }, [ed]);
   const tees = course?.teeBoxes?.map(t => t.name) || ["Blue", "Black", "White"];
   const save = async () => { if (!f.name.trim()) return; const id = ed === "new" ? `${LEAGUE_ID}_p${Date.now()}` : ed; await savePlayer({ id, name: f.name.trim(), handicapIndex: parseFloat(f.handicapIndex) || 0, teeBox: f.teeBox }); setEd(null); };
-
-  useEffect(() => { if (ed && nameRef.current) nameRef.current.focus(); }, [ed]);
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <BackBtn onClick={onBack} /><span style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", fontSize: 18, color: K.t1 }}>Players ({players.length}/20)</span>
+        <BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Players ({players.length}/20)</span>
         <button onClick={() => { setF({ name: "", handicapIndex: "", teeBox: "Blue" }); setEd("new"); }} style={{ background: K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 700 }}>+ Add</button>
       </div>
       {ed && (
@@ -873,7 +882,7 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, onBack }) {
       <div className="players-grid">
         {players.map(p => (
           <Card key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px" }}>
-            <div><div style={{ display: "flex", alignItems: "baseline", gap: 8 }}><span style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</span><span style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{p.handicapIndex}</span></div><div style={{ fontSize: 11, color: K.t3 }}>{p.teeBox || "Blue"} tees</div></div>
+            <div><div style={{ display: "flex", alignItems: "baseline", gap: 8 }}><span style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</span><span style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{p.handicapIndex}</span></div></div>
             <div style={{ display: "flex", gap: 6 }}>
               <button onClick={() => { setF({ name: p.name, handicapIndex: String(p.handicapIndex ?? ""), teeBox: p.teeBox || "White" }); setEd(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.acc, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>Edit</button>
               <button onClick={() => { if (confirm("Remove?")) deletePlayer(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.red, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>✕</button>
@@ -895,7 +904,7 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <BackBtn onClick={onBack} /><span style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", fontSize: 18, color: K.t1 }}>Teams ({teams.length}/{TEAMS_COUNT})</span>
+        <BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Teams ({teams.length}/{TEAMS_COUNT})</span>
         <button onClick={() => { setF({ name: "", player1: "", player2: "" }); setEd("new"); }} disabled={teams.length >= TEAMS_COUNT} style={{ background: teams.length >= TEAMS_COUNT ? K.t3 : K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 700, opacity: teams.length >= TEAMS_COUNT ? .5 : 1 }}>+ Add</button>
       </div>
       {ed && (
@@ -924,7 +933,7 @@ function AdminCourse({ course, saveCourseData, onBack }) {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><BackBtn onClick={onBack} /><span style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", fontSize: 18, color: K.t1 }}>Course Setup</span><SaveBtn onClick={save} /></div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Course Setup</span><SaveBtn onClick={save} /></div>
       <input value={lc.name} onChange={e => setLc({ ...lc, name: e.target.value })} placeholder="Course Name" style={{ width: "100%", maxWidth: 400, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14, marginBottom: 12 }} />
       <div className="scoring-grid">
       {['front', 'back'].map(s => (
@@ -971,7 +980,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, onBack }) {
   };
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><BackBtn onClick={onBack} /><span style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", fontSize: 18, color: K.t1 }}>Schedule</span><button onClick={generate} style={{ background: K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 700 }}>Generate</button></div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Schedule</span><button onClick={generate} style={{ background: K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 700 }}>Generate</button></div>
       {!schedule.length ? <div style={{ textAlign: "center", padding: 30, color: K.t3, fontSize: 13 }}>No schedule yet. Set up teams, then tap Generate.</div> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {schedule.map(wk => (
@@ -997,8 +1006,9 @@ function AdminScoring({ scoring, saveScoringRules, onBack }) {
   );
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><BackBtn onClick={onBack} /><span style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", fontSize: 18, color: K.t1 }}>Scoring Rules</span><SaveBtn onClick={save} /></div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Scoring Rules</span><SaveBtn onClick={save} /></div>
       <div className="scoring-grid">
+        <div><SubLabel>Handicap Calculation</SubLabel><Card style={{ padding: "2px 14px" }}><F label="Recent rounds to consider" field="hcpRecentCount" /><F label="Best rounds to average" field="hcpBestCount" /></Card></div>
         <div><SubLabel>Regular Season — Match</SubLabel><Card style={{ padding: "2px 14px" }}><F label="Win" field="matchWin" /><F label="Tie" field="matchTie" /><F label="Loss" field="matchLoss" /></Card></div>
         <div><SubLabel>Regular Season — Total Net Bonus</SubLabel><Card style={{ padding: "2px 14px" }}><F label="Win" field="totalNetBonusWin" /><F label="Tie" field="totalNetBonusTie" /><F label="Loss" field="totalNetBonusLoss" /></Card></div>
         <div><SubLabel color={K.warn}>Playoff — Match</SubLabel><Card style={{ padding: "2px 14px" }}><F label="Win" field="playoffMatchWin" /><F label="Tie" field="playoffMatchTie" /><F label="Loss" field="playoffMatchLoss" /></Card></div>
@@ -1012,7 +1022,7 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
   const assigned = members.map(m => m.playerId).filter(Boolean);
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><BackBtn onClick={onBack} /><span style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", fontSize: 18, color: K.t1 }}>Members</span><div style={{ width: 60 }} /></div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Members</span><div style={{ width: 60 }} /></div>
       <div style={{ fontSize: 12, color: K.t3, marginBottom: 12, lineHeight: 1.5 }}>Members sign in via Google or email and link to a player profile. Grant commissioner access as needed.</div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {members.map(m => (
@@ -1037,7 +1047,7 @@ function AdminConfig({ config, saveLeagueConfig, onBack }) {
   const save = async () => { await saveLeagueConfig(lc); onBack(); };
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><BackBtn onClick={onBack} /><span style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", fontSize: 18, color: K.t1 }}>League Settings</span><SaveBtn onClick={save} /></div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>League Settings</span><SaveBtn onClick={save} /></div>
       <Card style={{ padding: 14 }}>
         <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>League Name</div><input value={lc.name} onChange={e => setLc({ ...lc, name: e.target.value })} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} /></div>
         <div><div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Season Year</div><input value={lc.year} onChange={e => setLc({ ...lc, year: parseInt(e.target.value) || 2026 })} type="number" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} /></div>
