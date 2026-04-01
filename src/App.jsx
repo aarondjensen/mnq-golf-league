@@ -146,6 +146,34 @@ export default function GolfLeagueApp() {
     ...(isComm ? [{ id: "admin", label: "Admin", icon: "settings" }] : []),
   ];
 
+  // Find upcoming match info for banner
+  const myTeam = teams.find(t => t.player1 === leagueUser.playerId || t.player2 === leagueUser.playerId);
+  const upcomingBanner = (() => {
+    if (!myTeam || !schedule.length) return null;
+    // Find current week (first week without all matches finalized)
+    for (const wk of schedule) {
+      const allDone = wk.matches.every(m => matchResults.some(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2));
+      if (!allDone) {
+        const myMatch = wk.matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id);
+        if (!myMatch) return null;
+        const oppId = myMatch.team1 === myTeam.id ? myMatch.team2 : myMatch.team1;
+        const opp = teams.find(t => t.id === oppId);
+        const matchIdx = wk.matches.indexOf(myMatch);
+        const base = leagueConfig?.startTime || "4:28 PM";
+        const interval = leagueConfig?.teeInterval || 8;
+        const [timePart, ampm] = base.split(' ');
+        const [h, m] = timePart.split(':').map(Number);
+        let mins = (ampm === 'PM' && h !== 12 ? h + 12 : h) * 60 + m + matchIdx * interval;
+        const hr = Math.floor(mins / 60) % 12 || 12;
+        const mn = mins % 60;
+        const ap = Math.floor(mins / 60) >= 12 ? 'PM' : 'AM';
+        const teeTime = `${hr}:${String(mn).padStart(2, '0')} ${ap}`;
+        return { week: wk.week + 1, date: wk.date, teeTime, opp: opp?.name || "TBD", side: wk.side };
+      }
+    }
+    return null;
+  })();
+
   return (
     <div className="app-shell">
       <link href={FONTS} rel="stylesheet" /><style>{CSS}</style>
@@ -161,6 +189,20 @@ export default function GolfLeagueApp() {
           </div>
         </div>
       </div>
+
+      {/* Upcoming match banner */}
+      {upcomingBanner && (
+        <div style={{ background: K.card, borderBottom: `1px solid ${K.bdr}`, padding: "8px 0", display: "flex", justifyContent: "center" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 13, maxWidth: 900, width: "100%", padding: "0 14px" }}>
+            <div style={{ fontSize: 18, fontWeight: 800, color: K.t1, letterSpacing: .5 }}>{upcomingBanner.teeTime}</div>
+            <div style={{ width: 1, height: 20, background: K.bdr }} />
+            <div style={{ color: K.t2, fontWeight: 500 }}>
+              Week {upcomingBanner.week}{upcomingBanner.date ? ` · ${upcomingBanner.date}` : ""} — vs <strong style={{ color: K.t1, fontWeight: 700 }}>{upcomingBanner.opp}</strong>
+            </div>
+            <div style={{ marginLeft: "auto", fontSize: 10, color: K.t3, textTransform: "uppercase", fontWeight: 600, letterSpacing: 1 }}>{upcomingBanner.side === 'front' ? 'Front 9' : 'Back 9'}</div>
+          </div>
+        </div>
+      )}
 
       <div className="app-body">
         <div className="main-content fi" key={tab}>

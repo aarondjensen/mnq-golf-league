@@ -101,35 +101,43 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
               </div>
 
               {/* Matches */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                 {matches.map((m, mi) => {
                   const t1 = teams.find(t => t.id === m.team1);
                   const t2 = teams.find(t => t.id === m.team2);
                   const res = matchResults.find(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2);
                   const isMyMatch = myTeam && (m.team1 === myTeam.id || m.team2 === myTeam.id);
                   const origIdx = wk.matches.indexOf(m);
+                  const gp = (id) => players.find(p => p.id === id);
+                  const t1p1 = gp(t1?.player1), t1p2 = gp(t1?.player2);
+                  const t2p1 = gp(t2?.player1), t2p2 = gp(t2?.player2);
 
                   return (
-                    <Card key={mi} highlight={isMyMatch} style={{ padding: "10px 14px" }}>
-                      <div style={{ fontSize: 10, color: K.t3, fontWeight: 600, marginBottom: 4 }}>
-                        {formatTeeTime(origIdx)} {isMyMatch && !myOnly && <span style={{ color: K.act, marginLeft: 4 }}>YOUR MATCH</span>}
+                    <Card key={mi} highlight={isMyMatch} style={{ padding: "12px 16px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                        <span style={{ fontSize: 20, fontWeight: 800, color: K.t1, letterSpacing: .5 }}>{formatTeeTime(origIdx)}</span>
+                        {isMyMatch && !myOnly && <span style={{ fontSize: 10, fontWeight: 700, color: K.act, textTransform: "uppercase", letterSpacing: 1 }}>Your Match</span>}
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 13, fontWeight: 700 }}>{t1?.name || "TBD"}</div>
-                          <div style={{ fontSize: 10, color: K.t3 }}>{(() => { const p1 = players.find(p => p.id === t1?.player1); const p2 = players.find(p => p.id === t1?.player2); return `${p1?.name?.split(' ')[0] || '?'} (${p1?.handicapIndex ?? '-'}) & ${p2?.name?.split(' ')[0] || '?'} (${p2?.handicapIndex ?? '-'})`; })()}</div>
+                          <div style={{ fontSize: 13, color: K.t2, lineHeight: 1.6 }}>
+                            {t1p1 ? `${t1p1.name} (${t1p1.handicapIndex})` : "TBD"}<br />
+                            {t1p2 ? `${t1p2.name} (${t1p2.handicapIndex})` : "TBD"}
+                          </div>
                         </div>
                         {res ? (
-                          <div style={{ textAlign: "center", padding: "0 12px" }}>
-                            <div style={{ fontSize: 16, fontWeight: 800, color: K.t1 }}>{res.team1Points}–{res.team2Points}</div>
+                          <div style={{ textAlign: "center", padding: "0 16px" }}>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: K.t1 }}>{res.team1Points}–{res.team2Points}</div>
                             <div style={{ fontSize: 9, color: K.grn, fontWeight: 600 }}>FINAL</div>
                           </div>
                         ) : (
-                          <div style={{ fontSize: 11, color: K.t3, fontWeight: 700, padding: "0 12px" }}>VS</div>
+                          <div style={{ fontSize: 12, color: K.t3, fontWeight: 700, padding: "0 16px" }}>VS</div>
                         )}
                         <div style={{ flex: 1, textAlign: "right" }}>
-                          <div style={{ fontSize: 13, fontWeight: 700 }}>{t2?.name || "TBD"}</div>
-                          <div style={{ fontSize: 10, color: K.t3 }}>{(() => { const p1 = players.find(p => p.id === t2?.player1); const p2 = players.find(p => p.id === t2?.player2); return `${p1?.name?.split(' ')[0] || '?'} (${p1?.handicapIndex ?? '-'}) & ${p2?.name?.split(' ')[0] || '?'} (${p2?.handicapIndex ?? '-'})`; })()}</div>
+                          <div style={{ fontSize: 13, color: K.t2, lineHeight: 1.6 }}>
+                            {t2p1 ? `${t2p1.name} (${t2p1.handicapIndex})` : "TBD"}<br />
+                            {t2p2 ? `${t2p2.name} (${t2p2.handicapIndex})` : "TBD"}
+                          </div>
                         </div>
                       </div>
                     </Card>
