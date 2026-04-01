@@ -275,7 +275,6 @@ function AdminCourse({ course, saveCourseData, onBack }) {
                 ref={el => { getRef(dataKey, i).current = el; }}
                 defaultValue={lc[dataKey][i]}
                 onFocus={e => setTimeout(() => e.target.select(), 10)}
-                onChange={() => setDirty(true)}
                 type="text"
                 inputMode="numeric"
                 maxLength={2}
@@ -290,13 +289,13 @@ function AdminCourse({ course, saveCourseData, onBack }) {
   };
 
   return (
-    <div>
+    <div onInput={() => { if (!dirty) setDirty(true); }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <BackBtn onClick={onBack} />
         <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Course Setup</span>
         <button onClick={saveWithRefs} style={{ background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: 13, padding: "7px 16px", cursor: dirty ? "pointer" : "default", fontWeight: 600, letterSpacing: .4, transition: "all .2s" }}>{dirty ? "Save" : "Saved"}</button>
       </div>
-      <input value={lc.name} onChange={e => { setLc({ ...lc, name: e.target.value }); setDirty(true); }} placeholder="Course Name" style={{ width: "100%", maxWidth: 400, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14, marginBottom: 12 }} />
+      <input value={lc.name} onChange={e => setLc({ ...lc, name: e.target.value })} placeholder="Course Name" style={{ width: "100%", maxWidth: 400, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14, marginBottom: 12 }} />
       <div className="scoring-grid">
       {['front', 'back'].map(s => (
         <div key={s} style={{ marginBottom: 12 }}>
