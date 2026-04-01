@@ -67,7 +67,6 @@ export const CSS = `
   .app-body { display: flex; flex: 1; justify-content: center; }
   .main-content { padding: 12px 14px; padding-bottom: 74px; max-width: 900px; width: 100%; margin: 0 auto; }
   .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; background: ${K.card}f0; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid ${K.bdr}; display: flex; justify-content: space-around; padding: 6px 0 12px; z-index: 100; max-width: 900px; margin: 0 auto; }
-  .banner-content { padding: 10px 14px !important; }
   .admin-grid { display: flex; flex-direction: column; gap: 6px; }
   .admin-sections-grid { display: flex; flex-direction: column; gap: 6px; }
   .players-grid { display: flex; flex-direction: column; gap: 4px; }
@@ -76,7 +75,6 @@ export const CSS = `
   .standings-grid { display: flex; flex-direction: column; gap: 6px; }
   @media (min-width: 768px) {
     .main-content { padding: 24px 32px; padding-bottom: 80px; margin: 0 auto; }
-    .banner-content { padding: 10px 32px !important; }
     .admin-sections-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .players-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .scoring-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
@@ -84,7 +82,6 @@ export const CSS = `
   }
   @media (min-width: 1100px) {
     .main-content { padding: 28px 40px; padding-bottom: 80px; }
-    .banner-content { padding: 10px 40px !important; }
     .admin-sections-grid { grid-template-columns: repeat(3, 1fr); }
     .players-grid { display: grid; grid-template-columns: repeat(3, 1fr); }
   }

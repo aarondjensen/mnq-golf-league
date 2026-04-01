@@ -29,21 +29,28 @@ export default function StandingsView({ teams, players, matchResults }) {
           const mc = i === 0 ? K.gold : i === 1 ? K.silver : i === 2 ? K.bronze : K.t3;
           return (
             <div key={s.teamId} style={{
-              display: "flex", alignItems: "center", gap: 10,
+              display: "flex", alignItems: "center",
               background: K.card, borderRadius: 8,
               border: `1px solid ${i === 0 ? K.acc + '40' : K.bdr}`,
-              padding: "8px 12px",
+              padding: "8px 12px", position: "relative",
             }}>
-              <div style={{
-                width: 26, height: 26, borderRadius: 6, flexShrink: 0,
-                background: i < 3 ? mc + "20" : K.inp,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 13, fontWeight: 800, color: mc,
-                border: i < 3 ? `1.5px solid ${mc}40` : "none",
-              }}>{i + 1}</div>
-              <div style={{ flex: 1, fontSize: 15, fontWeight: 700, letterSpacing: .3 }}>{team.name}</div>
-              <div style={{ fontSize: 10, color: K.t3, marginRight: 8, whiteSpace: "nowrap" }}>{s.w}-{s.l}-{s.t}</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: K.t1, fontFamily: "'League Spartan', sans-serif", minWidth: 32, textAlign: "right" }}>{s.points}</div>
+              {/* Left bookend — rank */}
+              <div style={{ width: 60, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
+                <div style={{
+                  width: 26, height: 26, borderRadius: 6,
+                  background: i < 3 ? mc + "20" : K.inp,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 13, fontWeight: 800, color: mc,
+                  border: i < 3 ? `1.5px solid ${mc}40` : "none",
+                }}>{i + 1}</div>
+              </div>
+              {/* Center — team name */}
+              <div style={{ flex: 1, fontSize: 15, fontWeight: 700, letterSpacing: .3, textAlign: "center" }}>{team.name}</div>
+              {/* Right bookend — record + points */}
+              <div style={{ width: 80, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
+                <div style={{ fontSize: 10, color: K.t3, whiteSpace: "nowrap" }}>{s.w}-{s.l}-{s.t}</div>
+                <div style={{ fontSize: 20, fontWeight: 800, color: K.t1, fontFamily: "'League Spartan', sans-serif", minWidth: 28, textAlign: "right" }}>{s.points}</div>
+              </div>
             </div>
           );
         })}
