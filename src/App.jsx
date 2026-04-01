@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "./firebase";
-import { K, FONTS, CSS, I, Pill, DEFAULT_SCORING, SEASON_WEEKS } from "./theme";
+import { K, FONTS, CSS, I, DEFAULT_SCORING, SEASON_WEEKS } from "./theme";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
 import StandingsView from "./pages/Standings";
 import LiveScoringView from "./pages/LiveScoring";
@@ -150,33 +150,19 @@ export default function GolfLeagueApp() {
     <div className="app-shell">
       <link href={FONTS} rel="stylesheet" /><style>{CSS}</style>
 
+      {/* Header — centered logo, sign out + name top right */}
       <div className="app-header">
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-          <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
-          <div>
-            <div style={{ fontSize: 12, color: K.t2, fontWeight: 600 }}>{leagueUser.name}</div>
-            <div style={{ fontSize: 10, color: K.t3, display: "flex", alignItems: "center", gap: 6 }}>
-              {isComm && <Pill color={K.warn} style={{ fontSize: 8 }}>COMMISSIONER</Pill>}
-              {syncing && <span className="pu" style={{ fontSize: 8, color: K.grn }}>● LIVE</span>}
-            </div>
+        <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
+        <div style={{ position: "absolute", right: 20, display: "flex", alignItems: "center", gap: 10 }}>
+          {syncing && <span className="pu" style={{ fontSize: 8, color: K.grn }}>● LIVE</span>}
+          <div style={{ textAlign: "right" }}>
+            <button onClick={doSignOut} style={{ background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t3, fontSize: 10, padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}>Sign Out</button>
+            <div style={{ fontSize: 10, color: K.t3, marginTop: 2 }}>{leagueUser.name}</div>
           </div>
         </div>
-        <button onClick={doSignOut} style={{ background: "none", border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.t3, fontSize: 10, padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}>Sign Out</button>
       </div>
 
       <div className="app-body">
-        <div className="sidebar">
-          {tabs.map(t => {
-            const active = tab === t.id;
-            return (
-              <button key={t.id} onClick={() => setTab(t.id)} style={{ background: active ? K.acc + "12" : "transparent", border: "none", borderLeft: active ? `3px solid ${K.acc}` : "3px solid transparent", cursor: "pointer", display: "flex", alignItems: "center", gap: 10, padding: "11px 18px", transition: "all .15s", width: "100%" }}>
-                <span style={{ display: "flex" }}>{I[t.icon](16, active ? K.acc : K.t3)}</span>
-                <span style={{ fontSize: 13, fontWeight: active ? 600 : 400, color: active ? K.acc : K.t2 }}>{t.label}</span>
-              </button>
-            );
-          })}
-        </div>
-
         <div className="main-content fi" key={tab}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} />}
           {tab === "scoring" && <LiveScoringView leagueUser={leagueUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} />}
@@ -187,11 +173,12 @@ export default function GolfLeagueApp() {
         </div>
       </div>
 
+      {/* Bottom Nav — all screen sizes */}
       <div className="bottom-nav">
         {tabs.map(t => {
           const active = tab === t.id;
           return (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{ background: "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: active ? 1 : .45, transition: "all .2s" }}>
+            <button key={t.id} onClick={() => setTab(t.id)} style={{ background: active ? K.acc + "10" : "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: active ? 1 : .4, transition: "all .2s", padding: "4px 14px", borderRadius: 8 }}>
               <span style={{ display: "flex" }}>{I[t.icon](18, active ? K.acc : K.t2)}</span>
               <span style={{ fontSize: 9, fontWeight: active ? 600 : 400, color: active ? K.acc : K.t2 }}>{t.label}</span>
             </button>
