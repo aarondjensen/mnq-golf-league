@@ -5,6 +5,26 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   const [showAll, setShowAll] = useState(false);
   const [myOnly, setMyOnly] = useState(false);
 
+  // Build display names: last name only, add first initial if duplicate last names
+  const displayNames = useMemo(() => {
+    const lastNames = {};
+    players.forEach(p => {
+      const parts = p.name.split(' ');
+      const last = parts[parts.length - 1];
+      if (!lastNames[last]) lastNames[last] = [];
+      lastNames[last].push(p);
+    });
+    const map = {};
+    players.forEach(p => {
+      const parts = p.name.split(' ');
+      const last = parts[parts.length - 1];
+      map[p.id] = lastNames[last].length > 1 ? `${parts[0][0]}. ${last}` : last;
+    });
+    return map;
+  }, [players]);
+
+  const dn = (id) => displayNames[id] || "TBD";
+
   const myTeam = useMemo(() => {
     if (!leagueUser?.playerId) return null;
     return teams.find(t => t.player1 === leagueUser.playerId || t.player2 === leagueUser.playerId);
@@ -101,45 +121,36 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
               </div>
 
               {/* Matches */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {matches.map((m, mi) => {
                   const t1 = teams.find(t => t.id === m.team1);
                   const t2 = teams.find(t => t.id === m.team2);
                   const res = matchResults.find(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2);
                   const isMyMatch = myTeam && (m.team1 === myTeam.id || m.team2 === myTeam.id);
                   const origIdx = wk.matches.indexOf(m);
-                  const gp = (id) => players.find(p => p.id === id);
-                  const t1p1 = gp(t1?.player1), t1p2 = gp(t1?.player2);
-                  const t2p1 = gp(t2?.player1), t2p2 = gp(t2?.player2);
 
                   return (
-                    <Card key={mi} style={{ padding: "12px 10px", border: isMyMatch ? `1.5px solid ${K.act}` : undefined }}>
-                      <div style={{ display: "flex", alignItems: "center" }}>
-                        {/* Left team — right aligned */}
-                        <div style={{ flex: 1, textAlign: "right", paddingRight: 14 }}>
-                          <div style={{ fontSize: 13, color: K.t2, lineHeight: 1.7 }}>
-                            {t1p1 ? `${t1p1.name} (${t1p1.handicapIndex})` : "TBD"}<br />
-                            {t1p2 ? `${t1p2.name} (${t1p2.handicapIndex})` : "TBD"}
-                          </div>
-                        </div>
-                        {/* Center — tee time or result */}
-                        <div style={{ textAlign: "center", minWidth: 70, flexShrink: 0 }}>
-                          {res ? (<>
-                            <div style={{ fontSize: 18, fontWeight: 800, color: K.t1 }}>{res.team1Points}–{res.team2Points}</div>
-                            <div style={{ fontSize: 9, color: K.grn, fontWeight: 600 }}>FINAL</div>
-                          </>) : (
-                            <div style={{ fontSize: 20, fontWeight: 800, color: K.t1, letterSpacing: .5 }}>{formatTeeTime(origIdx)}</div>
-                          )}
-                        </div>
-                        {/* Right team — left aligned */}
-                        <div style={{ flex: 1, textAlign: "left", paddingLeft: 14 }}>
-                          <div style={{ fontSize: 13, color: K.t2, lineHeight: 1.7 }}>
-                            {t2p1 ? `${t2p1.name} (${t2p1.handicapIndex})` : "TBD"}<br />
-                            {t2p2 ? `${t2p2.name} (${t2p2.handicapIndex})` : "TBD"}
-                          </div>
-                        </div>
+                    <div key={mi} style={{ background: K.card, borderRadius: 8, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}`, padding: "8px 10px", display: "flex", alignItems: "center" }}>
+                      {/* Left team — right aligned */}
+                      <div style={{ flex: 1, textAlign: "right", paddingRight: 10, overflow: "hidden" }}>
+                        <div style={{ fontSize: 15, color: K.t1, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player1)}</div>
+                        <div style={{ fontSize: 15, color: K.t1, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player2)}</div>
                       </div>
-                    </Card>
+                      {/* Center — tee time or result */}
+                      <div style={{ textAlign: "center", minWidth: 68, flexShrink: 0 }}>
+                        {res ? (<>
+                          <div style={{ fontSize: 17, fontWeight: 800, color: K.t1 }}>{res.team1Points}–{res.team2Points}</div>
+                          <div style={{ fontSize: 9, color: K.grn, fontWeight: 600 }}>FINAL</div>
+                        </>) : (
+                          <div style={{ fontSize: 18, fontWeight: 800, color: K.t1, letterSpacing: .3 }}>{formatTeeTime(origIdx)}</div>
+                        )}
+                      </div>
+                      {/* Right team — left aligned */}
+                      <div style={{ flex: 1, textAlign: "left", paddingLeft: 10, overflow: "hidden" }}>
+                        <div style={{ fontSize: 15, color: K.t1, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player1)}</div>
+                        <div style={{ fontSize: 15, color: K.t1, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player2)}</div>
+                      </div>
+                    </div>
                   );
                 })}
               </div>
