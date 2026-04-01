@@ -72,7 +72,7 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, onBack }) {
             <div><div style={{ display: "flex", alignItems: "baseline", gap: 8 }}><span style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</span><span style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{p.handicapIndex}</span></div></div>
             <div style={{ display: "flex", gap: 6 }}>
               <button onClick={() => { setF({ name: p.name, handicapIndex: String(p.handicapIndex ?? ""), teeBox: p.teeBox || "Blue" }); setEd(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.acc, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>Edit</button>
-              <button onClick={() => toggleStatus(p)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.warn, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>Deactivate</button>
+              <button onClick={() => { if (confirm(`Deactivate ${p.name}?`)) toggleStatus(p); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.warn, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>Deactivate</button>
             </div>
           </Card>
         ))}
