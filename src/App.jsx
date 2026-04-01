@@ -845,8 +845,11 @@ function AdminView(props) {
 function AdminPlayers({ players, savePlayer, deletePlayer, course, onBack }) {
   const [ed, setEd] = useState(null);
   const [f, setF] = useState({ name: "", handicapIndex: "", teeBox: "Blue" });
+  const nameRef = useRef(null);
   const tees = course?.teeBoxes?.map(t => t.name) || ["Blue", "Black", "White"];
   const save = async () => { if (!f.name.trim()) return; const id = ed === "new" ? `${LEAGUE_ID}_p${Date.now()}` : ed; await savePlayer({ id, name: f.name.trim(), handicapIndex: parseFloat(f.handicapIndex) || 0, teeBox: f.teeBox }); setEd(null); };
+
+  useEffect(() => { if (ed && nameRef.current) nameRef.current.focus(); }, [ed]);
 
   return (
     <div>
@@ -856,7 +859,7 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, onBack }) {
       </div>
       {ed && (
         <Card highlight style={{ marginBottom: 12, padding: 14 }}>
-          <input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Player Name" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14, marginBottom: 8 }} />
+          <input ref={nameRef} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Player Name" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14, marginBottom: 8 }} />
           <div style={{ display: "flex", gap: 8 }}>
             <input value={f.handicapIndex} onChange={e => setF({ ...f, handicapIndex: e.target.value })} placeholder="Handicap Index" type="number" step="0.1" style={{ flex: 1, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
             <select value={f.teeBox} onChange={e => setF({ ...f, teeBox: e.target.value })} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }}>{tees.map(n => <option key={n} value={n}>{n}</option>)}</select>
