@@ -189,14 +189,16 @@ export default function GolfLeagueApp() {
 
       {/* Upcoming match banner */}
       {upcomingBanner && (
-        <div style={{ background: K.card, borderBottom: `1px solid ${K.bdr}`, padding: "10px 14px", textAlign: "center" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 14, marginBottom: 2 }}>
-            <div style={{ fontSize: 20, fontWeight: 800, color: K.teal, letterSpacing: .5 }}>{upcomingBanner.teeTime}</div>
-            <div style={{ width: 1, height: 24, background: K.bdr }} />
-            <div style={{ fontSize: 12, color: K.t2, fontWeight: 500 }}>Week {upcomingBanner.week}{upcomingBanner.date ? ` · ${upcomingBanner.date}` : ""}</div>
-            <div style={{ fontSize: 11, color: K.teal, textTransform: "uppercase", fontWeight: 700, letterSpacing: 1 }}>{upcomingBanner.side === 'front' ? 'Front 9' : 'Back 9'}</div>
+        <div style={{ background: K.card, borderBottom: `1px solid ${K.bdr}`, padding: "10px 14px" }}>
+          <div style={{ display: "flex", alignItems: "center", maxWidth: 900, margin: "0 auto" }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color: K.teal, letterSpacing: .5, whiteSpace: "nowrap" }}>{upcomingBanner.teeTime}</div>
+            <div style={{ width: 1, height: 28, background: K.bdr, margin: "0 14px", flexShrink: 0 }} />
+            <div style={{ flex: 1, textAlign: "center" }}>
+              <div style={{ fontSize: 12, color: K.t2, fontWeight: 500 }}>Week {upcomingBanner.week}{upcomingBanner.date ? ` · ${upcomingBanner.date}` : ""}</div>
+              <div style={{ color: K.t1, fontWeight: 700, fontSize: 15, marginTop: 1 }}>vs {upcomingBanner.opp}</div>
+            </div>
+            <div style={{ fontSize: 11, color: K.teal, textTransform: "uppercase", fontWeight: 700, letterSpacing: 1, whiteSpace: "nowrap", marginLeft: 14 }}>{upcomingBanner.side === 'front' ? 'Front 9' : 'Back 9'}</div>
           </div>
-          <div style={{ color: K.t1, fontWeight: 700, fontSize: 15 }}>vs {upcomingBanner.opp}</div>
         </div>
       )}
 
