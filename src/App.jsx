@@ -177,13 +177,13 @@ export default function GolfLeagueApp() {
 
       {/* Header */}
       <div className="app-header">
-        <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
-        <div style={{ position: "absolute", right: 20, display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ position: "absolute", left: 16, display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ fontSize: 11, color: K.t3, fontWeight: 500 }}>{leagueUser.name}</div>
           {syncing && <span className="pu" style={{ fontSize: 8, color: K.grn }}>● LIVE</span>}
-          <div style={{ textAlign: "right" }}>
-            <button onClick={doSignOut} style={{ background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t3, fontSize: 10, padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}>Sign Out</button>
-            <div style={{ fontSize: 10, color: K.t3, marginTop: 2 }}>{leagueUser.name}</div>
-          </div>
+        </div>
+        <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
+        <div style={{ position: "absolute", right: 16 }}>
+          <button onClick={doSignOut} style={{ background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t3, fontSize: 10, padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}>Sign Out</button>
         </div>
       </div>
 
@@ -191,12 +191,13 @@ export default function GolfLeagueApp() {
       {upcomingBanner && (
         <div style={{ background: K.card, borderBottom: `1px solid ${K.bdr}`, padding: "8px 0", display: "flex", justifyContent: "center" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 14, fontSize: 13, maxWidth: 900, width: "100%", padding: "0 14px" }}>
-            <div style={{ fontSize: 18, fontWeight: 800, color: K.t1, letterSpacing: .5 }}>{upcomingBanner.teeTime}</div>
-            <div style={{ width: 1, height: 20, background: K.bdr }} />
-            <div style={{ color: K.t2, fontWeight: 500 }}>
-              Week {upcomingBanner.week}{upcomingBanner.date ? ` · ${upcomingBanner.date}` : ""} — vs <strong style={{ color: K.t1, fontWeight: 700 }}>{upcomingBanner.opp}</strong>
+            <div style={{ fontSize: 20, fontWeight: 800, color: K.teal, letterSpacing: .5, whiteSpace: "nowrap" }}>{upcomingBanner.teeTime}</div>
+            <div style={{ width: 1, height: 28, background: K.bdr, flexShrink: 0 }} />
+            <div style={{ flex: 1 }}>
+              <div style={{ color: K.t2, fontWeight: 500, fontSize: 12 }}>Week {upcomingBanner.week}{upcomingBanner.date ? ` · ${upcomingBanner.date}` : ""}</div>
+              <div style={{ color: K.t1, fontWeight: 700, fontSize: 14, marginTop: 1 }}>vs {upcomingBanner.opp}</div>
             </div>
-            <div style={{ marginLeft: "auto", fontSize: 10, color: K.t3, textTransform: "uppercase", fontWeight: 600, letterSpacing: 1 }}>{upcomingBanner.side === 'front' ? 'Front 9' : 'Back 9'}</div>
+            <div style={{ fontSize: 11, color: K.teal, textTransform: "uppercase", fontWeight: 700, letterSpacing: 1, whiteSpace: "nowrap" }}>{upcomingBanner.side === 'front' ? 'Front 9' : 'Back 9'}</div>
           </div>
         </div>
       )}
