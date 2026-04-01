@@ -107,10 +107,11 @@ export default function GolfLeagueApp() {
   const deleteMember = async (id) => await db.deleteDoc("league_members", id);
 
   const isComm = leagueUser?.isCommissioner === true;
+  const activePlayers = players.filter(p => p.status !== "inactive");
 
   if (authLoading) return <LoadingScreen />;
   if (!authUser) return <AuthScreen onGoogle={doGoogleSignIn} onEmail={doEmailSignIn} />;
-  if (!leagueUser) return <JoinScreen authUser={authUser} members={members} players={players} saveMember={saveMember} doSignOut={doSignOut} />;
+  if (!leagueUser) return <JoinScreen authUser={authUser} members={members} players={activePlayers} saveMember={saveMember} doSignOut={doSignOut} />;
 
   const tabs = [
     { id: "standings", label: "Standings", icon: "trophy" },
@@ -153,11 +154,11 @@ export default function GolfLeagueApp() {
         </div>
 
         <div className="main-content fi" key={tab}>
-          {tab === "standings" && <StandingsView teams={teams} players={players} matchResults={matchResults} />}
-          {tab === "scoring" && <LiveScoringView leagueUser={leagueUser} players={players} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} />}
-          {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={players} matchResults={matchResults} />}
-          {tab === "stats" && <StatsView players={players} holeScores={holeScores} course={courseData} schedule={schedule} scoringRules={scoringRules} />}
-          {tab === "ctp" && <CTPView ctpData={ctpData} players={players} />}
+          {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} />}
+          {tab === "scoring" && <LiveScoringView leagueUser={leagueUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} />}
+          {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} />}
+          {tab === "stats" && <StatsView players={activePlayers} holeScores={holeScores} course={courseData} schedule={schedule} scoringRules={scoringRules} />}
+          {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} />}
           {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} />}
         </div>
       </div>

@@ -9,7 +9,7 @@ export default function AdminView(props) {
   const [sec, setSec] = useState(null);
   const sections = [
     { id: "config", label: "League Settings", icon: "settings", desc: leagueConfig.name },
-    { id: "players", label: "Players", icon: "user", desc: `${players.length} registered` },
+    { id: "players", label: "Players", icon: "user", desc: `${players.filter(p => p.status !== "inactive").length} active` },
     { id: "teams", label: "Teams", icon: "users", desc: `${teams.length} teams` },
     { id: "course", label: "Course Setup", icon: "mapPin", desc: course?.name || "Not set" },
     { id: "schedule", label: "Schedule", icon: "calendar", desc: `${schedule.length} weeks` },
@@ -38,14 +38,19 @@ export default function AdminView(props) {
 function AdminPlayers({ players, savePlayer, deletePlayer, course, onBack }) {
   const [ed, setEd] = useState(null);
   const [f, setF] = useState({ name: "", handicapIndex: "", teeBox: "Blue" });
+  const [showInactive, setShowInactive] = useState(false);
   const nameRef = useCallback(node => { if (node) setTimeout(() => node.focus(), 50); }, [ed]);
   const tees = course?.teeBoxes?.map(t => t.name) || ["Blue", "Black", "White"];
-  const save = async () => { if (!f.name.trim()) return; const id = ed === "new" ? `${LEAGUE_ID}_p${Date.now()}` : ed; await savePlayer({ id, name: f.name.trim(), handicapIndex: parseFloat(f.handicapIndex) || 0, teeBox: f.teeBox }); setEd(null); };
+  const save = async () => { if (!f.name.trim()) return; const id = ed === "new" ? `${LEAGUE_ID}_p${Date.now()}` : ed; await savePlayer({ id, name: f.name.trim(), handicapIndex: parseFloat(f.handicapIndex) || 0, teeBox: f.teeBox, status: "active" }); setEd(null); };
+  const toggleStatus = async (p) => { await savePlayer({ ...p, status: p.status === "inactive" ? "active" : "inactive" }); };
+
+  const activePlayers = players.filter(p => p.status !== "inactive");
+  const inactivePlayers = players.filter(p => p.status === "inactive");
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Players ({players.length}/20)</span>
+        <BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Players ({activePlayers.length} active)</span>
         <button onClick={() => { setF({ name: "", handicapIndex: "", teeBox: "Blue" }); setEd("new"); }} style={{ background: K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 700 }}>+ Add</button>
       </div>
       {ed && (
@@ -62,16 +67,33 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, onBack }) {
         </Card>
       )}
       <div className="players-grid">
-        {players.map(p => (
+        {activePlayers.map(p => (
           <Card key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px" }}>
             <div><div style={{ display: "flex", alignItems: "baseline", gap: 8 }}><span style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</span><span style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{p.handicapIndex}</span></div></div>
             <div style={{ display: "flex", gap: 6 }}>
-              <button onClick={() => { setF({ name: p.name, handicapIndex: String(p.handicapIndex ?? ""), teeBox: p.teeBox || "White" }); setEd(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.acc, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>Edit</button>
-              <button onClick={() => { if (confirm("Remove?")) deletePlayer(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.red, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>✕</button>
+              <button onClick={() => { setF({ name: p.name, handicapIndex: String(p.handicapIndex ?? ""), teeBox: p.teeBox || "Blue" }); setEd(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.acc, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>Edit</button>
+              <button onClick={() => toggleStatus(p)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.warn, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>Deactivate</button>
             </div>
           </Card>
         ))}
       </div>
+      {inactivePlayers.length > 0 && (
+        <div style={{ marginTop: 20 }}>
+          <button onClick={() => setShowInactive(!showInactive)} style={{ background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", fontWeight: 500 }}>
+            {showInactive ? "▾" : "▸"} Inactive Players ({inactivePlayers.length})
+          </button>
+          {showInactive && (
+            <div className="players-grid" style={{ marginTop: 8 }}>
+              {inactivePlayers.map(p => (
+                <Card key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", opacity: .5 }}>
+                  <div><div style={{ display: "flex", alignItems: "baseline", gap: 8 }}><span style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</span><span style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{p.handicapIndex}</span><Pill color={K.t3} style={{ fontSize: 8 }}>INACTIVE</Pill></div></div>
+                  <button onClick={() => toggleStatus(p)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.grn, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>Reactivate</button>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -81,7 +103,7 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
   const [ed, setEd] = useState(null);
   const [f, setF] = useState({ name: "", player1: "", player2: "" });
   const assigned = teams.flatMap(t => [t.player1, t.player2]);
-  const avail = (c1, c2) => players.filter(p => !assigned.includes(p.id) || p.id === c1 || p.id === c2);
+  const avail = (c1, c2) => players.filter(p => p.status !== "inactive" && (!assigned.includes(p.id) || p.id === c1 || p.id === c2));
   const save = async () => { if (!f.name.trim() || !f.player1 || !f.player2) return; const id = ed === "new" ? `${LEAGUE_ID}_t${Date.now()}` : ed; await saveTeam({ id, ...f }); setEd(null); };
 
   return (
