@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { K, SectionTitle, Card, EmptyState } from "../theme";
+import { K, SectionTitle, EmptyState } from "../theme";
 
 export default function StandingsView({ teams, players, matchResults }) {
   const standings = useMemo(() => {
@@ -16,27 +16,38 @@ export default function StandingsView({ teams, players, matchResults }) {
     });
     return Object.values(pts).sort((a, b) => b.points - a.points);
   }, [teams, matchResults]);
+
   const gt = (id) => teams.find(t => t.id === id);
-  const gn = (id) => players.find(p => p.id === id)?.name || "TBD";
   if (!teams.length) return <EmptyState icon="trophy" title="No teams yet" subtitle="Commissioner needs to set up teams." />;
 
   return (
-    <div><SectionTitle>Season Standings</SectionTitle>
+    <div>
+      <SectionTitle>Season Standings</SectionTitle>
       <div className="standings-grid">
         {standings.map((s, i) => {
           const team = gt(s.teamId); if (!team) return null;
           const mc = i === 0 ? K.gold : i === 1 ? K.silver : i === 2 ? K.bronze : K.t3;
           return (
-            <Card key={s.teamId} highlight={i === 0} style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ width: 32, height: 32, borderRadius: 8, background: i < 3 ? mc + "20" : K.inp, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: mc, border: i < 3 ? `1.5px solid ${mc}40` : "none" }}>{i + 1}</div>
-              <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 700 }}>{team.name}</div><div style={{ fontSize: 11, color: K.t3 }}>{gn(team.player1)} & {gn(team.player2)}</div></div>
-              <div style={{ textAlign: "right" }}><div style={{ fontSize: 22, fontWeight: 800, color: K.acc, fontFamily: "'League Spartan', sans-serif" }}>{s.points}</div><div style={{ fontSize: 10, color: K.t3 }}>{s.w}W-{s.l}L-{s.t}T</div></div>
-            </Card>
+            <div key={s.teamId} style={{
+              display: "flex", alignItems: "center", gap: 10,
+              background: K.card, borderRadius: 8,
+              border: `1px solid ${i === 0 ? K.acc + '40' : K.bdr}`,
+              padding: "8px 12px",
+            }}>
+              <div style={{
+                width: 26, height: 26, borderRadius: 6, flexShrink: 0,
+                background: i < 3 ? mc + "20" : K.inp,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 13, fontWeight: 800, color: mc,
+                border: i < 3 ? `1.5px solid ${mc}40` : "none",
+              }}>{i + 1}</div>
+              <div style={{ flex: 1, fontSize: 15, fontWeight: 700, letterSpacing: .3 }}>{team.name}</div>
+              <div style={{ fontSize: 10, color: K.t3, marginRight: 8, whiteSpace: "nowrap" }}>{s.w}-{s.l}-{s.t}</div>
+              <div style={{ fontSize: 20, fontWeight: 800, color: K.t1, fontFamily: "'League Spartan', sans-serif", minWidth: 32, textAlign: "right" }}>{s.points}</div>
+            </div>
           );
         })}
       </div>
     </div>
   );
 }
-
-
