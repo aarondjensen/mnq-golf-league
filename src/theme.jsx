@@ -65,7 +65,7 @@ export const CSS = `
   .app-shell { min-height: 100vh; background: ${K.bg}; color: ${K.t1}; font-family: 'League Spartan', sans-serif; display: flex; flex-direction: column; font-size: 15px; letter-spacing: 0.4px; }
   .app-header { padding: 12px 20px; background: linear-gradient(135deg, ${K.card}, ${K.bg}); border-bottom: 1px solid ${K.bdr}; display: flex; justify-content: center; align-items: center; position: relative; }
   .app-body { display: flex; flex: 1; justify-content: center; }
-  .main-content { flex: 1; padding: 12px 14px; padding-bottom: 74px; max-width: 900px; width: 100%; }
+  .main-content { padding: 12px 14px; padding-bottom: 74px; max-width: 900px; width: 100%; margin: 0 auto; }
   .bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; background: ${K.card}f0; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid ${K.bdr}; display: flex; justify-content: space-around; padding: 6px 0 12px; z-index: 100; max-width: 900px; margin: 0 auto; }
   .admin-grid { display: flex; flex-direction: column; gap: 6px; }
   .admin-sections-grid { display: flex; flex-direction: column; gap: 6px; }
@@ -74,11 +74,11 @@ export const CSS = `
   .schedule-weeks { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
   .standings-grid { display: flex; flex-direction: column; gap: 6px; }
   @media (min-width: 768px) {
-    .main-content { padding: 24px 32px; padding-bottom: 80px; }
+    .main-content { padding: 24px 32px; padding-bottom: 80px; margin: 0 auto; }
     .admin-sections-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .players-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .scoring-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-    .standings-grid { max-width: 700px; }
+    .standings-grid { max-width: 700px; margin: 0 auto; }
   }
   @media (min-width: 1100px) {
     .main-content { padding: 28px 40px; padding-bottom: 80px; }

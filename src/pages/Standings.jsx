@@ -22,7 +22,7 @@ export default function StandingsView({ teams, players, matchResults }) {
 
   return (
     <div>
-      <SectionTitle>Season Standings</SectionTitle>
+      <SectionTitle><span style={{ display: "block", textAlign: "center" }}>Season Standings</span></SectionTitle>
       <div className="standings-grid">
         {standings.map((s, i) => {
           const team = gt(s.teamId); if (!team) return null;
