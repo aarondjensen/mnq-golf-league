@@ -59,34 +59,46 @@ export function JoinScreen({ authUser, members, players, saveMember, doSignOut }
   const [selectedPlayer, setSelectedPlayer] = useState("");
   const [busy, setBusy] = useState(false);
   const isFirstUser = members.length === 0;
+  const existingMember = members.find(m => m.uid === authUser.uid);
+  const assigned = members.map(m => m.playerId).filter(Boolean);
+  const needsLink = existingMember && !existingMember.playerId && players.length > 0;
 
   const handleJoin = async (asCommissioner = false) => {
     setBusy(true);
-    await saveMember({ id: `${LEAGUE_ID}_${authUser.uid}`, uid: authUser.uid, email: authUser.email, name: authUser.displayName || authUser.email?.split("@")[0] || "Player", playerId: selectedPlayer || null, isCommissioner: asCommissioner });
+    await saveMember({ id: existingMember?.id || `${LEAGUE_ID}_${authUser.uid}`, uid: authUser.uid, email: authUser.email, name: authUser.displayName || authUser.email?.split("@")[0] || "Player", playerId: selectedPlayer || null, isCommissioner: asCommissioner || existingMember?.isCommissioner || false });
     setBusy(false);
   };
-  const assigned = members.map(m => m.playerId).filter(Boolean);
+
+  const title = needsLink ? "Link Your Profile" : isFirstUser ? "Welcome!" : "Join League";
+  const subtitle = needsLink
+    ? "Select your player profile to get started:"
+    : isFirstUser
+    ? "You're the first one here! Set yourself up as commissioner to get started."
+    : players.length > 0
+    ? "Select your player profile to join:"
+    : "No player profiles yet — your commissioner is still setting up. Join as a member.";
 
   return (
     <div style={{ minHeight: "100vh", background: K.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'League Spartan', sans-serif" }}>
       <link href={FONTS} rel="stylesheet" /><style>{CSS}</style>
       <div style={{ width: 340, textAlign: "center" }} className="fi">
         <img src="/MnQ_logo_transparent_bg.png" alt="Maize-N-Que Golf" style={{ width: 240, objectFit: "contain", marginBottom: 8 }} />
-        <div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 24, color: K.acc, letterSpacing: 1, marginBottom: 4 }}>Welcome!</div>
+        <div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 24, color: K.acc, letterSpacing: 1, marginBottom: 4 }}>{title}</div>
         <div style={{ color: K.t3, fontSize: 12, marginBottom: 6 }}>Signed in as <span style={{ color: K.t2, fontWeight: 600 }}>{authUser.email}</span></div>
+        <div style={{ color: K.t2, fontSize: 13, marginBottom: 16, lineHeight: 1.5, padding: "0 12px" }}>{subtitle}</div>
 
-        {isFirstUser ? (<>
-          <div style={{ color: K.t2, fontSize: 13, marginBottom: 20, lineHeight: 1.5, padding: "0 12px" }}>You're the first one here! Set yourself up as commissioner to get started.</div>
+        {isFirstUser ? (
           <button onClick={() => handleJoin(true)} disabled={busy} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: busy ? .6 : 1 }}>Create League as Commissioner</button>
-        </>) : (<>
-          <div style={{ color: K.t2, fontSize: 13, marginBottom: 16, lineHeight: 1.5, padding: "0 12px" }}>{players.length > 0 ? "Link your account to your player profile:" : "No player profiles yet — your commissioner is still setting up. Join as a member."}</div>
+        ) : (<>
           {players.length > 0 && (
             <select value={selectedPlayer} onChange={e => setSelectedPlayer(e.target.value)} style={{ width: "100%", padding: "12px", borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14, marginBottom: 12, textAlign: "center" }}>
-              <option value="">— Select your player profile —</option>
-              {players.filter(p => !assigned.includes(p.id)).map(p => <option key={p.id} value={p.id}>{p.name} (HI: {p.handicapIndex})</option>)}
+              <option value="">— Select your name —</option>
+              {players.filter(p => !assigned.includes(p.id) || (existingMember && p.id === existingMember.playerId)).sort((a, b) => a.name.localeCompare(b.name)).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           )}
-          <button onClick={() => handleJoin(false)} disabled={busy} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: busy ? .6 : 1 }}>Join League</button>
+          <button onClick={() => handleJoin(false)} disabled={busy || (players.length > 0 && !selectedPlayer)} style={{ width: "100%", padding: "14px", borderRadius: 12, background: (players.length > 0 && !selectedPlayer) ? K.t3 : K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: busy ? .6 : 1 }}>
+            {needsLink ? "Link Profile" : "Join League"}
+          </button>
         </>)}
         <button onClick={doSignOut} style={{ background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 12 }}>Sign out</button>
       </div>
