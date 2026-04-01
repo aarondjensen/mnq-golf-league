@@ -113,8 +113,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                   const t2p1 = gp(t2?.player1), t2p2 = gp(t2?.player2);
 
                   return (
-                    <Card key={mi} highlight={isMyMatch} style={{ padding: "12px 10px" }}>
-                      {isMyMatch && !myOnly && <div style={{ fontSize: 10, fontWeight: 700, color: K.act, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, textAlign: "center" }}>Your Match</div>}
+                    <Card key={mi} style={{ padding: "12px 10px", border: isMyMatch ? `1.5px solid ${K.act}` : undefined }}>
                       <div style={{ display: "flex", alignItems: "center" }}>
                         {/* Left team — right aligned */}
                         <div style={{ flex: 1, textAlign: "right", paddingRight: 14 }}>
