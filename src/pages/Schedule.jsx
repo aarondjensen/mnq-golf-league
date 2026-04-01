@@ -35,10 +35,11 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   };
 
   const weeksToShow = useMemo(() => {
+    if (myOnly) return schedule; // My Schedule always shows full season
     if (showAll) return schedule;
     if (currentWeekIdx >= 0 && currentWeekIdx < schedule.length) return [schedule[currentWeekIdx]];
     return schedule.slice(0, 1);
-  }, [showAll, schedule, currentWeekIdx]);
+  }, [showAll, myOnly, schedule, currentWeekIdx]);
 
   const gn = (id) => teams.find(t => t.id === id)?.name || "TBD";
 
@@ -116,7 +117,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                         <div style={{ flex: 1 }}>
                           <div style={{ fontSize: 13, fontWeight: 700 }}>{t1?.name || "TBD"}</div>
-                          <div style={{ fontSize: 10, color: K.t3 }}>{players.find(p => p.id === t1?.player1)?.name?.split(' ')[0]} & {players.find(p => p.id === t1?.player2)?.name?.split(' ')[0]}</div>
+                          <div style={{ fontSize: 10, color: K.t3 }}>{(() => { const p1 = players.find(p => p.id === t1?.player1); const p2 = players.find(p => p.id === t1?.player2); return `${p1?.name?.split(' ')[0] || '?'} (${p1?.handicapIndex ?? '-'}) & ${p2?.name?.split(' ')[0] || '?'} (${p2?.handicapIndex ?? '-'})`; })()}</div>
                         </div>
                         {res ? (
                           <div style={{ textAlign: "center", padding: "0 12px" }}>
@@ -128,7 +129,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                         )}
                         <div style={{ flex: 1, textAlign: "right" }}>
                           <div style={{ fontSize: 13, fontWeight: 700 }}>{t2?.name || "TBD"}</div>
-                          <div style={{ fontSize: 10, color: K.t3 }}>{players.find(p => p.id === t2?.player1)?.name?.split(' ')[0]} & {players.find(p => p.id === t2?.player2)?.name?.split(' ')[0]}</div>
+                          <div style={{ fontSize: 10, color: K.t3 }}>{(() => { const p1 = players.find(p => p.id === t2?.player1); const p2 = players.find(p => p.id === t2?.player2); return `${p1?.name?.split(' ')[0] || '?'} (${p1?.handicapIndex ?? '-'}) & ${p2?.name?.split(' ')[0] || '?'} (${p2?.handicapIndex ?? '-'})`; })()}</div>
                         </div>
                       </div>
                     </Card>
