@@ -49,8 +49,9 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, onBack }) {
 
   const PlayerRow = ({ p, inactive }) => (
     <Card key={p.id} style={{ display: "flex", alignItems: "center", padding: "10px 14px", opacity: inactive ? .5 : 1 }}>
-      <div style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{p.name}</div>
-      <div style={{ width: 50, textAlign: "right", fontSize: 14, fontWeight: 700, color: K.t1, marginRight: 12 }}>{p.handicapIndex}</div>
+      <div style={{ fontSize: 14, fontWeight: 600, textAlign: "left" }}>{p.name}</div>
+      <div style={{ fontSize: 13, fontWeight: 700, color: K.t2, marginLeft: 10 }}>({p.handicapIndex})</div>
+      <div style={{ flex: 1 }} />
       {inactive ? (
         <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
           <Pill color={K.t3} style={{ fontSize: 8 }}>INACTIVE</Pill>
@@ -84,13 +85,6 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, onBack }) {
             <button onClick={save} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.act, border: "none", color: K.bg, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Save</button>
           </div>
         </Card>
-      )}
-      {activePlayers.length > 0 && (
-        <div style={{ display: "flex", padding: "0 14px 4px", fontSize: 10, fontWeight: 600, color: K.t3, textTransform: "uppercase", letterSpacing: 1 }}>
-          <div style={{ flex: 1 }}>Name</div>
-          <div style={{ width: 50, textAlign: "right", marginRight: 12 }}>HCP</div>
-          <div style={{ width: 130 }}></div>
-        </div>
       )}
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {activePlayers.map(p => <PlayerRow key={p.id} p={p} />)}
