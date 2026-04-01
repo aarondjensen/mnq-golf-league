@@ -143,7 +143,6 @@ export default function GolfLeagueApp() {
     { id: "schedule", label: "Schedule", icon: "calendar" },
     { id: "stats", label: "Stats", icon: "barChart" },
     { id: "ctp", label: "CTP", icon: "target" },
-    ...(isComm ? [{ id: "admin", label: "Admin", icon: "settings" }] : []),
   ];
 
   // Find upcoming match info for banner
@@ -178,8 +177,13 @@ export default function GolfLeagueApp() {
     <div className="app-shell">
       <link href={FONTS} rel="stylesheet" /><style>{CSS}</style>
 
-      {/* Header — centered logo, sign out + name top right */}
+      {/* Header */}
       <div className="app-header">
+        {isComm && (
+          <button onClick={() => setTab("admin")} style={{ position: "absolute", left: 16, background: "none", border: "none", cursor: "pointer", padding: 6, opacity: tab === "admin" ? .9 : .35, transition: "opacity .2s", display: "flex" }}>
+            {I.ellipsis(20, K.t2)}
+          </button>
+        )}
         <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
         <div style={{ position: "absolute", right: 20, display: "flex", alignItems: "center", gap: 10 }}>
           {syncing && <span className="pu" style={{ fontSize: 8, color: K.grn }}>● LIVE</span>}

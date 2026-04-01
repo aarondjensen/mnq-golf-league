@@ -113,28 +113,28 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                   const t2p1 = gp(t2?.player1), t2p2 = gp(t2?.player2);
 
                   return (
-                    <Card key={mi} highlight={isMyMatch} style={{ padding: "12px 16px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                        <span style={{ fontSize: 20, fontWeight: 800, color: K.t1, letterSpacing: .5 }}>{formatTeeTime(origIdx)}</span>
-                        {isMyMatch && !myOnly && <span style={{ fontSize: 10, fontWeight: 700, color: K.act, textTransform: "uppercase", letterSpacing: 1 }}>Your Match</span>}
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 13, color: K.t2, lineHeight: 1.6 }}>
+                    <Card key={mi} highlight={isMyMatch} style={{ padding: "12px 10px" }}>
+                      {isMyMatch && !myOnly && <div style={{ fontSize: 10, fontWeight: 700, color: K.act, textTransform: "uppercase", letterSpacing: 1, marginBottom: 6, textAlign: "center" }}>Your Match</div>}
+                      <div style={{ display: "flex", alignItems: "center" }}>
+                        {/* Left team — right aligned */}
+                        <div style={{ flex: 1, textAlign: "right", paddingRight: 14 }}>
+                          <div style={{ fontSize: 13, color: K.t2, lineHeight: 1.7 }}>
                             {t1p1 ? `${t1p1.name} (${t1p1.handicapIndex})` : "TBD"}<br />
                             {t1p2 ? `${t1p2.name} (${t1p2.handicapIndex})` : "TBD"}
                           </div>
                         </div>
-                        {res ? (
-                          <div style={{ textAlign: "center", padding: "0 16px" }}>
+                        {/* Center — tee time or result */}
+                        <div style={{ textAlign: "center", minWidth: 70, flexShrink: 0 }}>
+                          {res ? (<>
                             <div style={{ fontSize: 18, fontWeight: 800, color: K.t1 }}>{res.team1Points}–{res.team2Points}</div>
                             <div style={{ fontSize: 9, color: K.grn, fontWeight: 600 }}>FINAL</div>
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: 12, color: K.t3, fontWeight: 700, padding: "0 16px" }}>VS</div>
-                        )}
-                        <div style={{ flex: 1, textAlign: "right" }}>
-                          <div style={{ fontSize: 13, color: K.t2, lineHeight: 1.6 }}>
+                          </>) : (
+                            <div style={{ fontSize: 20, fontWeight: 800, color: K.t1, letterSpacing: .5 }}>{formatTeeTime(origIdx)}</div>
+                          )}
+                        </div>
+                        {/* Right team — left aligned */}
+                        <div style={{ flex: 1, textAlign: "left", paddingLeft: 14 }}>
+                          <div style={{ fontSize: 13, color: K.t2, lineHeight: 1.7 }}>
                             {t2p1 ? `${t2p1.name} (${t2p1.handicapIndex})` : "TBD"}<br />
                             {t2p2 ? `${t2p2.name} (${t2p2.handicapIndex})` : "TBD"}
                           </div>
