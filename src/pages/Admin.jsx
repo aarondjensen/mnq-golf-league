@@ -241,7 +241,28 @@ function AdminCourse({ course, saveCourseData, onBack }) {
   const upT = (ti, f, v) => { const t = [...lc.teeBoxes]; t[ti] = { ...t[ti], [f]: f === 'slope' || f === 'rating' ? parseFloat(v) || 0 : v }; setLc({ ...lc, teeBoxes: t }); };
   const save = async () => { await saveCourseData(lc); onBack(); };
 
-  // Simple native input — no custom tab/focus handling, let the browser do it
+  // Store hole values in refs so editing never triggers re-render
+  const holeRefs = useRef({});
+  const getRef = (key, i) => {
+    const k = `${key}_${i}`;
+    if (!holeRefs.current[k]) holeRefs.current[k] = { current: null };
+    return holeRefs.current[k];
+  };
+
+  // On save, read all ref values into state
+  const saveWithRefs = async () => {
+    const updated = { ...lc };
+    ['frontPars', 'backPars', 'frontHcps', 'backHcps'].forEach(key => {
+      updated[key] = Array.from({ length: 9 }, (_, i) => {
+        const ref = getRef(key, i);
+        return parseInt(ref.current?.value) || 0;
+      });
+    });
+    setLc(updated);
+    await saveCourseData(updated);
+    onBack();
+  };
+
   const HoleRow = ({ label, dataKey, side }) => {
     const offset = side === 'front' ? 0 : 9;
     return (
@@ -252,12 +273,9 @@ function AdminCourse({ course, saveCourseData, onBack }) {
             <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
               <div style={{ fontSize: 10, color: K.t3, fontWeight: 600 }}>{offset + i + 1}</div>
               <input
+                ref={el => { getRef(dataKey, i).current = el; }}
                 defaultValue={lc[dataKey][i]}
-                onBlur={e => {
-                  const v = parseInt(e.target.value) || 0;
-                  up(dataKey, i, v);
-                }}
-                onFocus={e => setTimeout(() => e.target.select(), 0)}
+                onFocus={e => setTimeout(() => e.target.select(), 10)}
                 type="text"
                 inputMode="numeric"
                 maxLength={2}
@@ -273,7 +291,7 @@ function AdminCourse({ course, saveCourseData, onBack }) {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Course Setup</span><SaveBtn onClick={save} /></div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Course Setup</span><SaveBtn onClick={saveWithRefs} /></div>
       <input value={lc.name} onChange={e => setLc({ ...lc, name: e.target.value })} placeholder="Course Name" style={{ width: "100%", maxWidth: 400, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14, marginBottom: 12 }} />
       <div className="scoring-grid">
       {['front', 'back'].map(s => (
