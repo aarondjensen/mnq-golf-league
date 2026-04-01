@@ -1,30 +1,45 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { K, FONTS, CSS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   SEASON_WEEKS, REGULAR_WEEKS, TEAMS_COUNT, getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap } from "../theme";
+import { LEAGUE_ID } from "../firebase";
 
-export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores }) {
-  const [selWeek, setSelWeek] = useState(null);
+export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
   const [showCTP, setShowCTP] = useState(false);
+  const [commMode, setCommMode] = useState(false);
 
-  const week = useMemo(() => { if (selWeek !== null) return selWeek; for (let w = schedule.length - 1; w >= 0; w--) if (schedule[w]) return schedule[w].week; return 0; }, [selWeek, schedule]);
+  // Find current week: first week where not all matches are finalized
+  const currentWeek = useMemo(() => {
+    for (const wk of schedule) {
+      const allDone = wk.matches.every(m =>
+        matchResults.some(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2)
+      );
+      if (!allDone) return wk.week;
+    }
+    return schedule.length ? schedule[schedule.length - 1].week : 0;
+  }, [schedule, matchResults]);
 
-  // Tell App.jsx which week to subscribe to for real-time scores
+  const week = currentWeek;
+
+  // Tell App.jsx which week to subscribe to
   useEffect(() => { setLiveWeek(week); }, [week, setLiveWeek]);
 
   const weekSch = schedule.find(s => s.week === week);
   const matches = weekSch?.matches || [];
-  const side = getWeekSide(week + 1);
+  const side = weekSch?.side || getWeekSide(week + 1);
   const pars = course ? (side === 'front' ? course.frontPars : course.backPars) : [4,4,4,3,5,4,4,3,5];
   const hcps = course ? (side === 'front' ? course.frontHcps : course.backHcps) : [1,3,5,7,9,11,13,15,17];
   const myTeam = teams.find(t => t.player1 === leagueUser.playerId || t.player2 === leagueUser.playerId);
 
+  // Find user's match
+  const myMatch = myTeam ? matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id) : null;
+
   if (!course?.name) return <EmptyState icon="flag" title="Course not configured" subtitle="Commissioner needs to set up the course." />;
   if (!matches.length) return <EmptyState icon="calendar" title="No matches this week" subtitle="Commissioner needs to set the schedule." />;
 
-  // Match selector
-  if (!activeMatch) {
+  // ── Match selector (commissioner mode) ──
+  if (!activeMatch && commMode) {
     const getProgress = (match) => {
       const ids = []; const t1 = teams.find(t => t.id === match.team1); const t2 = teams.find(t => t.id === match.team2);
       if (t1) ids.push(t1.player1, t1.player2); if (t2) ids.push(t2.player1, t2.player2);
@@ -34,28 +49,26 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     return (
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div><SectionTitle>Week {week + 1}</SectionTitle><Pill>{side === 'front' ? 'FRONT 9' : 'BACK 9'}</Pill></div>
-          <div style={{ display: "flex", gap: 4 }}>
-            <button onClick={() => setSelWeek(Math.max(0, week - 1))} disabled={week === 0} style={{ width: 32, height: 32, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: week === 0 ? K.t3 + "30" : K.t1, cursor: "pointer", fontWeight: 700, fontSize: 14 }}>‹</button>
-            <button onClick={() => setSelWeek(Math.min(SEASON_WEEKS - 1, week + 1))} style={{ width: 32, height: 32, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, cursor: "pointer", fontWeight: 700, fontSize: 14 }}>›</button>
-          </div>
+          <button onClick={() => setCommMode(false)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t2, fontSize: 13, padding: "7px 14px", cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}>{I.arrowLeft(13, K.t2)} My Match</button>
+          <div><SectionTitle>All Matches · Wk {week + 1}</SectionTitle></div>
+          <div style={{ width: 90 }} />
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {matches.map((m, mi) => {
             const t1 = teams.find(t => t.id === m.team1); const t2 = teams.find(t => t.id === m.team2);
             if (!t1 || !t2) return null;
-            const prog = getProgress(m); const isMy = myTeam && (m.team1 === myTeam.id || m.team2 === myTeam.id);
+            const prog = getProgress(m);
             const gn = id => players.find(p => p.id === id)?.name?.split(' ')[0] || "?";
             return (
-              <button key={mi} onClick={() => { setActiveMatch(m); setCurHole(0); setShowCTP(false); }} style={{ background: isMy ? K.acc + "0c" : K.card, border: `1px solid ${isMy ? K.acc + '40' : K.bdr}`, borderRadius: 12, padding: "12px 14px", cursor: "pointer", textAlign: "left", width: "100%" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <button key={mi} onClick={() => { setActiveMatch(m); setCurHole(0); setShowCTP(false); }} style={{ background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 10, padding: "10px 14px", cursor: "pointer", textAlign: "left", width: "100%" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                   <span style={{ fontSize: 10, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1 }}>Match {mi + 1} · {getTeeTime(mi)}</span>
                   {prog > 0 && <Pill color={prog >= 1 ? K.grn : K.warn}>{prog >= 1 ? "FINAL" : `${Math.round(prog * 100)}%`}</Pill>}
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 700 }}>{t1.name}</div><div style={{ fontSize: 11, color: K.t3 }}>{gn(t1.player1)} & {gn(t1.player2)}</div></div>
+                  <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 700 }}>{t1.name}</div></div>
                   <div style={{ fontSize: 11, fontWeight: 800, color: K.t3, padding: "0 10px" }}>VS</div>
-                  <div style={{ flex: 1, textAlign: "right" }}><div style={{ fontSize: 14, fontWeight: 700 }}>{t2.name}</div><div style={{ fontSize: 11, color: K.t3 }}>{gn(t2.player1)} & {gn(t2.player2)}</div></div>
+                  <div style={{ flex: 1, textAlign: "right" }}><div style={{ fontSize: 14, fontWeight: 700 }}>{t2.name}</div></div>
                 </div>
                 {prog > 0 && prog < 1 && <div style={{ marginTop: 6, height: 3, background: K.inp, borderRadius: 2, overflow: "hidden" }}><div style={{ height: "100%", width: `${prog * 100}%`, background: K.acc, borderRadius: 2 }} /></div>}
               </button>
@@ -66,9 +79,20 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     );
   }
 
-  // Hole scoring view
-  const t1 = teams.find(t => t.id === activeMatch.team1);
-  const t2 = teams.find(t => t.id === activeMatch.team2);
+  // ── Default: auto-open user's match, or show prompt ──
+  const matchToScore = activeMatch || myMatch;
+  if (!matchToScore) {
+    return (
+      <div>
+        <EmptyState icon="flag" title="No match found" subtitle="You don't have a match scheduled this week." />
+        {isComm && <div style={{ textAlign: "center", marginTop: 16 }}><button onClick={() => setCommMode(true)} style={{ padding: "10px 20px", borderRadius: 8, background: K.act, border: "none", color: K.bg, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Enter Scores for Any Match</button></div>}
+      </div>
+    );
+  }
+
+  // ── Hole scoring view ──
+  const t1 = teams.find(t => t.id === matchToScore.team1);
+  const t2 = teams.find(t => t.id === matchToScore.team2);
   if (!t1 || !t2) return null;
 
   const getHcp = (pid) => players.find(p => p.id === pid)?.handicapIndex || 0;
@@ -118,8 +142,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        <BackBtn onClick={() => setActiveMatch(null)} />
-        <div style={{ display: "flex", gap: 6 }}><Pill>{side === 'front' ? 'FRONT' : 'BACK'} 9</Pill><Pill color={K.t2}>WK {week + 1}</Pill></div>
+        {activeMatch ? (
+          <BackBtn onClick={() => { setActiveMatch(null); if (!commMode) setCommMode(false); }} />
+        ) : (
+          <div style={{ display: "flex", gap: 6 }}><Pill>{side === 'front' ? 'FRONT' : 'BACK'} 9</Pill><Pill color={K.t2}>WK {week + 1}</Pill></div>
+        )}
+        {isComm && !commMode && !activeMatch && (
+          <button onClick={() => setCommMode(true)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t2, fontSize: 11, padding: "5px 10px", cursor: "pointer", fontWeight: 600 }}>All Matches</button>
+        )}
       </div>
       <Card style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, padding: "8px 12px" }}>
         <span style={{ fontSize: 13, fontWeight: 700 }}>{t1.name}</span><span style={{ fontSize: 11, fontWeight: 800, color: K.t3 }}>VS</span><span style={{ fontSize: 13, fontWeight: 700, textAlign: "right" }}>{t2.name}</span>
@@ -211,5 +241,3 @@ function CTPEntry({ week, hole, players, ctpData, saveCtp, side }) {
     </Card>
   );
 }
-
-
