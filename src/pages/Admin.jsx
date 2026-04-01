@@ -44,8 +44,27 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, onBack }) {
   const save = async () => { if (!f.name.trim()) return; const id = ed === "new" ? `${LEAGUE_ID}_p${Date.now()}` : ed; await savePlayer({ id, name: f.name.trim(), handicapIndex: parseFloat(f.handicapIndex) || 0, teeBox: f.teeBox, status: "active" }); setEd(null); };
   const toggleStatus = async (p) => { await savePlayer({ ...p, status: p.status === "inactive" ? "active" : "inactive" }); };
 
-  const activePlayers = players.filter(p => p.status !== "inactive");
-  const inactivePlayers = players.filter(p => p.status === "inactive");
+  const activePlayers = players.filter(p => p.status !== "inactive").sort((a, b) => a.name.localeCompare(b.name));
+  const inactivePlayers = players.filter(p => p.status === "inactive").sort((a, b) => a.name.localeCompare(b.name));
+
+  const PlayerRow = ({ p, inactive }) => (
+    <Card key={p.id} style={{ display: "flex", alignItems: "center", padding: "10px 14px", opacity: inactive ? .5 : 1 }}>
+      <div style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{p.name}</div>
+      <div style={{ width: 50, textAlign: "right", fontSize: 14, fontWeight: 700, color: K.t1, marginRight: 12 }}>{p.handicapIndex}</div>
+      {inactive ? (
+        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <Pill color={K.t3} style={{ fontSize: 8 }}>INACTIVE</Pill>
+          <button onClick={() => toggleStatus(p)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.grn, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>Reactivate</button>
+          <button onClick={() => { if (confirm(`Permanently delete ${p.name}? This cannot be undone.`)) deletePlayer(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.red, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>Delete</button>
+        </div>
+      ) : (
+        <div style={{ display: "flex", gap: 6 }}>
+          <button onClick={() => { setF({ name: p.name, handicapIndex: String(p.handicapIndex ?? ""), teeBox: p.teeBox || "Blue" }); setEd(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.acc, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>Edit</button>
+          <button onClick={() => { if (confirm(`Deactivate ${p.name}?`)) toggleStatus(p); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.warn, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>Deactivate</button>
+        </div>
+      )}
+    </Card>
+  );
 
   return (
     <div>
@@ -66,16 +85,15 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, onBack }) {
           </div>
         </Card>
       )}
-      <div className="players-grid">
-        {activePlayers.map(p => (
-          <Card key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px" }}>
-            <div><div style={{ display: "flex", alignItems: "baseline", gap: 8 }}><span style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</span><span style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{p.handicapIndex}</span></div></div>
-            <div style={{ display: "flex", gap: 6 }}>
-              <button onClick={() => { setF({ name: p.name, handicapIndex: String(p.handicapIndex ?? ""), teeBox: p.teeBox || "Blue" }); setEd(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.acc, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>Edit</button>
-              <button onClick={() => { if (confirm(`Deactivate ${p.name}?`)) toggleStatus(p); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.warn, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>Deactivate</button>
-            </div>
-          </Card>
-        ))}
+      {activePlayers.length > 0 && (
+        <div style={{ display: "flex", padding: "0 14px 4px", fontSize: 10, fontWeight: 600, color: K.t3, textTransform: "uppercase", letterSpacing: 1 }}>
+          <div style={{ flex: 1 }}>Name</div>
+          <div style={{ width: 50, textAlign: "right", marginRight: 12 }}>HCP</div>
+          <div style={{ width: 130 }}></div>
+        </div>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {activePlayers.map(p => <PlayerRow key={p.id} p={p} />)}
       </div>
       {inactivePlayers.length > 0 && (
         <div style={{ marginTop: 20 }}>
@@ -83,13 +101,8 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, onBack }) {
             {showInactive ? "▾" : "▸"} Inactive Players ({inactivePlayers.length})
           </button>
           {showInactive && (
-            <div className="players-grid" style={{ marginTop: 8 }}>
-              {inactivePlayers.map(p => (
-                <Card key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px", opacity: .5 }}>
-                  <div><div style={{ display: "flex", alignItems: "baseline", gap: 8 }}><span style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</span><span style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{p.handicapIndex}</span><Pill color={K.t3} style={{ fontSize: 8 }}>INACTIVE</Pill></div></div>
-                  <button onClick={() => toggleStatus(p)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.grn, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>Reactivate</button>
-                </Card>
-              ))}
+            <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 8 }}>
+              {inactivePlayers.map(p => <PlayerRow key={p.id} p={p} inactive />)}
             </div>
           )}
         </div>
