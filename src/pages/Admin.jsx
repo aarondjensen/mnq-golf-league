@@ -178,6 +178,13 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
     setDirty(false);
   };
 
+  // Short display name: "A. Jensen", "S. Rhoades"
+  const shortName = (p) => {
+    if (!p) return "?";
+    const parts = p.name.split(' ');
+    return parts.length > 1 ? `${parts[0][0]}. ${parts[parts.length - 1]}` : p.name;
+  };
+
   const selectStyle = { flex: 1, padding: "8px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13 };
 
   return (
@@ -208,11 +215,11 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
             />
             <select value={r.player1} onChange={e => updateRow(i, "player1", e.target.value)} style={selectStyle}>
               <option value="">— Select —</option>
-              {avail(r.player1).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {avail(r.player1).map(p => <option key={p.id} value={p.id}>{shortName(p)}</option>)}
             </select>
             <select value={r.player2} onChange={e => updateRow(i, "player2", e.target.value)} style={selectStyle}>
               <option value="">— Select —</option>
-              {avail(r.player2).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {avail(r.player2).map(p => <option key={p.id} value={p.id}>{shortName(p)}</option>)}
             </select>
           </div>
         ))}
