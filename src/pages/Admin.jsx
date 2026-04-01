@@ -63,16 +63,18 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, onBack }) {
       <div style={{ ...rowStyle, opacity: inactive ? .5 : 1, border: editing ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}` }}>
         {editing ? (
           <>
-            <input ref={nameRef} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} style={{ ...inputStyle, flex: 1, fontWeight: 600 }} />
-            <input value={f.handicapIndex} onChange={e => setF({ ...f, handicapIndex: e.target.value })} type="number" step="0.1" style={{ ...inputStyle, width: 56, textAlign: "center" }} />
+            <input ref={nameRef} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} style={{ ...inputStyle, width: 160, fontWeight: 600 }} />
+            <input value={f.handicapIndex} onChange={e => setF({ ...f, handicapIndex: e.target.value })} type="number" step="0.1" style={{ ...inputStyle, width: 50, textAlign: "center" }} />
             <select value={f.teeBox} onChange={e => setF({ ...f, teeBox: e.target.value })} style={{ ...inputStyle, width: 70 }}>{tees.map(n => <option key={n} value={n}>{n}</option>)}</select>
+            <div style={{ flex: 1 }} />
             <button onClick={save} style={{ background: K.act, border: "none", borderRadius: 6, color: K.bg, fontSize: 11, padding: "6px 10px", cursor: "pointer", fontWeight: 700, whiteSpace: "nowrap" }}>Save</button>
             <button onClick={() => setEd(null)} style={{ background: "none", border: "none", color: K.t3, fontSize: 11, cursor: "pointer", padding: "6px 4px" }}>✕</button>
           </>
         ) : (
           <>
-            <div style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{p.name}</div>
-            <div style={{ width: 36, textAlign: "center", fontSize: 14, fontWeight: 700, color: K.t2 }}>{p.handicapIndex}</div>
+            <div style={{ width: 160, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
+            <div style={{ width: 30, textAlign: "center", fontSize: 14, fontWeight: 700, color: K.t2 }}>{p.handicapIndex}</div>
+            <div style={{ flex: 1 }} />
             {inactive ? (
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 <Pill color={K.t3} style={{ fontSize: 8 }}>INACTIVE</Pill>
@@ -99,18 +101,18 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, onBack }) {
       </div>
       {ed === "new" && (
         <div style={{ ...rowStyle, border: `1.5px solid ${K.act}`, marginBottom: 8 }}>
-          <input ref={nameRef} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Name" style={{ ...inputStyle, flex: 1, fontWeight: 600 }} />
-          <input value={f.handicapIndex} onChange={e => setF({ ...f, handicapIndex: e.target.value })} placeholder="HCP" type="number" step="0.1" style={{ ...inputStyle, width: 56, textAlign: "center" }} />
+          <input ref={nameRef} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Name" style={{ ...inputStyle, width: 160, fontWeight: 600 }} />
+          <input value={f.handicapIndex} onChange={e => setF({ ...f, handicapIndex: e.target.value })} placeholder="HCP" type="number" step="0.1" style={{ ...inputStyle, width: 50, textAlign: "center" }} />
           <select value={f.teeBox} onChange={e => setF({ ...f, teeBox: e.target.value })} style={{ ...inputStyle, width: 70 }}>{tees.map(n => <option key={n} value={n}>{n}</option>)}</select>
+          <div style={{ flex: 1 }} />
           <button onClick={save} style={{ background: K.act, border: "none", borderRadius: 6, color: K.bg, fontSize: 11, padding: "6px 10px", cursor: "pointer", fontWeight: 700, whiteSpace: "nowrap" }}>Save</button>
           <button onClick={() => setEd(null)} style={{ background: "none", border: "none", color: K.t3, fontSize: 11, cursor: "pointer", padding: "6px 4px" }}>✕</button>
         </div>
       )}
       {/* Column header */}
       <div style={{ display: "flex", padding: "0 10px 4px", gap: 8, fontSize: 10, fontWeight: 600, color: K.t3, textTransform: "uppercase", letterSpacing: 1 }}>
-        <div style={{ flex: 1 }}>Name</div>
-        <div style={{ width: 36, textAlign: "center" }}>HCP</div>
-        <div style={{ width: 110 }}></div>
+        <div style={{ width: 160 }}>Name</div>
+        <div style={{ width: 30, textAlign: "center" }}>HCP</div>
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {activePlayers.map(p => <PlayerRow key={p.id} p={p} />)}
