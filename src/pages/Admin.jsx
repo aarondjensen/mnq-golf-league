@@ -240,13 +240,47 @@ function AdminCourse({ course, saveCourseData, onBack }) {
   const up = (k, i, v) => { const a = [...lc[k]]; a[i] = parseInt(v) || 0; setLc({ ...lc, [k]: a }); };
   const upT = (ti, f, v) => { const t = [...lc.teeBoxes]; t[ti] = { ...t[ti], [f]: f === 'slope' || f === 'rating' ? parseFloat(v) || 0 : v }; setLc({ ...lc, teeBoxes: t }); };
   const save = async () => { await saveCourseData(lc); onBack(); };
-  const IC = ({ value, onChange }) => <input value={value}
-    onChange={e => onChange(e.target.value)}
-    onFocus={e => e.target.select()}
-    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); const inputs = Array.from(document.querySelectorAll('.hole-input')); const idx = inputs.indexOf(e.target); if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus(); } }}
-    type="text" inputMode="numeric" pattern="[0-9]*"
-    className="hole-input"
-    style={{ width: 38, padding: "6px 2px", borderRadius: 4, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13, textAlign: "center", fontWeight: 600 }} />;
+
+  // Tabable hole input — selects on focus, Tab/Enter advances to next
+  const HoleInput = ({ value, onChange, tabGroup }) => (
+    <input
+      value={value}
+      onChange={e => {
+        const v = e.target.value.replace(/[^0-9]/g, '');
+        if (v.length <= 2) onChange(v);
+      }}
+      onFocus={e => e.target.select()}
+      onKeyDown={e => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          const inputs = Array.from(document.querySelectorAll(`.hi-${tabGroup}`));
+          const idx = inputs.indexOf(e.target);
+          if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus();
+        }
+      }}
+      type="text"
+      inputMode="numeric"
+      className={`hole-input hi-${tabGroup}`}
+      style={{ width: 42, height: 38, padding: "4px 2px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 15, textAlign: "center", fontWeight: 600 }}
+    />
+  );
+
+  const HoleRow = ({ label, dataKey, side, tabGroup }) => {
+    const offset = side === 'front' ? 0 : 9;
+    return (
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ fontSize: 11, color: K.t3, fontWeight: 600, marginBottom: 4 }}>{label}</div>
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          {Array.from({ length: 9 }, (_, i) => (
+            <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+              <div style={{ fontSize: 10, color: K.t3, fontWeight: 600 }}>{offset + i + 1}</div>
+              <HoleInput value={lc[dataKey][i]} onChange={v => up(dataKey, i, v)} tabGroup={tabGroup} />
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div>
@@ -254,14 +288,12 @@ function AdminCourse({ course, saveCourseData, onBack }) {
       <input value={lc.name} onChange={e => setLc({ ...lc, name: e.target.value })} placeholder="Course Name" style={{ width: "100%", maxWidth: 400, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14, marginBottom: 12 }} />
       <div className="scoring-grid">
       {['front', 'back'].map(s => (
-        <div key={s} style={{ marginBottom: 12 }}><SubLabel>{s === 'front' ? 'Front 9' : 'Back 9'}</SubLabel>
-          <div style={{ overflowX: "auto" }}><table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
-            <thead><tr><td style={{ color: K.t3, fontWeight: 600, padding: "4px 2px", width: 32 }}></td>{Array.from({length:9},(_,i) => <td key={i} style={{ color: K.t2, fontWeight: 700, textAlign: "center", padding: "4px 1px" }}>{s==='front'?i+1:i+10}</td>)}</tr></thead>
-            <tbody>
-              <tr><td style={{ color: K.t3, fontWeight: 600, padding: "3px 2px" }}>Par</td>{Array.from({length:9},(_,i) => <td key={i} style={{ padding: "2px 1px" }}><IC value={lc[s==='front'?'frontPars':'backPars'][i]} onChange={v => up(s==='front'?'frontPars':'backPars',i,v)} /></td>)}</tr>
-              <tr><td style={{ color: K.t3, fontWeight: 600, padding: "3px 2px" }}>Hcp</td>{Array.from({length:9},(_,i) => <td key={i} style={{ padding: "2px 1px" }}><IC value={lc[s==='front'?'frontHcps':'backHcps'][i]} onChange={v => up(s==='front'?'frontHcps':'backHcps',i,v)} /></td>)}</tr>
-            </tbody>
-          </table></div>
+        <div key={s} style={{ marginBottom: 12 }}>
+          <SubLabel>{s === 'front' ? 'Front 9' : 'Back 9'}</SubLabel>
+          <Card style={{ padding: 14 }}>
+            <HoleRow label="Par" dataKey={s === 'front' ? 'frontPars' : 'backPars'} side={s} tabGroup={`par-${s}`} />
+            <HoleRow label="Handicap" dataKey={s === 'front' ? 'frontHcps' : 'backHcps'} side={s} tabGroup={`hcp-${s}`} />
+          </Card>
         </div>
       ))}
       </div>
