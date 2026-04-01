@@ -1,0 +1,97 @@
+import { useState } from "react";
+import { LEAGUE_ID } from "../firebase";
+import { K, FONTS, CSS, Pill } from "../theme";
+
+export function LoadingScreen() {
+  return (
+    <div style={{ minHeight: "100vh", background: K.bg, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
+      <link href={FONTS} rel="stylesheet" /><style>{CSS}</style>
+      <div style={{ fontSize: 52 }}><img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ width: 220, objectFit: "contain" }} /></div>
+      <div className="pu" style={{ fontFamily: "'League Spartan', sans-serif", color: K.t3, fontSize: 13 }}>Loading...</div>
+    </div>
+  );
+}
+
+
+export function AuthScreen({ onGoogle, onEmail }) {
+  const [mode, setMode] = useState("main");
+  const [email, setEmail] = useState("");
+  const [pw, setPw] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const handleGoogle = async () => { setBusy(true); setError(""); try { await onGoogle(); } catch (e) { setError(e.message || "Sign-in failed"); } setBusy(false); };
+  const handleEmail = async () => {
+    if (!email || !pw) { setError("Enter email and password"); return; }
+    setBusy(true); setError("");
+    try { await onEmail(email, pw); } catch (e) { setError(e.code === "auth/wrong-password" ? "Wrong password" : e.code === "auth/invalid-email" ? "Invalid email" : e.message || "Sign-in failed"); }
+    setBusy(false);
+  };
+
+  return (
+    <div style={{ minHeight: "100vh", background: K.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'League Spartan', sans-serif" }}>
+      <link href={FONTS} rel="stylesheet" /><style>{CSS}</style>
+      <div style={{ width: 340, textAlign: "center" }} className="fi">
+        <img src="/MnQ_logo_transparent_bg.png" alt="Maize-N-Que Golf" style={{ width: 280, objectFit: "contain", marginBottom: 8 }} />
+        <div style={{ color: K.t3, fontSize: 12, marginBottom: 32 }}>Sign in to continue</div>
+
+        {mode === "main" ? (<>
+          <button onClick={handleGoogle} disabled={busy} style={{ width: "100%", padding: "14px 16px", borderRadius: 12, cursor: "pointer", fontSize: 15, fontWeight: 600, background: "#fff", color: "#333", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 10, opacity: busy ? .6 : 1 }}>
+            <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#34A853" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#FBBC05" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+            Continue with Google
+          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "14px 0" }}><div style={{ flex: 1, height: 1, background: K.bdr }} /><span style={{ fontSize: 11, color: K.t3 }}>or</span><div style={{ flex: 1, height: 1, background: K.bdr }} /></div>
+          <button onClick={() => setMode("email")} style={{ width: "100%", padding: "14px 16px", borderRadius: 12, cursor: "pointer", fontSize: 14, fontWeight: 600, background: K.card, color: K.t1, border: `1px solid ${K.bdr}` }}>Sign in with Email</button>
+        </>) : (<>
+          <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" type="email" autoComplete="email" style={{ width: "100%", padding: "13px 16px", borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 15, marginBottom: 8, textAlign: "center" }} />
+          <input value={pw} onChange={e => setPw(e.target.value)} placeholder="Password" type="password" autoComplete="current-password" onKeyDown={e => e.key === "Enter" && handleEmail()} style={{ width: "100%", padding: "13px 16px", borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 15, marginBottom: 12, textAlign: "center" }} />
+          <button onClick={handleEmail} disabled={busy} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer", marginBottom: 10, opacity: busy ? .6 : 1 }}>Sign In / Create Account</button>
+          <button onClick={() => { setMode("main"); setError(""); }} style={{ background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer" }}>← Back to options</button>
+        </>)}
+        {error && <div style={{ color: K.red, fontSize: 12, marginTop: 10 }}>{error}</div>}
+      </div>
+    </div>
+  );
+}
+
+
+export function JoinScreen({ authUser, members, players, saveMember, doSignOut }) {
+  const [selectedPlayer, setSelectedPlayer] = useState("");
+  const [busy, setBusy] = useState(false);
+  const isFirstUser = members.length === 0;
+
+  const handleJoin = async (asCommissioner = false) => {
+    setBusy(true);
+    await saveMember({ id: `${LEAGUE_ID}_${authUser.uid}`, uid: authUser.uid, email: authUser.email, name: authUser.displayName || authUser.email?.split("@")[0] || "Player", playerId: selectedPlayer || null, isCommissioner: asCommissioner });
+    setBusy(false);
+  };
+  const assigned = members.map(m => m.playerId).filter(Boolean);
+
+  return (
+    <div style={{ minHeight: "100vh", background: K.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'League Spartan', sans-serif" }}>
+      <link href={FONTS} rel="stylesheet" /><style>{CSS}</style>
+      <div style={{ width: 340, textAlign: "center" }} className="fi">
+        <img src="/MnQ_logo_transparent_bg.png" alt="Maize-N-Que Golf" style={{ width: 240, objectFit: "contain", marginBottom: 8 }} />
+        <div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 24, color: K.acc, letterSpacing: 1, marginBottom: 4 }}>Welcome!</div>
+        <div style={{ color: K.t3, fontSize: 12, marginBottom: 6 }}>Signed in as <span style={{ color: K.t2, fontWeight: 600 }}>{authUser.email}</span></div>
+
+        {isFirstUser ? (<>
+          <div style={{ color: K.t2, fontSize: 13, marginBottom: 20, lineHeight: 1.5, padding: "0 12px" }}>You're the first one here! Set yourself up as commissioner to get started.</div>
+          <button onClick={() => handleJoin(true)} disabled={busy} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: busy ? .6 : 1 }}>Create League as Commissioner</button>
+        </>) : (<>
+          <div style={{ color: K.t2, fontSize: 13, marginBottom: 16, lineHeight: 1.5, padding: "0 12px" }}>{players.length > 0 ? "Link your account to your player profile:" : "No player profiles yet — your commissioner is still setting up. Join as a member."}</div>
+          {players.length > 0 && (
+            <select value={selectedPlayer} onChange={e => setSelectedPlayer(e.target.value)} style={{ width: "100%", padding: "12px", borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14, marginBottom: 12, textAlign: "center" }}>
+              <option value="">— Select your player profile —</option>
+              {players.filter(p => !assigned.includes(p.id)).map(p => <option key={p.id} value={p.id}>{p.name} (HI: {p.handicapIndex})</option>)}
+            </select>
+          )}
+          <button onClick={() => handleJoin(false)} disabled={busy} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: busy ? .6 : 1 }}>Join League</button>
+        </>)}
+        <button onClick={doSignOut} style={{ background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 12 }}>Sign out</button>
+      </div>
+    </div>
+  );
+}
+
+
