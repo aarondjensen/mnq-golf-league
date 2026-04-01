@@ -78,7 +78,7 @@ export const CSS = `
     .admin-sections-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .players-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .scoring-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-    .standings-grid { max-width: 800px; margin: 0 auto; }
+    .standings-grid { }
   }
   @media (min-width: 1100px) {
     .main-content { padding: 28px 40px; padding-bottom: 80px; }
