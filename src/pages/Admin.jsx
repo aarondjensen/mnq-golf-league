@@ -113,31 +113,116 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, onBack }) {
 
 
 function AdminTeams({ teams, saveTeam, players, onBack }) {
-  const [ed, setEd] = useState(null);
-  const [f, setF] = useState({ name: "", player1: "", player2: "" });
-  const assigned = teams.flatMap(t => [t.player1, t.player2]);
-  const avail = (c1, c2) => players.filter(p => p.status !== "inactive" && (!assigned.includes(p.id) || p.id === c1 || p.id === c2));
-  const save = async () => { if (!f.name.trim() || !f.player1 || !f.player2) return; const id = ed === "new" ? `${LEAGUE_ID}_t${Date.now()}` : ed; await saveTeam({ id, ...f }); setEd(null); };
+  const activePlayers = players.filter(p => p.status !== "inactive").sort((a, b) => a.name.localeCompare(b.name));
+
+  // Build team name from two player IDs
+  const buildName = (p1Id, p2Id) => {
+    const p1 = players.find(p => p.id === p1Id);
+    const p2 = players.find(p => p.id === p2Id);
+    if (!p1 && !p2) return "";
+    const short = (p) => {
+      if (!p) return "?";
+      const parts = p.name.split(' ');
+      return parts.length > 1 ? `${parts[0][0]} ${parts[parts.length - 1]}` : p.name;
+    };
+    return `${short(p1)}/${short(p2)}`;
+  };
+
+  // Initialize 10 rows from existing teams
+  const [rows, setRows] = useState(() => {
+    const r = [];
+    for (let i = 0; i < TEAMS_COUNT; i++) {
+      const t = teams[i];
+      r.push({
+        id: t?.id || `${LEAGUE_ID}_t${i + 1}`,
+        name: t?.name || "",
+        player1: t?.player1 || "",
+        player2: t?.player2 || "",
+      });
+    }
+    return r;
+  });
+
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+
+  // Get all currently assigned player IDs (to prevent double-assignment)
+  const assignedIds = rows.flatMap(r => [r.player1, r.player2]).filter(Boolean);
+
+  // Available players for a dropdown: unassigned + the current selection
+  const avail = (currentId) => activePlayers.filter(p => !assignedIds.includes(p.id) || p.id === currentId);
+
+  const updateRow = (idx, field, value) => {
+    setRows(prev => {
+      const next = [...prev];
+      next[idx] = { ...next[idx], [field]: value };
+      // Auto-update team name when players change
+      const p1 = field === "player1" ? value : next[idx].player1;
+      const p2 = field === "player2" ? value : next[idx].player2;
+      if (field === "player1" || field === "player2") {
+        next[idx].name = buildName(p1, p2);
+      }
+      return next;
+    });
+    setDirty(true);
+  };
+
+  const saveAll = async () => {
+    setSaving(true);
+    for (const r of rows) {
+      if (r.player1 || r.player2) {
+        await saveTeam({ id: r.id, name: r.name || buildName(r.player1, r.player2), player1: r.player1, player2: r.player2 });
+      }
+    }
+    setSaving(false);
+    setDirty(false);
+  };
+
+  const selectStyle = { flex: 1, padding: "8px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13 };
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Teams ({teams.length}/{TEAMS_COUNT})</span>
-        <button onClick={() => { setF({ name: "", player1: "", player2: "" }); setEd("new"); }} disabled={teams.length >= TEAMS_COUNT} style={{ background: teams.length >= TEAMS_COUNT ? K.t3 : K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 700, opacity: teams.length >= TEAMS_COUNT ? .5 : 1 }}>+ Add</button>
+        <BackBtn onClick={onBack} />
+        <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Teams</span>
+        <SaveBtn onClick={saveAll} label={saving ? "Saving..." : dirty ? "Save All" : "Saved"} />
       </div>
-      {ed && (
-        <Card highlight style={{ marginBottom: 12, padding: 14 }}>
-          <input value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Team Name" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14, marginBottom: 8 }} />
-          <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-            <select value={f.player1} onChange={e => setF({ ...f, player1: e.target.value })} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13 }}><option value="">Player 1</option>{avail(f.player1, f.player2).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-            <select value={f.player2} onChange={e => setF({ ...f, player2: e.target.value })} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13 }}><option value="">Player 2</option>{avail(f.player1, f.player2).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
+
+      {/* Header row */}
+      <div style={{ display: "flex", gap: 8, padding: "0 4px 6px", fontSize: 10, fontWeight: 600, color: K.t3, textTransform: "uppercase", letterSpacing: 1 }}>
+        <div style={{ width: 24 }}>#</div>
+        <div style={{ width: 140 }}>Team Name</div>
+        <div style={{ flex: 1 }}>Player 1</div>
+        <div style={{ flex: 1 }}>Player 2</div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {rows.map((r, i) => (
+          <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", background: K.card, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: "8px 8px" }}>
+            <div style={{ width: 24, fontSize: 13, fontWeight: 700, color: K.t3, textAlign: "center", flexShrink: 0 }}>{i + 1}</div>
+            <input
+              value={r.name}
+              onChange={e => { const next = [...rows]; next[i].name = e.target.value; setRows(next); setDirty(true); }}
+              placeholder="Auto"
+              style={{ width: 140, padding: "8px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13, fontWeight: 600, flexShrink: 0 }}
+            />
+            <select value={r.player1} onChange={e => updateRow(i, "player1", e.target.value)} style={selectStyle}>
+              <option value="">— Select —</option>
+              {avail(r.player1).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <select value={r.player2} onChange={e => updateRow(i, "player2", e.target.value)} style={selectStyle}>
+              <option value="">— Select —</option>
+              {avail(r.player2).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
           </div>
-          <div style={{ display: "flex", gap: 8 }}><button onClick={() => setEd(null)} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 13, cursor: "pointer" }}>Cancel</button><button onClick={save} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.act, border: "none", color: K.bg, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Save</button></div>
-        </Card>
-      )}
-      <div className="players-grid">
-        {teams.map(t => <Card key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px" }}><div><div style={{ fontSize: 14, fontWeight: 700 }}>{t.name}</div><div style={{ fontSize: 11, color: K.t3 }}>{players.find(p => p.id === t.player1)?.name} & {players.find(p => p.id === t.player2)?.name}</div></div><button onClick={() => { setF({ name: t.name, player1: t.player1, player2: t.player2 }); setEd(t.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.acc, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>Edit</button></Card>)}
+        ))}
       </div>
+
+      {dirty && (
+        <button onClick={saveAll} disabled={saving} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: 12, opacity: saving ? .6 : 1 }}>
+          {saving ? "Saving..." : "Save All Teams"}
+        </button>
+      )}
     </div>
   );
 }
