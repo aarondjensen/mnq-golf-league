@@ -237,9 +237,8 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
 
 function AdminCourse({ course, saveCourseData, onBack }) {
   const [lc, setLc] = useState(course || { name: "", frontPars: [4,4,4,3,5,4,4,3,5], backPars: [4,3,5,4,4,4,5,3,4], frontHcps: [7,3,1,9,5,13,11,17,15], backHcps: [8,14,2,10,4,16,6,18,12], teeBoxes: [{ name: "White", color: "#e2e8f0", slope: 113, rating: 67 }] });
-  const up = (k, i, v) => { const a = [...lc[k]]; a[i] = parseInt(v) || 0; setLc({ ...lc, [k]: a }); };
-  const upT = (ti, f, v) => { const t = [...lc.teeBoxes]; t[ti] = { ...t[ti], [f]: f === 'slope' || f === 'rating' ? parseFloat(v) || 0 : v }; setLc({ ...lc, teeBoxes: t }); };
-  const save = async () => { await saveCourseData(lc); onBack(); };
+  const [dirty, setDirty] = useState(false);
+  const upT = (ti, f, v) => { const t = [...lc.teeBoxes]; t[ti] = { ...t[ti], [f]: f === 'slope' || f === 'rating' ? parseFloat(v) || 0 : v }; setLc({ ...lc, teeBoxes: t }); setDirty(true); };
 
   // Store hole values in refs so editing never triggers re-render
   const holeRefs = useRef({});
@@ -260,7 +259,7 @@ function AdminCourse({ course, saveCourseData, onBack }) {
     });
     setLc(updated);
     await saveCourseData(updated);
-    onBack();
+    setDirty(false);
   };
 
   const HoleRow = ({ label, dataKey, side }) => {
@@ -276,6 +275,7 @@ function AdminCourse({ course, saveCourseData, onBack }) {
                 ref={el => { getRef(dataKey, i).current = el; }}
                 defaultValue={lc[dataKey][i]}
                 onFocus={e => setTimeout(() => e.target.select(), 10)}
+                onChange={() => setDirty(true)}
                 type="text"
                 inputMode="numeric"
                 maxLength={2}
@@ -291,8 +291,12 @@ function AdminCourse({ course, saveCourseData, onBack }) {
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Course Setup</span><SaveBtn onClick={saveWithRefs} /></div>
-      <input value={lc.name} onChange={e => setLc({ ...lc, name: e.target.value })} placeholder="Course Name" style={{ width: "100%", maxWidth: 400, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14, marginBottom: 12 }} />
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <BackBtn onClick={onBack} />
+        <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Course Setup</span>
+        <button onClick={saveWithRefs} style={{ background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: 13, padding: "7px 16px", cursor: dirty ? "pointer" : "default", fontWeight: 600, letterSpacing: .4, transition: "all .2s" }}>{dirty ? "Save" : "Saved"}</button>
+      </div>
+      <input value={lc.name} onChange={e => { setLc({ ...lc, name: e.target.value }); setDirty(true); }} placeholder="Course Name" style={{ width: "100%", maxWidth: 400, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14, marginBottom: 12 }} />
       <div className="scoring-grid">
       {['front', 'back'].map(s => (
         <div key={s} style={{ marginBottom: 12 }}>
