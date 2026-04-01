@@ -132,21 +132,21 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                   return (
                     <div key={mi} style={{ background: K.card, borderRadius: 8, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}`, padding: "8px 10px", display: "flex", alignItems: "center" }}>
                       {/* Left team — right aligned */}
-                      <div style={{ flex: 1, textAlign: "right", paddingRight: 10, overflow: "hidden" }}>
+                      <div style={{ flex: 1, textAlign: "right", paddingRight: 18, overflow: "hidden" }}>
                         <div style={{ fontSize: 15, color: K.t1, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player1)}</div>
                         <div style={{ fontSize: 15, color: K.t1, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player2)}</div>
                       </div>
                       {/* Center — tee time or result */}
-                      <div style={{ textAlign: "center", minWidth: 68, flexShrink: 0 }}>
+                      <div style={{ textAlign: "center", minWidth: 74, flexShrink: 0, padding: "0 4px" }}>
                         {res ? (<>
                           <div style={{ fontSize: 17, fontWeight: 800, color: K.t1 }}>{res.team1Points}–{res.team2Points}</div>
                           <div style={{ fontSize: 9, color: K.grn, fontWeight: 600 }}>FINAL</div>
                         </>) : (
-                          <div style={{ fontSize: 18, fontWeight: 800, color: K.t1, letterSpacing: .3 }}>{formatTeeTime(origIdx)}</div>
+                          <div style={{ fontSize: 18, fontWeight: 800, color: K.act, letterSpacing: .3 }}>{formatTeeTime(origIdx)}</div>
                         )}
                       </div>
                       {/* Right team — left aligned */}
-                      <div style={{ flex: 1, textAlign: "left", paddingLeft: 10, overflow: "hidden" }}>
+                      <div style={{ flex: 1, textAlign: "left", paddingLeft: 18, overflow: "hidden" }}>
                         <div style={{ fontSize: 15, color: K.t1, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player1)}</div>
                         <div style={{ fontSize: 15, color: K.t1, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player2)}</div>
                       </div>
