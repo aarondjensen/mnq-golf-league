@@ -5,8 +5,7 @@ import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
 import StandingsView from "./pages/Standings";
 import LiveScoringView from "./pages/LiveScoring";
 import ScheduleView from "./pages/Schedule";
-import StatsView from "./pages/Stats";
-import CTPView from "./pages/CTP";
+import MoreView from "./pages/More";
 import AdminView from "./pages/Admin";
 
 export default function GolfLeagueApp() {
@@ -141,8 +140,7 @@ export default function GolfLeagueApp() {
     { id: "standings", label: "Standings", icon: "trophy" },
     { id: "scoring", label: "Score", icon: "flag" },
     { id: "schedule", label: "Schedule", icon: "calendar" },
-    { id: "stats", label: "Stats", icon: "barChart" },
-    { id: "ctp", label: "CTP", icon: "target" },
+    { id: "more", label: "More", icon: "ellipsis" },
   ];
 
   // Find upcoming match info for banner
@@ -213,8 +211,7 @@ export default function GolfLeagueApp() {
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} />}
           {tab === "scoring" && <LiveScoringView leagueUser={leagueUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={leagueUser} leagueConfig={leagueConfig} />}
-          {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
-          {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} />}
+          {tab === "more" && <MoreView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} ctpData={ctpData} />}
           {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} />}
         </div>
       </div>
