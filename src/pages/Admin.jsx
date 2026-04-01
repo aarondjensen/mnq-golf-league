@@ -241,40 +241,29 @@ function AdminCourse({ course, saveCourseData, onBack }) {
   const upT = (ti, f, v) => { const t = [...lc.teeBoxes]; t[ti] = { ...t[ti], [f]: f === 'slope' || f === 'rating' ? parseFloat(v) || 0 : v }; setLc({ ...lc, teeBoxes: t }); };
   const save = async () => { await saveCourseData(lc); onBack(); };
 
-  // Tabable hole input — selects on focus, Tab/Enter advances to next
-  const HoleInput = ({ value, onChange, tabGroup }) => (
-    <input
-      value={value}
-      onChange={e => {
-        const v = e.target.value.replace(/[^0-9]/g, '');
-        if (v.length <= 2) onChange(v);
-      }}
-      onFocus={e => e.target.select()}
-      onKeyDown={e => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          const inputs = Array.from(document.querySelectorAll(`.hi-${tabGroup}`));
-          const idx = inputs.indexOf(e.target);
-          if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus();
-        }
-      }}
-      type="text"
-      inputMode="numeric"
-      className={`hole-input hi-${tabGroup}`}
-      style={{ width: 42, height: 38, padding: "4px 2px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 15, textAlign: "center", fontWeight: 600 }}
-    />
-  );
-
-  const HoleRow = ({ label, dataKey, side, tabGroup }) => {
+  // Simple native input — no custom tab/focus handling, let the browser do it
+  const HoleRow = ({ label, dataKey, side }) => {
     const offset = side === 'front' ? 0 : 9;
     return (
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 11, color: K.t3, fontWeight: 600, marginBottom: 4 }}>{label}</div>
-        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ fontSize: 11, color: K.t3, fontWeight: 600, marginBottom: 6 }}>{label}</div>
+        <div style={{ display: "flex", gap: 6 }}>
           {Array.from({ length: 9 }, (_, i) => (
-            <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+            <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
               <div style={{ fontSize: 10, color: K.t3, fontWeight: 600 }}>{offset + i + 1}</div>
-              <HoleInput value={lc[dataKey][i]} onChange={v => up(dataKey, i, v)} tabGroup={tabGroup} />
+              <input
+                defaultValue={lc[dataKey][i]}
+                onBlur={e => {
+                  const v = parseInt(e.target.value) || 0;
+                  up(dataKey, i, v);
+                }}
+                onFocus={e => setTimeout(() => e.target.select(), 0)}
+                type="text"
+                inputMode="numeric"
+                maxLength={2}
+                className="hole-input"
+                style={{ width: 42, height: 40, padding: "4px 2px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 16, textAlign: "center", fontWeight: 600 }}
+              />
             </div>
           ))}
         </div>
@@ -291,8 +280,8 @@ function AdminCourse({ course, saveCourseData, onBack }) {
         <div key={s} style={{ marginBottom: 12 }}>
           <SubLabel>{s === 'front' ? 'Front 9' : 'Back 9'}</SubLabel>
           <Card style={{ padding: 14 }}>
-            <HoleRow label="Par" dataKey={s === 'front' ? 'frontPars' : 'backPars'} side={s} tabGroup={`par-${s}`} />
-            <HoleRow label="Handicap" dataKey={s === 'front' ? 'frontHcps' : 'backHcps'} side={s} tabGroup={`hcp-${s}`} />
+            <HoleRow label="Par" dataKey={s === 'front' ? 'frontPars' : 'backPars'} side={s} />
+            <HoleRow label="Handicap" dataKey={s === 'front' ? 'frontHcps' : 'backHcps'} side={s} />
           </Card>
         </div>
       ))}
