@@ -26,6 +26,7 @@ export default function GolfLeagueApp() {
   const [members, setMembers] = useState([]);
   const [membersLoaded, setMembersLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [liveWeek, setLiveWeek] = useState(null);
   const [tab, setTab] = useState("standings");
 
   // Firebase Auth listener
@@ -56,9 +57,18 @@ export default function GolfLeagueApp() {
     unsubs.push(db.subscribe("league_course", LF, (docs) => { if (docs.length) setCourseData(docs[0]); }));
     unsubs.push(db.subscribe("league_scoring", LF, (docs) => { if (docs.length) setScoringRules(docs[0]); }));
 
-    // Hole scores — only current season (weeks 0-15), not historical (100+, 200+)
-    const currentSeasonFilters = [...LF, { field: "week", op: "<=", value: SEASON_WEEKS - 1 }];
-    unsubs.push(db.subscribe("league_hole_scores", currentSeasonFilters, (docs, changes) => {
+    unsubs.push(db.subscribe("league_ctp", LF, (docs) => setCtpData(docs)));
+    unsubs.push(db.subscribe("league_match_results", LF, (docs) => setMatchResults(docs)));
+    unsubs.push(db.subscribe("league_config", LF, (docs) => { if (docs.length) setLeagueConfig(docs[0]); }));
+
+    return () => unsubs.forEach(u => u && u());
+  }, [authUser?.uid]);
+
+  // Subscribe to hole scores for a specific week (real-time for live scoring)
+  useEffect(() => {
+    if (liveWeek === null || !authUser) return;
+    const weekFilters = [...LF, { field: "week", op: "==", value: liveWeek }];
+    const unsub = db.subscribe("league_hole_scores", weekFilters, (docs, changes) => {
       setSyncing(true);
       setHoleScores(prev => {
         const next = { ...prev };
@@ -71,14 +81,9 @@ export default function GolfLeagueApp() {
         return next;
       });
       setTimeout(() => setSyncing(false), 500);
-    }));
-
-    unsubs.push(db.subscribe("league_ctp", LF, (docs) => setCtpData(docs)));
-    unsubs.push(db.subscribe("league_match_results", LF, (docs) => setMatchResults(docs)));
-    unsubs.push(db.subscribe("league_config", LF, (docs) => { if (docs.length) setLeagueConfig(docs[0]); }));
-
-    return () => unsubs.forEach(u => u && u());
-  }, [authUser?.uid]);
+    });
+    return () => unsub();
+  }, [liveWeek, authUser?.uid]);
 
   // Auth actions
   const doGoogleSignIn = async () => { try { await signInWithPopup(_auth, _googleProvider); } catch (e) { console.error(e); throw e; } };
@@ -96,6 +101,20 @@ export default function GolfLeagueApp() {
     const id = `${LEAGUE_ID}_w${week}_p${playerId}_h${hole}`;
     setHoleScores(prev => ({ ...prev, [`w${week}_p${playerId}_h${hole}`]: score }));
     await db.upsert("league_hole_scores", { id, league_id: LEAGUE_ID, week, player_id: playerId, hole, score, ts: Date.now() });
+  };
+  // Fetch scores for a specific week on-demand (non-realtime, one-time read)
+  const fetchWeekScores = async (weekNum) => {
+    const docs = await db.get("league_hole_scores", [...LF, { field: "week", op: "==", value: weekNum }]);
+    const scores = {};
+    docs.forEach(r => { scores[`w${r.week}_p${r.player_id}_h${r.hole}`] = r.score; });
+    return scores;
+  };
+  // Fetch scores for multiple weeks (for stats/handicap calc)
+  const fetchSeasonScores = async () => {
+    const docs = await db.get("league_hole_scores", [...LF, { field: "week", op: "<=", value: SEASON_WEEKS - 1 }]);
+    const scores = {};
+    docs.forEach(r => { scores[`w${r.week}_p${r.player_id}_h${r.hole}`] = r.score; });
+    return scores;
   };
   const saveCtp = async (data) => await db.upsert("league_ctp", { ...data, league_id: LEAGUE_ID });
   const saveMatchResult = async (data) => await db.upsert("league_match_results", { ...data, league_id: LEAGUE_ID });
@@ -160,9 +179,9 @@ export default function GolfLeagueApp() {
 
         <div className="main-content fi" key={tab}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} />}
-          {tab === "scoring" && <LiveScoringView leagueUser={leagueUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} />}
+          {tab === "scoring" && <LiveScoringView leagueUser={leagueUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} />}
-          {tab === "stats" && <StatsView players={activePlayers} holeScores={holeScores} course={courseData} schedule={schedule} scoringRules={scoringRules} />}
+          {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
           {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} />}
           {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} />}
         </div>

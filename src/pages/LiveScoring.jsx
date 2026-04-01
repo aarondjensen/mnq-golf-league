@@ -1,14 +1,18 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { K, FONTS, CSS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   SEASON_WEEKS, REGULAR_WEEKS, TEAMS_COUNT, getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap } from "../theme";
 
-export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, ctpData, saveCtp }) {
+export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores }) {
   const [selWeek, setSelWeek] = useState(null);
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
   const [showCTP, setShowCTP] = useState(false);
 
   const week = useMemo(() => { if (selWeek !== null) return selWeek; for (let w = schedule.length - 1; w >= 0; w--) if (schedule[w]) return schedule[w].week; return 0; }, [selWeek, schedule]);
+
+  // Tell App.jsx which week to subscribe to for real-time scores
+  useEffect(() => { setLiveWeek(week); }, [week, setLiveWeek]);
+
   const weekSch = schedule.find(s => s.week === week);
   const matches = weekSch?.matches || [];
   const side = getWeekSide(week + 1);

@@ -1,15 +1,28 @@
-import { useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { K, SectionTitle, Card, getWeekSide, calcLeagueHandicap } from "../theme";
 
-export default function StatsView({ players, holeScores, course, schedule, scoringRules }) {
+export default function StatsView({ players, course, schedule, scoringRules, fetchSeasonScores }) {
   const recentN = scoringRules.hcpRecentCount || 8;
   const bestN = scoringRules.hcpBestCount || 6;
+  const [holeScores, setHoleScores] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch current season scores once when Stats tab opens
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    fetchSeasonScores().then(scores => {
+      if (!cancelled) { setHoleScores(scores); setLoading(false); }
+    });
+    return () => { cancelled = true; };
+  }, [fetchSeasonScores]);
+
   const stats = useMemo(() => {
+    if (!holeScores) return [];
     return players.map(p => {
       const grossScores = []; let totalGross = 0, rounds = 0;
       schedule.forEach(wk => {
         const side = getWeekSide(wk.week + 1);
-        const prs = course ? (side === 'front' ? course.frontPars : course.backPars) : [];
         let wg = 0, cnt = 0;
         for (let h = 0; h < 9; h++) { const s = holeScores[`w${wk.week}_p${p.id}_h${h}`]; if (s > 0) { wg += s; cnt++; } }
         if (cnt === 9) { grossScores.push(wg); totalGross += wg; rounds++; }
@@ -19,6 +32,9 @@ export default function StatsView({ players, holeScores, course, schedule, scori
       return { ...p, grossScores, idx: calcHcp !== null ? calcHcp : p.handicapIndex, avgGross: rounds ? (totalGross / rounds).toFixed(1) : "—", rounds };
     }).sort((a, b) => (a.idx || 99) - (b.idx || 99));
   }, [players, holeScores, course, schedule, recentN, bestN]);
+
+  if (loading) return <div style={{ textAlign: "center", padding: 40, color: K.t3, fontSize: 13 }}>Loading stats...</div>;
+
   return (
     <div><SectionTitle>Player Stats & Handicaps</SectionTitle>
       <div style={{ fontSize: 12, color: K.t3, marginBottom: 12 }}>Best {bestN} of recent {recentN} rounds</div>
@@ -33,5 +49,3 @@ export default function StatsView({ players, holeScores, course, schedule, scori
     </div>
   );
 }
-
-
