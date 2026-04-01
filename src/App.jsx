@@ -844,15 +844,15 @@ function AdminView(props) {
 
 function AdminPlayers({ players, savePlayer, deletePlayer, course, onBack }) {
   const [ed, setEd] = useState(null);
-  const [f, setF] = useState({ name: "", handicapIndex: "", teeBox: "White" });
-  const tees = course?.teeBoxes?.map(t => t.name) || ["Blue", "White", "Gold"];
+  const [f, setF] = useState({ name: "", handicapIndex: "", teeBox: "Blue" });
+  const tees = course?.teeBoxes?.map(t => t.name) || ["Blue", "Black", "White"];
   const save = async () => { if (!f.name.trim()) return; const id = ed === "new" ? `${LEAGUE_ID}_p${Date.now()}` : ed; await savePlayer({ id, name: f.name.trim(), handicapIndex: parseFloat(f.handicapIndex) || 0, teeBox: f.teeBox }); setEd(null); };
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <BackBtn onClick={onBack} /><span style={{ fontFamily: "'IBM Plex Sans Condensed', sans-serif", fontSize: 18, color: K.t1 }}>Players ({players.length}/20)</span>
-        <button onClick={() => { setF({ name: "", handicapIndex: "", teeBox: "White" }); setEd("new"); }} style={{ background: K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 700 }}>+ Add</button>
+        <button onClick={() => { setF({ name: "", handicapIndex: "", teeBox: "Blue" }); setEd("new"); }} style={{ background: K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 700 }}>+ Add</button>
       </div>
       {ed && (
         <Card highlight style={{ marginBottom: 12, padding: 14 }}>
@@ -870,7 +870,7 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, onBack }) {
       <div className="players-grid">
         {players.map(p => (
           <Card key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 14px" }}>
-            <div><div style={{ fontSize: 14, fontWeight: 700 }}>{p.name}</div><div style={{ fontSize: 11, color: K.t3 }}>HI: {p.handicapIndex} · {p.teeBox || "White"}</div></div>
+            <div><div style={{ display: "flex", alignItems: "baseline", gap: 8 }}><span style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</span><span style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{p.handicapIndex}</span></div><div style={{ fontSize: 11, color: K.t3 }}>{p.teeBox || "Blue"} tees</div></div>
             <div style={{ display: "flex", gap: 6 }}>
               <button onClick={() => { setF({ name: p.name, handicapIndex: String(p.handicapIndex ?? ""), teeBox: p.teeBox || "White" }); setEd(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.acc, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>Edit</button>
               <button onClick={() => { if (confirm("Remove?")) deletePlayer(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.red, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>✕</button>
