@@ -52,8 +52,8 @@ export const FONTS = "https://fonts.googleapis.com/css2?family=League+Spartan:wg
 
 export const CSS = `
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-  html, body { overscroll-behavior: none; background: ${K.bg}; }
-  input, select, textarea, button { font-family: 'League Spartan', sans-serif; }
+  html, body { overscroll-behavior: none; background: ${K.bg}; letter-spacing: 0.4px; }
+  input, select, textarea, button { font-family: 'League Spartan', sans-serif; letter-spacing: 0.4px; font-size: 15px; }
   ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: ${K.bdr}; border-radius: 4px; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
@@ -62,7 +62,7 @@ export const CSS = `
   input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
   input[type=number] { -moz-appearance: textfield; }
   .hole-input:focus { outline: 2px solid ${K.acc}; outline-offset: -1px; background: ${K.cardHi} !important; }
-  .app-shell { min-height: 100vh; background: ${K.bg}; color: ${K.t1}; font-family: 'League Spartan', sans-serif; display: flex; flex-direction: column; }
+  .app-shell { min-height: 100vh; background: ${K.bg}; color: ${K.t1}; font-family: 'League Spartan', sans-serif; display: flex; flex-direction: column; font-size: 15px; letter-spacing: 0.4px; }
   .app-header { padding: 12px 20px; background: linear-gradient(135deg, ${K.card}, ${K.bg}); border-bottom: 1px solid ${K.bdr}; display: flex; justify-content: center; align-items: center; position: relative; }
   .app-body { display: flex; flex: 1; justify-content: center; }
   .main-content { flex: 1; padding: 12px 14px; padding-bottom: 74px; max-width: 900px; width: 100%; }
@@ -105,27 +105,27 @@ export const I = {
 
 // ── Shared UI components ──
 export const Pill = ({ children, color = K.acc, style, ...rest }) => (
-  <span style={{ fontSize: 10, fontWeight: 600, color, background: color + "14", padding: "2px 7px", borderRadius: 4, letterSpacing: .5, textTransform: "uppercase", ...style }} {...rest}>{children}</span>
+  <span style={{ fontSize: 11, fontWeight: 600, color, background: color + "14", padding: "2px 8px", borderRadius: 4, letterSpacing: .6, textTransform: "uppercase", ...style }} {...rest}>{children}</span>
 );
 export const BackBtn = ({ onClick }) => (
-  <button onClick={onClick} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t2, fontSize: 12, padding: "6px 12px", cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: 4 }}>{I.arrowLeft(12, K.t2)} Back</button>
+  <button onClick={onClick} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t2, fontSize: 13, padding: "7px 14px", cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: 5, letterSpacing: .4 }}>{I.arrowLeft(13, K.t2)} Back</button>
 );
 export const SaveBtn = ({ onClick, label = "Save" }) => (
-  <button onClick={onClick} style={{ background: K.act, border: "none", borderRadius: 6, color: K.bg, fontSize: 12, padding: "6px 14px", cursor: "pointer", fontWeight: 600 }}>{label}</button>
+  <button onClick={onClick} style={{ background: K.act, border: "none", borderRadius: 6, color: K.bg, fontSize: 13, padding: "7px 16px", cursor: "pointer", fontWeight: 600, letterSpacing: .4 }}>{label}</button>
 );
 export const SectionTitle = ({ children }) => (
-  <div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 20, fontWeight: 700, color: K.t1, letterSpacing: .5, marginBottom: 14 }}>{children}</div>
+  <div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 22, fontWeight: 700, color: K.t1, letterSpacing: .6, marginBottom: 14 }}>{children}</div>
 );
 export const SubLabel = ({ children, color = K.acc, style }) => (
-  <div style={{ fontSize: 10, fontWeight: 600, color, textTransform: "uppercase", letterSpacing: 1.2, marginBottom: 6, ...style }}>{children}</div>
+  <div style={{ fontSize: 11, fontWeight: 600, color, textTransform: "uppercase", letterSpacing: 1.4, marginBottom: 6, ...style }}>{children}</div>
 );
 export const Card = ({ children, highlight, style, ...rest }) => (
-  <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${highlight ? K.acc + '40' : K.bdr}`, padding: "12px 14px", ...style }} {...rest}>{children}</div>
+  <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${highlight ? K.acc + '40' : K.bdr}`, padding: "13px 15px", ...style }} {...rest}>{children}</div>
 );
 export const EmptyState = ({ icon, title, subtitle }) => (
   <div style={{ textAlign: "center", padding: 40 }}>
     <div style={{ marginBottom: 12, display: "flex", justifyContent: "center", opacity: .4 }}>{typeof icon === "string" ? I[icon]?.(40, K.t3) || null : icon}</div>
-    <div style={{ color: K.t2, fontSize: 14, fontWeight: 500 }}>{title}</div>
-    {subtitle && <div style={{ color: K.t3, fontSize: 12, marginTop: 4 }}>{subtitle}</div>}
+    <div style={{ color: K.t2, fontSize: 15, fontWeight: 500, letterSpacing: .4 }}>{title}</div>
+    {subtitle && <div style={{ color: K.t3, fontSize: 13, marginTop: 4, letterSpacing: .3 }}>{subtitle}</div>}
   </div>
 );
