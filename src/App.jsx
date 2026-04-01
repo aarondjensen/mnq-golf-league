@@ -177,11 +177,6 @@ export default function GolfLeagueApp() {
 
       {/* Header */}
       <div className="app-header">
-        {isComm && (
-          <button onClick={() => setTab("admin")} style={{ position: "absolute", left: 16, background: "none", border: "none", cursor: "pointer", padding: 6, opacity: tab === "admin" ? .9 : .35, transition: "opacity .2s", display: "flex" }}>
-            {I.ellipsis(20, K.t2)}
-          </button>
-        )}
         <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
         <div style={{ position: "absolute", right: 20, display: "flex", alignItems: "center", gap: 10 }}>
           {syncing && <span className="pu" style={{ fontSize: 8, color: K.grn }}>● LIVE</span>}
@@ -211,8 +206,9 @@ export default function GolfLeagueApp() {
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} />}
           {tab === "scoring" && <LiveScoringView leagueUser={leagueUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={leagueUser} leagueConfig={leagueConfig} />}
-          {tab === "more" && <MoreView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} ctpData={ctpData} />}
-          {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} />}
+          {tab === "more" && <MoreView players={activePlayers} allPlayers={players} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} ctpData={ctpData} isComm={isComm} members={members}
+            adminProps={isComm ? { players, savePlayer, deletePlayer, teams, saveTeam, deleteTeam, schedule, saveWeekSchedule, course: courseData, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, members, saveMember, deleteMember, authUser, matchResults } : null}
+          />}
         </div>
       </div>
 

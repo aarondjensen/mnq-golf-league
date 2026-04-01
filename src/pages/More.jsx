@@ -1,17 +1,20 @@
 import { useState, useEffect, useMemo } from "react";
 import { K, I, SectionTitle, Card, EmptyState, getWeekSide, calcLeagueHandicap } from "../theme";
+import AdminView from "./Admin";
 
-export default function MoreView({ players, course, schedule, scoringRules, fetchSeasonScores, ctpData }) {
+export default function MoreView({ players, allPlayers, course, schedule, scoringRules, fetchSeasonScores, ctpData, isComm, adminProps, members }) {
   const [sub, setSub] = useState(null);
 
-  if (sub === "players") return <><BackBar onBack={() => setSub(null)} title="Players" /><PlayersDirectory players={players} course={course} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} /></>;
+  if (sub === "players") return <><BackBar onBack={() => setSub(null)} title="Players" /><PlayersDirectory players={players} course={course} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} members={members} /></>;
   if (sub === "stats") return <><BackBar onBack={() => setSub(null)} title="Stats" /><StatsSection players={players} course={course} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} /></>;
   if (sub === "ctp") return <><BackBar onBack={() => setSub(null)} title="CTP" /><CTPSection ctpData={ctpData} players={players} /></>;
+  if (sub === "admin" && isComm && adminProps) return <><BackBar onBack={() => setSub(null)} title="Admin" /><AdminView {...adminProps} /></>;
 
   const items = [
     { id: "players", label: "Players", desc: "Directory & handicap details", icon: "users" },
     { id: "stats", label: "Stats", desc: "Season stats & averages", icon: "barChart" },
     { id: "ctp", label: "Closest to Pin", desc: "CTP leaderboard & results", icon: "target" },
+    ...(isComm ? [{ id: "admin", label: "Admin", desc: "League management", icon: "settings" }] : []),
   ];
 
   return (
@@ -49,12 +52,14 @@ function BackBar({ onBack, title }) {
 }
 
 // ── Players Directory with expandable handicap calc ──
-function PlayersDirectory({ players, course, schedule, scoringRules, fetchSeasonScores }) {
+function PlayersDirectory({ players, course, schedule, scoringRules, fetchSeasonScores, members }) {
   const recentN = scoringRules.hcpRecentCount || 8;
   const bestN = scoringRules.hcpBestCount || 6;
   const [holeScores, setHoleScores] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(null);
+
+  const commPlayerIds = (members || []).filter(m => m.isCommissioner).map(m => m.playerId);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,7 +107,7 @@ function PlayersDirectory({ players, course, schedule, scoringRules, fetchSeason
         {playerStats.map(p => (
           <div key={p.id}>
             <div style={{ display: "flex", alignItems: "center", background: K.card, borderRadius: expanded === p.id ? "8px 8px 0 0" : 8, border: `1px solid ${K.bdr}`, borderBottom: expanded === p.id ? "none" : `1px solid ${K.bdr}`, padding: "10px 14px", gap: 8 }}>
-              <div style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{p.name}</div>
+              <div style={{ flex: 1, fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>{p.name}{commPlayerIds.includes(p.id) && <span style={{ fontSize: 8, fontWeight: 700, color: K.warn, background: K.warn + "18", padding: "1px 5px", borderRadius: 3, textTransform: "uppercase", letterSpacing: .5 }}>Comm</span>}</div>
               <div style={{ fontSize: 11, color: K.t3 }}>{p.rounds} rds</div>
               <button onClick={() => setExpanded(expanded === p.id ? null : p.id)} style={{
                 background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer",

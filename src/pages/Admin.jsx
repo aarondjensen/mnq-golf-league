@@ -17,7 +17,7 @@ export default function AdminView(props) {
     { id: "members", label: "Members / Auth", icon: "key", desc: `${members.length} linked accounts` },
   ];
 
-  if (sec === "players") return <AdminPlayers players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} course={course} onBack={() => setSec(null)} />;
+  if (sec === "players") return <AdminPlayers players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} course={course} members={members} saveMember={saveMember} onBack={() => setSec(null)} />;
   if (sec === "teams") return <AdminTeams teams={teams} saveTeam={saveTeam} players={players} onBack={() => setSec(null)} />;
   if (sec === "course") return <AdminCourse course={course} saveCourseData={saveCourseData} onBack={() => setSec(null)} />;
   if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} onBack={() => setSec(null)} />;
@@ -35,12 +35,20 @@ export default function AdminView(props) {
 }
 
 
-function AdminPlayers({ players, savePlayer, deletePlayer, course, onBack }) {
+function AdminPlayers({ players, savePlayer, deletePlayer, course, members, saveMember, onBack }) {
   const [ed, setEd] = useState(null);
   const [f, setF] = useState({ name: "", handicapIndex: "", teeBox: "Blue" });
   const [showInactive, setShowInactive] = useState(false);
   const nameRef = useCallback(node => { if (node) setTimeout(() => node.focus(), 50); }, [ed]);
   const tees = course?.teeBoxes?.map(t => t.name) || ["Blue", "Black", "White"];
+
+  const getMember = (playerId) => (members || []).find(m => m.playerId === playerId);
+  const isComm = (playerId) => getMember(playerId)?.isCommissioner === true;
+  const toggleComm = async (playerId) => {
+    const member = getMember(playerId);
+    if (!member) return;
+    await saveMember({ ...member, isCommissioner: !member.isCommissioner });
+  };
   const save = async () => {
     if (!f.name.trim()) return;
     const id = ed === "new" ? `${LEAGUE_ID}_p${Date.now()}` : ed;
@@ -72,7 +80,10 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, onBack }) {
           </>
         ) : (
           <>
-            <div style={{ width: 160, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{p.name}</div>
+            <div style={{ width: 160, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 5 }}>
+              {p.name}
+              {isComm(p.id) && <span style={{ fontSize: 8, fontWeight: 700, color: K.warn, background: K.warn + "18", padding: "1px 5px", borderRadius: 3, textTransform: "uppercase", letterSpacing: .5, flexShrink: 0 }}>Comm</span>}
+            </div>
             <div style={{ width: 30, textAlign: "center", fontSize: 14, fontWeight: 700, color: K.t2 }}>{p.handicapIndex}</div>
             <div style={{ flex: 1 }} />
             {inactive ? (
@@ -83,6 +94,9 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, onBack }) {
               </div>
             ) : (
               <div style={{ display: "flex", gap: 6 }}>
+                {getMember(p.id) && (
+                  <button onClick={() => toggleComm(p.id)} style={{ background: isComm(p.id) ? K.warn + "20" : K.inp, border: `1px solid ${isComm(p.id) ? K.warn + "40" : K.bdr}`, borderRadius: 6, color: isComm(p.id) ? K.warn : K.t3, fontSize: 10, padding: "4px 8px", cursor: "pointer", fontWeight: 600 }}>{isComm(p.id) ? "Revoke" : "Comm"}</button>
+                )}
                 <button onClick={() => { setF({ name: p.name, handicapIndex: String(p.handicapIndex ?? ""), teeBox: p.teeBox || "Blue" }); setEd(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.acc, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>Edit</button>
                 <button onClick={() => { if (confirm(`Deactivate ${p.name}?`)) toggleStatus(p); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.warn, fontSize: 10, padding: "4px 8px", cursor: "pointer" }}>Deactivate</button>
               </div>
