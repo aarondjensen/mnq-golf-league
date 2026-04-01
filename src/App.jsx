@@ -136,6 +136,7 @@ const CSS = `
   .pu { animation: pulse 1.8s ease-in-out infinite; }
   input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
   input[type=number] { -moz-appearance: textfield; }
+  .hole-input:focus { outline: 2px solid ${K.acc}; outline-offset: -1px; background: ${K.cardHi} !important; }
   .app-shell { min-height: 100vh; background: ${K.bg}; color: ${K.t1}; font-family: 'League Spartan', sans-serif; display: flex; flex-direction: column; }
   .app-header { padding: 14px 24px 10px; background: linear-gradient(135deg, ${K.card}, ${K.bg}); border-bottom: 1px solid ${K.bdr}; display: flex; justify-content: space-between; align-items: center; }
   .app-body { display: flex; flex: 1; }
@@ -929,7 +930,13 @@ function AdminCourse({ course, saveCourseData, onBack }) {
   const up = (k, i, v) => { const a = [...lc[k]]; a[i] = parseInt(v) || 0; setLc({ ...lc, [k]: a }); };
   const upT = (ti, f, v) => { const t = [...lc.teeBoxes]; t[ti] = { ...t[ti], [f]: f === 'slope' || f === 'rating' ? parseFloat(v) || 0 : v }; setLc({ ...lc, teeBoxes: t }); };
   const save = async () => { await saveCourseData(lc); onBack(); };
-  const IC = ({ value, onChange }) => <input value={value} onChange={e => onChange(e.target.value)} type="number" style={{ width: 34, padding: "4px 2px", borderRadius: 4, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 12, textAlign: "center" }} />;
+  const IC = ({ value, onChange }) => <input value={value}
+    onChange={e => onChange(e.target.value)}
+    onFocus={e => e.target.select()}
+    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); const inputs = Array.from(document.querySelectorAll('.hole-input')); const idx = inputs.indexOf(e.target); if (idx >= 0 && idx < inputs.length - 1) inputs[idx + 1].focus(); } }}
+    type="text" inputMode="numeric" pattern="[0-9]*"
+    className="hole-input"
+    style={{ width: 38, padding: "6px 2px", borderRadius: 4, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13, textAlign: "center", fontWeight: 600 }} />;
 
   return (
     <div>
