@@ -20,7 +20,7 @@ export default function AdminView(props) {
   if (sec === "players") return <AdminPlayers players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} course={course} onBack={() => setSec(null)} />;
   if (sec === "teams") return <AdminTeams teams={teams} saveTeam={saveTeam} players={players} onBack={() => setSec(null)} />;
   if (sec === "course") return <AdminCourse course={course} saveCourseData={saveCourseData} onBack={() => setSec(null)} />;
-  if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} teams={teams} onBack={() => setSec(null)} />;
+  if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} onBack={() => setSec(null)} />;
   if (sec === "scoring") return <AdminScoring scoring={scoringRules} saveScoringRules={saveScoringRules} onBack={() => setSec(null)} />;
   if (sec === "members") return <AdminMembers members={members} saveMember={saveMember} deleteMember={deleteMember} players={players} onBack={() => setSec(null)} />;
   if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
@@ -192,29 +192,273 @@ function AdminCourse({ course, saveCourseData, onBack }) {
 }
 
 
-function AdminSchedule({ schedule, saveWeekSchedule, teams, onBack }) {
+function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLeagueConfig, matchResults, onBack }) {
+  const [step, setStep] = useState(schedule.length > 0 ? "view" : "setup");
+  const [cfg, setCfg] = useState({
+    dayOfWeek: leagueConfig.dayOfWeek || "Tuesday",
+    startTime: leagueConfig.startTime || "4:28 PM",
+    teeInterval: leagueConfig.teeInterval || 8,
+    regularWeeks: leagueConfig.regularWeeks || 14,
+    playoffWeeks: leagueConfig.playoffWeeks || 2,
+    startDate: leagueConfig.startDate || "",
+    alternateNines: leagueConfig.alternateNines !== false,
+  });
+  const [editWeek, setEditWeek] = useState(null);
+  const [dragIdx, setDragIdx] = useState(null);
+  const [generating, setGenerating] = useState(false);
+
+  const totalWeeks = cfg.regularWeeks + cfg.playoffWeeks;
+
+  // Round-robin generator: each team plays every other team once
+  const generateRoundRobin = (teamIds) => {
+    const ids = [...teamIds];
+    if (ids.length % 2 !== 0) ids.push(null); // bye
+    const n = ids.length;
+    const rounds = [];
+    for (let r = 0; r < n - 1; r++) {
+      const matches = [];
+      for (let i = 0; i < n / 2; i++) {
+        const a = ids[i], b = ids[n - 1 - i];
+        if (a && b) matches.push({ team1: a, team2: b });
+      }
+      rounds.push(matches);
+      // Rotate: fix first, shift rest
+      const last = ids.pop();
+      ids.splice(1, 0, last);
+    }
+    return rounds;
+  };
+
+  // Standings-based matchups: 1v10, 2v9, 3v8, etc.
+  const generateStandingsMatchups = () => {
+    const pts = {};
+    teams.forEach(t => { pts[t.id] = 0; });
+    (matchResults || []).forEach(r => {
+      if (pts[r.team1Id] !== undefined) pts[r.team1Id] += (r.team1Points || 0);
+      if (pts[r.team2Id] !== undefined) pts[r.team2Id] += (r.team2Points || 0);
+    });
+    const sorted = Object.entries(pts).sort((a, b) => b[1] - a[1]).map(e => e[0]);
+    const matches = [];
+    for (let i = 0; i < Math.floor(sorted.length / 2); i++) {
+      matches.push({ team1: sorted[i], team2: sorted[sorted.length - 1 - i] });
+    }
+    return matches;
+  };
+
+  const formatTeeTime = (baseTime, idx) => {
+    const [timePart, ampm] = baseTime.split(' ');
+    const [h, m] = timePart.split(':').map(Number);
+    let mins = (ampm === 'PM' && h !== 12 ? h + 12 : h) * 60 + m + idx * cfg.teeInterval;
+    const hr = Math.floor(mins / 60) % 12 || 12;
+    const mn = mins % 60;
+    const ap = Math.floor(mins / 60) >= 12 ? 'PM' : 'AM';
+    return `${hr}:${String(mn).padStart(2, '0')} ${ap}`;
+  };
+
+  const getWeekDate = (weekIdx) => {
+    if (!cfg.startDate) return "";
+    const d = new Date(cfg.startDate + "T12:00:00");
+    d.setDate(d.getDate() + weekIdx * 7);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
   const generate = async () => {
     if (teams.length < 2) return alert("Need at least 2 teams");
-    const ids = teams.map(t => t.id); if (ids.length % 2 !== 0) ids.push(null);
-    for (let r = 0; r < SEASON_WEEKS; r++) {
-      const ri = r % (ids.length - 1); const sh = [ids[0]];
-      for (let i = 1; i < ids.length; i++) sh.push(ids[(i - 1 + ri) % (ids.length - 1) + 1]);
-      const matches = [];
-      for (let i = 0; i < sh.length / 2; i++) { const a = sh[i], b = sh[sh.length - 1 - i]; if (a && b) matches.push({ team1: a, team2: b }); }
-      await saveWeekSchedule({ id: `${LEAGUE_ID}_w${r}`, week: r, matches, side: getWeekSide(r + 1) });
+    if (!cfg.startDate) return alert("Set a season start date");
+    setGenerating(true);
+
+    const teamIds = teams.map(t => t.id);
+    const rrRounds = generateRoundRobin(teamIds);
+    const rrWeeks = Math.min(rrRounds.length, cfg.regularWeeks);
+
+    for (let w = 0; w < totalWeeks; w++) {
+      let matches;
+      if (w < rrWeeks) {
+        matches = rrRounds[w];
+      } else if (w < cfg.regularWeeks) {
+        // After round-robin: standings-based
+        matches = generateStandingsMatchups();
+      } else {
+        // Playoffs: standings-based
+        matches = generateStandingsMatchups();
+      }
+      const side = cfg.alternateNines ? (w % 2 === 0 ? 'front' : 'back') : 'front';
+      await saveWeekSchedule({
+        id: `${LEAGUE_ID}_w${w}`, week: w, matches, side,
+        date: getWeekDate(w),
+        isPlayoff: w >= cfg.regularWeeks,
+      });
     }
+
+    // Save season config
+    await saveLeagueConfig({ ...leagueConfig, ...cfg, totalWeeks });
+    setGenerating(false);
+    setStep("view");
   };
+
+  // Drag reorder for a week's matches
+  const moveMatch = async (weekData, fromIdx, toIdx) => {
+    if (fromIdx === toIdx) return;
+    const matches = [...weekData.matches];
+    const [moved] = matches.splice(fromIdx, 1);
+    matches.splice(toIdx, 0, moved);
+    await saveWeekSchedule({ ...weekData, matches });
+  };
+
+  const gn = (id) => teams.find(t => t.id === id)?.name || "TBD";
+  const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+
+  // ── Setup wizard ──
+  if (step === "setup") {
+    return (
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <BackBtn onClick={onBack} />
+          <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Season Setup</span>
+          <div style={{ width: 60 }} />
+        </div>
+
+        <div className="scoring-grid">
+          <div>
+            <SubLabel>Schedule</SubLabel>
+            <Card style={{ padding: 14 }}>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>League Day</div>
+                <select value={cfg.dayOfWeek} onChange={e => setCfg({ ...cfg, dayOfWeek: e.target.value })} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }}>
+                  {days.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Season Start Date</div>
+                <input type="date" value={cfg.startDate} onChange={e => setCfg({ ...cfg, startDate: e.target.value })} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>First Tee Time</div>
+                <input value={cfg.startTime} onChange={e => setCfg({ ...cfg, startTime: e.target.value })} placeholder="4:28 PM" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
+              </div>
+              <div>
+                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Minutes Between Tee Times</div>
+                <input type="number" value={cfg.teeInterval} onChange={e => setCfg({ ...cfg, teeInterval: parseInt(e.target.value) || 8 })} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
+              </div>
+            </Card>
+          </div>
+
+          <div>
+            <SubLabel>Season Format</SubLabel>
+            <Card style={{ padding: 14 }}>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Regular Season Weeks</div>
+                <input type="number" value={cfg.regularWeeks} onChange={e => setCfg({ ...cfg, regularWeeks: parseInt(e.target.value) || 14 })} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Playoff Weeks</div>
+                <input type="number" value={cfg.playoffWeeks} onChange={e => setCfg({ ...cfg, playoffWeeks: parseInt(e.target.value) || 2 })} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
+              </div>
+              <div style={{ fontSize: 12, color: K.t2, padding: "8px 0", borderTop: `1px solid ${K.bdr}30` }}>
+                Total: <strong style={{ color: K.t1 }}>{totalWeeks} weeks</strong> ({cfg.regularWeeks} regular + {cfg.playoffWeeks} playoff)
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: K.t2, cursor: "pointer" }}>
+                  <input type="checkbox" checked={cfg.alternateNines} onChange={e => setCfg({ ...cfg, alternateNines: e.target.checked })} style={{ accentColor: K.act }} />
+                  Alternate front/back 9 each week
+                </label>
+              </div>
+            </Card>
+          </div>
+        </div>
+
+        <div style={{ fontSize: 12, color: K.t3, margin: "16px 0 8px", lineHeight: 1.6 }}>
+          With {teams.length} teams, the round-robin takes {teams.length - 1} weeks. {cfg.regularWeeks > teams.length - 1 ? `The remaining ${cfg.regularWeeks - (teams.length - 1)} regular season weeks will be standings-based matchups (1st vs last, 2nd vs 2nd-to-last, etc).` : ""}
+        </div>
+
+        <button onClick={generate} disabled={generating || teams.length < 2} style={{ width: "100%", padding: 14, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: generating ? .6 : 1, marginTop: 8 }}>
+          {generating ? "Generating..." : "Generate Schedule"}
+        </button>
+
+        {schedule.length > 0 && (
+          <button onClick={() => setStep("view")} style={{ width: "100%", padding: 10, borderRadius: 8, background: "none", border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 13, cursor: "pointer", marginTop: 8 }}>
+            View Current Schedule
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // ── Week detail / edit view ──
+  if (editWeek !== null) {
+    const wk = schedule.find(s => s.week === editWeek);
+    if (!wk) { setEditWeek(null); return null; }
+    return (
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+          <BackBtn onClick={() => setEditWeek(null)} />
+          <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Week {wk.week + 1}{wk.date ? ` · ${wk.date}` : ""}</span>
+          <Pill color={wk.side === 'front' ? K.acc : K.t2}>{wk.side === 'front' ? 'FRONT 9' : 'BACK 9'}</Pill>
+        </div>
+        <div style={{ fontSize: 11, color: K.t3, marginBottom: 12 }}>Drag matches to reorder tee times</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {wk.matches.map((m, mi) => (
+            <div
+              key={mi}
+              draggable
+              onDragStart={() => setDragIdx(mi)}
+              onDragOver={(e) => e.preventDefault()}
+              onDrop={() => { if (dragIdx !== null) { moveMatch(wk, dragIdx, mi); setDragIdx(null); } }}
+              style={{ background: dragIdx === mi ? K.cardHi : K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "12px 14px", cursor: "grab", display: "flex", alignItems: "center", gap: 12, userSelect: "none" }}
+            >
+              <div style={{ color: K.t3, fontSize: 14, cursor: "grab" }}>⠿</div>
+              <div style={{ width: 70, fontSize: 12, color: K.acc, fontWeight: 600 }}>{formatTeeTime(cfg.startTime || "4:28 PM", mi)}</div>
+              <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: K.t1 }}>{gn(m.team1)}</div>
+              <div style={{ fontSize: 11, color: K.t3, fontWeight: 700 }}>vs</div>
+              <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: K.t1, textAlign: "right" }}>{gn(m.team2)}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
+          <button onClick={() => {
+            const newSide = wk.side === 'front' ? 'back' : 'front';
+            saveWeekSchedule({ ...wk, side: newSide });
+          }} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 12, cursor: "pointer" }}>
+            Flip to {wk.side === 'front' ? 'Back' : 'Front'} 9
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Schedule overview ──
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Schedule</span><button onClick={generate} style={{ background: K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 700 }}>Generate</button></div>
-      {!schedule.length ? <div style={{ textAlign: "center", padding: 30, color: K.t3, fontSize: 13 }}>No schedule yet. Set up teams, then tap Generate.</div> : (
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <BackBtn onClick={onBack} />
+        <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Schedule</span>
+        <button onClick={() => setStep("setup")} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.acc, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 600 }}>Edit Setup</button>
+      </div>
+      {!schedule.length ? (
+        <div style={{ textAlign: "center", padding: 30, color: K.t3, fontSize: 13 }}>No schedule yet. Set up teams, then configure the season.</div>
+      ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          {schedule.map(wk => (
-            <Card key={wk.week} style={{ padding: "8px 12px" }}>
-              <div style={{ fontWeight: 700, fontSize: 11, color: wk.week >= REGULAR_WEEKS ? K.warn : K.acc, marginBottom: 3 }}>Wk {wk.week + 1} — {getWeekSide(wk.week + 1) === 'front' ? 'Front 9' : 'Back 9'} {wk.week >= REGULAR_WEEKS && "· PLAYOFFS"}</div>
-              {wk.matches.map((m, mi) => <div key={mi} style={{ fontSize: 11, color: K.t3, marginLeft: 10 }}>{getTeeTime(mi)} — {teams.find(t => t.id === m.team1)?.name} vs {teams.find(t => t.id === m.team2)?.name}</div>)}
-            </Card>
-          ))}
+          {schedule.map(wk => {
+            const isPlayoff = wk.isPlayoff || wk.week >= (leagueConfig.regularWeeks || 14);
+            return (
+              <button key={wk.week} onClick={() => setEditWeek(wk.week)} style={{ background: K.card, borderRadius: 10, padding: "10px 14px", border: `1px solid ${K.bdr}`, cursor: "pointer", textAlign: "left", width: "100%" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <span style={{ fontWeight: 700, fontSize: 12, color: isPlayoff ? K.warn : K.t1 }}>
+                    Week {wk.week + 1}{wk.date ? ` · ${wk.date}` : ""}
+                  </span>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <Pill color={wk.side === 'front' ? K.acc : K.t3} style={{ fontSize: 8 }}>{wk.side === 'front' ? 'F9' : 'B9'}</Pill>
+                    {isPlayoff && <Pill color={K.warn} style={{ fontSize: 8 }}>PLAYOFF</Pill>}
+                  </div>
+                </div>
+                {wk.matches.map((m, mi) => (
+                  <div key={mi} style={{ fontSize: 11, color: K.t3, marginLeft: 4 }}>
+                    {formatTeeTime(leagueConfig.startTime || cfg.startTime || "4:28 PM", mi)} — {gn(m.team1)} vs {gn(m.team2)}
+                  </div>
+                ))}
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
