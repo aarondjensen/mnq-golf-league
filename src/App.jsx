@@ -53,7 +53,7 @@ export default function GolfLeagueApp() {
 
     unsubs.push(db.subscribe("league_players", LF, (docs) => setPlayers(docs)));
     unsubs.push(db.subscribe("league_teams", LF, (docs) => setTeams(docs)));
-    unsubs.push(db.subscribe("league_schedule", LF, (docs) => setSchedule(docs.sort((a, b) => a.week - b.week))));
+    unsubs.push(db.subscribe("league_schedule", LF, (docs) => setSchedule(docs.filter(d => d.week > 0).sort((a, b) => a.week - b.week))));
     unsubs.push(db.subscribe("league_course", LF, (docs) => { if (docs.length) setCourseData(docs[0]); }));
     unsubs.push(db.subscribe("league_scoring", LF, (docs) => { if (docs.length) setScoringRules(docs[0]); }));
 
@@ -209,13 +209,15 @@ export default function GolfLeagueApp() {
 
       {/* Header */}
       <div className="app-header">
-        <div style={{ position: "absolute", left: 16, display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ fontSize: 11, color: K.t3, fontWeight: 500 }}>{leagueUser.name}</div>
-          {syncing && <span className="pu" style={{ fontSize: 8, color: K.grn }}>● LIVE</span>}
-        </div>
-        <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
-        <div style={{ position: "absolute", right: 16 }}>
-          <button onClick={doSignOut} style={{ background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t3, fontSize: 10, padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}>Sign Out</button>
+        <div style={{ maxWidth: 900, width: "100%", margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: "0 14px" }}>
+          <div style={{ position: "absolute", left: 14, display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: 11, color: K.t3, fontWeight: 500 }}>{leagueUser.name}</div>
+            {syncing && <span className="pu" style={{ fontSize: 8, color: K.grn }}>● LIVE</span>}
+          </div>
+          <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
+          <div style={{ position: "absolute", right: 14 }}>
+            <button onClick={doSignOut} style={{ background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t3, fontSize: 10, padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}>Sign Out</button>
+          </div>
         </div>
       </div>
 
