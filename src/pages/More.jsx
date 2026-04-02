@@ -18,6 +18,17 @@ function PlayersDirectory({ players, course, schedule, scoringRules, fetchAllSco
 
   const commPlayerIds = (members || []).filter(m => m.isCommissioner).map(m => m.playerId);
 
+  // Approximate round dates from season year + week number
+  // Seasons typically start mid-April: 2023=Apr 25, 2024=Apr 23, 2025=Apr 22, 2026=Apr 21
+  const seasonStarts = { 2023: "2023-04-25", 2024: "2024-04-23", 2025: "2025-04-22", 2026: "2026-04-21" };
+  const getRoundDate = (season, week) => {
+    const start = seasonStarts[season];
+    if (!start) return `${season}`;
+    const d = new Date(start + "T12:00:00");
+    d.setDate(d.getDate() + (week - 1) * 7);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
@@ -67,30 +78,30 @@ function PlayersDirectory({ players, course, schedule, scoringRules, fetchAllSco
               }}>{p.idx}</button>
             </div>
             {expanded === p.id && (
-              <div style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderTop: "none", borderRadius: "0 0 8px 8px", padding: "10px 14px", fontSize: 12 }}>
-                <div style={{ color: K.t3, marginBottom: 8 }}>Best {bestN} of recent {recentN} · Par {p.par} · {p.totalRounds} total rounds</div>
+              <div style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderTop: "none", borderRadius: "0 0 8px 8px", padding: "10px 10px", fontSize: 12 }}>
                 {p.recentRounds.length === 0 ? (
-                  <div style={{ color: K.t3, fontStyle: "italic" }}>No completed rounds found</div>
+                  <div style={{ color: K.t3, fontStyle: "italic", padding: 4 }}>No completed rounds found</div>
                 ) : (
-                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 5 }}>
                     {p.recentRounds.map((s, i) => {
                       const isBest = p.best.some(b => b.season === s.season && b.week === s.week && b.gross === s.gross);
+                      const roundDate = getRoundDate(s.season, s.week);
                       return (
                         <div key={i} style={{
                           background: isBest ? K.act + "20" : K.card,
                           border: `1px solid ${isBest ? K.act + "50" : K.bdr}`,
-                          borderRadius: 6, padding: "4px 8px", textAlign: "center",
+                          borderRadius: 6, padding: "6px 4px", textAlign: "center",
                         }}>
-                          <div style={{ fontSize: 9, color: K.t3 }}>'{String(s.season).slice(-2)} W{s.week}</div>
-                          <div style={{ fontSize: 15, fontWeight: 700, color: isBest ? K.t1 : K.t2 }}>{s.gross}</div>
+                          <div style={{ fontSize: 9, color: K.t3, marginBottom: 2 }}>{roundDate}</div>
+                          <div style={{ fontSize: 16, fontWeight: 700, color: isBest ? K.t1 : K.t2 }}>{s.gross}</div>
                         </div>
                       );
                     })}
                   </div>
                 )}
                 {p.best.length > 0 && (
-                  <div style={{ color: K.t2, borderTop: `1px solid ${K.bdr}`, paddingTop: 6, marginTop: 4 }}>
-                    Best {p.best.length}: {p.best.map(b => b.gross).join(", ")} · Avg: {(p.best.reduce((a, b) => a + b.gross, 0) / p.best.length).toFixed(1)} · Par: {p.par} · <strong style={{ color: K.t1 }}>HCP: {p.idx}</strong>
+                  <div style={{ color: K.t2, paddingTop: 8, marginTop: 6, textAlign: "center", fontSize: 12 }}>
+                    Best {p.best.length}: {p.best.map(b => b.gross).join(", ")} · Avg: {(p.best.reduce((a, b) => a + b.gross, 0) / p.best.length).toFixed(1)} · <strong style={{ color: K.t1 }}>HCP: {p.idx}</strong>
                   </div>
                 )}
               </div>
