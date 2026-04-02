@@ -235,7 +235,7 @@ export default function GolfLeagueApp() {
                 {/* Left: Tee time + Front/Back */}
                 <div style={{ width: 90, flexShrink: 0, textAlign: "center" }}>
                   <div style={{ fontSize: 18, fontWeight: 800, color: K.teal, letterSpacing: .5 }}>{upcomingBanner.teeTime}</div>
-                  <div style={{ fontSize: 10, color: K.t3, textTransform: "uppercase", fontWeight: 600, letterSpacing: 1, marginTop: 2 }}>{upcomingBanner.side === 'front' ? 'Front 9' : 'Back 9'}</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: K.teal, letterSpacing: .5, marginTop: 2 }}>{upcomingBanner.side === 'front' ? 'Front 9' : 'Back 9'}</div>
                 </div>
                 {/* Center: Date, vs, opponent */}
                 <div style={{ flex: 1, textAlign: "center" }}>
@@ -249,10 +249,11 @@ export default function GolfLeagueApp() {
                     background: isLive ? K.teal : "transparent",
                     border: `1px solid ${isLive ? K.teal : K.bdr}`,
                     borderRadius: 8, padding: "8px 10px", cursor: "pointer",
-                    color: isLive ? K.bg : K.t3, fontSize: 11, fontWeight: 700,
+                    color: isLive ? K.bg : K.t3, fontSize: 14, fontWeight: 700,
                     textTransform: "uppercase", letterSpacing: .5, transition: "all .3s",
+                    lineHeight: 1.3,
                   }}>
-                    {isLive && <span style={{ marginRight: 4 }}>●</span>}Live Score
+                    {isLive && <span style={{ fontSize: 10 }}>● </span>}Live<br/>Score
                   </button>
                 </div>
               </div>
