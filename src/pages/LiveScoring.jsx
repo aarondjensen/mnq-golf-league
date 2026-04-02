@@ -3,7 +3,7 @@ import { K, FONTS, CSS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card,
   SEASON_WEEKS, REGULAR_WEEKS, TEAMS_COUNT, getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 
-export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm }) {
+export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
   const [showCTP, setShowCTP] = useState(false);
@@ -95,10 +95,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const t2 = teams.find(t => t.id === matchToScore.team2);
   if (!t1 || !t2) return null;
 
-  const getHcp = (pid) => players.find(p => p.id === pid)?.handicapIndex || 0;
-  const t1p = [t1.player1, t1.player2].sort((a, b) => getHcp(a) - getHcp(b));
-  const t2p = [t2.player1, t2.player2].sort((a, b) => getHcp(a) - getHcp(b));
-  const allP = [t1p[0], t2p[0], t1p[1], t2p[1]];
+  const scoringFormat = leagueConfig?.scoringFormat || "lowHighBonus";
+  const isTeamNet = scoringFormat === "teamNetTotal";
+
+  // For lowHighBonus: interleave low/high pairs. For teamNetTotal: group by team
+  const t1Players = [t1.player1, t1.player2];
+  const t2Players = [t2.player1, t2.player2];
+  const allP = isTeamNet
+    ? [...t1Players, ...t2Players]
+    : (() => { const t1s = [...t1Players].sort((a, b) => getHcp(a) - getHcp(b)); const t2s = [...t2Players].sort((a, b) => getHcp(a) - getHcp(b)); return [t1s[0], t2s[0], t1s[1], t2s[1]]; })();
 
   const par = pars[curHole] || 4;
   const hcp = hcps[curHole] || 1;
@@ -125,17 +130,43 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const allComplete = allP.every(pid => { for (let h = 0; h < 9; h++) if (getS(pid, h) <= 0) return false; return true; });
 
   const finalizeMatch = async () => {
-    const t1L = getRunning(t1p[0]).net, t2L = getRunning(t2p[0]).net;
-    const t1H = getRunning(t1p[1]).net, t2H = getRunning(t2p[1]).net;
-    const t1T = t1L + t1H, t2T = t2L + t2H;
     const sr = week > REGULAR_WEEKS
       ? { mw: scoringRules.playoffMatchWin, mt: scoringRules.playoffMatchTie, ml: scoringRules.playoffMatchLoss, bw: scoringRules.playoffBonusWin, bt: scoringRules.playoffBonusTie, bl: scoringRules.playoffBonusLoss }
       : { mw: scoringRules.matchWin, mt: scoringRules.matchTie, ml: scoringRules.matchLoss, bw: scoringRules.totalNetBonusWin, bt: scoringRules.totalNetBonusTie, bl: scoringRules.totalNetBonusLoss };
+
     let t1Pts = 0, t2Pts = 0;
-    if (t1L < t2L) { t1Pts += sr.mw; t2Pts += sr.ml; } else if (t1L > t2L) { t1Pts += sr.ml; t2Pts += sr.mw; } else { t1Pts += sr.mt; t2Pts += sr.mt; }
-    if (t1H < t2H) { t1Pts += sr.mw; t2Pts += sr.ml; } else if (t1H > t2H) { t1Pts += sr.ml; t2Pts += sr.mw; } else { t1Pts += sr.mt; t2Pts += sr.mt; }
-    if (t1T < t2T) { t1Pts += sr.bw; t2Pts += sr.bl; } else if (t1T > t2T) { t1Pts += sr.bl; t2Pts += sr.bw; } else { t1Pts += sr.bt; t2Pts += sr.bt; }
-    await saveMatchResult({ id: `${LEAGUE_ID}_w${week}_${t1.id}_${t2.id}`, week, team1Id: t1.id, team2Id: t2.id, team1Points: t1Pts, team2Points: t2Pts, t1LowNet: t1L, t2LowNet: t2L, t1HighNet: t1H, t2HighNet: t2H, t1Total: t1T, t2Total: t2T });
+    const t1Net = t1Players.reduce((a, pid) => a + getRunning(pid).net, 0);
+    const t2Net = t2Players.reduce((a, pid) => a + getRunning(pid).net, 0);
+    const t1Gross = t1Players.reduce((a, pid) => a + getRunning(pid).gross, 0);
+    const t2Gross = t2Players.reduce((a, pid) => a + getRunning(pid).gross, 0);
+
+    if (isTeamNet) {
+      if (t1Net < t2Net) { t1Pts = sr.mw; t2Pts = sr.ml; }
+      else if (t1Net > t2Net) { t1Pts = sr.ml; t2Pts = sr.mw; }
+      else { t1Pts = sr.mt; t2Pts = sr.mt; }
+    } else {
+      // Low/High matches
+      const t1s = [...t1Players].sort((a, b) => getHcp(a) - getHcp(b));
+      const t2s = [...t2Players].sort((a, b) => getHcp(a) - getHcp(b));
+      const t1L = getRunning(t1s[0]).net, t2L = getRunning(t2s[0]).net;
+      const t1H = getRunning(t1s[1]).net, t2H = getRunning(t2s[1]).net;
+      if (t1L < t2L) { t1Pts += sr.mw; t2Pts += sr.ml; } else if (t1L > t2L) { t1Pts += sr.ml; t2Pts += sr.mw; } else { t1Pts += sr.mt; t2Pts += sr.mt; }
+      if (t1H < t2H) { t1Pts += sr.mw; t2Pts += sr.ml; } else if (t1H > t2H) { t1Pts += sr.ml; t2Pts += sr.mw; } else { t1Pts += sr.mt; t2Pts += sr.mt; }
+
+      // Bonus — depends on bonusType
+      const bonusType = leagueConfig?.bonusType || "teamNetTotal";
+      let b1, b2;
+      if (bonusType === "lowestNet") {
+        b1 = Math.min(getRunning(t1s[0]).net, getRunning(t1s[1]).net);
+        b2 = Math.min(getRunning(t2s[0]).net, getRunning(t2s[1]).net);
+      } else if (bonusType === "totalGross") {
+        b1 = t1Gross; b2 = t2Gross;
+      } else {
+        b1 = t1Net; b2 = t2Net;
+      }
+      if (b1 < b2) { t1Pts += sr.bw; t2Pts += sr.bl; } else if (b1 > b2) { t1Pts += sr.bl; t2Pts += sr.bw; } else { t1Pts += sr.bt; t2Pts += sr.bt; }
+    }
+    await saveMatchResult({ id: `${LEAGUE_ID}_w${week}_${t1.id}_${t2.id}`, week, team1Id: t1.id, team2Id: t2.id, team1Points: t1Pts, team2Points: t2Pts, t1Total: t1Net, t2Total: t2Net });
   };
 
   return (
@@ -167,44 +198,36 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       {isPar3 && <button onClick={() => setShowCTP(!showCTP)} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 8, cursor: "pointer", background: K.acc + "12", border: `1px solid ${K.acc}35`, color: K.acc, fontSize: 12, fontWeight: 700 }}>{showCTP ? "Hide" : "Record"} Closest to Pin</button>}
       {showCTP && isPar3 && <CTPEntry week={week} hole={curHole} players={players} ctpData={ctpData} saveCtp={saveCtp} side={side} />}
 
-      {[0, 1].map(mi => {
-        const label = mi === 0 ? "Low Handicap Match" : "High Handicap Match";
-        return (
-          <div key={mi}>
-            <SubLabel style={{ marginTop: mi > 0 ? 10 : 0 }}>{label}</SubLabel>
-            {[allP[mi * 2], allP[mi * 2 + 1]].map(pid => {
+      {isTeamNet ? (
+        /* Team Net Total: group by team */
+        [{team: t1, pids: t1Players}, {team: t2, pids: t2Players}].map(({team, pids}, ti) => (
+          <div key={ti}>
+            <SubLabel style={{ marginTop: ti > 0 ? 10 : 0 }}>{team.name}</SubLabel>
+            {pids.map(pid => {
               const pl = players.find(p => p.id === pid); if (!pl) return null;
               const score = getS(pid, curHole); const strokes = getStrokes(pid, curHole); const nh = getNineHcp(pid); const run = getRunning(pid);
               const btns = par === 3 ? [1,2,3,4,5,6,7] : par === 5 ? [2,3,4,5,6,7,8] : [2,3,4,5,6,7,8];
-              return (
-                <Card key={pid} style={{ marginBottom: 4, padding: "10px 12px" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                      <span style={{ fontSize: 14, fontWeight: 700 }}>{pl.name}</span>
-                      <Pill color={K.acc}>({nh})</Pill>
-                      {strokes > 0 && <span style={{ color: K.acc, fontSize: 11, letterSpacing: -1 }}>{"●".repeat(strokes)}</span>}
-                    </div>
-                    {run.thru > 0 && <span style={{ fontSize: 11, color: K.t3 }}>Net: <strong style={{ color: K.t1 }}>{run.net > 0 ? "+" : ""}{run.net}</strong> thru {run.thru}</span>}
-                  </div>
-                  <div style={{ display: "flex", gap: 3 }}>
-                    {btns.map(btn => {
-                      const isCur = btn === score; const sd = btn - par; const sc = sd < 0 ? K.red : sd === 0 ? K.t3 : "#3b82f6";
-                      return (
-                        <button key={btn} onClick={() => saveScore(week, pid, curHole, isCur ? 0 : btn)} style={{ flex: 1, height: 42, borderRadius: 8, cursor: "pointer", fontSize: 16, fontWeight: 800, border: "none", background: isCur ? K.acc : K.inp, color: isCur ? K.bg : K.t2, position: "relative", transition: "all .15s" }}>
-                          {isCur && sd !== 0 && <div style={{ position: "absolute", width: 34, height: 34, left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}><div style={{ position: "absolute", inset: 0, borderRadius: sd < 0 ? "50%" : 3, border: `2px solid ${sc}` }} />{Math.abs(sd) >= 2 && <div style={{ position: "absolute", inset: 4, borderRadius: sd < 0 ? "50%" : 2, border: `1.5px solid ${sc}` }} />}</div>}
-                          <span style={{ position: "relative", zIndex: 1 }}>{btn}</span>
-                        </button>
-                      );
-                    })}
-                    <button onClick={() => saveScore(week, pid, curHole, Math.max(1, (score || par) - 1))} style={{ width: 28, height: 42, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>−</button>
-                    <button onClick={() => saveScore(week, pid, curHole, (score || par) + 1)} style={{ width: 28, height: 42, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>+</button>
-                  </div>
-                </Card>
-              );
+              return <PlayerScoreCard key={pid} pl={pl} score={score} strokes={strokes} nh={nh} run={run} btns={btns} par={par} pid={pid} week={week} curHole={curHole} saveScore={saveScore} K={K} />;
             })}
           </div>
-        );
-      })}
+        ))
+      ) : (
+        /* Low/High Match format */
+        [0, 1].map(mi => {
+          const label = mi === 0 ? "Low Handicap Match" : "High Handicap Match";
+          return (
+            <div key={mi}>
+              <SubLabel style={{ marginTop: mi > 0 ? 10 : 0 }}>{label}</SubLabel>
+              {[allP[mi * 2], allP[mi * 2 + 1]].map(pid => {
+                const pl = players.find(p => p.id === pid); if (!pl) return null;
+                const score = getS(pid, curHole); const strokes = getStrokes(pid, curHole); const nh = getNineHcp(pid); const run = getRunning(pid);
+                const btns = par === 3 ? [1,2,3,4,5,6,7] : par === 5 ? [2,3,4,5,6,7,8] : [2,3,4,5,6,7,8];
+                return <PlayerScoreCard key={pid} pl={pl} score={score} strokes={strokes} nh={nh} run={run} btns={btns} par={par} pid={pid} week={week} curHole={curHole} saveScore={saveScore} K={K} />;
+              })}
+            </div>
+          );
+        })
+      )}
       {allComplete && (
         <div style={{ marginTop: 16, background: K.grn + "12", border: `1.5px solid ${K.grn}50`, borderRadius: 12, padding: 14, textAlign: "center" }}>
           <div style={{ fontSize: 14, fontWeight: 800, color: K.grn, marginBottom: 10 }}>All Holes Complete!</div>
@@ -219,6 +242,35 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         </div>
       )}
     </div>
+  );
+}
+
+
+function PlayerScoreCard({ pl, score, strokes, nh, run, btns, par, pid, week, curHole, saveScore, K }) {
+  return (
+    <Card style={{ marginBottom: 4, padding: "10px 12px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 14, fontWeight: 700 }}>{pl.name}</span>
+          <Pill color={K.acc}>({nh})</Pill>
+          {strokes > 0 && <span style={{ color: K.acc, fontSize: 11, letterSpacing: -1 }}>{"●".repeat(strokes)}</span>}
+        </div>
+        {run.thru > 0 && <span style={{ fontSize: 11, color: K.t3 }}>Net: <strong style={{ color: K.t1 }}>{run.net > 0 ? "+" : ""}{run.net}</strong> thru {run.thru}</span>}
+      </div>
+      <div style={{ display: "flex", gap: 3 }}>
+        {btns.map(btn => {
+          const isCur = btn === score; const sd = btn - par; const sc = sd < 0 ? K.red : sd === 0 ? K.t3 : "#3b82f6";
+          return (
+            <button key={btn} onClick={() => saveScore(week, pid, curHole, isCur ? 0 : btn)} style={{ flex: 1, height: 42, borderRadius: 8, cursor: "pointer", fontSize: 16, fontWeight: 800, border: "none", background: isCur ? K.acc : K.inp, color: isCur ? K.bg : K.t2, position: "relative", transition: "all .15s" }}>
+              {isCur && sd !== 0 && <div style={{ position: "absolute", width: 34, height: 34, left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}><div style={{ position: "absolute", inset: 0, borderRadius: sd < 0 ? "50%" : 3, border: `2px solid ${sc}` }} />{Math.abs(sd) >= 2 && <div style={{ position: "absolute", inset: 4, borderRadius: sd < 0 ? "50%" : 2, border: `1.5px solid ${sc}` }} />}</div>}
+              <span style={{ position: "relative", zIndex: 1 }}>{btn}</span>
+            </button>
+          );
+        })}
+        <button onClick={() => saveScore(week, pid, curHole, Math.max(1, (score || par) - 1))} style={{ width: 28, height: 42, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>−</button>
+        <button onClick={() => saveScore(week, pid, curHole, (score || par) + 1)} style={{ width: 28, height: 42, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>+</button>
+      </div>
+    </Card>
   );
 }
 

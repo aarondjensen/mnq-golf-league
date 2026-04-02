@@ -21,7 +21,7 @@ export default function AdminView(props) {
   if (sec === "teams") return <AdminTeams teams={teams} saveTeam={saveTeam} players={players} onBack={() => setSec(null)} />;
   if (sec === "course") return <AdminCourse course={course} saveCourseData={saveCourseData} onBack={() => setSec(null)} />;
   if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} onBack={() => setSec(null)} />;
-  if (sec === "scoring") return <AdminScoring scoring={scoringRules} saveScoringRules={saveScoringRules} onBack={() => setSec(null)} />;
+  if (sec === "scoring") return <AdminScoring scoring={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
   if (sec === "members") return <AdminMembers members={members} saveMember={saveMember} deleteMember={deleteMember} players={players} onBack={() => setSec(null)} />;
   if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
 
@@ -637,16 +637,58 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
 }
 
 
-function AdminScoring({ scoring, saveScoringRules, onBack }) {
+function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfig, onBack }) {
   const [lc, setLc] = useState({ ...scoring });
+  const [cfg, setCfg] = useState({ scoringFormat: "lowHighBonus", bonusType: "teamNetTotal", ...leagueConfig });
   const [dirty, setDirty] = useState(false);
-  const save = async () => { await saveScoringRules(lc); setDirty(false); };
+  const save = async () => {
+    await saveScoringRules(lc);
+    await saveLeagueConfig({ ...leagueConfig, scoringFormat: cfg.scoringFormat, bonusType: cfg.bonusType });
+    setDirty(false);
+  };
   const F = ({ label, field }) => (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${K.bdr}15` }}>
       <span style={{ fontSize: 12, color: K.t2 }}>{label}</span>
       <input value={lc[field]} onChange={e => { setLc({ ...lc, [field]: parseFloat(e.target.value) || 0 }); setDirty(true); }} type="number" step="0.5" style={{ width: 58, padding: "5px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13, textAlign: "center" }} />
     </div>
   );
+
+  const format = cfg.scoringFormat;
+  const isLowHigh = format === "lowHighBonus";
+
+  const formats = [
+    { id: "lowHighBonus", label: "Low/High Match + Bonus", desc: "Low HCP match, high HCP match, plus a bonus category" },
+    { id: "teamNetTotal", label: "Team Net Total", desc: "Combined team net vs combined team net — single match" },
+  ];
+
+  const bonusTypes = [
+    { id: "teamNetTotal", label: "Team Net Total", desc: "Combined net of both teammates" },
+    { id: "lowestNet", label: "Lowest Individual Net", desc: "Lowest single net score between all 4 players" },
+    { id: "totalGross", label: "Total Gross", desc: "Combined gross of both teammates" },
+  ];
+
+  const Radio = ({ items, value, onChange }) => (
+    <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 12 }}>
+      {items.map(f => (
+        <button key={f.id} onClick={() => { onChange(f.id); setDirty(true); }} style={{
+          background: value === f.id ? K.act + "15" : K.card,
+          border: `1.5px solid ${value === f.id ? K.act : K.bdr}`,
+          borderRadius: 8, padding: "10px 12px", cursor: "pointer", textAlign: "left", width: "100%",
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ width: 16, height: 16, borderRadius: "50%", border: `2px solid ${value === f.id ? K.act : K.t3}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+              {value === f.id && <div style={{ width: 8, height: 8, borderRadius: "50%", background: K.act }} />}
+            </div>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: value === f.id ? K.t1 : K.t2 }}>{f.label}</div>
+              <div style={{ fontSize: 10, color: K.t3, marginTop: 1 }}>{f.desc}</div>
+            </div>
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
@@ -654,12 +696,68 @@ function AdminScoring({ scoring, saveScoringRules, onBack }) {
         <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Scoring Rules</span>
         <button onClick={save} style={{ background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: 13, padding: "7px 16px", cursor: dirty ? "pointer" : "default", fontWeight: 600, letterSpacing: .4, transition: "all .2s" }}>{dirty ? "Save" : "Saved"}</button>
       </div>
+
+      <SubLabel>Match Format</SubLabel>
+      <Radio items={formats} value={format} onChange={v => setCfg({ ...cfg, scoringFormat: v })} />
+
       <div className="scoring-grid">
-        <div><SubLabel>Handicap Calculation</SubLabel><Card style={{ padding: "2px 14px" }}><F label="Recent rounds to consider" field="hcpRecentCount" /><F label="Best rounds to average" field="hcpBestCount" /></Card></div>
-        <div><SubLabel>Regular Season — Match</SubLabel><Card style={{ padding: "2px 14px" }}><F label="Win" field="matchWin" /><F label="Tie" field="matchTie" /><F label="Loss" field="matchLoss" /></Card></div>
-        <div><SubLabel>Regular Season — Total Net Bonus</SubLabel><Card style={{ padding: "2px 14px" }}><F label="Win" field="totalNetBonusWin" /><F label="Tie" field="totalNetBonusTie" /><F label="Loss" field="totalNetBonusLoss" /></Card></div>
-        <div><SubLabel color={K.warn}>Playoff — Match</SubLabel><Card style={{ padding: "2px 14px" }}><F label="Win" field="playoffMatchWin" /><F label="Tie" field="playoffMatchTie" /><F label="Loss" field="playoffMatchLoss" /></Card></div>
-        <div><SubLabel color={K.warn}>Playoff — Bonus</SubLabel><Card style={{ padding: "2px 14px" }}><F label="Win" field="playoffBonusWin" /><F label="Tie" field="playoffBonusTie" /><F label="Loss" field="playoffBonusLoss" /></Card></div>
+        <div>
+          <SubLabel>Handicap Calculation</SubLabel>
+          <Card style={{ padding: "2px 14px" }}>
+            <F label="Recent rounds to consider" field="hcpRecentCount" />
+            <F label="Best rounds to average" field="hcpBestCount" />
+          </Card>
+        </div>
+
+        {isLowHigh ? (<>
+          <div>
+            <SubLabel>Low/High Match Points</SubLabel>
+            <Card style={{ padding: "2px 14px" }}>
+              <F label="Win" field="matchWin" />
+              <F label="Tie" field="matchTie" />
+              <F label="Loss" field="matchLoss" />
+            </Card>
+          </div>
+          <div>
+            <SubLabel>Bonus — Type</SubLabel>
+            <Radio items={bonusTypes} value={cfg.bonusType || "teamNetTotal"} onChange={v => setCfg({ ...cfg, bonusType: v })} />
+            <SubLabel>Bonus — Points</SubLabel>
+            <Card style={{ padding: "2px 14px" }}>
+              <F label="Win" field="totalNetBonusWin" />
+              <F label="Tie" field="totalNetBonusTie" />
+              <F label="Loss" field="totalNetBonusLoss" />
+            </Card>
+          </div>
+        </>) : (
+          <div>
+            <SubLabel>Match Points</SubLabel>
+            <Card style={{ padding: "2px 14px" }}>
+              <F label="Win" field="matchWin" />
+              <F label="Tie" field="matchTie" />
+              <F label="Loss" field="matchLoss" />
+            </Card>
+          </div>
+        )}
+
+        <div>
+          <SubLabel color={K.warn}>Playoff — Match</SubLabel>
+          <Card style={{ padding: "2px 14px" }}>
+            <F label="Win" field="playoffMatchWin" />
+            <F label="Tie" field="playoffMatchTie" />
+            <F label="Loss" field="playoffMatchLoss" />
+          </Card>
+        </div>
+
+        {isLowHigh && (
+          <div>
+            <SubLabel color={K.warn}>Playoff — Bonus</SubLabel>
+            <Card style={{ padding: "2px 14px" }}>
+              <F label="Win" field="playoffBonusWin" />
+              <F label="Tie" field="playoffBonusTie" />
+              <F label="Loss" field="playoffBonusLoss" />
+            </Card>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -692,14 +790,9 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
 
 
 function AdminConfig({ config, saveLeagueConfig, onBack }) {
-  const [lc, setLc] = useState({ scoringFormat: "lowHighBonus", ...config });
+  const [lc, setLc] = useState({ ...config });
   const [dirty, setDirty] = useState(false);
   const save = async () => { await saveLeagueConfig(lc); setDirty(false); };
-
-  const formats = [
-    { id: "lowHighBonus", label: "Low/High Match + Total Net Bonus", desc: "Low handicap match, high handicap match, and total net bonus — 3 separate point categories" },
-    { id: "teamNetTotal", label: "Team Net Total Match Play", desc: "Combined team net score vs combined team net score — single match result per week" },
-  ];
 
   return (
     <div>
@@ -713,26 +806,6 @@ function AdminConfig({ config, saveLeagueConfig, onBack }) {
         <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Season Year</div><input value={lc.year} onChange={e => { setLc({ ...lc, year: parseInt(e.target.value) || 2026 }); setDirty(true); }} type="number" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} /></div>
         <div><div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Invite Code</div><input value={lc.inviteCode || ""} onChange={e => { setLc({ ...lc, inviteCode: e.target.value.toUpperCase() }); setDirty(true); }} placeholder="e.g. MNQ2026" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14, letterSpacing: 2, textTransform: "uppercase" }} /><div style={{ fontSize: 10, color: K.t3, marginTop: 4 }}>New members must enter this code to join. Leave blank to allow anyone.</div></div>
       </Card>
-      <SubLabel>Scoring Format</SubLabel>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {formats.map(f => (
-          <button key={f.id} onClick={() => { setLc({ ...lc, scoringFormat: f.id }); setDirty(true); }} style={{
-            background: lc.scoringFormat === f.id ? K.act + "15" : K.card,
-            border: `1.5px solid ${lc.scoringFormat === f.id ? K.act : K.bdr}`,
-            borderRadius: 10, padding: "12px 14px", cursor: "pointer", textAlign: "left", width: "100%",
-          }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <div style={{ width: 18, height: 18, borderRadius: "50%", border: `2px solid ${lc.scoringFormat === f.id ? K.act : K.t3}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                {lc.scoringFormat === f.id && <div style={{ width: 10, height: 10, borderRadius: "50%", background: K.act }} />}
-              </div>
-              <div>
-                <div style={{ fontSize: 14, fontWeight: 600, color: lc.scoringFormat === f.id ? K.t1 : K.t2 }}>{f.label}</div>
-                <div style={{ fontSize: 11, color: K.t3, marginTop: 2 }}>{f.desc}</div>
-              </div>
-            </div>
-          </button>
-        ))}
-      </div>
     </div>
   );
 }

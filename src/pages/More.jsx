@@ -88,12 +88,12 @@ function PlayersDirectory({ players, course, schedule, scoringRules, fetchAllSco
                       const roundDate = getRoundDate(s.season, s.week);
                       return (
                         <div key={i} style={{
-                          background: isBest ? K.act + "20" : K.card,
+                          background: K.card,
                           border: `1px solid ${isBest ? K.act + "50" : K.bdr}`,
                           borderRadius: 6, padding: "6px 4px", textAlign: "center",
                         }}>
-                          <div style={{ fontSize: 9, color: K.t3, marginBottom: 2 }}>{roundDate}</div>
-                          <div style={{ fontSize: 16, fontWeight: 700, color: isBest ? K.t1 : K.t2 }}>{s.gross}</div>
+                          <div style={{ fontSize: 11, color: K.t3, marginBottom: 3, fontWeight: 500 }}>{roundDate}</div>
+                          <div style={{ fontSize: 18, fontWeight: 700, color: isBest ? K.act : K.t2 }}>{s.gross}</div>
                         </div>
                       );
                     })}

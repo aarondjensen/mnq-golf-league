@@ -197,7 +197,7 @@ export default function GolfLeagueApp() {
         const mn = mins % 60;
         const ap = Math.floor(mins / 60) >= 12 ? 'PM' : 'AM';
         const teeTime = `${hr}:${String(mn).padStart(2, '0')} ${ap}`;
-        return { week: wk.week, date: wk.date, teeTime, opp: opp?.name || "TBD", side: wk.side };
+        return { week: wk.week, date: wk.date, teeTime, teeMinutes: mins, opp: opp?.name || "TBD", side: wk.side };
       }
     }
     return null;
@@ -225,23 +225,42 @@ export default function GolfLeagueApp() {
 
       <div className="app-body">
         <div style={{ maxWidth: 900, width: "100%", margin: "0 auto" }}>
-          {upcomingBanner && tab !== "scoring" && (
-            <div style={{ background: K.card, borderBottom: `1px solid ${K.bdr}`, padding: "10px 14px", display: "flex", alignItems: "center" }}>
-              <div style={{ width: 100, flexShrink: 0 }}>
-                <div style={{ fontSize: 16, fontWeight: 800, color: K.teal, letterSpacing: .5 }}>{upcomingBanner.teeTime}</div>
+          {upcomingBanner && tab !== "scoring" && (() => {
+            const now = new Date();
+            const nowMins = now.getHours() * 60 + now.getMinutes();
+            const isLeagueDay = leagueConfig?.dayOfWeek && now.toLocaleDateString('en-US', { weekday: 'long' }) === leagueConfig.dayOfWeek;
+            const isLive = isLeagueDay && nowMins >= upcomingBanner.teeMinutes - 15;
+            return (
+              <div style={{ background: K.card, border: `1.5px solid ${K.act}`, borderRadius: 10, margin: "8px 14px", padding: "10px 14px", display: "flex", alignItems: "center" }}>
+                {/* Left: Tee time + Front/Back */}
+                <div style={{ width: 90, flexShrink: 0, textAlign: "center" }}>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: K.teal, letterSpacing: .5 }}>{upcomingBanner.teeTime}</div>
+                  <div style={{ fontSize: 10, color: K.t3, textTransform: "uppercase", fontWeight: 600, letterSpacing: 1, marginTop: 2 }}>{upcomingBanner.side === 'front' ? 'Front 9' : 'Back 9'}</div>
+                </div>
+                {/* Center: Date, vs, opponent */}
+                <div style={{ flex: 1, textAlign: "center" }}>
+                  <div style={{ fontSize: 12, color: K.t2, fontWeight: 500 }}>{upcomingBanner.date ? `${upcomingBanner.date} — ` : ""}Week {upcomingBanner.week}</div>
+                  <div style={{ fontSize: 10, color: K.t3, fontWeight: 600, margin: "2px 0" }}>vs</div>
+                  <div style={{ color: K.t1, fontWeight: 700, fontSize: 15 }}>{upcomingBanner.opp}</div>
+                </div>
+                {/* Right: Live Scoring button */}
+                <div style={{ width: 90, flexShrink: 0, textAlign: "center" }}>
+                  <button onClick={() => setTab("scoring")} style={{
+                    background: isLive ? K.teal : "transparent",
+                    border: `1px solid ${isLive ? K.teal : K.bdr}`,
+                    borderRadius: 8, padding: "8px 10px", cursor: "pointer",
+                    color: isLive ? K.bg : K.t3, fontSize: 11, fontWeight: 700,
+                    textTransform: "uppercase", letterSpacing: .5, transition: "all .3s",
+                  }}>
+                    {isLive && <span style={{ marginRight: 4 }}>●</span>}Live Score
+                  </button>
+                </div>
               </div>
-              <div style={{ flex: 1, textAlign: "center" }}>
-                <div style={{ fontSize: 12, color: K.t2, fontWeight: 500 }}>Week {upcomingBanner.week}{upcomingBanner.date ? ` · ${upcomingBanner.date}` : ""}</div>
-                <div style={{ color: K.t1, fontWeight: 700, fontSize: 15, marginTop: 1 }}>vs {upcomingBanner.opp}</div>
-              </div>
-              <div style={{ width: 100, flexShrink: 0, textAlign: "right" }}>
-                <div style={{ fontSize: 16, color: K.teal, textTransform: "uppercase", fontWeight: 800, letterSpacing: 1 }}>{upcomingBanner.side === 'front' ? 'Front 9' : 'Back 9'}</div>
-              </div>
-            </div>
-          )}
+            );
+          })()}
           <div className="main-content fi" key={tab}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} />}
-          {tab === "scoring" && <LiveScoringView leagueUser={leagueUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} />}
+          {tab === "scoring" && <LiveScoringView leagueUser={leagueUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={leagueUser} leagueConfig={leagueConfig} />}
           {tab === "players" && <MoreView view="players" players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} ctpData={ctpData} members={members} />}
           {tab === "stats" && <MoreView view="stats" players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} ctpData={ctpData} members={members} />}
