@@ -1,5 +1,5 @@
 {
-  "name": "MnQ",
+  "name": "MnQ Golf",
   "short_name": "MnQ",
   "icons": [
     {
@@ -15,7 +15,7 @@
       "purpose": "maskable"
     }
   ],
-  "theme_color": "#ffffff",
-  "background_color": "#ffffff",
+  "theme_color": "#efefef",
+  "background_color": "#efefef",
   "display": "standalone"
 }
