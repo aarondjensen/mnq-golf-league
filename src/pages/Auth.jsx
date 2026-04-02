@@ -55,15 +55,25 @@ export function AuthScreen({ onGoogle, onEmail }) {
 }
 
 
-export function JoinScreen({ authUser, members, players, saveMember, doSignOut }) {
+export function JoinScreen({ authUser, members, players, saveMember, doSignOut, leagueConfig }) {
   const [selectedPlayer, setSelectedPlayer] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
+  const [codeError, setCodeError] = useState(false);
   const [busy, setBusy] = useState(false);
   const isFirstUser = members.length === 0;
   const existingMember = members.find(m => m.uid === authUser.uid);
   const assigned = members.map(m => m.playerId).filter(Boolean);
   const needsLink = existingMember && !existingMember.playerId && players.length > 0;
+  const storedCode = leagueConfig?.inviteCode || "";
 
   const handleJoin = async (asCommissioner = false) => {
+    // Check invite code (skip for first user/commissioner setup, or if already a member needing to link)
+    if (!isFirstUser && !existingMember && storedCode) {
+      if (inviteCode.toUpperCase().trim() !== storedCode.toUpperCase().trim()) {
+        setCodeError(true);
+        return;
+      }
+    }
     setBusy(true);
     await saveMember({ id: existingMember?.id || `${LEAGUE_ID}_${authUser.uid}`, uid: authUser.uid, email: authUser.email, name: authUser.displayName || authUser.email?.split("@")[0] || "Player", playerId: selectedPlayer || null, isCommissioner: asCommissioner || existingMember?.isCommissioner || false });
     setBusy(false);
@@ -76,7 +86,10 @@ export function JoinScreen({ authUser, members, players, saveMember, doSignOut }
     ? "You're the first one here! Set yourself up as commissioner to get started."
     : players.length > 0
     ? "Select your player profile to join:"
-    : "No player profiles yet — your commissioner is still setting up. Join as a member.";
+    : "No player profiles yet — your commissioner is still setting up.";
+
+  // Check if invite code is required (not first user, not already a member)
+  const needsCode = !isFirstUser && !existingMember && storedCode;
 
   return (
     <div style={{ minHeight: "100vh", background: K.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'League Spartan', sans-serif" }}>
@@ -90,6 +103,17 @@ export function JoinScreen({ authUser, members, players, saveMember, doSignOut }
         {isFirstUser ? (
           <button onClick={() => handleJoin(true)} disabled={busy} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: busy ? .6 : 1 }}>Create League as Commissioner</button>
         ) : (<>
+          {needsCode && (
+            <div style={{ marginBottom: 12 }}>
+              <input
+                value={inviteCode}
+                onChange={e => { setInviteCode(e.target.value); setCodeError(false); }}
+                placeholder="Enter invite code"
+                style={{ width: "100%", padding: "12px", borderRadius: 10, background: K.inp, border: `1px solid ${codeError ? '#f87171' : K.bdr}`, color: K.t1, fontSize: 14, textAlign: "center", letterSpacing: 2, textTransform: "uppercase" }}
+              />
+              {codeError && <div style={{ color: "#f87171", fontSize: 12, marginTop: 4 }}>Invalid invite code</div>}
+            </div>
+          )}
           {players.length > 0 && (
             <select value={selectedPlayer} onChange={e => setSelectedPlayer(e.target.value)} style={{ width: "100%", padding: "12px", borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14, marginBottom: 12, textAlign: "center" }}>
               <option value="">— Select your name —</option>

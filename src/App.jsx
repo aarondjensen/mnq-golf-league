@@ -160,7 +160,7 @@ export default function GolfLeagueApp() {
   if (authLoading) return <LoadingScreen />;
   if (!authUser) return <AuthScreen onGoogle={doGoogleSignIn} onEmail={doEmailSignIn} />;
   if (!membersLoaded) return <LoadingScreen />;
-  if (!leagueUser || !leagueUser.playerId) return <JoinScreen authUser={authUser} members={members} players={activePlayers} saveMember={saveMember} doSignOut={doSignOut} />;
+  if (!leagueUser || !leagueUser.playerId) return <JoinScreen authUser={authUser} members={members} players={activePlayers} saveMember={saveMember} doSignOut={doSignOut} leagueConfig={leagueConfig} />;
 
   const tabs = [
     { id: "standings", label: "Standings", icon: "trophy" },
