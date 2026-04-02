@@ -639,11 +639,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
 
 function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfig, onBack }) {
   const [lc, setLc] = useState({ ...scoring });
-  const [cfg, setCfg] = useState({ scoringFormat: "lowHighBonus", bonusType: "teamNetTotal", ...leagueConfig });
+  const [cfg, setCfg] = useState({ scoringFormat: "lowHighBonus", bonusType: "teamNetTotal", standingsMethod: "points", tiebreaker: "holesWon", ...leagueConfig });
   const [dirty, setDirty] = useState(false);
   const save = async () => {
     await saveScoringRules(lc);
-    await saveLeagueConfig({ ...leagueConfig, scoringFormat: cfg.scoringFormat, bonusType: cfg.bonusType });
+    await saveLeagueConfig({ ...leagueConfig, scoringFormat: cfg.scoringFormat, bonusType: cfg.bonusType, standingsMethod: cfg.standingsMethod, tiebreaker: cfg.tiebreaker });
     setDirty(false);
   };
   const F = ({ label, field }) => (
@@ -655,17 +655,7 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
 
   const format = cfg.scoringFormat;
   const isLowHigh = format === "lowHighBonus";
-
-  const formats = [
-    { id: "lowHighBonus", label: "Low/High Match + Bonus", desc: "Low HCP match, high HCP match, plus a bonus category" },
-    { id: "teamNetTotal", label: "Team Net Total", desc: "Combined team net vs combined team net — single match" },
-  ];
-
-  const bonusTypes = [
-    { id: "teamNetTotal", label: "Team Net Total", desc: "Combined net of both teammates" },
-    { id: "lowestNet", label: "Lowest Individual Net", desc: "Lowest single net score between all 4 players" },
-    { id: "totalGross", label: "Total Gross", desc: "Combined gross of both teammates" },
-  ];
+  const isPoints = cfg.standingsMethod === "points";
 
   const Radio = ({ items, value, onChange }) => (
     <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 12 }}>
@@ -681,11 +671,20 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
             </div>
             <div>
               <div style={{ fontSize: 13, fontWeight: 600, color: value === f.id ? K.t1 : K.t2 }}>{f.label}</div>
-              <div style={{ fontSize: 10, color: K.t3, marginTop: 1 }}>{f.desc}</div>
+              {f.desc && <div style={{ fontSize: 10, color: K.t3, marginTop: 1 }}>{f.desc}</div>}
             </div>
           </div>
         </button>
       ))}
+    </div>
+  );
+
+  const Dropdown = ({ label, value, onChange, options }) => (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>{label}</div>
+      <select value={value} onChange={e => { onChange(e.target.value); setDirty(true); }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }}>
+        {options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+      </select>
     </div>
   );
 
@@ -698,7 +697,22 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
       </div>
 
       <SubLabel>Match Format</SubLabel>
-      <Radio items={formats} value={format} onChange={v => setCfg({ ...cfg, scoringFormat: v })} />
+      <Radio items={[
+        { id: "lowHighBonus", label: "Low/High Match + Bonus", desc: "Low HCP match, high HCP match, plus a bonus category" },
+        { id: "teamNetTotal", label: "Team Net Total", desc: "Combined team net vs combined team net — single match" },
+      ]} value={format} onChange={v => setCfg({ ...cfg, scoringFormat: v })} />
+
+      <SubLabel>Standings Method</SubLabel>
+      <Radio items={[
+        { id: "points", label: "Points-Based", desc: "Teams accumulate points each week — most points wins" },
+        { id: "record", label: "Win-Loss-Tie Record", desc: "Standings by win percentage — like a traditional sports league" },
+      ]} value={cfg.standingsMethod} onChange={v => setCfg({ ...cfg, standingsMethod: v })} />
+
+      <SubLabel>Tiebreaker</SubLabel>
+      <Dropdown label="When teams are tied in standings" value={cfg.tiebreaker} onChange={v => setCfg({ ...cfg, tiebreaker: v })} options={[
+        { id: "holesWon", label: "Total Holes Won (season)" },
+        { id: "headToHead", label: "Head-to-Head Matchup Result" },
+      ]} />
 
       <div className="scoring-grid">
         <div>
@@ -709,52 +723,69 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
           </Card>
         </div>
 
-        {isLowHigh ? (<>
+        {isPoints ? (<>
+          {isLowHigh ? (<>
+            <div>
+              <SubLabel>Low/High Match Points</SubLabel>
+              <Card style={{ padding: "2px 14px" }}>
+                <F label="Win" field="matchWin" />
+                <F label="Tie" field="matchTie" />
+                <F label="Loss" field="matchLoss" />
+              </Card>
+            </div>
+            <div>
+              <SubLabel>Bonus — Type</SubLabel>
+              <Radio items={[
+                { id: "teamNetTotal", label: "Team Net Total", desc: "Combined net of both teammates" },
+                { id: "lowestNet", label: "Lowest Individual Net", desc: "Lowest single net score between all 4" },
+                { id: "totalGross", label: "Total Gross", desc: "Combined gross of both teammates" },
+              ]} value={cfg.bonusType || "teamNetTotal"} onChange={v => setCfg({ ...cfg, bonusType: v })} />
+              <SubLabel>Bonus — Points</SubLabel>
+              <Card style={{ padding: "2px 14px" }}>
+                <F label="Win" field="totalNetBonusWin" />
+                <F label="Tie" field="totalNetBonusTie" />
+                <F label="Loss" field="totalNetBonusLoss" />
+              </Card>
+            </div>
+          </>) : (
+            <div>
+              <SubLabel>Match Points</SubLabel>
+              <Card style={{ padding: "2px 14px" }}>
+                <F label="Win" field="matchWin" />
+                <F label="Tie" field="matchTie" />
+                <F label="Loss" field="matchLoss" />
+              </Card>
+            </div>
+          )}
+
           <div>
-            <SubLabel>Low/High Match Points</SubLabel>
+            <SubLabel color={K.warn}>Playoff — Match</SubLabel>
             <Card style={{ padding: "2px 14px" }}>
-              <F label="Win" field="matchWin" />
-              <F label="Tie" field="matchTie" />
-              <F label="Loss" field="matchLoss" />
+              <F label="Win" field="playoffMatchWin" />
+              <F label="Tie" field="playoffMatchTie" />
+              <F label="Loss" field="playoffMatchLoss" />
             </Card>
           </div>
-          <div>
-            <SubLabel>Bonus — Type</SubLabel>
-            <Radio items={bonusTypes} value={cfg.bonusType || "teamNetTotal"} onChange={v => setCfg({ ...cfg, bonusType: v })} />
-            <SubLabel>Bonus — Points</SubLabel>
-            <Card style={{ padding: "2px 14px" }}>
-              <F label="Win" field="totalNetBonusWin" />
-              <F label="Tie" field="totalNetBonusTie" />
-              <F label="Loss" field="totalNetBonusLoss" />
-            </Card>
-          </div>
+
+          {isLowHigh && (
+            <div>
+              <SubLabel color={K.warn}>Playoff — Bonus</SubLabel>
+              <Card style={{ padding: "2px 14px" }}>
+                <F label="Win" field="playoffBonusWin" />
+                <F label="Tie" field="playoffBonusTie" />
+                <F label="Loss" field="playoffBonusLoss" />
+              </Card>
+            </div>
+          )}
         </>) : (
           <div>
-            <SubLabel>Match Points</SubLabel>
-            <Card style={{ padding: "2px 14px" }}>
-              <F label="Win" field="matchWin" />
-              <F label="Tie" field="matchTie" />
-              <F label="Loss" field="matchLoss" />
-            </Card>
-          </div>
-        )}
-
-        <div>
-          <SubLabel color={K.warn}>Playoff — Match</SubLabel>
-          <Card style={{ padding: "2px 14px" }}>
-            <F label="Win" field="playoffMatchWin" />
-            <F label="Tie" field="playoffMatchTie" />
-            <F label="Loss" field="playoffMatchLoss" />
-          </Card>
-        </div>
-
-        {isLowHigh && (
-          <div>
-            <SubLabel color={K.warn}>Playoff — Bonus</SubLabel>
-            <Card style={{ padding: "2px 14px" }}>
-              <F label="Win" field="playoffBonusWin" />
-              <F label="Tie" field="playoffBonusTie" />
-              <F label="Loss" field="playoffBonusLoss" />
+            <Card style={{ padding: 14 }}>
+              <div style={{ fontSize: 13, color: K.t2, lineHeight: 1.6 }}>
+                {isLowHigh
+                  ? "Each week has 3 results: low match, high match, and bonus. Each result is a W, L, or T added to the team's record."
+                  : "Each week produces a single W, L, or T for each team based on combined team net."
+                }
+              </div>
             </Card>
           </div>
         )}
