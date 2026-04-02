@@ -27,6 +27,7 @@ export default function GolfLeagueApp() {
   const [syncing, setSyncing] = useState(false);
   const [liveWeek, setLiveWeek] = useState(null);
   const [tab, setTab] = useState("standings");
+  const [showMore, setShowMore] = useState(false);
 
   // Firebase Auth listener
   useEffect(() => {
@@ -117,6 +118,29 @@ export default function GolfLeagueApp() {
     docs.forEach(r => { scores[`w${r.week}_p${r.player_id}_h${r.hole}`] = r.score; });
     return scores;
   };
+  // Fetch ALL scores across all seasons (for handicap calc that carries over)
+  const fetchAllScores = async () => {
+    const docs = await db.get("league_hole_scores", LF);
+    // Return grouped by player: { playerId: [{ season, week, gross }] }
+    const byPlayer = {};
+    const roundMap = {};
+    docs.forEach(r => {
+      const key = `${r.season}_${r.week}_${r.player_id}`;
+      if (!roundMap[key]) roundMap[key] = { season: r.season, week: r.week, playerId: r.player_id, holes: 0, gross: 0 };
+      if (r.score > 0) { roundMap[key].holes++; roundMap[key].gross += r.score; }
+    });
+    Object.values(roundMap).forEach(rd => {
+      if (rd.holes === 9) {
+        if (!byPlayer[rd.playerId]) byPlayer[rd.playerId] = [];
+        byPlayer[rd.playerId].push({ season: rd.season, week: rd.week, gross: rd.gross });
+      }
+    });
+    // Sort each player's rounds chronologically (by season then week)
+    for (const pid in byPlayer) {
+      byPlayer[pid].sort((a, b) => a.season !== b.season ? a.season - b.season : a.week - b.week);
+    }
+    return byPlayer;
+  };
   const saveCtp = async (data) => await db.upsert("league_ctp", { ...data, league_id: LEAGUE_ID });
   const saveMatchResult = async (data) => await db.upsert("league_match_results", { ...data, league_id: LEAGUE_ID });
   const savePlayer = async (p) => await db.upsert("league_players", { ...p, league_id: LEAGUE_ID });
@@ -142,7 +166,13 @@ export default function GolfLeagueApp() {
     { id: "standings", label: "Standings", icon: "trophy" },
     { id: "scoring", label: "Score", icon: "flag" },
     { id: "schedule", label: "Schedule", icon: "calendar" },
-    { id: "more", label: "More", icon: "ellipsis" },
+  ];
+
+  const moreItems = [
+    { id: "players", label: "Players", icon: "users" },
+    { id: "stats", label: "Stats", icon: "barChart" },
+    { id: "ctp", label: "CTP", icon: "target" },
+    ...(isComm ? [{ id: "admin", label: "Admin", icon: "settings" }] : []),
   ];
 
   // Find upcoming match info for banner
@@ -208,24 +238,45 @@ export default function GolfLeagueApp() {
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} />}
           {tab === "scoring" && <LiveScoringView leagueUser={leagueUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={leagueUser} leagueConfig={leagueConfig} />}
-          {tab === "more" && <MoreView players={activePlayers} allPlayers={players} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} ctpData={ctpData} isComm={isComm} members={members}
-            adminProps={isComm ? { players, savePlayer, deletePlayer, teams, saveTeam, deleteTeam, schedule, saveWeekSchedule, course: courseData, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, members, saveMember, deleteMember, authUser, matchResults } : null}
-          />}
+          {tab === "players" && <MoreView view="players" players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} ctpData={ctpData} members={members} />}
+          {tab === "stats" && <MoreView view="stats" players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} ctpData={ctpData} members={members} />}
+          {tab === "ctp" && <MoreView view="ctp" players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} ctpData={ctpData} members={members} />}
+          {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} />}
           </div>
         </div>
       </div>
 
-      {/* Bottom Nav — all screen sizes */}
+      {/* More popup menu */}
+      {showMore && (<>
+        <div onClick={() => setShowMore(false)} style={{ position: "fixed", inset: 0, zIndex: 150 }} />
+        <div style={{ position: "fixed", bottom: 64, right: 8, background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 12, padding: "6px 0", zIndex: 200, minWidth: 180, boxShadow: "0 -4px 20px rgba(0,0,0,.4)" }}>
+          {moreItems.map(item => {
+            const active = tab === item.id;
+            return (
+              <button key={item.id} onClick={() => { setTab(item.id); setShowMore(false); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 16px", background: active ? K.acc + "12" : "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
+                <span style={{ display: "flex" }}>{I[item.icon](16, active ? K.acc : K.t3)}</span>
+                <span style={{ fontSize: 14, fontWeight: active ? 600 : 400, color: active ? K.acc : K.t1 }}>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </>)}
+
+      {/* Bottom Nav */}
       <div className="bottom-nav">
         {tabs.map(t => {
           const active = tab === t.id;
           return (
-            <button key={t.id} onClick={() => setTab(t.id)} style={{ background: active ? K.acc + "10" : "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: active ? 1 : .4, transition: "all .2s", padding: "4px 14px", borderRadius: 8 }}>
+            <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }} style={{ background: active ? K.acc + "10" : "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: active ? 1 : .4, transition: "all .2s", padding: "4px 14px", borderRadius: 8 }}>
               <span style={{ display: "flex" }}>{I[t.icon](18, active ? K.acc : K.t2)}</span>
               <span style={{ fontSize: 9, fontWeight: active ? 600 : 400, color: active ? K.acc : K.t2 }}>{t.label}</span>
             </button>
           );
         })}
+        <button onClick={() => setShowMore(!showMore)} style={{ background: showMore || moreItems.some(m => m.id === tab) ? K.acc + "10" : "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: showMore || moreItems.some(m => m.id === tab) ? 1 : .4, transition: "all .2s", padding: "4px 14px", borderRadius: 8 }}>
+          <span style={{ display: "flex" }}>{I.ellipsis(18, showMore || moreItems.some(m => m.id === tab) ? K.acc : K.t2)}</span>
+          <span style={{ fontSize: 9, fontWeight: showMore || moreItems.some(m => m.id === tab) ? 600 : 400, color: showMore || moreItems.some(m => m.id === tab) ? K.acc : K.t2 }}>More</span>
+        </button>
       </div>
     </div>
   );
