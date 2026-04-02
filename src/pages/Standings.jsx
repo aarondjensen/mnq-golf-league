@@ -102,7 +102,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
           return (
             <div key={s.teamId}>
               <button onClick={() => setExpanded(isExp ? null : s.teamId)} style={{
-                display: "flex", alignItems: "center", width: "100%",
+                display: "flex", alignItems: "center", width: "100%", color: K.t1,
                 background: K.card, borderRadius: isExp ? "8px 8px 0 0" : 8,
                 border: `1px solid ${i === 0 ? K.acc + '40' : K.bdr}`,
                 borderBottom: isExp ? "none" : undefined,
