@@ -191,7 +191,7 @@ export default function GolfLeagueApp() {
 
       <div className="app-body">
         <div style={{ maxWidth: 900, width: "100%", margin: "0 auto" }}>
-          {upcomingBanner && (
+          {upcomingBanner && tab !== "scoring" && (
             <div style={{ background: K.card, borderBottom: `1px solid ${K.bdr}`, padding: "10px 14px", display: "flex", alignItems: "center" }}>
               <div style={{ fontSize: 20, fontWeight: 800, color: K.teal, letterSpacing: .5, whiteSpace: "nowrap" }}>{upcomingBanner.teeTime}</div>
               <div style={{ width: 1, height: 28, background: K.bdr, margin: "0 14px", flexShrink: 0 }} />

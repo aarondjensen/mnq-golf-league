@@ -691,9 +691,15 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
 
 
 function AdminConfig({ config, saveLeagueConfig, onBack }) {
-  const [lc, setLc] = useState({ ...config });
+  const [lc, setLc] = useState({ scoringFormat: "lowHighBonus", ...config });
   const [dirty, setDirty] = useState(false);
   const save = async () => { await saveLeagueConfig(lc); setDirty(false); };
+
+  const formats = [
+    { id: "lowHighBonus", label: "Low/High Match + Total Net Bonus", desc: "Low handicap match, high handicap match, and total net bonus — 3 separate point categories" },
+    { id: "teamNetTotal", label: "Team Net Total Match Play", desc: "Combined team net score vs combined team net score — single match result per week" },
+  ];
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
@@ -701,10 +707,30 @@ function AdminConfig({ config, saveLeagueConfig, onBack }) {
         <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>League Settings</span>
         <button onClick={save} style={{ background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: 13, padding: "7px 16px", cursor: dirty ? "pointer" : "default", fontWeight: 600, letterSpacing: .4, transition: "all .2s" }}>{dirty ? "Save" : "Saved"}</button>
       </div>
-      <Card style={{ padding: 14 }}>
+      <Card style={{ padding: 14, marginBottom: 12 }}>
         <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>League Name</div><input value={lc.name} onChange={e => { setLc({ ...lc, name: e.target.value }); setDirty(true); }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} /></div>
         <div><div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Season Year</div><input value={lc.year} onChange={e => { setLc({ ...lc, year: parseInt(e.target.value) || 2026 }); setDirty(true); }} type="number" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} /></div>
       </Card>
+      <SubLabel>Scoring Format</SubLabel>
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {formats.map(f => (
+          <button key={f.id} onClick={() => { setLc({ ...lc, scoringFormat: f.id }); setDirty(true); }} style={{
+            background: lc.scoringFormat === f.id ? K.act + "15" : K.card,
+            border: `1.5px solid ${lc.scoringFormat === f.id ? K.act : K.bdr}`,
+            borderRadius: 10, padding: "12px 14px", cursor: "pointer", textAlign: "left", width: "100%",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ width: 18, height: 18, borderRadius: "50%", border: `2px solid ${lc.scoringFormat === f.id ? K.act : K.t3}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                {lc.scoringFormat === f.id && <div style={{ width: 10, height: 10, borderRadius: "50%", background: K.act }} />}
+              </div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600, color: lc.scoringFormat === f.id ? K.t1 : K.t2 }}>{f.label}</div>
+                <div style={{ fontSize: 11, color: K.t3, marginTop: 2 }}>{f.desc}</div>
+              </div>
+            </div>
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
