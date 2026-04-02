@@ -42,8 +42,8 @@ export function calcLeagueHandicap(grossScores, par, recentCount, bestCount) {
 export const K = {
   bg: "#0b1829", card: "#111f36", cardHi: "#182d4a", inp: "#0d1e35",
   bdr: "#1e3a5f", acc: "#c8cfd8", accDim: "#8b95a3",
-  act: "#d4a017", actHov: "#c2900f",
-  grn: "#34d399", grnDim: "#059669", red: "#f87171", teal: "#2dd4bf",
+  act: "#deab12", actHov: "#c99b0f",
+  grn: "#34d399", grnDim: "#059669", red: "#f87171", teal: "#2dd4bf", logoBlue: "#153453", logoBright: "#10387d",
   warn: "#fbbf24", t1: "#f1f5f9", t2: "#94a3b8", t3: "#475569",
   gold: "#fbbf24", silver: "#94a3b8", bronze: "#d97706",
 };
