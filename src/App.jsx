@@ -222,7 +222,7 @@ export default function GolfLeagueApp() {
       {/* Upcoming match banner */}
 
       <div className="app-body">
-        <div style={{ maxWidth: 900, width: "100%", margin: "0 auto" }}>
+        <div style={{ width: "100%" }}>
           {upcomingBanner && tab !== "scoring" && (
             <div style={{ background: K.card, borderBottom: `1px solid ${K.bdr}`, padding: "10px 14px", display: "flex", alignItems: "center" }}>
               <div style={{ fontSize: 20, fontWeight: 800, color: K.teal, letterSpacing: .5, whiteSpace: "nowrap" }}>{upcomingBanner.teeTime}</div>
@@ -252,7 +252,7 @@ export default function GolfLeagueApp() {
       )}
 
       {/* Bottom Nav */}
-      <div className="bottom-nav" style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)" }}>
+      <div className="bottom-nav" style={{ position: "fixed", bottom: 0, maxWidth: 900 }}>
         {tabs.map(t => {
           const active = tab === t.id;
           return (

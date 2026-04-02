@@ -62,11 +62,11 @@ export const CSS = `
   input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
   input[type=number] { -moz-appearance: textfield; }
   .hole-input:focus { outline: 2px solid ${K.acc}; outline-offset: -1px; background: ${K.cardHi} !important; }
-  .app-shell { min-height: 100vh; background: ${K.bg}; color: ${K.t1}; font-family: 'League Spartan', sans-serif; display: flex; flex-direction: column; font-size: 15px; letter-spacing: 0.4px; }
+  .app-shell { min-height: 100vh; background: ${K.bg}; color: ${K.t1}; font-family: 'League Spartan', sans-serif; display: flex; flex-direction: column; font-size: 15px; letter-spacing: 0.4px; max-width: 900px; margin: 0 auto; }
   .app-header { padding: 12px 20px; background: ${K.bg}; display: flex; justify-content: center; align-items: center; position: relative; }
-  .app-body { display: flex; flex: 1; justify-content: center; }
-  .main-content { padding: 12px 14px; padding-bottom: 74px; max-width: 900px; width: 100%; margin: 0 auto; }
-  .bottom-nav { background: ${K.card}f0; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid ${K.bdr}; display: flex; justify-content: space-around; padding: 6px 0 12px; z-index: 200; max-width: 900px; width: 100%; }
+  .app-body { display: flex; flex: 1; }
+  .main-content { padding: 12px 14px; padding-bottom: 74px; width: 100%; }
+  .bottom-nav { background: ${K.card}f0; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid ${K.bdr}; display: flex; justify-content: space-around; padding: 6px 0 12px; z-index: 200; width: 100%; }
   .admin-grid { display: flex; flex-direction: column; gap: 6px; }
   .admin-sections-grid { display: flex; flex-direction: column; gap: 6px; }
   .players-grid { display: flex; flex-direction: column; gap: 4px; }
@@ -74,7 +74,7 @@ export const CSS = `
   .schedule-weeks { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
   .standings-grid { display: flex; flex-direction: column; gap: 6px; }
   @media (min-width: 768px) {
-    .main-content { padding: 24px 32px; padding-bottom: 80px; margin: 0 auto; }
+    .main-content { padding: 24px 32px; padding-bottom: 80px; }
     .admin-sections-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .players-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .scoring-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
