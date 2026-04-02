@@ -77,7 +77,7 @@ function PlayersDirectory({ players, course, schedule, scoringRules, fetchSeason
       schedule.forEach(wk => {
         let wg = 0, cnt = 0;
         for (let h = 0; h < 9; h++) { const s = holeScores[`w${wk.week}_p${p.id}_h${h}`]; if (s > 0) { wg += s; cnt++; } }
-        if (cnt === 9) grossScores.push({ week: wk.week + 1, gross: wg });
+        if (cnt === 9) grossScores.push({ week: wk.week, gross: wg });
       });
       const par = course ? (course.frontPars || []).reduce((a, b) => a + b, 0) : 36;
       const recentScores = grossScores.slice(-recentN);
@@ -218,7 +218,7 @@ function CTPSection({ ctpData, players }) {
         </div>
         <div style={{ fontSize: 11, color: K.t3, textTransform: "uppercase", letterSpacing: 1, fontWeight: 600, marginBottom: 8 }}>Weekly Results</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
-          {ctpData.filter(c => c.playerId).map(c => <div key={c.id} style={{ background: K.card, borderRadius: 8, padding: "7px 12px", border: `1px solid ${K.bdr}`, display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ color: K.t2 }}>Wk {c.week + 1} · Hole {c.holeNum}</span><span style={{ fontWeight: 700 }}>{players.find(p => p.id === c.playerId)?.name}</span><span style={{ color: K.acc, fontWeight: 600 }}>{c.distance} ft</span></div>)}
+          {ctpData.filter(c => c.playerId).map(c => <div key={c.id} style={{ background: K.card, borderRadius: 8, padding: "7px 12px", border: `1px solid ${K.bdr}`, display: "flex", justifyContent: "space-between", fontSize: 12 }}><span style={{ color: K.t2 }}>Wk {c.week} · Hole {c.holeNum}</span><span style={{ fontWeight: 700 }}>{players.find(p => p.id === c.playerId)?.name}</span><span style={{ color: K.acc, fontWeight: 600 }}>{c.distance} ft</span></div>)}
         </div>
       </>)}
     </div>

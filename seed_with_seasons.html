@@ -27,7 +27,7 @@
   <div class="status" id="deleteStatus">Ready...</div>
 
   <h2>Step 2: Re-seed with season tags</h2>
-  <p>Seeds 2023 (15 wks), 2024 (15 wks), 2025 (15 wks) — each with <code>season: YYYY</code> and <code>week: 0-14</code></p>
+  <p>Seeds 2023 (15 wks), 2024 (15 wks), 2025 (15 wks) — each with <code>season: YYYY</code> and <code>week: 1-15</code></p>
   <button id="btnSeed">Seed All Historical Data</button>
   <div class="status" id="seedStatus">Ready...</div>
 
@@ -121,9 +121,9 @@
 
             for (let h = 0; h < 9; h++) {
               if (!scores[h] || scores[h] <= 0) continue;
-              const id = `${LID}_s${season}_w${wi}_p${pid}_h${h}`;
+              const id = `${LID}_s${season}_w${wi+1}_p${pid}_h${h}`;
               batch.set(doc(db, "league_hole_scores", id), {
-                id, league_id: LID, season, week: wi, player_id: pid, hole: h,
+                id, league_id: LID, season, week: wi + 1, player_id: pid, hole: h,
                 score: scores[h], actual_hole: side === 'front' ? h + 1 : h + 10,
                 side, par: parVals[h] || 4, ts: Date.now(),
               }, { merge: true });

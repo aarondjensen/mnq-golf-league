@@ -452,9 +452,10 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
         // Playoffs: standings-based
         matches = generateStandingsMatchups();
       }
+      const weekNum = w + 1;
       const side = cfg.alternateNines ? (w % 2 === 0 ? 'front' : 'back') : 'front';
       await saveWeekSchedule({
-        id: `${LEAGUE_ID}_w${w}`, week: w, matches, side,
+        id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum, matches, side,
         date: getWeekDate(w),
         isPlayoff: w >= cfg.regularWeeks,
       });
@@ -562,7 +563,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <BackBtn onClick={() => setEditWeek(null)} />
-          <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Week {wk.week + 1}{wk.date ? ` · ${wk.date}` : ""}</span>
+          <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Week {wk.week}{wk.date ? ` · ${wk.date}` : ""}</span>
           <Pill color={wk.side === 'front' ? K.acc : K.t2}>{wk.side === 'front' ? 'FRONT 9' : 'BACK 9'}</Pill>
         </div>
         <div style={{ fontSize: 11, color: K.t3, marginBottom: 12 }}>Drag matches to reorder tee times</div>
@@ -614,7 +615,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
               <button key={wk.week} onClick={() => setEditWeek(wk.week)} style={{ background: K.card, borderRadius: 10, padding: "10px 14px", border: `1px solid ${K.bdr}`, cursor: "pointer", textAlign: "left", width: "100%" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                   <span style={{ fontWeight: 700, fontSize: 12, color: isPlayoff ? K.warn : K.t1 }}>
-                    Week {wk.week + 1}{wk.date ? ` · ${wk.date}` : ""}
+                    Week {wk.week}{wk.date ? ` · ${wk.date}` : ""}
                   </span>
                   <div style={{ display: "flex", gap: 4 }}>
                     <Pill color={wk.side === 'front' ? K.acc : K.t3} style={{ fontSize: 8 }}>{wk.side === 'front' ? 'F9' : 'B9'}</Pill>

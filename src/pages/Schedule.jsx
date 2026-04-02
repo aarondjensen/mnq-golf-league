@@ -96,8 +96,8 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
       <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
         {weeksToShow.map(wk => {
-          const isPlayoff = wk.isPlayoff || wk.week >= (leagueConfig?.regularWeeks || REGULAR_WEEKS);
-          const side = wk.side || getWeekSide(wk.week + 1);
+          const isPlayoff = wk.isPlayoff || wk.week > (leagueConfig?.regularWeeks || REGULAR_WEEKS);
+          const side = wk.side || getWeekSide(wk.week);
           const matches = myOnly && myTeam
             ? wk.matches.filter(m => m.team1 === myTeam.id || m.team2 === myTeam.id)
             : wk.matches;
@@ -110,7 +110,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ fontSize: 14, fontWeight: 700, color: isPlayoff ? K.warn : K.t1 }}>
-                    Week {wk.week + 1}
+                    Week {wk.week}
                   </span>
                   {wk.date && <span style={{ fontSize: 12, color: K.t3 }}>{wk.date}</span>}
                 </div>

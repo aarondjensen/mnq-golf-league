@@ -27,7 +27,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   const weekSch = schedule.find(s => s.week === week);
   const matches = weekSch?.matches || [];
-  const side = weekSch?.side || getWeekSide(week + 1);
+  const side = weekSch?.side || getWeekSide(week);
   const pars = course ? (side === 'front' ? course.frontPars : course.backPars) : [4,4,4,3,5,4,4,3,5];
   const hcps = course ? (side === 'front' ? course.frontHcps : course.backHcps) : [1,3,5,7,9,11,13,15,17];
   const myTeam = teams.find(t => t.player1 === leagueUser.playerId || t.player2 === leagueUser.playerId);
@@ -50,7 +50,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <button onClick={() => setCommMode(false)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t2, fontSize: 13, padding: "7px 14px", cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}>{I.arrowLeft(13, K.t2)} My Match</button>
-          <div><SectionTitle>All Matches · Wk {week + 1}</SectionTitle></div>
+          <div><SectionTitle>All Matches · Wk {week}</SectionTitle></div>
           <div style={{ width: 90 }} />
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -128,7 +128,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     const t1L = getRunning(t1p[0]).net, t2L = getRunning(t2p[0]).net;
     const t1H = getRunning(t1p[1]).net, t2H = getRunning(t2p[1]).net;
     const t1T = t1L + t1H, t2T = t2L + t2H;
-    const sr = week >= REGULAR_WEEKS
+    const sr = week > REGULAR_WEEKS
       ? { mw: scoringRules.playoffMatchWin, mt: scoringRules.playoffMatchTie, ml: scoringRules.playoffMatchLoss, bw: scoringRules.playoffBonusWin, bt: scoringRules.playoffBonusTie, bl: scoringRules.playoffBonusLoss }
       : { mw: scoringRules.matchWin, mt: scoringRules.matchTie, ml: scoringRules.matchLoss, bw: scoringRules.totalNetBonusWin, bt: scoringRules.totalNetBonusTie, bl: scoringRules.totalNetBonusLoss };
     let t1Pts = 0, t2Pts = 0;
@@ -144,7 +144,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         {activeMatch ? (
           <BackBtn onClick={() => { setActiveMatch(null); if (!commMode) setCommMode(false); }} />
         ) : (
-          <div style={{ display: "flex", gap: 6 }}><Pill>{side === 'front' ? 'FRONT' : 'BACK'} 9</Pill><Pill color={K.t2}>WK {week + 1}</Pill></div>
+          <div style={{ display: "flex", gap: 6 }}><Pill>{side === 'front' ? 'FRONT' : 'BACK'} 9</Pill><Pill color={K.t2}>WK {week}</Pill></div>
         )}
         {isComm && !commMode && !activeMatch && (
           <button onClick={() => setCommMode(true)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t2, fontSize: 11, padding: "5px 10px", cursor: "pointer", fontWeight: 600 }}>All Matches</button>

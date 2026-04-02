@@ -167,7 +167,7 @@ export default function GolfLeagueApp() {
         const mn = mins % 60;
         const ap = Math.floor(mins / 60) >= 12 ? 'PM' : 'AM';
         const teeTime = `${hr}:${String(mn).padStart(2, '0')} ${ap}`;
-        return { week: wk.week + 1, date: wk.date, teeTime, opp: opp?.name || "TBD", side: wk.side };
+        return { week: wk.week, date: wk.date, teeTime, opp: opp?.name || "TBD", side: wk.side };
       }
     }
     return null;
