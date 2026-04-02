@@ -106,9 +106,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   const getS = (pid, h) => holeScores[`w${week}_p${pid}_h${h}`] || 0;
   const getNineHcp = (pid) => {
-    const p = players.find(pl => pl.id === pid); if (!p || !course) return 0;
-    const tb = course.teeBoxes?.find(t => t.name === p.teeBox) || course.teeBoxes?.[0];
-    return tb ? calcNineHandicap(calcCourseHandicap(p.handicapIndex || 0, tb.slope, tb.rating, pars.reduce((a, b) => a + b, 0))) : 0;
+    const p = players.find(pl => pl.id === pid);
+    return p ? Math.round(p.handicapIndex || 0) : 0;
   };
   const getStrokesMap = (nh) => {
     const map = {}; const sorted = hcps.map((h, i) => ({ idx: i, hcp: h })).sort((a, b) => a.hcp - b.hcp);
