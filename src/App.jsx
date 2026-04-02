@@ -247,23 +247,12 @@ export default function GolfLeagueApp() {
       </div>
 
       {/* More popup menu */}
-      {showMore && (<>
+      {showMore && (
         <div onClick={() => setShowMore(false)} style={{ position: "fixed", inset: 0, zIndex: 150 }} />
-        <div style={{ position: "fixed", bottom: 64, right: 8, background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 12, padding: "6px 0", zIndex: 200, minWidth: 180, boxShadow: "0 -4px 20px rgba(0,0,0,.4)" }}>
-          {moreItems.map(item => {
-            const active = tab === item.id;
-            return (
-              <button key={item.id} onClick={() => { setTab(item.id); setShowMore(false); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 16px", background: active ? K.acc + "12" : "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
-                <span style={{ display: "flex" }}>{I[item.icon](16, active ? K.acc : K.t3)}</span>
-                <span style={{ fontSize: 14, fontWeight: active ? 600 : 400, color: active ? K.acc : K.t1 }}>{item.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </>)}
+      )}
 
       {/* Bottom Nav */}
-      <div className="bottom-nav">
+      <div className="bottom-nav" style={{ position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)" }}>
         {tabs.map(t => {
           const active = tab === t.id;
           return (
@@ -273,10 +262,25 @@ export default function GolfLeagueApp() {
             </button>
           );
         })}
-        <button onClick={() => setShowMore(!showMore)} style={{ background: showMore || moreItems.some(m => m.id === tab) ? K.acc + "10" : "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: showMore || moreItems.some(m => m.id === tab) ? 1 : .4, transition: "all .2s", padding: "4px 14px", borderRadius: 8 }}>
-          <span style={{ display: "flex" }}>{I.ellipsis(18, showMore || moreItems.some(m => m.id === tab) ? K.acc : K.t2)}</span>
-          <span style={{ fontSize: 9, fontWeight: showMore || moreItems.some(m => m.id === tab) ? 600 : 400, color: showMore || moreItems.some(m => m.id === tab) ? K.acc : K.t2 }}>More</span>
-        </button>
+        <div style={{ position: "relative" }}>
+          <button onClick={() => setShowMore(!showMore)} style={{ background: showMore || moreItems.some(m => m.id === tab) ? K.acc + "10" : "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: showMore || moreItems.some(m => m.id === tab) ? 1 : .4, transition: "all .2s", padding: "4px 14px", borderRadius: 8 }}>
+            <span style={{ display: "flex" }}>{I.ellipsis(18, showMore || moreItems.some(m => m.id === tab) ? K.acc : K.t2)}</span>
+            <span style={{ fontSize: 9, fontWeight: showMore || moreItems.some(m => m.id === tab) ? 600 : 400, color: showMore || moreItems.some(m => m.id === tab) ? K.acc : K.t2 }}>More</span>
+          </button>
+          {showMore && (
+            <div style={{ position: "absolute", bottom: "100%", right: 0, marginBottom: 8, background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 12, padding: "6px 0", zIndex: 200, minWidth: 180, boxShadow: "0 -4px 20px rgba(0,0,0,.4)" }}>
+              {moreItems.map(item => {
+                const active = tab === item.id;
+                return (
+                  <button key={item.id} onClick={() => { setTab(item.id); setShowMore(false); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 16px", background: active ? K.acc + "12" : "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
+                    <span style={{ display: "flex" }}>{I[item.icon](16, active ? K.acc : K.t3)}</span>
+                    <span style={{ fontSize: 14, fontWeight: active ? 600 : 400, color: active ? K.acc : K.t1 }}>{item.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
