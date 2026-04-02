@@ -240,7 +240,7 @@ export default function GolfLeagueApp() {
                 {/* Center: Date, vs, opponent */}
                 <div style={{ flex: 1, textAlign: "center" }}>
                   <div style={{ fontSize: 12, color: K.t2, fontWeight: 500 }}>{upcomingBanner.date ? `${upcomingBanner.date} — ` : ""}Week {upcomingBanner.week}</div>
-                  <div style={{ fontSize: 10, color: K.t3, fontWeight: 600, margin: "2px 0" }}>vs</div>
+                  <div style={{ fontSize: 10, color: K.logoBright, fontWeight: 700, margin: "2px 0", letterSpacing: 2, textTransform: "uppercase" }}>vs</div>
                   <div style={{ color: K.t1, fontWeight: 700, fontSize: 15 }}>{upcomingBanner.opp}</div>
                 </div>
                 {/* Right: Live Scoring button */}

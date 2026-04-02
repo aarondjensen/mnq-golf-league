@@ -115,7 +115,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                   {wk.date && <span style={{ fontSize: 12, color: K.t3 }}>{wk.date}</span>}
                 </div>
                 <div style={{ display: "flex", gap: 4 }}>
-                  <Pill color={side === 'front' ? K.acc : K.t3} style={{ fontSize: 9 }}>{side === 'front' ? 'FRONT 9' : 'BACK 9'}</Pill>
+                  <Pill color={side === 'front' ? K.logoBright : K.logoBright} style={{ fontSize: 9 }}>{side === 'front' ? 'FRONT 9' : 'BACK 9'}</Pill>
                   {isPlayoff && <Pill color={K.warn} style={{ fontSize: 9 }}>PLAYOFF</Pill>}
                 </div>
               </div>

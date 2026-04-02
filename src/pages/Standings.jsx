@@ -95,7 +95,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
       <div className="standings-grid">
         {standings.map((s, i) => {
           const team = gt(s.teamId); if (!team) return null;
-          const mc = i === 0 ? K.gold : i === 1 ? K.silver : i === 2 ? K.bronze : K.t3;
+          const mc = i === 0 ? K.gold : i === 1 ? K.silver : i === 2 ? K.bronze : K.logoBright;
           const isExp = expanded === s.teamId;
           const results = isExp ? getTeamResults(s.teamId) : [];
 
@@ -111,10 +111,10 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                 <div style={{ width: 50, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
                   <div style={{
                     width: 26, height: 26, borderRadius: 6,
-                    background: i < 3 ? mc + "20" : K.inp,
+                    background: i < 3 ? mc + "20" : K.logoBright + "20",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: 13, fontWeight: 800, color: mc,
-                    border: i < 3 ? `1.5px solid ${mc}40` : "none",
+                    border: i < 3 ? `1.5px solid ${mc}40` : `1.5px solid ${K.logoBright}30`,
                   }}>{i + 1}</div>
                 </div>
                 <div style={{ flex: 1, fontSize: 15, fontWeight: 700, letterSpacing: .3, textAlign: "center" }}>{team.name}</div>
@@ -132,7 +132,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
               {isExp && (
                 <div style={{ background: K.inp, border: `1px solid ${i === 0 ? K.acc + '40' : K.bdr}`, borderTop: "none", borderRadius: "0 0 8px 8px", padding: "6px 8px" }}>
                   {/* Header */}
-                  <div style={{ display: "flex", padding: "4px 6px", fontSize: 9, color: K.t3, fontWeight: 600, textTransform: "uppercase", letterSpacing: .8 }}>
+                  <div style={{ display: "flex", padding: "4px 6px", fontSize: 9, color: K.logoBright, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8 }}>
                     <div style={{ width: 60 }}>Date</div>
                     <div style={{ width: 30 }}>Wk</div>
                     <div style={{ flex: 1 }}>Opponent</div>

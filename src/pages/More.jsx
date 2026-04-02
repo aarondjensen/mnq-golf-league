@@ -73,7 +73,7 @@ function PlayersDirectory({ players, course, schedule, scoringRules, fetchAllSco
               <div style={{ flex: 1, fontSize: 14, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>{p.name}{commPlayerIds.includes(p.id) && <span style={{ fontSize: 8, fontWeight: 700, color: K.warn, background: K.warn + "18", padding: "1px 5px", borderRadius: 3, textTransform: "uppercase", letterSpacing: .5 }}>Comm</span>}</div>
               <div style={{ fontSize: 11, color: K.t3 }}>{p.totalRounds} rds</div>
               <button onClick={() => setExpanded(expanded === p.id ? null : p.id)} style={{
-                background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer",
+                background: K.logoBright + "20", border: `1px solid ${K.logoBright}50`, borderRadius: 6, padding: "4px 10px", cursor: "pointer",
                 fontSize: 16, fontWeight: 800, color: K.t1, minWidth: 36, textAlign: "center",
               }}>{p.idx}</button>
             </div>
