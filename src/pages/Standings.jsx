@@ -50,7 +50,6 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
         {standings.map((s, i) => {
           const team = gt(s.teamId); if (!team) return null;
           const mc = i === 0 ? K.gold : i === 1 ? K.silver : i === 2 ? K.bronze : K.t3;
-          const winPct = s.gamesPlayed ? ((s.w + s.t * 0.5) / s.gamesPlayed).toFixed(3) : ".000";
           return (
             <div key={s.teamId} style={{
               display: "flex", alignItems: "center",
@@ -68,11 +67,15 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                 }}>{i + 1}</div>
               </div>
               <div style={{ flex: 1, fontSize: 15, fontWeight: 700, letterSpacing: .3, textAlign: "center" }}>{team.name}</div>
-              <div style={{ width: 90, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
-                <div style={{ fontSize: 10, color: K.t3, whiteSpace: "nowrap" }}>{s.w}-{s.l}-{s.t}</div>
-                <div style={{ fontSize: 20, fontWeight: 800, color: K.t1, fontFamily: "'League Spartan', sans-serif", minWidth: 36, textAlign: "right" }}>
-                  {isRecord ? winPct : s.points}
-                </div>
+              <div style={{ width: isRecord ? 70 : 90, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
+                {isRecord ? (
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 16, fontWeight: 800, color: K.t1, fontFamily: "'League Spartan', sans-serif", whiteSpace: "nowrap" }}>{s.w}-{s.l}-{s.t}</div>
+                  </div>
+                ) : (<>
+                  <div style={{ fontSize: 10, color: K.t3, whiteSpace: "nowrap" }}>{s.w}-{s.l}-{s.t}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: K.t1, fontFamily: "'League Spartan', sans-serif", minWidth: 28, textAlign: "right" }}>{s.points}</div>
+                </>)}
               </div>
             </div>
           );
