@@ -66,7 +66,7 @@ export default function GolfLeagueApp() {
   // Subscribe to hole scores for a specific week (real-time for live scoring)
   useEffect(() => {
     if (liveWeek === null || !authUser) return;
-    const weekFilters = [...LF, { field: "week", op: "==", value: liveWeek }];
+    const weekFilters = [...LF, { field: "season", op: "==", value: 2026 }, { field: "week", op: "==", value: liveWeek }];
     const unsub = db.subscribe("league_hole_scores", weekFilters, (docs, changes) => {
       setSyncing(true);
       setHoleScores(prev => {
@@ -95,22 +95,24 @@ export default function GolfLeagueApp() {
   };
   const doSignOut = async () => { await signOut(_auth); setLeagueUser(null); setTab("standings"); };
 
+  const CURRENT_SEASON = 2026;
+
   // Data write helpers
   const saveScore = async (week, playerId, hole, score) => {
-    const id = `${LEAGUE_ID}_w${week}_p${playerId}_h${hole}`;
+    const id = `${LEAGUE_ID}_s${CURRENT_SEASON}_w${week}_p${playerId}_h${hole}`;
     setHoleScores(prev => ({ ...prev, [`w${week}_p${playerId}_h${hole}`]: score }));
-    await db.upsert("league_hole_scores", { id, league_id: LEAGUE_ID, week, player_id: playerId, hole, score, ts: Date.now() });
+    await db.upsert("league_hole_scores", { id, league_id: LEAGUE_ID, season: CURRENT_SEASON, week, player_id: playerId, hole, score, ts: Date.now() });
   };
   // Fetch scores for a specific week on-demand (non-realtime, one-time read)
   const fetchWeekScores = async (weekNum) => {
-    const docs = await db.get("league_hole_scores", [...LF, { field: "week", op: "==", value: weekNum }]);
+    const docs = await db.get("league_hole_scores", [...LF, { field: "season", op: "==", value: CURRENT_SEASON }, { field: "week", op: "==", value: weekNum }]);
     const scores = {};
     docs.forEach(r => { scores[`w${r.week}_p${r.player_id}_h${r.hole}`] = r.score; });
     return scores;
   };
-  // Fetch scores for multiple weeks (for stats/handicap calc)
+  // Fetch scores for current season (for stats/handicap calc)
   const fetchSeasonScores = async () => {
-    const docs = await db.get("league_hole_scores", [...LF, { field: "week", op: "<=", value: SEASON_WEEKS - 1 }]);
+    const docs = await db.get("league_hole_scores", [...LF, { field: "season", op: "==", value: CURRENT_SEASON }]);
     const scores = {};
     docs.forEach(r => { scores[`w${r.week}_p${r.player_id}_h${r.hole}`] = r.score; });
     return scores;

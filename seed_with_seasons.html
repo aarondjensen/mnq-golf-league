@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>MnQ Golf — Cleanup & Re-seed</title>
+  <style>
+    body { font-family: system-ui; background: #0b1829; color: #f1f5f9; padding: 20px; max-width: 800px; margin: 0 auto; }
+    h1 { color: #d4a017; margin-bottom: 4px; }
+    h2 { color: #c8cfd8; margin-top: 24px; }
+    .status { background: #111f36; border: 1px solid #1e3a5f; border-radius: 8px; padding: 12px 16px; margin: 8px 0; font-size: 13px; white-space: pre-wrap; max-height: 300px; overflow-y: auto; }
+    button { background: #d4a017; border: none; border-radius: 8px; color: #0b1829; font-size: 14px; font-weight: 700; padding: 12px 24px; cursor: pointer; margin: 6px 4px 6px 0; }
+    button:disabled { opacity: .4; }
+    button.danger { background: #f87171; }
+    .warn { color: #fbbf24; font-weight: 600; }
+    .ok { color: #34d399; }
+    .err { color: #f87171; }
+    code { background: #1e3a5f; padding: 2px 6px; border-radius: 4px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>MnQ Golf — Data Migration</h1>
+  <p>Deletes old hole scores and re-seeds 2023/2024/2025 with proper <code>season</code> field.</p>
+  <p>After this, 2026 will have a clean slate. The app now filters by <code>season: 2026</code>.</p>
+
+  <h2>Step 1: Delete all existing hole scores</h2>
+  <p class="warn">Deletes every league_hole_scores doc. Re-seed below restores historical data.</p>
+  <button class="danger" id="btnDelete">Delete All Hole Scores</button>
+  <div class="status" id="deleteStatus">Ready...</div>
+
+  <h2>Step 2: Re-seed with season tags</h2>
+  <p>Seeds 2023 (15 wks), 2024 (15 wks), 2025 (15 wks) — each with <code>season: YYYY</code> and <code>week: 0-14</code></p>
+  <button id="btnSeed">Seed All Historical Data</button>
+  <div class="status" id="seedStatus">Ready...</div>
+
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getFirestore, collection, query, where, getDocs, writeBatch, doc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+    const app = initializeApp({
+      apiKey: "AIzaSyDW3tTWxOlrPoKiflmlh_6JPLe8vbvVEUE",
+      authDomain: "mnq-golf-leage.firebaseapp.com",
+      projectId: "mnq-golf-leage",
+      storageBucket: "mnq-golf-leage.firebasestorage.app",
+      messagingSenderId: "367374056990",
+      appId: "1:367374056990:web:70133948f9b2760558780f",
+    });
+    const db = getFirestore(app);
+    const LID = "league_2026";
+
+    const playerMap = {
+      "Aaron Jensen": "league_2026_p_aaron_jensen",
+      "Andy Harris": "league_2026_p_andy_harris",
+      "Andy Vigo": "league_2026_p_andy_vigo",
+      "Ben Telian": "league_2026_p_ben_telian",
+      "Bob Bergeron": "league_2026_p_bob_bergeron",
+      "Chris Machalk": "league_2026_p_chris_machalk",
+      "Chuck Makarov": "league_2026_p_chuck_makarov",
+      "David Kelley": "league_2026_p_david_kelley",
+      "Derek Niethammer": "league_2026_p_derek_niethammer",
+      "Eric Olson": "league_2026_p_eric_olson",
+      "Jeff Blanton": "league_2026_p_jeff_blanton",
+      "John Curtis": "league_2026_p_john_curtis",
+      "Kevin Jensen": "league_2026_p_kevin_jensen",
+      "Kyle Mast": "league_2026_p_kyle_mast",
+      "Matt Vigo": "league_2026_p_matt_vigo",
+      "Paul Sauter": "league_2026_p_paul_sauter",
+      "Paul Wesenberg": "league_2026_p_paul_wesenberg",
+      "Pete Carpenter": "league_2026_p_pete_carpenter",
+      "Rich Marion": "league_2026_p_rich_marion",
+      "Russ Westbury": "league_2026_p_russ_westbury",
+      "Ryan McKenzie": "league_2026_p_ryan_mckenzie",
+      "Scott Rhoades": "league_2026_p_scott_rhoades",
+      "Steve Vigo": "league_2026_p_steve_vigo",
+    };
+
+    // ── DELETE ──
+    document.getElementById('btnDelete').onclick = async () => {
+      const btn = document.getElementById('btnDelete');
+      const st = document.getElementById('deleteStatus');
+      btn.disabled = true;
+      st.textContent = "Querying...";
+      try {
+        const q = query(collection(db, "league_hole_scores"), where("league_id", "==", LID));
+        const snap = await getDocs(q);
+        st.textContent = `Found ${snap.size} docs. Deleting...\n`;
+        let del = 0, batch = writeBatch(db), bc = 0;
+        for (const d of snap.docs) {
+          batch.delete(d.ref);
+          bc++;
+          if (bc >= 450) { await batch.commit(); del += bc; st.textContent = `Deleted ${del}/${snap.size}...\n`; batch = writeBatch(db); bc = 0; }
+        }
+        if (bc > 0) { await batch.commit(); del += bc; }
+        st.innerHTML = `<span class="ok">✓ Deleted ${del} documents.</span>`;
+      } catch(e) { st.innerHTML = `<span class="err">Error: ${e.message}</span>`; }
+      btn.disabled = false;
+    };
+
+    // ── SEED ──
+    document.getElementById('btnSeed').onclick = async () => {
+      const btn = document.getElementById('btnSeed');
+      const st = document.getElementById('seedStatus');
+      btn.disabled = true;
+      st.textContent = "Starting...\n";
+      let total = 0;
+
+      for (const [yr, files] of Object.entries(csvFiles)) {
+        const season = parseInt(yr);
+        st.textContent += `\n── Season ${season} ──\n`;
+
+        for (let wi = 0; wi < files.length; wi++) {
+          const { side, csvText } = files[wi];
+          const lines = csvText.trim().split('\n');
+          const parVals = lines[1].split(',').slice(3, 12).map(Number);
+          let batch = writeBatch(db), bc = 0, wc = 0;
+
+          for (let li = 2; li < lines.length; li++) {
+            const cols = lines[li].split(',');
+            const name = cols[0].trim();
+            if (!name || !playerMap[name]) continue;
+            const pid = playerMap[name];
+            const scores = cols.slice(3, 12).map(Number);
+
+            for (let h = 0; h < 9; h++) {
+              if (!scores[h] || scores[h] <= 0) continue;
+              const id = `${LID}_s${season}_w${wi}_p${pid}_h${h}`;
+              batch.set(doc(db, "league_hole_scores", id), {
+                id, league_id: LID, season, week: wi, player_id: pid, hole: h,
+                score: scores[h], actual_hole: side === 'front' ? h + 1 : h + 10,
+                side, par: parVals[h] || 4, ts: Date.now(),
+              }, { merge: true });
+              bc++; wc++;
+              if (bc >= 450) { await batch.commit(); batch = writeBatch(db); bc = 0; }
+            }
+          }
+          if (bc > 0) await batch.commit();
+          total += wc;
+          st.textContent += `  Wk ${wi+1}: ${wc} scores (${side})\n`;
+        }
+      }
+      st.innerHTML += `\n<span class="ok">✓ Seeded ${total} scores with season tags.</span>`;
+      btn.disabled = false;
+    };
+
+    // ── CSV DATA (embedded) ──
+    const csvFiles = {
+  2023: [
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+Ryan McKenzie,8,,5,3,4,6,8,4,3,4,6,43,6
+Pete Carpenter,3,,6,3,6,5,6,4,4,5,6,45,10
+Paul Sauter,8,,7,4,6,8,5,4,5,4,6,49,17
+John Curtis,4,,6,5,6,5,4,4,5,4,5,44,6
+Russ Westbury,10,,6,4,5,6,5,5,5,4,6,46,6
+Andy Vigo,4,,7,5,5,5,3,3,4,5,7,44,7
+Jeff Blanton,10,,6,3,6,5,7,3,5,5,5,45,11
+Bob Bergeron,1,,5,3,4,4,4,5,3,4,6,38,8
+Scott Rhoades,2,,5,3,5,5,5,3,4,6,6,42,2
+Aaron Jensen,2,,5,3,4,4,4,4,4,5,4,37,4
+Rich Marion,9,,5,5,8,5,7,3,3,5,7,48,10
+Paul Wesenberg,5,,9,3,4,4,5,4,5,4,5,43,7
+Derek Niethammer,9,,11,4,7,6,5,4,4,5,8,54,12
+Chuck Makarov,6,,6,5,6,5,5,3,5,5,6,46,15
+Matt Vigo,7,,6,4,6,5,4,5,5,4,8,47,8
+Steve Vigo,6,,7,3,5,6,5,4,5,5,7,47,17
+David Kelley,3,,5,3,5,5,4,3,6,4,6,41,7
+Andy Harris,5,,4,3,5,5,5,3,4,5,6,40,5
+Chris Machalk,7,,9,7,6,8,7,4,5,4,7,57,18` },
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+David Kelley,3,,5,5,8,5,5,4,5,4,6,47,7
+Chuck Makarov,6,,7,6,4,4,5,6,7,5,8,52,15
+Pete Carpenter,3,,6,6,5,5,4,6,6,5,6,49,10
+Steve Vigo,6,,7,7,4,7,6,8,7,5,6,57,16
+Ryan McKenzie,8,,6,5,4,3,4,6,5,3,6,42,6
+Rich Marion,9,,5,6,5,4,5,6,5,4,8,48,11
+Paul Sauter,8,,7,9,7,6,6,6,9,5,6,61,17
+Derek Niethammer,9,,8,7,5,5,5,7,7,5,6,55,12
+Scott Rhoades,2,,4,5,4,3,5,5,5,4,6,41,2
+Matt Vigo,7,,5,6,5,4,4,6,6,4,6,46,8
+Aaron Jensen,2,,5,5,5,3,4,5,5,4,5,41,4
+Chris Machalk,7,,7,8,6,4,6,6,6,6,7,56,18
+John Curtis,4,,8,7,7,3,4,4,5,4,6,48,6
+Andy Harris,5,,6,6,5,4,4,5,4,5,6,45,5
+Andy Vigo,4,,7,6,6,4,4,6,4,3,7,47,7
+Paul Wesenberg,5,,5,9,4,5,6,4,5,5,6,49,6
+Bob Bergeron,1,,4,5,4,6,6,5,5,5,6,46,7
+Russ Westbury,10,,4,7,4,3,6,5,7,5,5,46,6
+Eric Olson,1,,6,5,7,3,5,7,4,4,5,46,9
+Jeff Blanton,10,,6,6,5,4,6,7,6,5,6,51,11` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+Scott Rhoades,2,,5,4,5,4,5,4,4,4,5,40,2
+Andy Harris,5,,8,4,4,5,6,4,5,3,5,44,5
+Aaron Jensen,2,,5,3,3,4,6,4,4,3,6,38,3
+Paul Wesenberg,5,,4,4,4,5,8,3,5,3,5,41,7
+Russ Westbury,10,,6,5,5,5,6,3,5,6,5,46,7
+Matt Vigo,7,,5,4,6,5,4,3,3,5,6,41,8
+Chris Machalk,7,,9,6,9,6,8,3,7,6,8,62,18
+Jeff Blanton,10,,7,5,5,6,4,3,7,4,6,47,11
+David Kelley,3,,8,4,5,8,4,5,6,5,5,50,8
+Andy Vigo,4,,6,5,5,5,5,4,6,6,4,46,7
+Pete Carpenter,3,,6,4,7,5,5,4,5,6,7,49,10
+John Curtis,4,,6,3,6,6,5,3,4,4,5,42,8
+Chuck Makarov,6,,9,3,6,5,7,4,6,4,5,49,16
+Ryan McKenzie,8,,5,4,6,4,5,3,4,5,5,41,6
+Paul Sauter,8,,10,4,7,4,9,5,6,4,7,56,17
+Rich Marion,9,,8,5,4,4,6,4,5,5,6,47,11
+Eric Olson,1,,6,4,5,5,5,3,4,4,6,42,9
+Derek Niethammer,9,,6,3,8,4,6,4,4,4,6,45,12
+Steve Vigo,6,,7,6,6,5,5,4,5,5,8,51,16
+Bob Bergeron,1,,4,4,5,5,7,4,4,5,6,44,7` },
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+John Curtis,4,,5,7,4,4,4,5,4,4,6,43,7
+Chuck Makarov,6,,5,7,5,5,5,5,8,5,6,51,15
+Pete Carpenter,3,,6,7,7,4,5,5,5,4,8,51,11
+Chris Machalk,7,,7,9,4,5,7,5,7,5,7,56,19
+Ryan McKenzie,8,,4,6,4,3,5,4,4,4,6,40,6
+Andy Vigo,4,,5,5,7,4,5,5,4,4,5,44,8
+Paul Sauter,8,,6,8,9,5,5,8,9,4,7,61,18
+Derek Niethammer,9,,7,8,6,7,5,7,6,7,6,59,10
+Steve Vigo,6,,6,8,6,3,5,6,6,5,7,52,16
+Rich Marion,9,,5,7,4,5,6,4,4,3,6,44,11
+Scott Rhoades,2,,5,4,4,4,4,4,3,4,5,37,2
+David Kelley,3,,5,5,6,4,6,7,5,5,5,48,8
+Aaron Jensen,2,,5,7,5,4,4,4,4,4,5,42,3
+Bob Bergeron,1,,5,5,4,4,4,6,6,4,5,43,7
+Matt Vigo,7,,6,8,6,5,4,6,5,4,5,49,7
+Eric Olson,1,,5,6,5,3,4,6,5,6,5,45,8
+Andy Harris,5,,6,7,4,4,3,5,5,4,5,43,6
+Russ Westbury,10,,6,6,4,4,5,6,6,5,7,49,7
+Paul Wesenberg,5,,5,6,5,3,9,4,5,4,5,46,6
+Jeff Blanton,10,,5,6,6,4,4,6,5,6,5,47,11` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+Chuck Makarov,6,,8,5,5,6,7,3,5,4,8,51,15
+Russ Westbury,10,,5,4,5,4,5,4,4,4,8,43,8
+Steve Vigo,6,,8,7,8,6,5,6,5,4,9,58,16
+Jeff Blanton,10,,5,4,5,8,4,5,5,5,5,46,11
+Bob Bergeron,1,,5,5,5,5,6,2,3,4,7,42,7
+David Kelley,3,,7,2,5,6,5,3,5,4,6,43,8
+Eric Olson,1,,6,5,5,5,5,3,4,5,8,46,8
+Pete Carpenter,3,,9,5,5,5,5,4,6,5,4,48,12
+Andy Harris,5,,2,3,6,4,7,3,3,4,6,38,6
+Ryan McKenzie,8,,7,3,3,4,5,4,4,5,7,42,5
+Paul Wesenberg,5,,7,4,6,7,9,4,4,7,6,54,7
+Paul Sauter,8,,8,4,6,8,9,4,9,7,7,62,18
+Scott Rhoades,2,,7,3,5,4,6,5,4,4,5,43,3
+John Curtis,4,,5,5,6,5,6,4,4,5,5,45,7
+Aaron Jensen,2,,6,3,4,4,5,3,4,3,6,38,4
+Andy Vigo,4,,6,5,6,5,4,3,4,4,6,43,8
+Matt Vigo,7,,6,5,5,5,4,3,5,4,4,41,7
+Rich Marion,9,,8,4,5,6,4,3,4,5,7,46,11
+Chris Machalk,7,,9,6,6,6,5,5,4,4,9,54,19
+Derek Niethammer,9,,8,4,6,4,5,7,4,6,6,50,12` },
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+Bob Bergeron,1,,8,6,6,5,5,7,4,3,6,50,7
+Andy Harris,5,,6,7,5,3,4,4,5,4,4,42,6
+David Kelley,3,,7,5,8,4,4,8,6,3,6,51,8
+Scott Rhoades,2,,4,7,5,4,4,4,4,3,5,40,3
+Rich Marion,9,,8,5,7,4,3,7,4,4,5,47,10
+Aaron Jensen,2,,6,6,4,5,4,4,4,4,5,42,3
+Derek Niethammer,9,,6,7,6,4,5,8,6,6,10,58,13
+Eric Olson,1,,6,6,4,3,4,6,5,5,6,45,8
+Paul Wesenberg,5,,6,7,9,4,7,4,5,5,6,53,7
+John Curtis,4,,5,8,5,3,5,4,5,5,6,46,8
+Ryan McKenzie,8,,5,8,3,5,5,6,4,4,4,44,6
+Russ Westbury,10,,5,7,5,4,4,5,5,3,6,44,8
+Paul Sauter,8,,8,6,4,4,5,5,7,4,6,49,18
+Jeff Blanton,10,,6,6,5,5,4,5,5,4,5,45,11
+Chuck Makarov,6,,5,6,5,5,4,7,6,4,5,47,15
+Andy Vigo,4,,4,7,6,4,6,5,4,4,7,47,8
+Steve Vigo,6,,6,7,6,5,4,6,6,5,8,53,16
+Matt Vigo,7,,4,8,4,4,5,6,4,3,6,44,7
+Pete Carpenter,3,,6,7,6,3,6,7,7,6,5,53,12
+Chris Machalk,7,,6,8,7,5,6,6,5,5,11,59,19` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+Derek Niethammer,9,,8,4,7,6,7,4,5,7,5,53,13
+Russ Westbury,10,,8,4,6,5,5,4,4,4,5,45,8
+Aaron Jensen,2,,7,4,4,5,5,3,4,5,7,44,3
+Chuck Makarov,6,,8,3,5,5,6,4,5,5,6,47,13
+Bob Bergeron,1,,6,3,6,7,6,3,5,4,6,46,7
+Andy Vigo,4,,8,3,6,5,5,5,4,4,5,45,8
+Eric Olson,1,,6,4,4,7,5,3,4,4,7,44,8
+John Curtis,4,,5,3,5,5,4,3,4,4,5,38,9
+Matt Vigo,7,,8,4,5,5,4,4,3,5,5,43,7
+Chris Machalk,7,,6,4,5,7,6,3,5,7,7,50,19
+Ryan McKenzie,8,,8,3,5,4,3,5,6,4,5,43,6
+David Kelley,3,,5,3,5,4,7,3,4,6,5,42,8
+Andy Harris,5,,5,3,4,4,5,3,4,5,5,38,6
+Rich Marion,9,,5,4,5,5,5,5,4,5,7,45,10
+Scott Rhoades,2,,5,3,4,4,5,3,5,3,5,37,4
+Steve Vigo,6,,7,4,5,7,6,4,4,5,9,51,16
+Pete Carpenter,3,,7,3,6,6,5,3,4,4,6,44,12
+Paul Wesenberg,5,,7,4,7,5,7,3,5,5,6,49,8` },
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+Scott Rhoades,2,,6,5,5,4,3,5,5,4,5,42,3
+Rich Marion,9,,6,5,7,4,5,7,5,3,5,47,10
+Paul Wesenberg,5,,5,9,5,3,4,4,5,4,6,45,8
+Russ Westbury,10,,5,6,4,3,5,5,6,4,5,43,8
+Aaron Jensen,2,,3,5,5,1,4,5,5,3,4,35,4
+Jeff Blanton,10,,6,7,4,3,5,5,6,4,6,46,10
+David Kelley,3,,5,5,4,4,4,5,5,5,5,42,8
+Pete Carpenter,3,,5,6,6,5,4,4,5,4,7,46,11
+Derek Niethammer,9,,6,7,7,4,6,7,6,3,6,52,14
+John Curtis,4,,5,6,6,3,6,6,5,3,7,47,7
+Matt Vigo,7,,5,5,4,3,5,4,4,4,7,41,7
+Andy Vigo,4,,4,7,6,3,5,5,5,5,4,44,8
+Chris Machalk,7,,7,5,8,4,5,5,6,5,8,53,19
+Bob Bergeron,1,,5,5,6,4,4,4,5,5,6,44,7
+Ryan McKenzie,8,,4,7,5,3,3,5,4,4,6,41,6
+Eric Olson,1,,8,5,7,5,5,4,6,5,6,51,8
+Andy Harris,5,,4,5,4,4,4,5,6,5,6,43,5
+Chuck Makarov,6,,5,7,6,5,5,5,6,4,7,50,13
+Steve Vigo,6,,6,8,6,6,5,7,7,5,5,55,15` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+Andy Vigo,4,,6,4,5,5,4,2,4,4,7,41,8
+Scott Rhoades,2,,5,2,4,4,5,3,4,4,5,36,4
+Andy Harris,5,,6,5,5,5,4,2,4,5,7,43,5
+Matt Vigo,7,,6,2,6,4,7,3,5,4,5,42,7
+Paul Wesenberg,5,,8,3,5,3,5,3,4,5,5,41,8
+Chris Machalk,7,,10,4,7,8,5,7,7,6,9,63,18
+Bob Bergeron,1,,7,4,6,4,5,3,4,5,5,43,7
+Chuck Makarov,6,,8,4,6,4,6,3,5,5,6,47,12
+Eric Olson,1,,6,5,4,5,6,3,5,5,6,45,8
+Steve Vigo,6,,7,7,6,6,5,4,5,5,7,52,16
+John Curtis,4,,6,3,5,5,5,4,4,4,8,44,7
+Rich Marion,9,,6,3,5,7,7,3,7,5,8,51,10
+Derek Niethammer,9,,7,4,8,5,8,3,6,4,7,52,15
+David Kelley,3,,8,3,6,5,6,3,4,7,8,50,8
+Russ Westbury,10,,7,3,6,5,5,4,5,6,8,49,9
+Jeff Blanton,10,,6,3,6,5,6,5,4,4,6,45,10
+Aaron Jensen,2,,6,4,5,4,4,3,4,4,5,39,3
+Ryan McKenzie,8,,5,3,6,4,7,3,4,6,5,43,5
+Paul Sauter,8,,8,4,7,5,8,3,6,6,11,58,18` },
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+Andy Harris,5,,5,7,5,5,4,4,4,4,5,43,5
+Bob Bergeron,1,,6,6,7,4,6,5,6,5,6,51,8
+Scott Rhoades,2,,5,6,5,3,4,5,5,4,6,43,3
+Paul Sauter,8,,5,9,7,5,5,7,6,5,7,56,18
+John Curtis,4,,4,6,5,3,6,5,4,4,5,42,7
+Chuck Makarov,6,,7,6,5,4,5,5,5,4,7,48,13
+Andy Vigo,4,,4,6,4,5,5,5,5,4,6,44,8
+Steve Vigo,6,,7,8,4,5,6,6,6,5,11,58,16
+Russ Westbury,10,,5,6,4,3,4,5,5,3,4,39,9
+Paul Wesenberg,5,,5,6,5,3,5,5,5,3,5,42,8
+Jeff Blanton,10,,6,9,6,5,4,7,5,3,8,53,10
+Aaron Jensen,2,,5,5,4,4,4,5,4,4,7,42,3
+Eric Olson,1,,7,7,5,3,4,5,7,6,6,50,9
+Matt Vigo,7,,6,7,4,4,5,5,5,4,6,46,6
+Ryan McKenzie,8,,5,4,6,3,4,4,5,5,5,41,6
+Chris Machalk,7,,9,7,7,4,8,6,4,6,8,59,18
+David Kelley,3,,4,5,5,3,6,6,5,3,6,43,9
+Rich Marion,9,,5,6,5,4,4,7,5,5,5,46,10
+Derek Niethammer,9,,6,5,8,2,5,5,5,5,7,48,15` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+Ryan McKenzie,8,,5,3,4,4,6,3,4,5,5,39,5
+John Curtis,4,,6,4,7,4,4,2,4,5,5,41,6
+Chuck Makarov,6,,6,5,7,6,6,3,5,3,8,49,12
+David Kelley,3,,5,3,4,5,4,4,4,4,5,38,9
+Pete Carpenter,3,,7,3,5,6,5,4,4,4,6,44,11
+Paul Sauter,8,,9,3,6,4,9,3,4,7,6,51,18
+Andy Harris,5,,6,3,4,4,6,3,5,7,4,42,5
+Matt Vigo,7,,7,4,6,4,5,5,5,4,5,45,6
+Paul Wesenberg,5,,5,4,4,4,6,3,3,7,5,41,7
+Aaron Jensen,2,,5,3,5,4,6,2,5,4,5,39,3
+Scott Rhoades,2,,6,3,4,4,4,3,4,5,5,38,3
+Andy Vigo,4,,6,4,5,4,6,2,4,5,6,42,8
+Bob Bergeron,1,,5,5,4,5,4,4,5,4,7,43,8
+Eric Olson,1,,6,3,4,4,5,5,5,4,6,42,9
+Steve Vigo,6,,10,4,6,4,6,6,7,5,9,57,16
+Rich Marion,9,,5,4,4,5,5,4,4,5,7,43,10
+Russ Westbury,10,,8,5,4,4,6,3,5,4,6,45,7
+Derek Niethammer,9,,6,4,6,4,7,3,6,5,8,49,14
+Jeff Blanton,10,,6,4,5,4,5,2,6,4,6,42,10` },
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+Scott Rhoades,2,,4,5,4,3,4,5,4,4,6,39,2
+Matt Vigo,7,,5,6,4,5,4,5,5,4,6,44,7
+Rich Marion,9,,5,6,5,5,5,5,4,4,7,46,9
+Chris Machalk,7,,7,11,9,6,6,6,7,5,8,65,19
+Derek Niethammer,9,,9,8,5,5,5,5,6,6,9,58,15
+David Kelley,3,,7,6,5,4,4,4,6,4,6,46,7
+John Curtis,4,,6,7,5,4,4,5,6,5,6,48,6
+Pete Carpenter,3,,6,5,5,5,6,8,4,4,4,47,11
+Andy Vigo,4,,6,7,4,5,5,7,6,4,5,49,7
+Andy Harris,5,,5,7,4,4,5,5,3,5,5,43,5
+Ryan McKenzie,8,,4,6,4,6,5,5,4,5,6,45,5
+Paul Wesenberg,5,,4,7,5,3,5,8,3,7,5,47,7
+Paul Sauter,8,,5,7,6,3,5,6,5,4,7,48,18
+Bob Bergeron,1,,5,6,5,3,6,5,5,4,6,45,8
+Steve Vigo,6,,7,8,5,6,5,6,6,5,5,53,17
+Russ Westbury,10,,6,5,6,4,3,4,5,3,6,42,7
+Jeff Blanton,10,,5,6,4,2,4,7,4,4,8,44,9` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+Andy Harris,5,,6,3,7,4,7,3,4,3,5,42,5
+Bob Bergeron,1,,6,4,5,3,5,4,5,4,6,42,8
+John Curtis,4,,6,3,5,4,7,2,4,4,5,40,7
+David Kelley,3,,5,4,5,4,5,5,4,3,5,40,6
+Matt Vigo,7,,5,4,5,5,4,4,4,5,6,42,7
+Pete Carpenter,3,,7,3,5,5,4,3,4,4,8,43,10
+Chris Machalk,7,,10,3,8,4,4,7,4,5,6,51,19
+Chuck Makarov,6,,7,4,7,4,5,3,3,4,6,43,12
+Eric Olson,1,,6,3,5,5,6,3,5,5,6,44,9
+Paul Wesenberg,5,,6,4,5,4,5,4,4,4,6,42,8
+Steve Vigo,6,,7,4,7,6,7,3,6,9,6,55,17
+Andy Vigo,4,,5,4,5,4,5,3,4,4,5,39,7
+Ryan McKenzie,8,,5,3,5,5,4,3,3,4,5,37,6
+Rich Marion,9,,7,3,6,3,5,3,5,8,6,46,9
+Paul Sauter,8,,6,4,6,6,9,4,4,4,8,51,16
+Derek Niethammer,9,,8,3,4,5,5,4,4,5,7,45,15
+Scott Rhoades,2,,5,3,4,4,4,3,4,4,5,36,3
+Jeff Blanton,10,,6,4,5,4,6,5,4,4,5,43,9` },
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+David Kelley,3,,5,6,7,4,7,5,7,6,6,53,6
+Eric Olson,1,,5,7,4,3,6,5,5,4,6,45,8
+Scott Rhoades,2,,4,5,4,3,4,4,4,3,7,38,2
+Ryan McKenzie,8,,6,6,6,4,4,5,5,3,6,45,5
+Chris Machalk,7,,6,8,6,4,6,7,7,6,6,56,18
+Rich Marion,9,,5,6,3,4,7,7,5,4,6,47,9
+Pete Carpenter,3,,5,7,4,4,6,5,4,5,7,47,9
+Derek Niethammer,9,,4,7,6,3,5,4,5,5,6,45,14
+Bob Bergeron,1,,7,7,4,5,5,4,5,5,5,47,8
+Russ Westbury,10,,9,7,4,4,4,5,5,4,4,46,7
+Jeff Blanton,10,,4,5,5,4,4,6,5,5,6,44,8
+John Curtis,4,,4,6,8,5,5,5,5,5,5,48,6
+Chuck Makarov,6,,6,6,5,4,7,6,5,7,6,52,11
+Aaron Jensen,2,,5,6,4,3,5,5,4,4,4,40,3
+Steve Vigo,6,,6,6,5,4,5,6,8,6,8,54,17
+Andy Vigo,4,,5,7,7,4,4,5,5,4,6,47,7
+Paul Sauter,8,,7,8,9,4,5,5,9,5,6,58,16
+Andy Harris,5,,5,5,4,4,3,3,4,4,4,36,6
+Matt Vigo,7,,4,8,5,6,4,5,4,4,7,47,7
+Paul Wesenberg,5,,6,7,6,4,4,4,4,5,6,46,6` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+Matt Vigo,7,,6,3,5,4,5,3,5,4,5,40,7
+Derek Niethammer,9,,5,4,5,4,6,3,5,4,6,42,13
+Bob Bergeron,1,,6,4,5,6,5,5,4,4,8,47,8
+John Curtis,4,,5,3,6,4,7,3,4,4,7,43,6
+Eric Olson,1,,7,4,7,5,7,4,4,5,7,50,8
+Andy Vigo,4,,6,3,6,3,5,3,4,4,5,39,7
+Chris Machalk,7,,9,5,5,6,7,4,7,6,7,56,18
+David Kelley,3,,7,3,5,5,5,2,5,4,6,42,6
+Rich Marion,9,,5,4,5,5,8,3,4,5,6,45,9
+Pete Carpenter,3,,7,3,5,6,5,4,4,4,7,45,9
+Scott Rhoades,2,,6,3,4,4,5,4,3,4,6,39,1
+Ryan McKenzie,8,,4,4,4,5,5,5,4,5,5,41,5
+Paul Sauter,8,,7,4,6,6,5,3,5,7,7,50,16
+Andy Harris,5,,6,3,4,4,5,4,4,4,6,40,5
+Russ Westbury,10,,6,3,5,4,5,3,4,5,5,40,7
+Paul Wesenberg,5,,6,4,6,6,6,3,4,4,7,46,6
+Jeff Blanton,10,,5,3,5,4,4,5,6,4,5,41,8` },
+  ],
+  2024: [
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+Bob Bergeron,1,,7,6,6,4,5,5,5,3,6,47,8
+Scott Rhoades,2,,5,5,6,4,5,5,5,5,6,46,2
+Eric Olson,1,,8,7,6,3,5,6,7,5,6,53,9
+Aaron Jensen,2,,5,6,4,4,3,6,4,4,6,42,3
+Matt Vigo,9,,5,7,4,4,5,5,7,5,7,49,6
+Andy Vigo,3,,6,7,6,2,5,5,6,4,6,47,6
+David Kelley,8,,4,10,5,3,5,7,4,6,6,50,6
+John Curtis,3,,5,5,5,4,6,4,4,4,5,42,7
+Pete Carpenter,8,,4,8,4,3,4,5,4,5,5,42,9
+Rich Marion,10,,6,6,6,4,4,7,6,5,6,50,9
+Chris Machalk,9,,6,7,9,5,5,9,8,6,7,62,18
+Kyle Mast,5,,4,6,4,3,5,4,5,4,5,40,3
+Ryan McKenzie,6,,5,7,6,5,5,5,5,4,5,47,4
+Russ Westbury,5,,6,7,9,4,4,4,5,6,5,50,6
+Chuck Makarov,4,,6,7,5,4,9,6,6,6,7,56,11
+Andy Harris,7,,5,7,4,3,4,5,4,5,6,43,5
+Steve Vigo,4,,7,11,8,5,5,6,6,5,11,64,17
+Derek Niethammer,10,,5,6,5,5,5,5,5,4,6,46,11
+Paul Wesenberg,7,,7,7,6,4,7,5,4,5,6,51,6
+Paul Sauter,6,,6,6,8,5,5,8,5,5,8,56,15` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+David Kelley,8,,6,4,6,3,5,4,4,6,7,45,7
+Andy Vigo,3,,6,4,7,6,5,3,6,5,6,48,6
+Ryan McKenzie,6,,6,3,5,4,5,3,4,3,5,38,5
+John Curtis,3,,6,4,4,4,5,3,6,4,5,41,6
+Paul Sauter,6,,10,5,7,6,5,5,6,5,5,54,15
+Scott Rhoades,2,,6,3,5,5,6,3,4,3,5,40,2
+Andy Harris,7,,7,4,4,5,5,6,5,5,6,47,5
+Aaron Jensen,2,,7,3,4,4,5,3,4,4,5,39,4
+Paul Wesenberg,7,,6,5,4,4,5,4,5,4,5,42,7
+Chuck Makarov,4,,8,4,8,7,5,4,3,5,7,51,11
+Kyle Mast,5,,6,3,5,5,5,3,4,4,6,41,4
+Russ Westbury,5,,6,4,5,4,5,3,4,5,6,42,6
+Bob Bergeron,1,,6,5,6,4,5,4,5,5,7,47,9
+Matt Vigo,9,,7,4,6,7,5,4,5,6,6,50,7
+Eric Olson,1,,6,4,6,4,5,7,7,5,7,51,10
+Chris Machalk,9,,9,4,6,7,7,6,5,7,7,58,19
+Rich Marion,10,,8,6,6,4,7,4,5,3,6,49,9
+Pete Carpenter,8,,7,4,5,5,5,3,4,5,7,45,8
+Derek Niethammer,10,,7,4,5,8,6,4,5,4,8,51,10` },
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+Scott Rhoades,2,,4,5,5,4,4,3,5,4,5,39,2
+Eric Olson,1,,6,5,6,3,4,4,6,5,6,45,10
+Andy Harris,7,,6,6,5,3,4,4,7,2,6,43,5
+Paul Sauter,6,,7,7,6,6,5,6,8,5,7,57,15
+John Curtis,3,,8,7,6,4,4,4,6,3,6,48,6
+Kyle Mast,5,,6,4,4,5,4,4,5,3,5,40,5
+Aaron Jensen,2,,5,6,5,4,4,4,5,4,6,43,3
+Russ Westbury,5,,5,6,7,4,4,6,5,4,5,46,6
+Bob Bergeron,1,,5,6,5,5,5,4,5,4,6,45,9
+David Kelley,8,,4,6,6,5,7,7,6,4,6,51,6
+Pete Carpenter,8,,7,7,6,4,5,5,7,4,6,51,8
+Ryan McKenzie,6,,4,4,3,4,5,4,5,4,5,38,4
+Rich Marion,10,,7,4,6,4,5,6,6,5,7,50,9
+Matt Vigo,9,,7,8,5,5,5,4,6,4,7,51,8
+Paul Wesenberg,7,,5,7,5,4,6,5,5,2,6,45,7
+Chris Machalk,9,,8,8,6,7,6,5,6,5,8,59,20
+Derek Niethammer,10,,5,6,6,6,5,5,5,3,7,48,10
+Chuck Makarov,4,,7,6,6,4,5,6,8,5,8,55,12
+Andy Vigo,3,,5,8,4,5,5,3,4,4,6,44,7
+Steve Vigo,4,,5,8,5,5,7,5,7,7,8,57,18` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+Chuck Makarov,4,,7,5,9,5,5,5,6,4,6,52,12
+Derek Niethammer,10,,6,5,5,7,5,4,3,6,7,48,10
+Steve Vigo,4,,11,5,8,9,9,5,4,6,9,66,18
+Rich Marion,10,,7,4,5,7,7,4,5,4,6,49,10
+Ryan McKenzie,6,,7,3,5,5,6,3,5,4,5,43,4
+Pete Carpenter,8,,6,3,5,4,6,5,5,10,6,50,8
+Paul Sauter,6,,5,5,7,6,6,4,5,5,7,50,15
+Kyle Mast,5,,7,4,5,5,4,5,4,4,5,43,4
+Matt Vigo,9,,6,6,5,5,4,4,3,4,8,45,8
+Russ Westbury,5,,5,4,5,6,5,3,4,5,6,43,6
+Bob Bergeron,1,,5,4,4,5,5,2,6,5,5,41,9
+Andy Harris,7,,7,4,4,4,3,3,4,5,5,39,5
+Scott Rhoades,2,,4,5,4,4,4,3,5,5,5,39,2
+John Curtis,3,,6,4,7,5,6,6,4,4,7,49,6
+Andy Vigo,3,,6,5,5,5,4,3,4,5,6,43,7
+Eric Olson,1,,8,3,6,5,7,4,5,7,6,51,10
+Paul Wesenberg,7,,6,3,5,6,7,3,5,5,6,46,7
+Chris Machalk,9,,7,4,6,8,9,3,5,5,8,55,20` },
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+Russ Westbury,5,,4,7,7,5,4,4,6,4,6,47,7
+Paul Wesenberg,7,,6,7,7,4,6,5,4,6,5,50,8
+Scott Rhoades,2,,6,7,4,5,5,4,4,3,5,43,2
+Derek Niethammer,10,,5,9,6,4,5,6,5,4,7,51,10
+Rich Marion,10,,5,6,4,3,5,4,5,5,6,43,11
+Chuck Makarov,4,,4,5,5,4,5,5,5,5,7,45,13
+Kyle Mast,5,,5,8,4,4,5,4,4,4,6,44,4
+Andy Harris,7,,4,6,4,3,5,5,4,4,5,40,5
+Andy Vigo,3,,6,7,6,4,5,7,5,5,7,52,7
+John Curtis,3,,7,5,8,4,4,5,5,4,5,47,7
+Matt Vigo,9,,5,8,6,5,5,5,4,4,6,48,8
+David Kelley,8,,5,8,5,4,5,4,6,4,5,46,7
+Steve Vigo,4,,6,8,6,5,9,6,8,5,10,63,19
+Pete Carpenter,8,,7,6,6,3,7,5,5,3,5,47,8
+Bob Bergeron,1,,6,7,5,4,5,4,5,4,6,46,9
+Ryan McKenzie,6,,5,7,4,4,4,4,5,4,6,43,4
+Eric Olson,1,,5,8,6,7,4,4,5,4,6,49,10
+Paul Sauter,6,,7,7,6,3,8,6,7,3,6,53,15` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+Matt Vigo,9,,6,4,5,4,5,2,6,4,6,42,9
+Ryan McKenzie,6,,5,3,5,3,4,3,5,4,5,37,4
+Steve Vigo,4,,7,4,5,7,7,4,6,6,5,51,19
+Paul Sauter,6,,6,3,6,8,5,3,5,5,6,47,16
+Derek Niethammer,10,,5,3,5,5,5,3,4,5,7,42,10
+Rich Marion,10,,5,3,4,5,5,4,7,4,10,47,10
+Bob Bergeron,1,,6,4,5,4,6,4,4,4,6,43,9
+Russ Westbury,5,,7,4,4,7,5,4,4,4,5,44,7
+Eric Olson,1,,6,3,6,4,8,3,5,4,5,44,11
+Scott Rhoades,2,,6,3,5,5,4,3,4,3,4,37,3
+Pete Carpenter,8,,8,4,9,4,5,3,5,4,6,48,8
+Aaron Jensen,2,,6,2,4,7,7,3,4,4,5,42,3
+Chuck Makarov,4,,7,5,6,5,6,4,5,4,5,47,12
+John Curtis,3,,6,5,6,4,4,4,5,4,4,42,7
+Andy Harris,7,,6,3,5,5,5,3,5,4,5,41,4
+Andy Vigo,3,,12,3,4,5,5,3,4,5,12,53,7
+David Kelley,8,,7,4,7,5,4,3,6,4,6,46,8
+Paul Wesenberg,7,,7,3,6,5,4,2,4,4,6,41,9` },
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+Bob Bergeron,1,,5,6,4,2,5,6,4,5,6,43,9
+Pete Carpenter,8,,5,11,4,3,5,6,5,4,6,49,9
+Chris Machalk,9,,6,7,7,4,6,7,7,3,6,53,19
+Andy Harris,7,,5,5,5,3,4,4,5,4,5,40,4
+Derek Niethammer,10,,6,6,6,3,4,4,5,4,6,44,9
+Eric Olson,1,,6,7,5,3,4,4,5,3,6,43,11
+Scott Rhoades,2,,4,4,5,3,4,5,4,3,6,38,3
+Ryan McKenzie,6,,4,6,6,4,5,6,4,4,5,44,4
+Paul Wesenberg,7,,7,4,6,3,5,5,6,4,6,46,8
+Rich Marion,10,,6,7,4,5,7,5,6,4,7,51,10
+Steve Vigo,4,,8,7,6,4,8,8,6,4,8,59,18
+David Kelley,8,,4,9,5,3,5,7,5,4,6,48,8
+Matt Vigo,9,,5,6,4,3,4,5,6,4,5,42,9
+Aaron Jensen,2,,4,5,6,3,4,4,4,4,5,39,4
+Paul Sauter,6,,8,8,9,4,6,4,9,3,6,57,15
+Andy Vigo,3,,7,7,6,3,6,5,7,3,5,49,8
+Kyle Mast,5,,5,5,4,3,5,5,4,5,6,42,4
+Russ Westbury,5,,7,6,5,4,5,5,5,3,5,45,7` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+Ryan McKenzie,6,,6,4,6,4,5,3,4,4,5,41,4
+Paul Sauter,6,,7,4,5,7,5,3,5,5,8,49,15
+Chris Machalk,9,,9,4,5,6,9,5,5,8,7,58,19
+Bob Bergeron,1,,5,5,5,6,5,4,5,4,6,45,8
+John Curtis,3,,8,3,4,6,4,3,4,4,7,43,8
+Eric Olson,1,,4,4,5,4,5,3,4,4,8,41,11
+Andy Vigo,3,,7,4,6,6,4,3,4,4,5,43,8
+Pete Carpenter,8,,9,6,8,5,5,4,5,4,5,51,9
+Paul Wesenberg,7,,6,4,5,5,5,4,5,5,7,46,8
+David Kelley,8,,6,4,7,7,4,4,4,5,5,46,10
+Steve Vigo,4,,11,5,6,6,6,4,8,6,5,57,19
+Aaron Jensen,2,,6,3,4,4,4,5,4,4,5,39,4
+Rich Marion,10,,6,3,5,5,5,4,5,4,5,42,11
+Matt Vigo,9,,7,4,4,5,5,4,3,6,8,46,8
+Andy Harris,7,,5,2,6,4,4,3,4,4,5,37,5
+Scott Rhoades,2,,6,4,5,3,5,4,4,3,5,39,3
+Russ Westbury,5,,6,3,5,4,6,3,4,4,7,42,7
+Derek Niethammer,10,,6,3,7,8,5,3,5,5,6,48,9` },
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+Russ Westbury,5,,5,7,5,5,4,8,6,3,6,49,8
+Pete Carpenter,8,,5,6,6,4,4,7,4,4,5,45,9
+David Kelley,8,,7,5,4,5,5,7,4,4,6,47,9
+Ryan McKenzie,6,,4,7,4,4,4,4,5,4,5,41,4
+Andy Harris,7,,5,5,4,5,4,5,4,4,7,43,4
+Paul Sauter,6,,7,8,6,3,5,7,5,4,7,52,15
+Paul Wesenberg,7,,6,9,4,4,5,6,9,4,5,52,8
+John Curtis,3,,5,6,9,4,4,7,4,3,5,47,7
+Derek Niethammer,10,,6,7,6,3,4,7,6,5,7,51,10
+Andy Vigo,3,,5,5,4,4,8,5,6,3,5,45,9
+Rich Marion,10,,5,7,7,5,4,6,5,5,5,49,10
+Bob Bergeron,1,,5,7,8,3,4,4,5,6,7,49,8
+Scott Rhoades,2,,6,5,3,5,4,4,4,4,4,39,3
+Eric Olson,1,,6,6,6,4,5,5,6,6,6,50,9
+Aaron Jensen,2,,5,5,4,4,4,4,4,4,5,39,4
+Chuck Makarov,4,,5,6,4,6,5,6,5,6,6,49,12
+Matt Vigo,9,,5,8,5,4,5,6,5,4,5,47,9
+Steve Vigo,4,,8,8,7,4,8,7,7,5,7,61,19
+Chris Machalk,9,,6,10,5,5,5,8,6,5,7,57,20` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+Kyle Mast,5,,7,4,4,4,3,3,5,5,5,40,6
+Ryan McKenzie,6,,6,3,6,5,5,3,5,4,6,43,4
+Russ Westbury,5,,5,3,5,4,6,3,3,4,5,38,8
+Paul Sauter,6,,7,4,9,6,5,3,4,4,7,49,15
+Rich Marion,10,,7,3,5,5,5,2,5,5,10,47,10
+Eric Olson,1,,5,3,6,4,5,3,3,4,6,39,9
+John Curtis,3,,5,4,4,5,6,4,4,5,5,42,7
+Derek Niethammer,10,,5,4,5,4,5,3,5,3,7,41,11
+David Kelley,8,,8,3,7,4,7,3,4,5,6,47,10
+Andy Vigo,3,,6,5,5,6,4,3,4,5,6,44,9
+Scott Rhoades,2,,5,3,3,5,5,2,3,4,5,35,3
+Aaron Jensen,2,,5,3,5,4,4,4,3,5,8,41,4
+Chris Machalk,9,,7,4,6,7,7,3,4,4,6,48,20
+Chuck Makarov,4,,6,4,7,7,7,5,6,6,6,54,13
+Andy Harris,7,,6,3,7,5,5,3,4,4,6,43,4
+Steve Vigo,4,,7,4,5,6,8,5,6,6,7,54,21
+Paul Wesenberg,7,,6,3,4,4,5,3,4,4,6,39,8
+Bob Bergeron,1,,5,3,6,6,4,3,5,4,6,42,8
+Matt Vigo,9,,6,4,6,5,5,3,4,5,5,43,9` },
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+Andy Harris,7,,5,5,7,3,4,5,7,4,4,44,4
+Aaron Jensen,2,,6,6,5,3,3,6,4,4,5,42,4
+Paul Wesenberg,7,,7,6,5,3,3,5,6,5,6,46,8
+Chuck Makarov,4,,5,7,7,5,8,5,6,5,6,54,13
+Russ Westbury,5,,4,5,5,3,4,5,4,4,7,41,7
+Steve Vigo,4,,8,9,6,5,7,7,6,4,6,58,20
+Derek Niethammer,10,,7,5,4,5,7,5,7,6,6,52,9
+David Kelley,8,,4,6,6,4,4,6,5,4,5,44,10
+Rich Marion,10,,5,7,7,4,4,4,6,5,6,48,10
+Matt Vigo,9,,5,6,5,4,4,6,6,4,5,45,8
+Eric Olson,1,,5,7,5,3,5,6,7,3,8,49,7
+Chris Machalk,9,,6,7,5,5,5,3,7,4,7,49,19
+Ryan McKenzie,6,,5,5,4,3,5,5,5,3,5,40,5
+Andy Vigo,3,,5,4,4,4,3,6,5,4,6,41,8
+Paul Sauter,6,,6,6,6,5,6,6,5,5,9,54,14
+Scott Rhoades,2,,4,7,4,4,4,4,4,3,5,39,2
+Pete Carpenter,8,,5,6,4,4,9,5,9,5,6,53,10
+Bob Bergeron,1,,5,5,5,5,7,3,5,3,8,46,7
+John Curtis,3,,4,7,6,4,5,5,6,4,6,47,7` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+John Curtis,3,,7,4,7,5,5,4,4,6,5,47,8
+Chuck Makarov,4,,7,5,7,6,5,5,6,7,6,54,13
+Andy Harris,7,,5,3,5,5,5,4,5,4,5,41,4
+Matt Vigo,9,,6,4,5,5,6,3,5,5,5,44,8
+Bob Bergeron,1,,6,4,6,4,4,3,4,4,6,41,7
+David Kelley,8,,7,4,4,4,5,4,4,4,5,41,10
+Eric Olson,1,,6,3,6,4,3,4,4,4,5,39,8
+Ryan McKenzie,6,,5,3,4,4,5,3,4,4,6,38,5
+Rich Marion,10,,6,4,7,5,5,4,5,2,6,44,9
+Paul Sauter,6,,7,3,5,6,7,4,5,4,7,48,14
+Derek Niethammer,10,,7,3,5,5,5,4,4,5,7,45,9
+Paul Wesenberg,7,,7,4,6,6,6,4,4,4,7,48,8
+Chris Machalk,9,,7,3,7,6,5,4,5,5,6,48,17
+Scott Rhoades,2,,5,3,4,5,4,2,4,3,5,35,2
+Russ Westbury,5,,6,4,4,6,4,3,4,4,5,40,6
+Aaron Jensen,2,,5,3,4,4,4,4,4,3,5,36,4` },
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+Scott Rhoades,2,,5,5,4,3,5,4,4,3,5,38,1
+John Curtis,3,,6,10,6,3,4,5,5,4,5,48,8
+Chuck Makarov,4,,6,7,4,5,4,6,5,6,6,49,14
+Steve Vigo,4,,7,6,5,5,5,7,6,5,7,53,20
+David Kelley,8,,5,6,4,4,5,6,4,4,6,44,9
+Matt Vigo,9,,5,7,4,4,3,5,5,3,4,40,8
+Rich Marion,10,,7,7,4,4,4,6,4,5,6,47,9
+Pete Carpenter,8,,4,8,7,3,4,7,7,3,6,49,10
+Derek Niethammer,10,,4,8,5,5,5,6,5,5,8,51,9
+Aaron Jensen,2,,5,5,4,4,5,5,4,5,5,42,3
+Chris Machalk,9,,6,7,8,3,7,5,7,7,7,57,16
+Eric Olson,1,,5,6,5,2,4,5,6,4,8,45,6
+Russ Westbury,5,,6,6,4,4,4,4,4,5,5,42,6
+Bob Bergeron,1,,6,6,5,4,5,6,7,5,5,49,7
+Ryan McKenzie,6,,5,6,4,3,4,6,5,5,5,43,4
+Andy Harris,7,,6,6,4,4,5,6,4,4,6,45,4
+Paul Sauter,6,,5,6,7,3,4,5,6,4,6,46,13
+Paul Wesenberg,7,,5,6,4,3,5,4,6,3,5,41,8` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+Ryan McKenzie,6,,7,4,4,4,4,2,3,4,6,38,4
+Chuck Makarov,4,,6,3,6,5,7,3,6,5,5,46,13
+Andy Harris,7,,4,3,4,4,4,3,4,3,6,35,5
+Paul Sauter,6,,8,3,9,5,6,4,6,4,7,52,12
+Paul Wesenberg,7,,5,3,4,5,5,3,4,3,6,38,7
+Matt Vigo,9,,5,3,6,4,6,4,4,3,6,41,7
+Eric Olson,1,,6,3,6,7,6,4,4,4,6,46,6
+Russ Westbury,5,,6,4,4,4,7,4,4,3,5,41,5
+Steve Vigo,4,,5,4,9,6,6,7,6,4,8,55,19
+Chris Machalk,9,,8,6,7,5,7,3,4,6,8,54,16
+Bob Bergeron,1,,6,3,5,5,6,3,5,5,5,43,7
+Scott Rhoades,2,,6,3,6,4,5,3,4,3,5,39,1
+David Kelley,8,,5,3,6,4,6,4,6,5,6,45,9
+Pete Carpenter,8,,6,4,6,5,4,3,3,5,7,43,10` },
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+Andy Harris,7,,4,5,4,3,4,5,4,5,6,40,4
+David Kelley,8,,5,6,6,3,5,6,5,4,5,45,9
+Paul Wesenberg,7,,6,4,4,4,7,6,5,5,6,47,7
+Pete Carpenter,8,,4,7,5,3,4,5,4,5,6,43,10
+Scott Rhoades,2,,4,6,4,3,4,6,4,5,5,41,1
+Andy Vigo,3,,6,6,4,4,5,4,6,4,5,44,7
+Aaron Jensen,2,,5,5,4,4,3,4,5,3,5,38,3
+Eric Olson,1,,5,8,5,5,4,4,5,3,7,46,6
+Chuck Makarov,4,,6,9,6,4,6,6,7,5,11,60,12
+Matt Vigo,9,,5,7,6,3,6,5,4,5,5,46,7
+Russ Westbury,5,,4,4,6,6,5,4,4,3,6,42,5
+Steve Vigo,4,,6,6,4,7,8,6,6,6,6,55,18
+Bob Bergeron,1,,5,6,4,5,5,5,6,5,6,47,7
+Ryan McKenzie,6,,5,7,4,4,5,5,5,3,5,43,4
+Paul Sauter,6,,6,7,7,4,7,6,5,6,6,54,13` },
+  ],
+  2025: [
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+David Kelley,4,,4,8,5,4,6,7,6,4,6,50,8
+Matt Vigo,7,,5,6,6,4,4,6,4,4,6,45,7
+Chris Machalk,7,,9,8,9,7,6,6,6,7,9,67,15
+Eric Olson,1,,6,6,6,3,5,6,5,4,5,46,7
+Russ Westbury,3,,6,7,7,5,4,5,5,4,5,48,5
+Scott Rhoades,2,,5,7,4,3,3,4,5,4,5,40,2
+Andy Vigo,5,,6,8,8,5,5,5,5,5,5,52,8
+Bob Bergeron,1,,4,5,5,3,4,5,5,4,6,41,8
+Jeff Blanton,3,,5,7,5,3,4,4,6,5,5,44,7
+Ryan McKenzie,9,,5,6,5,4,4,6,5,3,5,43,4
+Aaron Jensen,2,,6,5,5,4,5,4,4,5,6,44,3
+John Curtis,5,,4,7,5,3,4,5,5,4,5,42,8
+Ben Telian,10,,7,6,5,4,4,9,4,3,7,49,3
+Andy Harris,6,,7,6,5,3,4,4,4,3,6,42,4
+Derek Niethammer,8,,5,8,4,5,5,4,7,5,7,50,9
+Paul Wesenberg,6,,5,9,4,4,4,8,5,4,8,51,7
+Rich Marion,8,,6,8,6,4,6,7,6,5,6,54,9
+Paul Sauter,9,,6,6,4,4,5,5,6,5,7,48,13
+Kevin Jensen,10,,6,5,7,4,4,3,4,3,5,41,4` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+Rich Marion,8,,7,5,5,6,6,3,5,6,8,51,10
+Ben Telian,10,,7,4,5,4,5,3,5,5,6,44,3
+Derek Niethammer,8,,7,7,7,4,7,4,7,4,7,54,10
+Kevin Jensen,10,,7,4,4,6,6,3,4,5,6,45,5
+Scott Rhoades,2,,5,4,5,3,5,4,4,4,7,41,2
+Matt Vigo,7,,9,5,8,5,5,3,5,5,8,53,7
+Aaron Jensen,2,,8,3,6,4,5,3,5,5,5,44,3
+Chris Machalk,7,,11,5,8,6,6,4,5,5,7,57,16
+Paul Wesenberg,6,,9,3,7,5,7,6,4,4,5,50,7
+Russ Westbury,3,,6,4,5,5,5,4,6,6,6,47,5
+Andy Harris,6,,6,3,4,4,4,3,4,5,5,38,5
+Jeff Blanton,3,,7,4,6,5,6,2,4,5,6,45,7
+Bob Bergeron,1,,6,3,8,5,5,4,5,5,5,46,7
+Ryan McKenzie,9,,4,4,5,4,6,4,4,4,7,42,5
+Eric Olson,1,,6,5,6,4,5,3,7,5,7,48,8
+Paul Sauter,9,,8,4,8,5,6,3,5,5,6,50,13
+David Kelley,4,,7,3,6,7,4,4,5,6,6,48,8
+John Curtis,5,,10,4,6,3,6,3,4,5,6,47,7
+Pete Carpenter,4,,6,6,6,6,7,4,6,8,9,58,9
+Andy Vigo,5,,6,3,6,4,6,4,5,4,8,46,8` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+Eric Olson,1,,5,4,4,5,6,3,4,6,7,44,8
+Rich Marion,8,,5,4,5,6,5,3,6,4,7,45,10
+Matt Vigo,7,,7,5,4,5,5,3,5,6,7,47,7
+Ryan McKenzie,9,,7,3,5,4,5,3,4,5,5,41,5
+Chris Machalk,7,,7,6,6,7,7,4,5,4,9,55,16
+Paul Sauter,9,,8,4,8,5,6,3,5,5,7,51,12
+Scott Rhoades,2,,5,3,4,4,4,3,4,4,5,36,2
+Andy Vigo,5,,6,4,5,6,6,3,4,5,7,46,8
+John Curtis,5,,5,3,5,5,6,3,4,5,8,44,8
+Andy Harris,6,,5,3,4,4,5,3,4,4,6,38,4
+Ben Telian,10,,5,4,4,4,4,3,5,5,5,39,4
+Paul Wesenberg,6,,6,7,5,4,5,4,4,7,5,47,7
+Kevin Jensen,10,,6,5,7,4,6,3,6,5,6,48,7
+Russ Westbury,3,,7,5,6,5,6,3,4,4,6,46,5
+David Kelley,4,,4,4,4,5,7,3,6,5,6,44,8
+Derek Niethammer,8,,8,4,4,5,5,4,6,6,9,51,12
+Jeff Blanton,3,,5,3,5,5,6,3,4,5,4,40,7
+Pete Carpenter,4,,6,4,5,8,4,4,5,6,6,48,10` },
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+Andy Vigo,5,,6,6,5,4,6,6,4,3,7,47,8
+Ryan McKenzie,9,,5,6,4,3,5,5,4,5,6,43,4
+John Curtis,5,,6,6,6,4,6,7,5,5,7,52,8
+Bob Bergeron,1,,5,7,6,3,5,6,5,5,7,49,7
+Matt Vigo,7,,6,5,4,7,4,5,5,5,6,47,8
+Eric Olson,1,,5,7,5,5,6,6,5,4,8,51,8
+Chris Machalk,7,,8,8,8,5,7,6,7,5,10,64,16
+Scott Rhoades,2,,7,5,4,3,5,5,5,5,5,44,2
+Russ Westbury,3,,7,8,8,3,4,6,5,4,7,52,6
+Jeff Blanton,3,,6,6,5,3,7,6,5,4,5,47,6
+David Kelley,4,,6,6,8,3,5,6,7,4,6,51,8
+Ben Telian,10,,5,7,3,3,5,4,5,4,5,41,4
+Pete Carpenter,4,,5,6,6,5,5,4,6,4,6,47,10
+Kevin Jensen,10,,6,5,5,4,4,4,5,4,5,42,9
+Andy Harris,6,,6,7,4,3,4,6,6,4,5,45,3
+Rich Marion,8,,5,6,6,6,5,5,5,5,7,50,10
+Paul Wesenberg,6,,7,6,7,3,4,5,5,4,9,50,8
+Derek Niethammer,8,,5,10,7,5,5,4,6,4,8,54,12` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+David Kelley,4,,5,4,5,5,6,4,4,5,6,44,9
+Rich Marion,8,,7,4,5,5,7,2,6,7,6,49,11
+Pete Carpenter,4,,6,3,5,4,7,3,7,5,8,48,10
+Derek Niethammer,8,,9,4,4,6,7,4,5,7,9,55,12
+Andy Vigo,5,,8,6,4,7,4,5,6,6,5,51,8
+Matt Vigo,7,,7,4,7,5,7,4,3,4,6,47,8
+John Curtis,5,,5,5,5,5,4,4,3,4,7,42,8
+Chris Machalk,7,,7,4,6,6,9,7,3,6,9,57,17
+Jeff Blanton,3,,7,4,6,5,6,5,4,5,8,50,7
+Ryan McKenzie,9,,5,3,5,7,5,4,4,6,5,44,5
+Bob Bergeron,1,,6,5,6,6,7,4,7,6,6,53,8
+Andy Harris,6,,5,3,5,5,4,3,5,4,6,40,3
+Eric Olson,1,,4,7,8,5,6,3,5,7,6,51,8
+Paul Wesenberg,6,,6,4,5,5,6,4,3,6,9,48,8
+Scott Rhoades,2,,7,2,4,3,5,3,4,4,6,38,2
+Ben Telian,10,,5,3,5,4,4,3,4,3,5,36,4
+Aaron Jensen,2,,5,4,6,4,5,4,5,4,5,42,4
+Kevin Jensen,10,,6,5,4,5,6,3,5,4,6,44,8
+Russ Westbury,3,,6,4,6,5,8,4,4,6,7,50,7
+Paul Sauter,9,,7,4,6,9,9,4,5,8,7,59,13` },
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+Ryan McKenzie,9,,4,5,4,3,4,5,5,4,6,40,6
+Ben Telian,10,,5,6,5,4,4,5,4,3,5,41,3
+Jeff Blanton,3,,6,6,6,4,5,6,5,4,6,48,7
+Matt Vigo,7,,5,7,5,4,5,6,4,5,5,46,8
+Scott Rhoades,2,,5,5,5,4,4,3,4,4,5,39,3
+Rich Marion,8,,9,6,7,4,5,7,4,3,6,51,11
+Aaron Jensen,2,,4,4,5,5,4,4,4,2,4,36,4
+Derek Niethammer,8,,6,7,4,4,5,4,6,3,5,44,14
+Russ Westbury,3,,5,7,8,3,5,5,4,5,6,48,8
+Chris Machalk,7,,6,8,8,4,5,6,7,7,7,58,18
+Bob Bergeron,1,,5,7,7,4,6,7,4,4,6,50,8
+John Curtis,5,,5,8,6,4,5,5,4,5,5,47,8
+Eric Olson,1,,5,6,7,4,6,9,4,3,5,49,10
+Andy Vigo,5,,6,7,5,3,6,6,6,6,5,50,9
+David Kelley,4,,4,6,5,5,8,6,6,4,4,48,9
+Andy Harris,6,,5,5,8,5,5,4,5,4,6,47,3
+Pete Carpenter,4,,7,6,6,3,4,6,5,3,6,46,10
+Paul Wesenberg,6,,5,8,6,4,4,5,6,3,6,47,8
+Paul Sauter,9,,6,8,9,3,8,5,7,4,9,59,13
+Kevin Jensen,10,,7,7,4,3,4,4,5,4,6,44,8` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+Russ Westbury,3,,4,3,4,5,6,3,4,4,6,39,9
+John Curtis,5,,8,4,6,5,6,4,5,4,5,47,8
+Andy Vigo,5,,6,3,5,7,6,3,4,4,7,45,10
+Matt Vigo,7,,9,3,6,5,4,2,5,3,6,43,9
+Ben Telian,10,,7,4,6,3,4,3,4,4,4,39,3
+Chris Machalk,7,,8,4,7,5,5,3,4,5,10,51,20
+Kevin Jensen,10,,8,3,5,4,6,4,5,5,5,45,8
+Rich Marion,8,,8,4,5,5,6,5,6,6,5,50,11
+Ryan McKenzie,9,,6,3,6,4,5,4,4,4,5,41,5
+Derek Niethammer,8,,7,3,5,4,5,3,7,4,8,46,13
+Paul Sauter,9,,6,4,7,5,5,6,5,6,8,52,14
+Scott Rhoades,2,,5,3,4,4,5,3,4,4,4,36,3
+Andy Harris,6,,6,3,5,4,5,3,4,3,11,44,3
+Bob Bergeron,1,,5,5,5,4,6,4,6,4,6,45,10
+Aaron Jensen,2,,7,3,5,4,4,3,6,5,6,43,3
+David Kelley,4,,5,3,5,5,5,3,4,4,11,45,10
+Paul Wesenberg,6,,9,4,6,4,6,4,4,5,5,47,9
+Eric Olson,1,,6,3,5,4,4,3,5,5,5,40,10
+Pete Carpenter,4,,7,5,5,4,7,5,5,5,8,51,10` },
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+Scott Rhoades,2,,6,7,4,3,5,4,4,4,5,42,2
+Matt Vigo,7,,5,6,6,6,4,8,6,5,8,54,9
+Rich Marion,8,,6,6,6,5,5,5,5,5,7,50,12
+Chris Machalk,7,,8,11,6,5,7,5,6,4,7,59,19
+Derek Niethammer,8,,5,5,5,6,4,6,4,4,4,43,13
+Eric Olson,1,,6,7,7,3,7,6,6,5,7,54,9
+Jeff Blanton,3,,8,10,5,4,5,6,6,4,6,54,7
+Russ Westbury,3,,4,6,5,4,3,6,5,3,6,42,9
+John Curtis,5,,5,7,6,5,5,4,5,5,5,47,8
+Ben Telian,10,,5,8,4,5,4,5,5,3,8,47,3
+Andy Vigo,5,,5,7,7,4,5,6,6,6,7,53,10
+Kevin Jensen,10,,4,5,5,4,6,6,4,3,6,43,8
+Andy Harris,6,,4,9,6,3,4,6,5,4,6,47,4
+Ryan McKenzie,9,,6,8,7,2,5,5,5,5,5,48,6
+Paul Wesenberg,6,,6,7,3,3,5,6,6,5,8,49,11
+Paul Sauter,9,,5,7,6,6,7,7,6,5,8,57,15
+David Kelley,4,,5,9,4,4,4,6,5,5,7,49,9
+Pete Carpenter,4,,5,5,5,4,6,5,6,5,6,47,10` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+Bob Bergeron,1,,7,3,6,4,6,5,4,6,6,47,9
+David Kelley,4,,6,4,5,5,6,2,5,4,6,43,10
+Ryan McKenzie,9,,6,3,5,5,5,3,5,4,5,41,6
+Pete Carpenter,4,,9,3,7,4,4,3,7,8,6,51,10
+Paul Sauter,9,,5,3,9,8,8,5,6,3,6,53,16
+Scott Rhoades,2,,4,3,4,4,4,3,4,4,5,35,2
+Eric Olson,1,,7,3,5,4,4,4,5,5,6,43,10
+Aaron Jensen,2,,5,4,4,6,5,3,5,3,5,40,4
+Ben Telian,10,,6,3,4,5,5,3,4,4,4,38,4
+John Curtis,5,,4,3,5,6,5,4,5,6,5,43,9
+Derek Niethammer,8,,8,4,4,4,7,4,4,4,4,43,12
+Andy Vigo,5,,5,4,6,4,7,3,5,3,5,42,12
+Russ Westbury,3,,6,4,5,4,6,4,4,5,5,43,9
+Kevin Jensen,10,,5,4,6,4,5,3,5,4,5,41,7
+Matt Vigo,7,,4,5,4,5,4,4,4,4,5,39,10
+Paul Wesenberg,6,,6,4,5,4,5,3,3,6,5,41,11
+Chris Machalk,7,,6,6,9,5,7,7,6,5,8,59,19
+Rich Marion,8,,6,4,5,4,5,3,5,5,5,42,13
+Jeff Blanton,3,,6,4,5,5,6,5,3,4,7,45,8
+Andy Harris,6,,5,3,4,5,4,3,4,4,5,37,5` },
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+Bob Bergeron,1,,5,6,4,3,4,5,6,4,7,44,10
+Kevin Jensen,10,,5,7,4,4,5,4,4,4,4,41,7
+Russ Westbury,3,,7,7,5,3,7,5,5,4,5,48,8
+Scott Rhoades,2,,5,5,4,4,4,5,5,4,5,41,2
+Derek Niethammer,8,,5,5,6,5,5,7,7,6,5,51,11
+Andy Harris,6,,6,6,5,4,4,6,4,4,5,44,4
+Matt Vigo,7,,6,6,8,3,5,5,5,5,6,49,9
+Ryan McKenzie,9,,5,5,5,5,8,5,5,3,7,48,5
+Aaron Jensen,2,,7,4,5,4,4,4,4,3,5,40,4
+Paul Sauter,9,,4,5,6,3,6,6,3,5,5,43,15
+John Curtis,5,,5,6,6,3,4,5,8,3,5,45,9
+Paul Wesenberg,6,,6,8,4,3,4,7,4,4,7,47,10
+Pete Carpenter,4,,5,6,7,3,4,5,4,3,6,43,11
+Chris Machalk,7,,6,9,9,5,7,8,7,4,7,62,19
+Jeff Blanton,3,,5,10,6,4,7,6,6,5,7,56,9
+Rich Marion,8,,7,4,4,4,4,6,4,4,6,43,12` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+Rich Marion,8,,6,3,3,4,7,6,6,4,5,44,10
+Russ Westbury,3,,5,3,5,5,5,3,4,7,5,42,8
+Andy Harris,6,,5,4,5,5,4,3,6,4,6,42,5
+Jeff Blanton,3,,8,3,4,6,4,3,7,5,7,47,10
+David Kelley,4,,9,4,5,4,4,4,5,6,6,47,9
+John Curtis,5,,6,4,6,4,6,4,6,4,4,44,9
+Andy Vigo,5,,5,3,7,4,5,4,4,6,6,44,10
+Ben Telian,10,,5,2,5,5,3,3,4,5,5,37,3
+Derek Niethammer,8,,9,4,5,5,9,6,5,5,6,54,10
+Kevin Jensen,10,,5,4,6,5,4,2,3,4,6,39,7
+Paul Wesenberg,6,,6,4,5,5,5,3,5,3,4,40,9
+Eric Olson,1,,6,6,6,5,7,2,4,5,7,48,9
+Ryan McKenzie,9,,5,4,5,4,4,3,3,6,7,41,6
+Bob Bergeron,1,,9,3,5,4,7,3,4,4,6,45,9
+Paul Sauter,9,,6,4,4,5,6,5,6,6,7,49,15
+Scott Rhoades,2,,5,3,4,4,6,3,4,3,5,37,2
+Matt Vigo,7,,6,2,5,4,5,5,5,4,5,41,9
+Aaron Jensen,2,,5,3,4,4,5,3,4,3,6,37,4
+Chris Machalk,7,,5,7,7,7,8,4,5,7,8,58,20` },
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+Eric Olson,1,,5,5,5,5,5,4,5,4,5,43,9
+Rich Marion,8,,6,5,6,3,7,6,5,4,7,49,10
+Bob Bergeron,1,,6,6,5,2,4,4,5,5,6,43,10
+Derek Niethammer,8,,4,6,4,3,6,8,5,6,5,47,10
+Russ Westbury,3,,6,7,5,3,5,4,5,3,6,44,7
+Andy Harris,6,,5,5,4,3,4,5,4,4,5,39,6
+Scott Rhoades,2,,4,7,4,3,7,4,5,3,5,42,2
+Ben Telian,10,,5,5,4,4,5,5,5,3,5,41,2
+David Kelley,4,,5,11,6,5,7,9,5,5,6,59,9
+Matt Vigo,7,,5,7,4,3,4,6,6,4,6,45,8
+Paul Wesenberg,6,,4,6,4,4,4,5,6,5,5,43,9
+John Curtis,5,,5,7,5,3,6,4,5,4,5,44,9
+Jeff Blanton,3,,5,7,4,4,5,5,5,4,5,44,10
+Pete Carpenter,4,,8,11,5,4,5,6,5,4,5,53,10
+Ryan McKenzie,9,,4,6,6,5,6,6,5,4,6,48,6
+Chris Machalk,7,,7,7,4,3,6,8,7,5,8,55,20
+Paul Sauter,9,,6,6,5,5,6,5,7,4,7,51,14
+Kevin Jensen,10,,4,4,4,4,4,5,4,4,5,38,6
+Aaron Jensen,2,,6,6,4,4,4,6,5,3,6,44,4
+Andy Vigo,5,,5,7,5,4,6,7,6,3,7,50,10` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+Scott Rhoades,2,,5,3,4,5,4,3,4,5,6,39,2
+Ben Telian,10,,5,3,5,5,6,3,4,4,6,41,3
+Aaron Jensen,2,,6,4,4,4,4,3,4,6,6,41,4
+Kevin Jensen,10,,6,4,5,4,4,3,5,4,5,40,5
+Andy Harris,6,,5,3,6,6,6,3,3,3,5,40,5
+Ryan McKenzie,9,,5,3,5,3,5,6,4,4,6,41,6
+Paul Wesenberg,6,,9,3,4,4,5,4,4,4,5,42,8
+Paul Sauter,9,,5,4,6,6,7,4,6,4,7,49,14
+Russ Westbury,3,,4,3,5,6,5,4,4,3,5,39,7
+Derek Niethammer,8,,6,4,5,4,6,4,6,5,5,45,10
+Jeff Blanton,3,,7,3,4,4,5,4,5,4,5,41,11
+Eric Olson,1,,7,5,7,5,5,4,4,5,7,49,9
+John Curtis,5,,6,4,4,6,5,3,5,5,5,43,8
+Bob Bergeron,1,,5,5,5,5,5,3,4,5,6,43,9
+Andy Vigo,5,,6,4,6,6,4,3,4,6,6,45,10
+Rich Marion,8,,6,4,6,6,5,3,6,6,6,48,10
+David Kelley,4,,6,4,5,5,5,4,4,4,6,43,9
+Matt Vigo,7,,6,4,7,5,5,3,4,6,6,46,7
+Pete Carpenter,4,,7,4,4,4,6,4,5,5,7,46,11
+Chris Machalk,7,,7,4,6,5,6,2,3,6,8,47,20` },
+    { side: "back", csvText: `Player,Team #,Hole,10,11,12,13,14,15,16,17,18,Total,HDCP
+,,Pars,4,5,4,3,4,4,4,3,5,36,
+David Kelley,4,,6,7,6,4,6,9,5,4,6,53,8
+Pete Carpenter,4,,6,7,6,3,7,7,5,3,7,51,11
+Bob Bergeron,1,,6,7,7,4,5,5,6,4,5,49,8
+Ben Telian,10,,5,4,5,3,4,5,5,3,5,39,3
+Eric Olson,1,,6,6,4,4,6,4,6,4,6,46,9
+Kevin Jensen,10,,6,5,5,3,4,6,5,3,6,43,4
+Andy Harris,6,,5,5,4,3,4,6,4,3,5,39,5
+Matt Vigo,7,,5,6,5,4,5,6,5,4,7,47,7
+Paul Wesenberg,6,,5,6,7,3,5,4,6,3,6,45,7
+Chris Machalk,7,,6,9,8,5,7,8,4,7,11,65,18
+Scott Rhoades,2,,4,7,4,4,4,4,3,3,6,39,2
+John Curtis,5,,5,8,5,4,5,6,5,5,7,50,8
+Aaron Jensen,2,,5,6,5,3,4,4,5,4,5,41,3
+Andy Vigo,5,,6,6,5,6,6,4,4,4,5,46,10
+Russ Westbury,3,,4,6,5,4,6,7,4,4,4,44,5
+Ryan McKenzie,9,,4,5,6,3,4,5,5,3,6,41,6
+Jeff Blanton,3,,5,6,5,4,5,4,4,5,5,43,10
+Paul Sauter,9,,5,7,8,4,6,7,7,4,6,54,13` },
+    { side: "front", csvText: `Player,Team #,Hole,1,2,3,4,5,6,7,8,9,Total,HDCP
+,,Pars,5,3,4,4,4,3,4,4,5,36,
+Russ Westbury,3,,4,4,6,3,5,3,5,5,5,40,5
+John Curtis,5,,6,5,5,3,6,3,4,4,7,43,8
+Jeff Blanton,3,,5,4,4,3,8,4,4,5,6,43,9
+Andy Vigo,5,,6,4,4,4,6,3,4,4,7,42,9
+Bob Bergeron,1,,4,4,4,4,4,5,7,4,7,43,8
+Matt Vigo,7,,7,7,5,4,6,4,4,4,5,46,7
+Derek Niethammer,8,,7,2,8,4,4,4,4,3,6,42,9
+Ryan McKenzie,9,,6,3,4,3,3,3,4,4,5,35,6
+Rich Marion,8,,6,4,7,4,5,6,7,5,6,50,10
+Andy Harris,6,,5,3,5,5,6,3,4,5,5,41,4
+Ben Telian,10,,7,3,6,4,4,3,5,4,6,42,3
+Paul Wesenberg,6,,8,4,6,6,7,3,4,5,6,49,7
+Kevin Jensen,10,,7,4,4,4,4,3,4,3,5,38,4
+Paul Sauter,9,,5,4,7,5,5,3,4,7,8,48,13
+Eric Olson,1,,5,4,6,4,5,3,5,4,7,43,9
+Chris Machalk,7,,6,4,7,5,7,4,6,5,9,53,18
+Scott Rhoades,2,,5,5,5,5,3,3,4,3,8,41,2
+Pete Carpenter,4,,5,3,5,4,7,3,6,4,5,42,11
+Aaron Jensen,2,,5,5,7,4,4,3,4,3,6,41,3` },
+  ],
+};
+  </script>
+</body>
+</html>
