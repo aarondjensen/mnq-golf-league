@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { K, FONTS, CSS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   SEASON_WEEKS, REGULAR_WEEKS, TEAMS_COUNT, getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap } from "../theme";
 import { LEAGUE_ID } from "../firebase";
@@ -9,7 +9,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const [showCTP, setShowCTP] = useState(false);
   const [commMode, setCommMode] = useState(false);
   const [toast, setToast] = useState(null);
-  const [editing, setEditing] = useState(false); // true when user manually navigated to a previous hole
+  const [editing, setEditing] = useState(false);
+  const [showScorecard, setShowScorecard] = useState(false);
+  const initialJump = useRef(false); // true when user manually navigated to a previous hole
 
   // Find current week: first week where not all matches are finalized
   const currentWeek = useMemo(() => {
@@ -138,6 +140,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     return 8; // all complete
   })();
 
+  // Jump to current hole on initial load (not hole 1)
+  useEffect(() => {
+    if (!initialJump.current && currentHoleIdx > 0) {
+      setCurHole(currentHoleIdx);
+      initialJump.current = true;
+    }
+  }, [currentHoleIdx]);
+
   // Auto-advance when all 4 scores entered on current hole (only when not editing)
   useEffect(() => {
     if (holeComplete && curHole < 8 && !editing && !allComplete) {
@@ -210,31 +220,93 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           return <button key={i} onClick={() => { setCurHole(i); setEditing(i < currentHoleIdx); }} style={{ flex: 1, height: 34, borderRadius: done || cur ? 10 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 12, fontWeight: 700, cursor: "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{i + 1}</button>;
         })}
       </div>
-      {/* Per-hole match status */}
-      <div style={{ display: "flex", gap: 3, marginBottom: 10 }}>
-        {Array.from({ length: 9 }, (_, i) => {
-          const myTeamId = myTeam?.id || t1.id;
-          const isMyT1 = t1.id === myTeamId;
-          let holesUp = 0;
-          let hasData = false;
+      {/* Match status — tappable to expand scorecard */}
+      {(() => {
+        const myTeamId = myTeam?.id || t1.id;
+        const isMyT1 = t1.id === myTeamId;
+        const holeStatuses = Array.from({ length: 9 }, (_, i) => {
+          let holesUp = 0, hasData = false;
           for (let h = 0; h <= i; h++) {
-            let t1HoleNet = 0, t2HoleNet = 0, t1Has = true, t2Has = true;
-            t1Players.forEach(pid => { const s = getS(pid, h); if (s <= 0) t1Has = false; else t1HoleNet += s - getStrokes(pid, h); });
-            t2Players.forEach(pid => { const s = getS(pid, h); if (s <= 0) t2Has = false; else t2HoleNet += s - getStrokes(pid, h); });
-            if (t1Has && t2Has) {
-              if (t1HoleNet < t2HoleNet) holesUp += isMyT1 ? 1 : -1;
-              else if (t1HoleNet > t2HoleNet) holesUp += isMyT1 ? -1 : 1;
+            let t1HN = 0, t2HN = 0, t1OK = true, t2OK = true;
+            t1Players.forEach(pid => { const s = getS(pid, h); if (s <= 0) t1OK = false; else t1HN += s - getStrokes(pid, h); });
+            t2Players.forEach(pid => { const s = getS(pid, h); if (s <= 0) t2OK = false; else t2HN += s - getStrokes(pid, h); });
+            if (t1OK && t2OK) {
+              if (t1HN < t2HN) holesUp += isMyT1 ? 1 : -1;
+              else if (t1HN > t2HN) holesUp += isMyT1 ? -1 : 1;
               hasData = true;
             } else { hasData = false; break; }
           }
-          if (!hasData) return <div key={i} style={{ flex: 1, height: 20 }} />;
-          const label = holesUp > 0 ? `${holesUp}U` : holesUp < 0 ? `${Math.abs(holesUp)}D` : "T";
-          const color = holesUp > 0 ? K.grn : holesUp < 0 ? K.red : K.t3;
-          return (
-            <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "20px" }}>{label}</div>
-          );
-        })}
-      </div>
+          return hasData ? holesUp : null;
+        });
+        return (<>
+          <button onClick={() => setShowScorecard(!showScorecard)} style={{ display: "flex", gap: 3, marginBottom: showScorecard ? 0 : 8, width: "100%", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
+            {holeStatuses.map((st, i) => {
+              if (st === null) return <div key={i} style={{ flex: 1, height: 20 }} />;
+              const label = st > 0 ? `${st}U` : st < 0 ? `${Math.abs(st)}D` : "T";
+              const color = st > 0 ? K.grn : st < 0 ? K.red : K.t3;
+              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 11, fontWeight: 800, color, lineHeight: "20px" }}>{label}</div>;
+            })}
+          </button>
+          {showScorecard && (
+            <div style={{ background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 8, padding: "8px 4px", marginBottom: 8 }}>
+              <div style={{ display: "flex", alignItems: "center" }}>
+                <div style={{ width: 64, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600, paddingLeft: 2 }}>HOLE</div>
+                {Array.from({ length: 9 }, (_, i) => (
+                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, color: i === curHole ? K.act : K.t3, fontWeight: 700 }}>{side === 'front' ? i + 1 : i + 10}</div>
+                ))}
+                <div style={{ width: 26, textAlign: "center", fontSize: 8, color: K.t2, fontWeight: 700 }}>TOT</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", paddingBottom: 3, marginBottom: 3, borderBottom: `1px solid ${K.bdr}40` }}>
+                <div style={{ width: 64, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600, paddingLeft: 2 }}>PAR</div>
+                {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, color: K.t3, fontWeight: 600 }}>{p}</div>)}
+                <div style={{ width: 26, textAlign: "center", fontSize: 9, color: K.t3, fontWeight: 600 }}>{pars.reduce((a, b) => a + b, 0)}</div>
+              </div>
+              {[{ pids: isMyT1 ? t1Players : t2Players, label: isMyT1 ? t1.name : t2.name },
+                { pids: isMyT1 ? t2Players : t1Players, label: isMyT1 ? t2.name : t1.name }].map(({ pids, label }, ti) => {
+                let teamTotal = 0, teamComplete = true;
+                const rows = pids.map(pid => {
+                  const pl = players.find(p => p.id === pid); if (!pl) return null;
+                  const nh = getNineHcp(pid);
+                  let total = 0, complete = true;
+                  const cells = Array.from({ length: 9 }, (_, h) => {
+                    const s = getS(pid, h); const st = getStrokes(pid, h);
+                    if (s > 0) total += s - st; else complete = false;
+                    return { s, st, net: s > 0 ? s - st : 0 };
+                  });
+                  if (complete) teamTotal += total; else teamComplete = false;
+                  const lastName = pl.name.split(' ').slice(-1)[0];
+                  return (
+                    <div key={pid} style={{ display: "flex", alignItems: "center", padding: "1px 0" }}>
+                      <div style={{ width: 64, flexShrink: 0, fontSize: 9, color: K.t2, fontWeight: 600, paddingLeft: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lastName}<span style={{ color: K.t3, fontSize: 7, marginLeft: 2 }}>({nh})</span></div>
+                      {cells.map((c, h) => (
+                        <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 700, color: c.s <= 0 ? K.t3 + "30" : K.t1, position: "relative" }}>
+                          {c.s > 0 ? c.net : "·"}
+                          {c.st > 0 && c.s > 0 && <span style={{ position: "absolute", top: -3, right: 0, fontSize: 4, color: K.teal, lineHeight: 1 }}>{"●".repeat(c.st)}</span>}
+                        </div>
+                      ))}
+                      <div style={{ width: 26, textAlign: "center", fontSize: 10, fontWeight: 700, color: K.t1 }}>{complete ? total : "—"}</div>
+                    </div>
+                  );
+                });
+                return (
+                  <div key={ti} style={{ borderBottom: ti === 0 ? `1px solid ${K.bdr}40` : "none", paddingBottom: ti === 0 ? 3 : 0, marginBottom: ti === 0 ? 3 : 0 }}>
+                    {rows}
+                    <div style={{ display: "flex", alignItems: "center", padding: "1px 0" }}>
+                      <div style={{ width: 64, flexShrink: 0, fontSize: 8, color: K.teal, fontWeight: 700, paddingLeft: 2 }}>TEAM</div>
+                      {Array.from({ length: 9 }, (_, h) => {
+                        let tNet = 0, ok = true;
+                        pids.forEach(pid => { const s = getS(pid, h); if (s <= 0) ok = false; else tNet += s - getStrokes(pid, h); });
+                        return <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 800, color: ok ? K.teal : K.t3 + "30" }}>{ok ? tNet : "·"}</div>;
+                      })}
+                      <div style={{ width: 26, textAlign: "center", fontSize: 10, fontWeight: 800, color: K.teal }}>{teamComplete ? teamTotal : "—"}</div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </>);
+      })()}
       <div style={{ background: `linear-gradient(135deg, ${K.card}, #0f2440)`, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "6px 8px", marginBottom: 6, display: "flex", alignItems: "center" }}>
         <button onClick={() => { const prev = Math.max(0, curHole - 1); setCurHole(prev); setEditing(prev < currentHoleIdx); }} disabled={curHole === 0} style={{ width: 32, height: 40, borderRadius: 8, background: "none", border: "none", cursor: curHole === 0 ? "default" : "pointer", color: curHole === 0 ? K.t3 + "40" : K.t2, fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
         <div style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 8px" }}>
