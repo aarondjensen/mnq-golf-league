@@ -171,19 +171,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-        {activeMatch ? (
+      {activeMatch && (
+        <div style={{ marginBottom: 8 }}>
           <BackBtn onClick={() => { setActiveMatch(null); if (!commMode) setCommMode(false); }} />
-        ) : (
-          <div style={{ display: "flex", gap: 6 }}><Pill>{side === 'front' ? 'FRONT' : 'BACK'} 9</Pill><Pill color={K.t2}>WK {week}</Pill></div>
-        )}
-        {isComm && !commMode && !activeMatch && (
-          <button onClick={() => setCommMode(true)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t2, fontSize: 11, padding: "5px 10px", cursor: "pointer", fontWeight: 600 }}>All Matches</button>
-        )}
-      </div>
-      <Card style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, padding: "8px 12px" }}>
-        <span style={{ fontSize: 13, fontWeight: 700 }}>{t1.name}</span><span style={{ fontSize: 11, fontWeight: 800, color: K.logoBright }}>VS</span><span style={{ fontSize: 13, fontWeight: 700, textAlign: "right" }}>{t2.name}</span>
-      </Card>
+        </div>
+      )}
       <div style={{ display: "flex", gap: 3, marginBottom: 2 }}>
         {Array.from({ length: 9 }, (_, i) => {
           const cur = i === curHole; const done = allP.every(pid => getS(pid, i) > 0);
