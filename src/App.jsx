@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "./firebase";
 import { K, FONTS, CSS, I, DEFAULT_SCORING, SEASON_WEEKS } from "./theme";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
@@ -28,6 +28,35 @@ export default function GolfLeagueApp() {
   const [liveWeek, setLiveWeek] = useState(null);
   const [tab, setTab] = useState("standings");
   const [showMore, setShowMore] = useState(false);
+
+  // Pull-to-refresh
+  const [pullY, setPullY] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
+  const touchStart = useRef(0);
+  const PULL_THRESHOLD = 80;
+
+  const onTouchStart = useCallback((e) => {
+    if (window.scrollY === 0) touchStart.current = e.touches[0].clientY;
+    else touchStart.current = 0;
+  }, []);
+
+  const onTouchMove = useCallback((e) => {
+    if (!touchStart.current || refreshing) return;
+    const diff = e.touches[0].clientY - touchStart.current;
+    if (diff > 0 && window.scrollY === 0) setPullY(Math.min(diff * 0.4, 120));
+    else setPullY(0);
+  }, [refreshing]);
+
+  const onTouchEnd = useCallback(() => {
+    if (pullY >= PULL_THRESHOLD && !refreshing) {
+      setRefreshing(true);
+      setPullY(PULL_THRESHOLD);
+      setTimeout(() => window.location.reload(), 600);
+    } else {
+      setPullY(0);
+    }
+    touchStart.current = 0;
+  }, [pullY, refreshing]);
 
   // Firebase Auth listener
   useEffect(() => {
@@ -204,7 +233,15 @@ export default function GolfLeagueApp() {
   })();
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+      {/* Pull-to-refresh indicator */}
+      {pullY > 0 && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 999, display: "flex", justifyContent: "center", paddingTop: Math.min(pullY, 100) - 30, transition: refreshing ? "all .3s" : "none" }}>
+          <div style={{ width: 32, height: 32, borderRadius: "50%", background: K.card, border: `2px solid ${pullY >= PULL_THRESHOLD ? K.teal : K.bdr}`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 12px rgba(0,0,0,.3)", transition: "border-color .2s" }}>
+            <div style={{ fontSize: 14, color: pullY >= PULL_THRESHOLD ? K.teal : K.t3, transform: `rotate(${refreshing ? 360 : pullY * 2}deg)`, transition: refreshing ? "transform .6s" : "none" }}>↻</div>
+          </div>
+        </div>
+      )}
       <link href={FONTS} rel="stylesheet" /><style>{CSS}</style>
 
       {/* Header */}
