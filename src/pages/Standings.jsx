@@ -104,8 +104,8 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
               <button onClick={() => setExpanded(isExp ? null : s.teamId)} style={{
                 display: "flex", alignItems: "center", width: "100%", color: K.t1,
                 background: K.card, borderRadius: isExp ? "8px 8px 0 0" : 8,
-                border: `1px solid ${i === 0 ? K.acc + '40' : K.bdr}`,
-                borderBottom: isExp ? "none" : undefined,
+                border: `1px solid ${i === 0 ? K.act + '30' : K.bdr + '60'}`,
+                borderBottom: isExp ? "none" : `1px solid ${i === 0 ? K.act + '30' : K.bdr + '60'}`,
                 padding: "6px 12px", cursor: "pointer",
               }}>
                 <div style={{ width: 50, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
@@ -130,7 +130,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
               </button>
 
               {isExp && (
-                <div style={{ background: K.inp, border: `1px solid ${i === 0 ? K.acc + '40' : K.bdr}`, borderTop: "none", borderRadius: "0 0 8px 8px", padding: "6px 8px" }}>
+                <div style={{ background: K.inp, border: `1px solid ${i === 0 ? K.act + '30' : K.bdr + '60'}`, borderTop: "none", borderRadius: "0 0 8px 8px", padding: "6px 8px" }}>
                   {/* Header */}
                   <div style={{ display: "flex", padding: "4px 6px", fontSize: 9, color: K.logoBright, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8 }}>
                     <div style={{ width: 60 }}>Date</div>
