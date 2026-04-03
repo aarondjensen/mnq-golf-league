@@ -123,9 +123,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   };
   const getStrokes = (pid, h) => getStrokesMap(getNineHcp(pid))[h] || 0;
   const getRunning = (pid) => {
-    let gross = 0, net = 0, thru = 0;
-    for (let h = 0; h < 9; h++) { const s = getS(pid, h); if (s > 0) { gross += s; net += s - getStrokes(pid, h); thru++; } }
-    return { gross, net, thru };
+    let gross = 0, net = 0, thru = 0, parTotal = 0;
+    for (let h = 0; h < 9; h++) { const s = getS(pid, h); if (s > 0) { gross += s; net += s - getStrokes(pid, h); parTotal += pars[h] || 4; thru++; } }
+    return { gross, net, netVsPar: net - parTotal, thru };
   };
   const allComplete = allP.every(pid => { for (let h = 0; h < 9; h++) if (getS(pid, h) <= 0) return false; return true; });
 
@@ -246,9 +246,9 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns, par, pid, week, cu
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 14, fontWeight: 700 }}>{pl.name}</span>
           <Pill color={K.acc}>({nh})</Pill>
-          {strokes > 0 && <span style={{ color: K.acc, fontSize: 11, letterSpacing: -1 }}>{"●".repeat(strokes)}</span>}
+          {strokes > 0 && <span style={{ color: K.teal, fontSize: 11, letterSpacing: -1 }}>{"●".repeat(strokes)}</span>}
         </div>
-        {run.thru > 0 && <span style={{ fontSize: 11, color: K.t3 }}>Net: <strong style={{ color: K.t1 }}>{run.net > 0 ? "+" : ""}{run.net}</strong> thru {run.thru}</span>}
+        {run.thru > 0 && <span style={{ fontSize: 11, color: K.t3 }}>Net: <strong style={{ color: run.netVsPar < 0 ? K.grn : run.netVsPar > 0 ? K.red : K.t1 }}>{run.netVsPar > 0 ? "+" : ""}{run.netVsPar}</strong> thru {run.thru}</span>}
       </div>
       <div style={{ display: "flex", gap: 3 }}>
         {btns.map(btn => {
