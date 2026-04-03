@@ -9,7 +9,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const [showCTP, setShowCTP] = useState(false);
   const [commMode, setCommMode] = useState(false);
   const [toast, setToast] = useState(null);
-  const [navSource, setNavSource] = useState("auto"); // "auto" or "manual"
+  const [editing, setEditing] = useState(false); // true when user manually navigated to a previous hole
 
   // Find current week: first week where not all matches are finalized
   const currentWeek = useMemo(() => {
@@ -132,20 +132,25 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const allComplete = allP.every(pid => { for (let h = 0; h < 9; h++) if (getS(pid, h) <= 0) return false; return true; });
   const holeComplete = allP.every(pid => getS(pid, curHole) > 0);
 
-  // Auto-advance when all 4 scores entered on current hole
+  // Find the "current" hole — first incomplete hole
+  const currentHoleIdx = (() => {
+    for (let h = 0; h < 9; h++) { if (!allP.every(pid => getS(pid, h) > 0)) return h; }
+    return 8; // all complete
+  })();
+
+  // Auto-advance when all 4 scores entered on current hole (only when not editing)
   useEffect(() => {
-    if (holeComplete && curHole < 8 && navSource === "auto" && !allComplete) {
+    if (holeComplete && curHole < 8 && !editing && !allComplete) {
       const holeNum = side === 'front' ? curHole + 1 : curHole + 10;
       setToast(`✓ Hole ${holeNum} saved`);
       const timer = setTimeout(() => {
         let next = curHole + 1;
         while (next < 8 && allP.every(pid => getS(pid, next) > 0)) next++;
         setCurHole(next);
-        setNavSource("auto");
       }, 1200);
       return () => clearTimeout(timer);
     }
-  }, [holeComplete, curHole, navSource, allComplete]);
+  }, [holeComplete, curHole, editing, allComplete]);
 
   // Clear toast when hole changes
   useEffect(() => {
@@ -202,7 +207,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
         {Array.from({ length: 9 }, (_, i) => {
           const cur = i === curHole; const done = allP.every(pid => getS(pid, i) > 0);
-          return <button key={i} onClick={() => { setCurHole(i); setNavSource("manual"); }} style={{ flex: 1, height: 34, borderRadius: done || cur ? 10 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 12, fontWeight: 700, cursor: "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{i + 1}</button>;
+          return <button key={i} onClick={() => { setCurHole(i); setEditing(i < currentHoleIdx); }} style={{ flex: 1, height: 34, borderRadius: done || cur ? 10 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 12, fontWeight: 700, cursor: "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{i + 1}</button>;
         })}
       </div>
       {/* Per-hole match status */}
@@ -231,22 +236,28 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         })}
       </div>
       <div style={{ background: `linear-gradient(135deg, ${K.card}, #0f2440)`, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "6px 8px", marginBottom: 6, display: "flex", alignItems: "center" }}>
-        <button onClick={() => setCurHole(Math.max(0, curHole - 1))} disabled={curHole === 0} style={{ width: 32, height: 40, borderRadius: 8, background: "none", border: "none", cursor: curHole === 0 ? "default" : "pointer", color: curHole === 0 ? K.t3 + "40" : K.t2, fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
+        <button onClick={() => { const prev = Math.max(0, curHole - 1); setCurHole(prev); setEditing(prev < currentHoleIdx); }} disabled={curHole === 0} style={{ width: 32, height: 40, borderRadius: 8, background: "none", border: "none", cursor: curHole === 0 ? "default" : "pointer", color: curHole === 0 ? K.t3 + "40" : K.t2, fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
         <div style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 8px" }}>
           <div style={{ textAlign: "center", minWidth: 36 }}><div style={{ fontSize: 9, color: K.t3, fontWeight: 600 }}>Par</div><div style={{ fontSize: 16, fontWeight: 800, color: K.t2 }}>{par}</div></div>
           <div style={{ textAlign: "center" }}><div style={{ fontSize: 9, color: K.t1, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Hole</div><div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 30, fontWeight: 700, color: K.t1, lineHeight: 1 }}>{side === 'front' ? curHole + 1 : curHole + 10}</div></div>
           <div style={{ textAlign: "center", minWidth: 36 }}><div style={{ fontSize: 9, color: K.teal, fontWeight: 600 }}>HCP</div><div style={{ fontSize: 16, fontWeight: 800, color: K.teal }}>{hcp}</div></div>
         </div>
-        <button onClick={() => setCurHole(Math.min(8, curHole + 1))} disabled={curHole === 8} style={{ width: 32, height: 40, borderRadius: 8, background: "none", border: "none", cursor: curHole === 8 ? "default" : "pointer", color: curHole === 8 ? K.t3 + "40" : K.t2, fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
+        <button onClick={() => { const next = Math.min(8, curHole + 1); setCurHole(next); setEditing(next < currentHoleIdx); }} disabled={curHole === 8} style={{ width: 32, height: 40, borderRadius: 8, background: "none", border: "none", cursor: curHole === 8 ? "default" : "pointer", color: curHole === 8 ? K.t3 + "40" : K.t2, fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
       </div>
       {isPar3 && <button onClick={() => setShowCTP(!showCTP)} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 8, cursor: "pointer", background: K.acc + "12", border: `1px solid ${K.acc}35`, color: K.acc, fontSize: 12, fontWeight: 700 }}>{showCTP ? "Hide" : "Record"} Closest to Pin</button>}
       {showCTP && isPar3 && <CTPEntry week={week} hole={curHole} players={players} ctpData={ctpData} saveCtp={saveCtp} side={side} />}
+
+      {editing && (
+        <button onClick={() => { setCurHole(currentHoleIdx); setEditing(false); }} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 6, cursor: "pointer", background: K.teal + "15", border: `1px solid ${K.teal}40`, color: K.teal, fontSize: 12, fontWeight: 700 }}>
+          ← Back to Hole {side === 'front' ? currentHoleIdx + 1 : currentHoleIdx + 10}
+        </button>
+      )}
 
       {allP.map(pid => {
         const pl = players.find(p => p.id === pid); if (!pl) return null;
         const score = getS(pid, curHole); const strokes = getStrokes(pid, curHole); const nh = getNineHcp(pid); const run = getRunning(pid);
         const btns = par === 3 ? [1,2,3,4,5,6,7] : par === 5 ? [2,3,4,5,6,7,8] : [2,3,4,5,6,7,8];
-        return <PlayerScoreCard key={pid} pl={pl} score={score} strokes={strokes} nh={nh} run={run} btns={btns} par={par} pid={pid} week={week} curHole={curHole} saveScore={saveScore} K={K} onScoreEntered={() => setNavSource("auto")} />;
+        return <PlayerScoreCard key={pid} pl={pl} score={score} strokes={strokes} nh={nh} run={run} btns={btns} par={par} pid={pid} week={week} curHole={curHole} saveScore={saveScore} K={K} />;
       })}
       {allComplete && (
         <div style={{ marginTop: 16, background: K.grn + "12", border: `1.5px solid ${K.grn}50`, borderRadius: 12, padding: 14, textAlign: "center" }}>
@@ -272,10 +283,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 }
 
 
-function PlayerScoreCard({ pl, score, strokes, nh, run, btns, par, pid, week, curHole, saveScore, K, onScoreEntered }) {
+function PlayerScoreCard({ pl, score, strokes, nh, run, btns, par, pid, week, curHole, saveScore, K }) {
   const handleScore = (val) => {
     saveScore(week, pid, curHole, val);
-    if (onScoreEntered) onScoreEntered();
   };
   return (
     <Card style={{ marginBottom: 4, padding: "10px 12px" }}>
