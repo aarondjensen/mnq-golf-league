@@ -185,32 +185,32 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       {/* Per-hole match status */}
       <div style={{ display: "flex", gap: 3, marginBottom: 8 }}>
         {Array.from({ length: 9 }, (_, i) => {
-          // Calculate cumulative net through hole i
           const myTeamId = myTeam?.id || t1.id;
           const isMyT1 = t1.id === myTeamId;
-          let cumDiff = 0;
+          let holesUp = 0;
           let hasData = false;
           for (let h = 0; h <= i; h++) {
-            let t1HoleNet = 0, t2HoleNet = 0, t1Has = false, t2Has = false;
-            t1Players.forEach(pid => { const s = getS(pid, h); if (s > 0) { t1HoleNet += s - getStrokes(pid, h); t1Has = true; } });
-            t2Players.forEach(pid => { const s = getS(pid, h); if (s > 0) { t2HoleNet += s - getStrokes(pid, h); t2Has = true; } });
-            if (t1Has && t2Has) { cumDiff += t1HoleNet - t2HoleNet; hasData = true; }
-            else { hasData = false; break; }
+            let t1HoleNet = 0, t2HoleNet = 0, t1Has = true, t2Has = true;
+            t1Players.forEach(pid => { const s = getS(pid, h); if (s <= 0) t1Has = false; else t1HoleNet += s - getStrokes(pid, h); });
+            t2Players.forEach(pid => { const s = getS(pid, h); if (s <= 0) t2Has = false; else t2HoleNet += s - getStrokes(pid, h); });
+            if (t1Has && t2Has) {
+              if (t1HoleNet < t2HoleNet) holesUp += isMyT1 ? 1 : -1;
+              else if (t1HoleNet > t2HoleNet) holesUp += isMyT1 ? -1 : 1;
+              hasData = true;
+            } else { hasData = false; break; }
           }
-          if (!hasData) return <div key={i} style={{ flex: 1, height: 16 }} />;
-          // From my team's perspective
-          const myDiff = isMyT1 ? -cumDiff : cumDiff;
-          const label = myDiff > 0 ? `${myDiff}U` : myDiff < 0 ? `${Math.abs(myDiff)}D` : "T";
-          const color = myDiff > 0 ? K.grn : myDiff < 0 ? K.red : K.t3;
+          if (!hasData) return <div key={i} style={{ flex: 1, height: 18 }} />;
+          const label = holesUp > 0 ? `${holesUp}U` : holesUp < 0 ? `${Math.abs(holesUp)}D` : "T";
+          const color = holesUp > 0 ? K.grn : holesUp < 0 ? K.red : K.t3;
           return (
-            <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, fontWeight: 700, color, lineHeight: "16px" }}>{label}</div>
+            <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 11, fontWeight: 800, color, lineHeight: "18px" }}>{label}</div>
           );
         })}
       </div>
       <div style={{ background: `linear-gradient(135deg, ${K.card}, #0f2440)`, borderRadius: 12, border: `1px solid ${K.bdr}`, padding: "8px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ textAlign: "center" }}><div style={{ fontSize: 10, color: K.t3, fontWeight: 600 }}>Par</div><div style={{ fontSize: 18, fontWeight: 800, color: K.t2 }}>{par}</div></div>
         <div style={{ textAlign: "center" }}><div style={{ fontSize: 10, color: K.t1, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Hole</div><div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 38, fontWeight: 700, color: K.t1, lineHeight: 1 }}>{side === 'front' ? curHole + 1 : curHole + 10}</div></div>
-        <div style={{ textAlign: "center" }}><div style={{ fontSize: 10, color: K.t3, fontWeight: 600 }}>HCP</div><div style={{ fontSize: 18, fontWeight: 800, color: K.t2 }}>{hcp}</div></div>
+        <div style={{ textAlign: "center" }}><div style={{ fontSize: 10, color: K.teal, fontWeight: 600 }}>HCP</div><div style={{ fontSize: 18, fontWeight: 800, color: K.teal }}>{hcp}</div></div>
       </div>
       {isPar3 && <button onClick={() => setShowCTP(!showCTP)} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 8, cursor: "pointer", background: K.acc + "12", border: `1px solid ${K.acc}35`, color: K.acc, fontSize: 12, fontWeight: 700 }}>{showCTP ? "Hide" : "Record"} Closest to Pin</button>}
       {showCTP && isPar3 && <CTPEntry week={week} hole={curHole} players={players} ctpData={ctpData} saveCtp={saveCtp} side={side} />}
