@@ -249,7 +249,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
       {editing && (
         <button onClick={() => { setCurHole(currentHoleIdx); setEditing(false); }} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 6, cursor: "pointer", background: K.teal + "15", border: `1px solid ${K.teal}40`, color: K.teal, fontSize: 12, fontWeight: 700 }}>
-          ← Back to Hole {side === 'front' ? currentHoleIdx + 1 : currentHoleIdx + 10}
+          Hole {side === 'front' ? currentHoleIdx + 1 : currentHoleIdx + 10} →
         </button>
       )}
 
