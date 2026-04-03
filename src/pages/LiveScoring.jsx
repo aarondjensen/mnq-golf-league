@@ -182,12 +182,37 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         )}
       </div>
       <Card style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, padding: "8px 12px" }}>
-        <span style={{ fontSize: 13, fontWeight: 700 }}>{t1.name}</span><span style={{ fontSize: 11, fontWeight: 800, color: K.t3 }}>VS</span><span style={{ fontSize: 13, fontWeight: 700, textAlign: "right" }}>{t2.name}</span>
+        <span style={{ fontSize: 13, fontWeight: 700 }}>{t1.name}</span><span style={{ fontSize: 11, fontWeight: 800, color: K.logoBright }}>VS</span><span style={{ fontSize: 13, fontWeight: 700, textAlign: "right" }}>{t2.name}</span>
       </Card>
-      <div style={{ display: "flex", gap: 3, marginBottom: 8 }}>
+      <div style={{ display: "flex", gap: 3, marginBottom: 2 }}>
         {Array.from({ length: 9 }, (_, i) => {
           const cur = i === curHole; const done = allP.every(pid => getS(pid, i) > 0);
           return <button key={i} onClick={() => setCurHole(i)} style={{ flex: 1, height: 34, borderRadius: done || cur ? 10 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 12, fontWeight: 700, cursor: "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{i + 1}</button>;
+        })}
+      </div>
+      {/* Per-hole match status */}
+      <div style={{ display: "flex", gap: 3, marginBottom: 8 }}>
+        {Array.from({ length: 9 }, (_, i) => {
+          // Calculate cumulative net through hole i
+          const myTeamId = myTeam?.id || t1.id;
+          const isMyT1 = t1.id === myTeamId;
+          let cumDiff = 0;
+          let hasData = false;
+          for (let h = 0; h <= i; h++) {
+            let t1HoleNet = 0, t2HoleNet = 0, t1Has = false, t2Has = false;
+            t1Players.forEach(pid => { const s = getS(pid, h); if (s > 0) { t1HoleNet += s - getStrokes(pid, h); t1Has = true; } });
+            t2Players.forEach(pid => { const s = getS(pid, h); if (s > 0) { t2HoleNet += s - getStrokes(pid, h); t2Has = true; } });
+            if (t1Has && t2Has) { cumDiff += t1HoleNet - t2HoleNet; hasData = true; }
+            else { hasData = false; break; }
+          }
+          if (!hasData) return <div key={i} style={{ flex: 1, height: 16 }} />;
+          // From my team's perspective
+          const myDiff = isMyT1 ? -cumDiff : cumDiff;
+          const label = myDiff > 0 ? `${myDiff}U` : myDiff < 0 ? `${Math.abs(myDiff)}D` : "T";
+          const color = myDiff > 0 ? K.grn : myDiff < 0 ? K.red : K.t3;
+          return (
+            <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, fontWeight: 700, color, lineHeight: "16px" }}>{label}</div>
+          );
         })}
       </div>
       <div style={{ background: `linear-gradient(135deg, ${K.card}, #0f2440)`, borderRadius: 12, border: `1px solid ${K.bdr}`, padding: "8px 14px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -198,36 +223,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       {isPar3 && <button onClick={() => setShowCTP(!showCTP)} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 8, cursor: "pointer", background: K.acc + "12", border: `1px solid ${K.acc}35`, color: K.acc, fontSize: 12, fontWeight: 700 }}>{showCTP ? "Hide" : "Record"} Closest to Pin</button>}
       {showCTP && isPar3 && <CTPEntry week={week} hole={curHole} players={players} ctpData={ctpData} saveCtp={saveCtp} side={side} />}
 
-      {isTeamNet ? (
-        /* Team Net Total: group by team */
-        [{team: t1, pids: t1Players}, {team: t2, pids: t2Players}].map(({team, pids}, ti) => (
-          <div key={ti}>
-            <SubLabel style={{ marginTop: ti > 0 ? 10 : 0 }}>{team.name}</SubLabel>
-            {pids.map(pid => {
-              const pl = players.find(p => p.id === pid); if (!pl) return null;
-              const score = getS(pid, curHole); const strokes = getStrokes(pid, curHole); const nh = getNineHcp(pid); const run = getRunning(pid);
-              const btns = par === 3 ? [1,2,3,4,5,6,7] : par === 5 ? [2,3,4,5,6,7,8] : [2,3,4,5,6,7,8];
-              return <PlayerScoreCard key={pid} pl={pl} score={score} strokes={strokes} nh={nh} run={run} btns={btns} par={par} pid={pid} week={week} curHole={curHole} saveScore={saveScore} K={K} />;
-            })}
-          </div>
-        ))
-      ) : (
-        /* Low/High Match format */
-        [0, 1].map(mi => {
-          const label = mi === 0 ? "Low Handicap Match" : "High Handicap Match";
-          return (
-            <div key={mi}>
-              <SubLabel style={{ marginTop: mi > 0 ? 10 : 0 }}>{label}</SubLabel>
-              {[allP[mi * 2], allP[mi * 2 + 1]].map(pid => {
-                const pl = players.find(p => p.id === pid); if (!pl) return null;
-                const score = getS(pid, curHole); const strokes = getStrokes(pid, curHole); const nh = getNineHcp(pid); const run = getRunning(pid);
-                const btns = par === 3 ? [1,2,3,4,5,6,7] : par === 5 ? [2,3,4,5,6,7,8] : [2,3,4,5,6,7,8];
-                return <PlayerScoreCard key={pid} pl={pl} score={score} strokes={strokes} nh={nh} run={run} btns={btns} par={par} pid={pid} week={week} curHole={curHole} saveScore={saveScore} K={K} />;
-              })}
-            </div>
-          );
-        })
-      )}
+      {allP.map(pid => {
+        const pl = players.find(p => p.id === pid); if (!pl) return null;
+        const score = getS(pid, curHole); const strokes = getStrokes(pid, curHole); const nh = getNineHcp(pid); const run = getRunning(pid);
+        const btns = par === 3 ? [1,2,3,4,5,6,7] : par === 5 ? [2,3,4,5,6,7,8] : [2,3,4,5,6,7,8];
+        return <PlayerScoreCard key={pid} pl={pl} score={score} strokes={strokes} nh={nh} run={run} btns={btns} par={par} pid={pid} week={week} curHole={curHole} saveScore={saveScore} K={K} />;
+      })}
       {allComplete && (
         <div style={{ marginTop: 16, background: K.grn + "12", border: `1.5px solid ${K.grn}50`, borderRadius: 12, padding: 14, textAlign: "center" }}>
           <div style={{ fontSize: 14, fontWeight: 800, color: K.grn, marginBottom: 10 }}>All Holes Complete!</div>
