@@ -242,9 +242,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           <button onClick={() => setShowScorecard(!showScorecard)} style={{ display: "flex", gap: 3, marginBottom: showScorecard ? 0 : 8, width: "100%", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
             {holeStatuses.map((st, i) => {
               if (st === null) return <div key={i} style={{ flex: 1, height: 20 }} />;
-              const label = st > 0 ? `${st}U` : st < 0 ? `${Math.abs(st)}D` : "T";
+              const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
               const color = st > 0 ? K.grn : st < 0 ? K.red : K.t3;
-              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 11, fontWeight: 800, color, lineHeight: "20px" }}>{label}</div>;
+              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 800, color, lineHeight: "20px" }}>{label}</div>;
             })}
           </button>
           {showScorecard && (
@@ -279,9 +279,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     <div key={pid} style={{ display: "flex", alignItems: "center", padding: "1px 0" }}>
                       <div style={{ width: 64, flexShrink: 0, fontSize: 9, color: K.t2, fontWeight: 600, paddingLeft: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lastName}<span style={{ color: K.t3, fontSize: 7, marginLeft: 2 }}>({nh})</span></div>
                       {cells.map((c, h) => (
-                        <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 700, color: c.s <= 0 ? K.t3 + "30" : K.t1, position: "relative" }}>
-                          {c.s > 0 ? c.net : "·"}
-                          {c.st > 0 && c.s > 0 && <span style={{ position: "absolute", top: -3, right: 0, fontSize: 4, color: K.teal, lineHeight: 1 }}>{"●".repeat(c.st)}</span>}
+                        <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 700, color: c.s <= 0 ? K.t3 + "30" : K.t1 }}>
+                          {c.s > 0 ? <>{c.net}{c.st > 0 && <span style={{ color: K.teal, fontSize: 7 }}>{"•".repeat(c.st)}</span>}</> : "·"}
                         </div>
                       ))}
                       <div style={{ width: 26, textAlign: "center", fontSize: 10, fontWeight: 700, color: K.t1 }}>{complete ? total : "—"}</div>
@@ -294,9 +293,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     <div style={{ display: "flex", alignItems: "center", padding: "1px 0" }}>
                       <div style={{ width: 64, flexShrink: 0, fontSize: 8, color: K.teal, fontWeight: 700, paddingLeft: 2 }}>TEAM</div>
                       {Array.from({ length: 9 }, (_, h) => {
-                        let tNet = 0, ok = true;
-                        pids.forEach(pid => { const s = getS(pid, h); if (s <= 0) ok = false; else tNet += s - getStrokes(pid, h); });
-                        return <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 800, color: ok ? K.teal : K.t3 + "30" }}>{ok ? tNet : "·"}</div>;
+                        let myNet = 0, oppNet = 0, myOk = true, oppOk = true;
+                        const myPids = ti === 0 ? pids : (isMyT1 ? t2Players : t1Players);
+                        const oppPids = ti === 0 ? (isMyT1 ? t2Players : t1Players) : pids;
+                        pids.forEach(pid => { const s = getS(pid, h); if (s <= 0) myOk = false; else myNet += s - getStrokes(pid, h); });
+                        oppPids.forEach(pid => { const s = getS(pid, h); if (s <= 0) oppOk = false; else oppNet += s - getStrokes(pid, h); });
+                        const ok = myOk && oppOk;
+                        const won = ok && myNet < oppNet;
+                        const lost = ok && myNet > oppNet;
+                        return <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 800, color: !myOk ? K.t3 + "30" : won ? K.grn : lost ? K.red : K.t2 }}>{myOk ? myNet : "·"}</div>;
                       })}
                       <div style={{ width: 26, textAlign: "center", fontSize: 10, fontWeight: 800, color: K.teal }}>{teamComplete ? teamTotal : "—"}</div>
                     </div>
