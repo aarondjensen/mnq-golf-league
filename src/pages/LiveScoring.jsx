@@ -240,17 +240,18 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           return hasData ? holesUp : null;
         });
         return (<>
-          <button onClick={() => setShowScorecard(!showScorecard)} style={{ display: "flex", gap: 3, marginBottom: showScorecard ? 0 : 8, width: "100%", background: "none", border: "none", cursor: "pointer", padding: 0 }}>
-            <div style={{ width: 40, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600, display: "flex", alignItems: "center", paddingLeft: 2 }}>MATCH</div>
+          <button onClick={() => setShowScorecard(!showScorecard)} style={{ display: "flex", gap: 3, marginBottom: showScorecard ? 0 : 8, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: showScorecard ? "8px 8px 0 0" : 8, cursor: "pointer", padding: "6px 0", alignItems: "center" }}>
+            <div style={{ width: 40, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600, display: "flex", alignItems: "center", paddingLeft: 6 }}>MATCH</div>
             {holeStatuses.map((st, i) => {
-              if (st === null) return <div key={i} style={{ flex: 1, height: 20 }} />;
+              if (st === null) return <div key={i} style={{ flex: 1, height: 24 }} />;
               const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
               const color = st > 0 ? K.grn : st < 0 ? K.red : K.t3;
-              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 800, color, lineHeight: "20px" }}>{label}</div>;
+              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "24px" }}>{label}</div>;
             })}
+            <div style={{ width: 20, flexShrink: 0, textAlign: "center", color: K.t3, fontSize: 10 }}>{showScorecard ? "▾" : "›"}</div>
           </button>
           {showScorecard && (
-            <div style={{ background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 8, padding: "6px 0", marginBottom: 8 }}>
+            <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderTop: "none", borderRadius: "0 0 8px 8px", padding: "6px 0", marginBottom: 8 }}>
               {/* PAR row */}
               <div style={{ display: "flex", gap: 3, alignItems: "center", padding: "2px 0" }}>
                 <div style={{ width: 40, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600, paddingLeft: 2 }}>PAR</div>
