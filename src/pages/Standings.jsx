@@ -91,7 +91,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
 
   return (
     <div>
-      <SectionTitle><span style={{ display: "block", textAlign: "center" }}>Season Standings</span></SectionTitle>
+      <SectionTitle><span style={{ display: "block", textAlign: "center", marginBottom: -6 }}>Season Standings</span></SectionTitle>
       <div className="standings-grid">
         {standings.map((s, i) => {
           const team = gt(s.teamId); if (!team) return null;
@@ -106,7 +106,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                 background: K.card, borderRadius: isExp ? "8px 8px 0 0" : 8,
                 border: `1px solid ${i === 0 ? K.acc + '40' : K.bdr}`,
                 borderBottom: isExp ? "none" : undefined,
-                padding: "8px 12px", cursor: "pointer",
+                padding: "6px 12px", cursor: "pointer",
               }}>
                 <div style={{ width: 50, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
                   <div style={{

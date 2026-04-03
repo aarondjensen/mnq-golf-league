@@ -231,16 +231,16 @@ export default function GolfLeagueApp() {
             const isLeagueDay = leagueConfig?.dayOfWeek && now.toLocaleDateString('en-US', { weekday: 'long' }) === leagueConfig.dayOfWeek;
             const isLive = isLeagueDay && nowMins >= upcomingBanner.teeMinutes - 15;
             return (
-              <div style={{ background: K.card, border: `1.5px solid ${K.act}`, borderRadius: 10, margin: "8px 14px", padding: "10px 14px", display: "flex", alignItems: "center" }}>
+              <div style={{ background: K.card, border: `1.5px solid ${K.act}`, borderRadius: 10, margin: "6px 14px", padding: "8px 14px", display: "flex", alignItems: "center" }}>
                 {/* Left: Tee time + Front/Back */}
                 <div style={{ width: 90, flexShrink: 0, textAlign: "center" }}>
                   <div style={{ fontSize: 18, fontWeight: 800, color: K.teal, letterSpacing: .5 }}>{upcomingBanner.teeTime}</div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: K.teal, letterSpacing: .5, marginTop: 2 }}>{upcomingBanner.side === 'front' ? 'Front 9' : 'Back 9'}</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: K.teal, letterSpacing: .5 }}>{upcomingBanner.side === 'front' ? 'Front 9' : 'Back 9'}</div>
                 </div>
                 {/* Center: Date, vs, opponent */}
-                <div style={{ flex: 1, textAlign: "center" }}>
+                <div style={{ flex: 1, textAlign: "center", lineHeight: 1.3 }}>
                   <div style={{ fontSize: 12, color: K.t2, fontWeight: 500 }}>{upcomingBanner.date ? `${upcomingBanner.date} — ` : ""}Week {upcomingBanner.week}</div>
-                  <div style={{ fontSize: 10, color: K.logoBright, fontWeight: 700, margin: "2px 0", letterSpacing: 2, textTransform: "uppercase" }}>vs</div>
+                  <div style={{ fontSize: 9, color: K.logoBright, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" }}>vs</div>
                   <div style={{ color: K.t1, fontWeight: 700, fontSize: 15 }}>{upcomingBanner.opp}</div>
                 </div>
                 {/* Right: Live Scoring button */}

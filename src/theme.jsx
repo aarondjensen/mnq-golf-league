@@ -72,7 +72,7 @@ export const CSS = `
   .players-grid { display: flex; flex-direction: column; gap: 4px; }
   .scoring-grid { display: flex; flex-direction: column; gap: 10px; }
   .schedule-weeks { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
-  .standings-grid { display: flex; flex-direction: column; gap: 6px; }
+  .standings-grid { display: flex; flex-direction: column; gap: 3px; }
   @media (min-width: 768px) {
     .main-content { padding: 24px 32px; padding-bottom: 80px; margin: 0 auto; }
     .admin-sections-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
