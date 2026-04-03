@@ -250,21 +250,16 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             })}
           </button>
           {showScorecard && (
-            <div style={{ background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 8, padding: "8px 4px", marginBottom: 8 }}>
-              <div style={{ display: "flex", alignItems: "center" }}>
-                <div style={{ width: 64, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600, paddingLeft: 2 }}>HOLE</div>
-                {Array.from({ length: 9 }, (_, i) => (
-                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, color: i === curHole ? K.act : K.t3, fontWeight: 700 }}>{side === 'front' ? i + 1 : i + 10}</div>
-                ))}
-                <div style={{ width: 26, textAlign: "center", fontSize: 8, color: K.t2, fontWeight: 700 }}>TOT</div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", paddingBottom: 3, marginBottom: 3, borderBottom: `1px solid ${K.bdr}40` }}>
-                <div style={{ width: 64, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600, paddingLeft: 2 }}>PAR</div>
+            <div style={{ background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 8, padding: "6px 0", marginBottom: 8 }}>
+              {/* PAR row */}
+              <div style={{ display: "flex", gap: 3, alignItems: "center", padding: "2px 0" }}>
+                <div style={{ width: 40, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600, paddingLeft: 2 }}>PAR</div>
                 {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, color: K.t3, fontWeight: 600 }}>{p}</div>)}
-                <div style={{ width: 26, textAlign: "center", fontSize: 9, color: K.t3, fontWeight: 600 }}>{pars.reduce((a, b) => a + b, 0)}</div>
               </div>
-              {[{ pids: isMyT1 ? t1Players : t2Players, label: isMyT1 ? t1.name : t2.name },
-                { pids: isMyT1 ? t2Players : t1Players, label: isMyT1 ? t2.name : t1.name }].map(({ pids, label }, ti) => {
+              <div style={{ borderBottom: `1px solid ${K.bdr}40`, margin: "2px 0" }} />
+              {/* Player rows — grouped by team */}
+              {[{ pids: isMyT1 ? t1Players : t2Players },
+                { pids: isMyT1 ? t2Players : t1Players }].map(({ pids }, ti) => {
                 let teamTotal = 0, teamComplete = true;
                 const rows = pids.map(pid => {
                   const pl = players.find(p => p.id === pid); if (!pl) return null;
@@ -276,28 +271,26 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     return { s, st, net: s > 0 ? s - st : 0 };
                   });
                   if (complete) teamTotal += total; else teamComplete = false;
-                  const lastName = pl.name.split(' ').slice(-1)[0];
+                  const initials = pl.name.split(' ').map(n => n[0]).join('');
                   return (
-                    <div key={pid} style={{ display: "flex", alignItems: "center", padding: "1px 0" }}>
-                      <div style={{ width: 64, flexShrink: 0, fontSize: 9, color: K.t2, fontWeight: 600, paddingLeft: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{lastName}<span style={{ color: K.t3, fontSize: 7, marginLeft: 2 }}>({nh})</span></div>
+                    <div key={pid} style={{ display: "flex", gap: 3, alignItems: "center", padding: "1px 0" }}>
+                      <div style={{ width: 40, flexShrink: 0, fontSize: 9, color: K.t2, fontWeight: 600, paddingLeft: 2, overflow: "hidden", whiteSpace: "nowrap" }}>{initials}<span style={{ color: K.t3, fontSize: 7 }}>({nh})</span></div>
                       {cells.map((c, h) => (
                         <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 700, color: c.s <= 0 ? K.t3 + "30" : K.t1 }}>
                           {c.s > 0 ? <>{c.net}{c.st > 0 && <span style={{ color: K.teal, fontSize: 7 }}>{"•".repeat(c.st)}</span>}</> : "·"}
                         </div>
                       ))}
-                      <div style={{ width: 26, textAlign: "center", fontSize: 10, fontWeight: 700, color: K.t1 }}>{complete ? total : "—"}</div>
                     </div>
                   );
                 });
                 return (
-                  <div key={ti} style={{ borderBottom: ti === 0 ? `1px solid ${K.bdr}40` : "none", paddingBottom: ti === 0 ? 3 : 0, marginBottom: ti === 0 ? 3 : 0 }}>
+                  <div key={ti}>
                     {rows}
-                    <div style={{ display: "flex", alignItems: "center", padding: "1px 0" }}>
-                      <div style={{ width: 64, flexShrink: 0, fontSize: 8, color: K.teal, fontWeight: 700, paddingLeft: 2 }}>TEAM</div>
+                    <div style={{ display: "flex", gap: 3, alignItems: "center", padding: "1px 0" }}>
+                      <div style={{ width: 40, flexShrink: 0, fontSize: 8, color: K.teal, fontWeight: 700, paddingLeft: 2 }}>TEAM</div>
                       {Array.from({ length: 9 }, (_, h) => {
                         let myNet = 0, oppNet = 0, myOk = true, oppOk = true;
-                        const myPids = ti === 0 ? pids : (isMyT1 ? t2Players : t1Players);
-                        const oppPids = ti === 0 ? (isMyT1 ? t2Players : t1Players) : pids;
+                        const oppPids = ti === 0 ? (isMyT1 ? t2Players : t1Players) : (isMyT1 ? t1Players : t2Players);
                         pids.forEach(pid => { const s = getS(pid, h); if (s <= 0) myOk = false; else myNet += s - getStrokes(pid, h); });
                         oppPids.forEach(pid => { const s = getS(pid, h); if (s <= 0) oppOk = false; else oppNet += s - getStrokes(pid, h); });
                         const ok = myOk && oppOk;
@@ -305,8 +298,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                         const lost = ok && myNet > oppNet;
                         return <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 800, color: !myOk ? K.t3 + "30" : won ? K.grn : lost ? K.red : K.t2 }}>{myOk ? myNet : "·"}</div>;
                       })}
-                      <div style={{ width: 26, textAlign: "center", fontSize: 10, fontWeight: 800, color: K.teal }}>{teamComplete ? teamTotal : "—"}</div>
                     </div>
+                    {ti === 0 && <div style={{ borderBottom: `1px solid ${K.bdr}40`, margin: "2px 0" }} />}
                   </div>
                 );
               })}

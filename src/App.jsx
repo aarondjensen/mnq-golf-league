@@ -229,7 +229,7 @@ export default function GolfLeagueApp() {
             const now = new Date();
             const nowMins = now.getHours() * 60 + now.getMinutes();
             const isLeagueDay = leagueConfig?.dayOfWeek && now.toLocaleDateString('en-US', { weekday: 'long' }) === leagueConfig.dayOfWeek;
-            const isLive = isLeagueDay && nowMins >= upcomingBanner.teeMinutes - 15;
+            const isLive = isLeagueDay && nowMins >= upcomingBanner.teeMinutes - 30;
             return (
               <div style={{ background: K.card, border: `1.5px solid ${K.act}`, borderRadius: 10, margin: "6px 14px", padding: "8px 14px", display: "flex", alignItems: "center" }}>
                 {/* Left: Tee time + Front/Back */}
@@ -247,20 +247,20 @@ export default function GolfLeagueApp() {
                 <div style={{ width: 90, flexShrink: 0, textAlign: "center" }}>
                   <button onClick={() => setTab("scoring")} style={{
                     background: isLive ? K.teal : "transparent",
-                    border: `1px solid ${isLive ? K.teal : K.bdr}`,
+                    border: `1.5px solid ${isLive ? K.teal : K.teal + "30"}`,
                     borderRadius: 8, padding: "8px 10px", cursor: "pointer",
-                    color: isLive ? K.bg : K.t3, fontSize: 14, fontWeight: 700,
+                    color: isLive ? K.bg : K.teal + "60", fontSize: 13, fontWeight: 700,
                     textTransform: "uppercase", letterSpacing: .5, transition: "all .3s",
                     lineHeight: 1.3,
                   }}>
-                    {isLive && <span style={{ fontSize: 10 }}>● </span>}Live<br/>Score
+                    {isLive && <span style={{ fontSize: 10 }}>● </span>}Live<br/>Scoring
                   </button>
                 </div>
               </div>
             );
           })()}
           <div className="main-content fi" key={tab}>
-          {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} holeScores={holeScores} />}
+          {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} />}
           {tab === "scoring" && <LiveScoringView leagueUser={leagueUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={leagueUser} leagueConfig={leagueConfig} />}
           {tab === "players" && <MoreView view="players" players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} ctpData={ctpData} members={members} />}
