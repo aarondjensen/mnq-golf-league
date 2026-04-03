@@ -143,10 +143,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         setCurHole(next);
         setNavSource("auto");
       }, 1200);
-      const clearToast = setTimeout(() => setToast(null), 2000);
-      return () => { clearTimeout(timer); clearTimeout(clearToast); };
+      return () => clearTimeout(timer);
     }
   }, [holeComplete, curHole, navSource, allComplete]);
+
+  // Clear toast when hole changes
+  useEffect(() => {
+    setToast(null);
+  }, [curHole]);
 
   const finalizeMatch = async () => {
     const sr = week > REGULAR_WEEKS
