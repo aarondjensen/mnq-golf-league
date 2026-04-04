@@ -1,13 +1,46 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { K, SectionTitle, EmptyState } from "../theme";
 
-export default function StandingsView({ teams, players, matchResults, leagueConfig, schedule, holeScores }) {
+export default function StandingsView({ teams, players, matchResults, leagueConfig, schedule, fetchSeasonScores }) {
   const isRecord = leagueConfig?.standingsMethod === "record";
   const [expanded, setExpanded] = useState(null);
+  const [seasonScores, setSeasonScores] = useState(null);
+
+  // Fetch all season scores once on mount
+  useEffect(() => {
+    fetchSeasonScores().then(scores => setSeasonScores(scores));
+  }, []);
+
+  // Calculate holes won per team per match
+  const teamHolesWon = useMemo(() => {
+    if (!seasonScores) return {};
+    const hw = {};
+    teams.forEach(t => { hw[t.id] = 0; });
+
+    matchResults.forEach(r => {
+      if (!r) return;
+      const t1 = teams.find(t => t.id === r.team1Id);
+      const t2 = teams.find(t => t.id === r.team2Id);
+      if (!t1 || !t2) return;
+      const t1Pids = [t1.player1, t1.player2];
+      const t2Pids = [t2.player1, t2.player2];
+
+      for (let h = 0; h < 9; h++) {
+        let t1Net = 0, t2Net = 0, t1Has = true, t2Has = true;
+        t1Pids.forEach(pid => { const s = seasonScores[`w${r.week}_p${pid}_h${h}`]; if (!s || s <= 0) t1Has = false; else t1Net += s; });
+        t2Pids.forEach(pid => { const s = seasonScores[`w${r.week}_p${pid}_h${h}`]; if (!s || s <= 0) t2Has = false; else t2Net += s; });
+        if (t1Has && t2Has) {
+          if (t1Net < t2Net) { if (hw[r.team1Id] !== undefined) hw[r.team1Id]++; }
+          else if (t2Net < t1Net) { if (hw[r.team2Id] !== undefined) hw[r.team2Id]++; }
+        }
+      }
+    });
+    return hw;
+  }, [seasonScores, matchResults, teams]);
 
   const standings = useMemo(() => {
     const pts = {};
-    teams.forEach(t => { pts[t.id] = { teamId: t.id, points: 0, w: 0, l: 0, t: 0, gamesPlayed: 0 }; });
+    teams.forEach(t => { pts[t.id] = { teamId: t.id, points: 0, w: 0, l: 0, t: 0, gamesPlayed: 0, hw: teamHolesWon[t.id] || 0 }; });
     matchResults.forEach(r => {
       if (!r) return;
       if (pts[r.team1Id]) pts[r.team1Id].points += (r.team1Points || 0);
@@ -37,9 +70,9 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
       arr.sort((a, b) => b.points - a.points);
     }
     return arr;
-  }, [teams, matchResults, isRecord]);
+  }, [teams, matchResults, isRecord, teamHolesWon]);
 
-  // Get weekly results for a team
+  // Get weekly results for expanded team
   const getTeamResults = (teamId) => {
     return matchResults
       .filter(r => r.team1Id === teamId || r.team2Id === teamId)
@@ -53,36 +86,22 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
         const result = myPts > oppPts ? "W" : myPts < oppPts ? "L" : "T";
         const wk = schedule.find(s => s.week === r.week);
 
-        // Calculate holes won from holeScores
         let holesWon = 0;
-        if (holeScores && opp) {
+        if (seasonScores && opp) {
           const myTeam = teams.find(t => t.id === teamId);
-          const oppTeam = opp;
-          if (myTeam && oppTeam) {
+          if (myTeam) {
             const myPids = [myTeam.player1, myTeam.player2];
-            const oppPids = [oppTeam.player1, oppTeam.player2];
+            const oppPids = [opp.player1, opp.player2];
             for (let h = 0; h < 9; h++) {
-              let myNet = 0, oppNet = 0;
-              myPids.forEach(pid => {
-                const s = holeScores[`w${r.week}_p${pid}_h${h}`];
-                if (s > 0) myNet += s;
-              });
-              oppPids.forEach(pid => {
-                const s = holeScores[`w${r.week}_p${pid}_h${h}`];
-                if (s > 0) oppNet += s;
-              });
-              if (myNet > 0 && oppNet > 0 && myNet < oppNet) holesWon++;
+              let myNet = 0, oppNet = 0, myHas = true, oppHas = true;
+              myPids.forEach(pid => { const s = seasonScores[`w${r.week}_p${pid}_h${h}`]; if (!s || s <= 0) myHas = false; else myNet += s; });
+              oppPids.forEach(pid => { const s = seasonScores[`w${r.week}_p${pid}_h${h}`]; if (!s || s <= 0) oppHas = false; else oppNet += s; });
+              if (myHas && oppHas && myNet < oppNet) holesWon++;
             }
           }
         }
 
-        return {
-          week: r.week,
-          date: wk?.date || "",
-          oppName: opp?.name || "TBD",
-          myPts, oppPts, result, holesWon,
-          score: `${myPts}-${oppPts}`,
-        };
+        return { week: r.week, date: wk?.date || "", oppName: opp?.name || "TBD", myPts, oppPts, result, holesWon, score: `${myPts}-${oppPts}` };
       });
   };
 
@@ -108,7 +127,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                 borderBottom: isExp ? "none" : `1px solid ${i === 0 ? K.act + '30' : K.bdr + '60'}`,
                 padding: "6px 12px", cursor: "pointer",
               }}>
-                <div style={{ width: 50, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
+                <div style={{ width: 40, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
                   <div style={{
                     width: 26, height: 26, borderRadius: 6,
                     background: i < 3 ? mc + "20" : K.logoBright + "20",
@@ -117,21 +136,21 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                     border: i < 3 ? `1.5px solid ${mc}40` : `1.5px solid ${K.logoBright}30`,
                   }}>{i + 1}</div>
                 </div>
-                <div style={{ flex: 1, fontSize: 15, fontWeight: 700, letterSpacing: .3, textAlign: "center" }}>{team.name}</div>
-                <div style={{ width: 80, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
-                  {isRecord ? (
-                    <div style={{ fontSize: 16, fontWeight: 800, color: K.t1, fontFamily: "'League Spartan', sans-serif", whiteSpace: "nowrap" }}>{s.w}-{s.l}-{s.t}</div>
-                  ) : (<>
+                <div style={{ flex: 1, fontSize: 14, fontWeight: 700, letterSpacing: .3, textAlign: "center" }}>{team.name}</div>
+                <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
+                  {isRecord ? (<>
+                    <div style={{ fontSize: 14, fontWeight: 800, color: K.t1, fontFamily: "'League Spartan', sans-serif", whiteSpace: "nowrap" }}>{s.w}-{s.l}-{s.t}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: K.teal, minWidth: 22, textAlign: "right" }}>{s.hw}</div>
+                  </>) : (<>
                     <div style={{ fontSize: 10, color: K.t3, whiteSpace: "nowrap" }}>{s.w}-{s.l}-{s.t}</div>
                     <div style={{ fontSize: 20, fontWeight: 800, color: K.t1, fontFamily: "'League Spartan', sans-serif", minWidth: 28, textAlign: "right" }}>{s.points}</div>
                   </>)}
                 </div>
-                <div style={{ width: 20, flexShrink: 0, textAlign: "right", color: K.t3, fontSize: 14, marginLeft: 4 }}>{isExp ? "▾" : "›"}</div>
+                <div style={{ width: 18, flexShrink: 0, textAlign: "right", color: K.t3, fontSize: 14, marginLeft: 4 }}>{isExp ? "▾" : "›"}</div>
               </button>
 
               {isExp && (
                 <div style={{ background: K.inp, border: `1px solid ${i === 0 ? K.act + '30' : K.bdr + '60'}`, borderTop: "none", borderRadius: "0 0 8px 8px", padding: "6px 8px" }}>
-                  {/* Header */}
                   <div style={{ display: "flex", padding: "4px 6px", fontSize: 9, color: K.logoBright, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8 }}>
                     <div style={{ width: 60 }}>Date</div>
                     <div style={{ width: 30 }}>Wk</div>

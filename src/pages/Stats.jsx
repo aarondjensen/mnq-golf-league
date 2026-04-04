@@ -22,7 +22,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
     return players.map(p => {
       const grossScores = []; let totalGross = 0, rounds = 0;
       schedule.forEach(wk => {
-        const side = getWeekSide(wk.week + 1);
+        const side = getWeekSide(wk.week);
         let wg = 0, cnt = 0;
         for (let h = 0; h < 9; h++) { const s = holeScores[`w${wk.week}_p${p.id}_h${h}`]; if (s > 0) { wg += s; cnt++; } }
         if (cnt === 9) { grossScores.push(wg); totalGross += wg; rounds++; }
