@@ -375,8 +375,38 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         let cum = 0;
         holeResults.forEach(r => { cum += r; runningStatus.push(cum); });
 
-        const matchResult = myNet < oppNet ? "WIN" : myNet > oppNet ? "LOSS" : "TIE";
-        const resultColor = matchResult === "WIN" ? K.grn : matchResult === "LOSS" ? K.red : K.t2;
+        // Calculate proper match play result
+        // Match is "clinched" when lead > remaining holes
+        let matchEndHole = 8; // default: goes to 9
+        let matchMargin = Math.abs(runningStatus[8]);
+        for (let h = 0; h < 9; h++) {
+          const lead = Math.abs(runningStatus[h]);
+          const remaining = 8 - h;
+          if (lead > remaining) {
+            matchEndHole = h;
+            matchMargin = lead;
+            break;
+          }
+        }
+        const holesRemaining = 8 - matchEndHole;
+        const finalStatus = runningStatus[8]; // positive = my team up
+        const isWin = finalStatus > 0;
+        const isLoss = finalStatus < 0;
+        const isTie = finalStatus === 0;
+
+        let matchResultText;
+        if (isTie) {
+          matchResultText = "ALL SQUARE";
+        } else if (holesRemaining > 0) {
+          // Clinched early: "X&Y"
+          matchResultText = `${matchMargin}&${holesRemaining}`;
+        } else {
+          // Went to final hole: "X UP"
+          matchResultText = `${Math.abs(finalStatus)}UP`;
+        }
+
+        const matchResult = isWin ? "WIN" : isLoss ? "LOSS" : "TIE";
+        const resultColor = isWin ? K.grn : isLoss ? K.red : K.t2;
 
         // Build player scorecard row
         const PlayerRow = ({ pid, isMyTeam }) => {
@@ -458,7 +488,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div style={{ textAlign: "center", marginBottom: 14 }}>
                 <div style={{ fontSize: 14, color: K.t1, fontWeight: 600, marginBottom: 4 }}>Match Complete</div>
                 <div style={{ fontSize: 28, fontWeight: 800, color: resultColor }}>
-                  {matchResult === "TIE" ? "ALL SQUARE" : matchResult === "WIN" ? `${Math.abs(myHW - oppHW)}UP` : `${Math.abs(myHW - oppHW)}DN`}
+                  {matchResultText}
                 </div>
               </div>
 
