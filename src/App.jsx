@@ -244,9 +244,9 @@ export default function GolfLeagueApp() {
     <div className="app-shell" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
       {/* Pull-to-refresh indicator */}
       {pullY > 0 && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 999, display: "flex", justifyContent: "center", paddingTop: Math.min(pullY, 100) - 30, transition: refreshing ? "all .3s" : "none" }}>
-          <div style={{ width: 32, height: 32, borderRadius: "50%", background: K.card, border: `2px solid ${pullY >= PULL_THRESHOLD ? K.teal : K.bdr}`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 12px rgba(0,0,0,.3)", transition: "border-color .2s" }}>
-            <div style={{ fontSize: 14, color: pullY >= PULL_THRESHOLD ? K.teal : K.t3, transform: `rotate(${refreshing ? 360 : pullY * 2}deg)`, transition: refreshing ? "transform .6s" : "none" }}>↻</div>
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 999, display: "flex", justifyContent: "center", paddingTop: Math.min(pullY, 100) - 20, transition: refreshing ? "all .3s" : "none" }}>
+          <div style={{ width: 40, height: 40, borderRadius: "50%", background: K.card, border: `2px solid ${pullY >= PULL_THRESHOLD ? K.act : K.bdr}`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 12px rgba(0,0,0,.3)", transition: "border-color .2s", overflow: "hidden" }}>
+            <img src="/favicon/favicon-96x96.png" alt="" style={{ width: 26, height: 26, objectFit: "contain", opacity: pullY >= PULL_THRESHOLD ? 1 : 0.4, transform: `scale(${refreshing ? 1.1 : 0.8 + (pullY / PULL_THRESHOLD) * 0.2})`, transition: "opacity .2s, transform .2s" }} />
           </div>
         </div>
       )}
