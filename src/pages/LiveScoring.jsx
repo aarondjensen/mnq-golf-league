@@ -390,32 +390,32 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           });
           const initials = pl.name.split(' ').map(n => n[0]).join('');
           return (
-            <div style={{ display: "flex", gap: 2, alignItems: "center", padding: "1px 0" }}>
-              <div style={{ width: 36, flexShrink: 0, fontSize: 9, color: K.t2, fontWeight: 600 }}>{initials}<span style={{ color: K.t3, fontSize: 7 }}>({nh})</span></div>
+            <div style={{ display: "flex", gap: 2, alignItems: "center", padding: "3px 0" }}>
+              <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t2, fontWeight: 600 }}>{initials}<span style={{ color: K.t3, fontSize: 8 }}>({nh})</span></div>
               {cells.map((c, h) => (
-                <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 700, color: K.t1 }}>
-                  {c.s}{c.st > 0 && <span style={{ color: K.teal, fontSize: 7 }}>{"•".repeat(c.st)}</span>}
+                <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 12, fontWeight: 700, color: K.t1 }}>
+                  {c.s}{c.st > 0 && <span style={{ color: K.teal, fontSize: 8 }}>{"•".repeat(c.st)}</span>}
                 </div>
               ))}
-              <div style={{ width: 24, textAlign: "center", fontSize: 10, fontWeight: 800, color: K.t1 }}>{grossTotal}</div>
+              <div style={{ width: 28, textAlign: "center", fontSize: 12, fontWeight: 800, color: K.t1 }}>{grossTotal}</div>
             </div>
           );
         };
 
         // Team net row — maize border on winning holes
-        const TeamRow = ({ pids, isWinningTeam }) => {
+        const TeamRow = ({ pids }) => {
           let total = 0;
           return (
-            <div style={{ display: "flex", gap: 2, alignItems: "center", padding: "1px 0" }}>
-              <div style={{ width: 36, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 700 }}>NET</div>
+            <div style={{ display: "flex", gap: 2, alignItems: "center", padding: "3px 0" }}>
+              <div style={{ width: 36, flexShrink: 0, fontSize: 9, color: K.t3, fontWeight: 700 }}>NET</div>
               {Array.from({ length: 9 }, (_, h) => {
                 let tNet = 0;
                 pids.forEach(pid => { tNet += getS(pid, h) - getStrokes(pid, h); });
                 total += tNet;
                 const won = holeResults[h] === (pids === myPids ? 1 : -1);
-                return <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 800, color: K.t2, borderRadius: 3, border: won ? `1.5px solid ${K.act}` : "1.5px solid transparent" }}>{tNet}</div>;
+                return <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 12, fontWeight: 800, color: K.t2, borderRadius: 3, border: won ? `1.5px solid ${K.act}` : "1.5px solid transparent" }}>{tNet}</div>;
               })}
-              <div style={{ width: 24, textAlign: "center", fontSize: 10, fontWeight: 800, color: K.t2 }}>{total}</div>
+              <div style={{ width: 28, textAlign: "center", fontSize: 12, fontWeight: 800, color: K.t2 }}>{total}</div>
             </div>
           );
         };
@@ -455,37 +455,29 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           <div style={{ position: "fixed", inset: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
             <div style={{ background: K.bg, border: `1.5px solid ${resultColor}50`, borderRadius: 16, padding: "16px 12px 20px", width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto" }}>
               {/* Header */}
-              <div style={{ textAlign: "center", marginBottom: 12 }}>
-                <div style={{ fontSize: 11, color: K.t3, fontWeight: 500, marginBottom: 2 }}>Match Complete</div>
-                <div style={{ fontSize: 24, fontWeight: 800, color: resultColor }}>{matchResult}</div>
-                <div style={{ fontSize: 11, color: K.t3, marginTop: 2 }}>{myTeamObj.name} vs {oppTeamObj.name}</div>
+              <div style={{ textAlign: "center", marginBottom: 14 }}>
+                <div style={{ fontSize: 14, color: K.t1, fontWeight: 600, marginBottom: 4 }}>Match Complete</div>
+                <div style={{ fontSize: 28, fontWeight: 800, color: resultColor }}>
+                  {matchResult === "TIE" ? "ALL SQUARE" : matchResult === "WIN" ? `${Math.abs(myHW - oppHW)}UP` : `${Math.abs(myHW - oppHW)}DN`}
+                </div>
               </div>
 
-              {/* Match status triangles */}
-              <div style={{ display: "flex", gap: 2, marginBottom: 10 }}>
-                <div style={{ width: 36, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600 }}>HOLE</div>
+              {/* Hole numbers */}
+              <div style={{ display: "flex", gap: 2, alignItems: "center", padding: "2px 0" }}>
+                <div style={{ width: 36, flexShrink: 0, fontSize: 9, color: K.t3, fontWeight: 600 }}>HOLE</div>
                 {Array.from({ length: 9 }, (_, i) => (
-                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, color: K.t3, fontWeight: 700 }}>{side === 'front' ? i + 1 : i + 10}</div>
+                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 10, color: K.t3, fontWeight: 700 }}>{side === 'front' ? i + 1 : i + 10}</div>
                 ))}
-                <div style={{ width: 24 }} />
-              </div>
-              <div style={{ display: "flex", gap: 2, marginBottom: 10 }}>
-                <div style={{ width: 36, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600 }}>MATCH</div>
-                {runningStatus.map((st, i) => {
-                  const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
-                  const color = st > 0 ? K.grn : st < 0 ? K.red : K.t3;
-                  return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 800, color }}>{label}</div>;
-                })}
-                <div style={{ width: 24 }} />
+                <div style={{ width: 28, textAlign: "center", fontSize: 9, color: K.t2, fontWeight: 700 }}>TOT</div>
               </div>
 
               {/* Par row */}
-              <div style={{ display: "flex", gap: 2, marginBottom: 2 }}>
-                <div style={{ width: 36, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600 }}>PAR</div>
-                {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, color: K.t3, fontWeight: 600 }}>{p}</div>)}
-                <div style={{ width: 24, textAlign: "center", fontSize: 9, color: K.t3, fontWeight: 600 }}>{pars.reduce((a, b) => a + b, 0)}</div>
+              <div style={{ display: "flex", gap: 2, alignItems: "center", padding: "2px 0" }}>
+                <div style={{ width: 36, flexShrink: 0, fontSize: 9, color: K.t3, fontWeight: 600 }}>PAR</div>
+                {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 11, color: K.t3, fontWeight: 600 }}>{p}</div>)}
+                <div style={{ width: 28, textAlign: "center", fontSize: 11, color: K.t3, fontWeight: 600 }}>{pars.reduce((a, b) => a + b, 0)}</div>
               </div>
-              <div style={{ borderBottom: `1px solid ${K.bdr}40`, margin: "3px 0" }} />
+              <div style={{ borderBottom: `1px solid ${K.bdr}40`, margin: "4px 0" }} />
 
               {/* My team */}
               {myPids.map(pid => <PlayerRow key={pid} pid={pid} isMyTeam={true} />)}
@@ -493,34 +485,31 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
               <div style={{ borderBottom: `1px solid ${K.bdr}40`, margin: "4px 0" }} />
 
+              {/* Match status triangles — between teams */}
+              <div style={{ display: "flex", gap: 2, alignItems: "center", padding: "4px 0" }}>
+                <div style={{ width: 36, flexShrink: 0, fontSize: 9, color: K.t3, fontWeight: 700 }}>MATCH</div>
+                {runningStatus.map((st, i) => {
+                  const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
+                  const color = st > 0 ? K.grn : st < 0 ? K.red : K.t3;
+                  return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 12, fontWeight: 800, color }}>{label}</div>;
+                })}
+                <div style={{ width: 28 }} />
+              </div>
+
+              <div style={{ borderBottom: `1px solid ${K.bdr}40`, margin: "4px 0" }} />
+
               {/* Opp team */}
               {oppPids.map(pid => <PlayerRow key={pid} pid={pid} isMyTeam={false} />)}
               <TeamRow pids={oppPids} />
 
-              {/* Summary */}
-              <div style={{ display: "flex", gap: 8, marginTop: 12, marginBottom: 14 }}>
-                <div style={{ flex: 1, background: K.card, borderRadius: 8, padding: "8px 10px", textAlign: "center", border: `1.5px solid ${myNet <= oppNet ? K.act : K.bdr}40` }}>
-                  <div style={{ fontSize: 10, color: K.t3 }}>{myTeamObj.name}</div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: K.t1 }}>{myNet}</div>
-                  <div style={{ fontSize: 9, color: K.t3 }}>Net</div>
-                </div>
-                <div style={{ flex: 1, background: K.card, borderRadius: 8, padding: "8px 10px", textAlign: "center", border: `1.5px solid ${oppNet <= myNet ? K.act : K.bdr}40` }}>
-                  <div style={{ fontSize: 10, color: K.t3 }}>{oppTeamObj.name}</div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: K.t1 }}>{oppNet}</div>
-                  <div style={{ fontSize: 9, color: K.t3 }}>Net</div>
-                </div>
-                <div style={{ flex: 1, background: K.card, borderRadius: 8, padding: "8px 10px", textAlign: "center", border: `1.5px solid ${K.bdr}40` }}>
-                  <div style={{ fontSize: 10, color: K.t3 }}>Holes Won</div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: K.teal }}>{myHW}-{oppHW}</div>
-                </div>
+              <div style={{ marginTop: 16 }}>
+                <button onClick={async () => { await finalizeMatch(); setShowFinalize(false); }} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.grn, border: "none", color: K.bg, fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
+                  Finalize Match
+                </button>
+                <button onClick={() => setShowFinalize(false)} style={{ width: "100%", padding: 10, background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 4 }}>
+                  Go Back & Edit
+                </button>
               </div>
-
-              <button onClick={async () => { await finalizeMatch(); setShowFinalize(false); }} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.grn, border: "none", color: K.bg, fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
-                Finalize Match
-              </button>
-              <button onClick={() => setShowFinalize(false)} style={{ width: "100%", padding: 10, background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 4 }}>
-                Go Back & Edit
-              </button>
             </div>
           </div>
         </>);
