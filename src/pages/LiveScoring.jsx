@@ -438,14 +438,18 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const TeamRow = ({ pids }) => {
           let total = 0;
           return (
-            <div style={{ display: "flex", alignItems: "center" }}>
+            <div style={{ display: "flex", alignItems: "center", position: "relative" }}>
               <div style={{ width: 36, flexShrink: 0, fontSize: 9, color: K.t3, fontWeight: 700, padding: "4px 0", borderRight: gridLine }}>NET</div>
               {Array.from({ length: 9 }, (_, h) => {
                 let tNet = 0;
                 pids.forEach(pid => { tNet += getS(pid, h) - getStrokes(pid, h); });
                 total += tNet;
                 const won = holeResults[h] === (pids === myPids ? 1 : -1);
-                return <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t2, lineHeight: "22px", borderRadius: won ? 4 : 0, border: won ? `1.5px solid ${K.act}` : "1.5px solid transparent", padding: "3px 0", borderRight: won ? "none" : gridLine }}>{tNet}</div>;
+                return <div key={h} style={{
+                  flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t2, lineHeight: "22px",
+                  padding: "3px 0", borderRight: won ? "none" : gridLine,
+                  ...(won ? { background: K.bg, border: `2px solid ${K.act}`, borderRadius: 5, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
+                }}>{tNet}</div>;
               })}
               <div style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t2, padding: "4px 0" }}>{total}</div>
             </div>
