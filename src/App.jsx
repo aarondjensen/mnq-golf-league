@@ -245,8 +245,25 @@ export default function GolfLeagueApp() {
       {/* Pull-to-refresh indicator */}
       {pullY > 0 && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 999, display: "flex", justifyContent: "center", paddingTop: Math.min(pullY, 100) - 20, transition: refreshing ? "all .3s" : "none" }}>
-          <div style={{ width: 40, height: 40, borderRadius: "50%", background: K.card, border: `2px solid ${pullY >= PULL_THRESHOLD ? K.act : K.bdr}`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 2px 12px rgba(0,0,0,.3)", transition: "border-color .2s", overflow: "hidden" }}>
-            <img src="/favicon/favicon-96x96.png" alt="" style={{ width: 26, height: 26, objectFit: "contain", opacity: pullY >= PULL_THRESHOLD ? 1 : 0.4, transform: `scale(${refreshing ? 1.1 : 0.8 + (pullY / PULL_THRESHOLD) * 0.2})`, transition: "opacity .2s, transform .2s" }} />
+          <style>{`
+            @keyframes mnqSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+            @keyframes mnqPulseGlow { 0%,100% { box-shadow: 0 0 8px ${K.act}40; } 50% { box-shadow: 0 0 18px ${K.act}80; } }
+          `}</style>
+          <div style={{
+            width: 44, height: 44, borderRadius: "50%", background: K.card,
+            border: `2.5px solid ${pullY >= PULL_THRESHOLD ? K.act : K.bdr}`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            boxShadow: pullY >= PULL_THRESHOLD ? `0 0 12px ${K.act}50` : "0 2px 12px rgba(0,0,0,.3)",
+            transition: "border-color .2s, box-shadow .3s", overflow: "hidden",
+            animation: refreshing ? "mnqPulseGlow 1s ease-in-out infinite" : "none",
+          }}>
+            <img src="/favicon/favicon-96x96.png" alt="" style={{
+              width: 28, height: 28, objectFit: "contain",
+              opacity: pullY >= PULL_THRESHOLD ? 1 : 0.3 + (pullY / PULL_THRESHOLD) * 0.7,
+              transform: refreshing ? "none" : `rotate(${pullY * 3}deg)`,
+              animation: refreshing ? "mnqSpin .8s linear infinite" : "none",
+              transition: refreshing ? "none" : "opacity .2s",
+            }} />
           </div>
         </div>
       )}
