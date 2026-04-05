@@ -258,62 +258,108 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "24px" }}>{label}</div>;
             })}
           </button>
-          {showScorecard && (
-            <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderTop: "none", borderRadius: "0 0 8px 8px", padding: "6px 0", marginBottom: 8 }}>
-              {/* PAR row */}
-              <div style={{ display: "flex", gap: 3, alignItems: "center", padding: "2px 0" }}>
-                <div style={{ width: 40, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600, paddingLeft: 2 }}>PAR</div>
-                {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, color: K.t3, fontWeight: 600 }}>{p}</div>)}
+          {showScorecard && (() => {
+            const gridLine = `1px solid ${K.bdr}25`;
+            const myTeamId = myTeam?.id || t1.id;
+            const scIsMyT1 = t1.id === myTeamId;
+            const scMyPids = scIsMyT1 ? t1Players : t2Players;
+            const scOppPids = scIsMyT1 ? t2Players : t1Players;
+
+            // Hole results & running status for match row + winning-hole borders
+            const scHoleResults = [];
+            for (let h = 0; h < 9; h++) {
+              let mN = 0, oN = 0, mOk = true, oOk = true;
+              scMyPids.forEach(pid => { const s = getS(pid, h); if (s <= 0) mOk = false; else mN += s - getStrokes(pid, h); });
+              scOppPids.forEach(pid => { const s = getS(pid, h); if (s <= 0) oOk = false; else oN += s - getStrokes(pid, h); });
+              if (mOk && oOk) { scHoleResults.push(mN < oN ? 1 : oN < mN ? -1 : 0); } else { scHoleResults.push(null); }
+            }
+
+            const ScPlayerRow = ({ pid }) => {
+              const pl = players.find(p => p.id === pid); if (!pl) return null;
+              const nh = getNineHcp(pid);
+              let grossTotal = 0;
+              const cells = Array.from({ length: 9 }, (_, h) => {
+                const s = getS(pid, h); const st = getStrokes(pid, h);
+                if (s > 0) grossTotal += s;
+                return { s, st };
+              });
+              const initials = pl.name.split(' ').map(n => n[0]).join('');
+              return (
+                <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
+                  <div style={{ width: 36, flexShrink: 0, fontSize: 12, color: K.t1, fontWeight: 700, padding: "4px 0", borderRight: gridLine, paddingLeft: 4 }}>{initials}<span style={{ color: K.t3, fontSize: 9 }}>({nh})</span></div>
+                  {cells.map((c, h) => (
+                    <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 700, color: c.s <= 0 ? K.t3 + "30" : K.t1, lineHeight: "22px", padding: "4px 0", borderRight: gridLine }}>
+                      {c.s > 0 ? <>{c.s}{c.st > 0 && <span style={{ color: K.teal, fontSize: 11 }}>{"•".repeat(c.st)}</span>}</> : "·"}
+                    </div>
+                  ))}
+                  <div style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 800, color: grossTotal > 0 ? K.t1 : K.t3 + "30", padding: "4px 0" }}>{grossTotal > 0 ? grossTotal : "·"}</div>
+                </div>
+              );
+            };
+
+            const ScTeamRow = ({ pids, side: teamSide }) => {
+              let total = 0; let hasAll = true;
+              return (
+                <div style={{ display: "flex", alignItems: "center", position: "relative" }}>
+                  <div style={{ width: 36, flexShrink: 0, fontSize: 9, color: K.t3, fontWeight: 700, padding: "4px 0", borderRight: gridLine, paddingLeft: 4 }}>NET</div>
+                  {Array.from({ length: 9 }, (_, h) => {
+                    let tNet = 0; let ok = true;
+                    pids.forEach(pid => { const s = getS(pid, h); if (s <= 0) ok = false; else tNet += s - getStrokes(pid, h); });
+                    if (ok) total += tNet; else hasAll = false;
+                    const won = scHoleResults[h] === (teamSide === "my" ? 1 : -1);
+                    return <div key={h} style={{
+                      flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color: !ok ? K.t3 + "30" : K.t2, lineHeight: "22px",
+                      padding: "3px 0", borderRight: won ? "none" : gridLine,
+                      ...(won ? { background: K.bg, border: `2px solid ${K.act}`, borderRadius: 5, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
+                    }}>{ok ? tNet : "·"}</div>;
+                  })}
+                  <div style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 800, color: hasAll ? K.t2 : K.t3 + "30", padding: "4px 0" }}>{hasAll ? total : "·"}</div>
+                </div>
+              );
+            };
+
+            return (
+            <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderTop: "none", borderRadius: "0 0 8px 8px", padding: "6px 4px", marginBottom: 8 }}>
+              {/* Hole numbers */}
+              <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
+                <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t2, fontWeight: 700, padding: "4px 0", borderRight: gridLine, paddingLeft: 4 }}>HOLE</div>
+                {Array.from({ length: 9 }, (_, i) => (
+                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t1, fontWeight: 700, lineHeight: "22px", padding: "4px 0", borderRight: gridLine }}>{side === 'front' ? i + 1 : i + 10}</div>
+                ))}
+                <div style={{ width: 28, textAlign: "center", fontSize: 10, color: K.t1, fontWeight: 700, padding: "4px 0" }}>TOT</div>
               </div>
-              <div style={{ borderBottom: `1px solid ${K.bdr}40`, margin: "2px 0" }} />
-              {/* Player rows — grouped by team */}
-              {[{ pids: isMyT1 ? t1Players : t2Players },
-                { pids: isMyT1 ? t2Players : t1Players }].map(({ pids }, ti) => {
-                let teamTotal = 0, teamComplete = true;
-                const rows = pids.map(pid => {
-                  const pl = players.find(p => p.id === pid); if (!pl) return null;
-                  const nh = getNineHcp(pid);
-                  let total = 0, complete = true;
-                  const cells = Array.from({ length: 9 }, (_, h) => {
-                    const s = getS(pid, h); const st = getStrokes(pid, h);
-                    if (s > 0) total += s - st; else complete = false;
-                    return { s, st, net: s > 0 ? s - st : 0 };
-                  });
-                  if (complete) teamTotal += total; else teamComplete = false;
-                  const initials = pl.name.split(' ').map(n => n[0]).join('');
-                  return (
-                    <div key={pid} style={{ display: "flex", gap: 3, alignItems: "center", padding: "1px 0" }}>
-                      <div style={{ width: 40, flexShrink: 0, fontSize: 9, color: K.t2, fontWeight: 600, paddingLeft: 2, overflow: "hidden", whiteSpace: "nowrap" }}>{initials}<span style={{ color: K.t3, fontSize: 7 }}>({nh})</span></div>
-                      {cells.map((c, h) => (
-                        <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 700, color: c.s <= 0 ? K.t3 + "30" : K.t1 }}>
-                          {c.s > 0 ? <>{c.net}{c.st > 0 && <span style={{ color: K.teal, fontSize: 7 }}>{"•".repeat(c.st)}</span>}</> : "·"}
-                        </div>
-                      ))}
-                    </div>
-                  );
-                });
-                return (
-                  <div key={ti}>
-                    {rows}
-                    <div style={{ display: "flex", gap: 3, alignItems: "center", padding: "1px 0" }}>
-                      <div style={{ width: 40, flexShrink: 0, fontSize: 8, color: K.teal, fontWeight: 700, paddingLeft: 2 }}>TEAM</div>
-                      {Array.from({ length: 9 }, (_, h) => {
-                        let myNet = 0, oppNet = 0, myOk = true, oppOk = true;
-                        const oppPids = ti === 0 ? (isMyT1 ? t2Players : t1Players) : (isMyT1 ? t1Players : t2Players);
-                        pids.forEach(pid => { const s = getS(pid, h); if (s <= 0) myOk = false; else myNet += s - getStrokes(pid, h); });
-                        oppPids.forEach(pid => { const s = getS(pid, h); if (s <= 0) oppOk = false; else oppNet += s - getStrokes(pid, h); });
-                        const ok = myOk && oppOk;
-                        const won = ok && myNet < oppNet;
-                        const lost = ok && myNet > oppNet;
-                        return <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 800, color: !myOk ? K.t3 + "30" : won ? K.grn : lost ? K.red : K.t2 }}>{myOk ? myNet : "·"}</div>;
-                      })}
-                    </div>
-                    {ti === 0 && <div style={{ borderBottom: `1px solid ${K.bdr}40`, margin: "2px 0" }} />}
-                  </div>
-                );
-              })}
+
+              {/* Par row */}
+              <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
+                <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 600, padding: "4px 0", borderRight: gridLine, paddingLeft: 4 }}>PAR</div>
+                {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t3, fontWeight: 600, lineHeight: "22px", padding: "4px 0", borderRight: gridLine }}>{p}</div>)}
+                <div style={{ width: 28, textAlign: "center", fontSize: 13, color: K.t3, fontWeight: 600, padding: "4px 0" }}>{pars.reduce((a, b) => a + b, 0)}</div>
+              </div>
+
+              {/* My team */}
+              {scMyPids.map(pid => <ScPlayerRow key={pid} pid={pid} />)}
+              <ScTeamRow pids={scMyPids} side="my" />
+
+              <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "2px 0" }} />
+
+              {/* Match status triangles */}
+              <div style={{ display: "flex", alignItems: "center", borderBottom: `2px solid ${K.bdr}40` }}>
+                <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 700, padding: "5px 0", borderRight: gridLine, paddingLeft: 4 }}>MATCH</div>
+                {holeStatuses.map((st, i) => {
+                  if (st === null) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: gridLine, color: K.t3 + "30" }}>—</div>;
+                  const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
+                  const color = st > 0 ? K.grn : st < 0 ? K.red : K.t3;
+                  return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }}>{label}</div>;
+                })}
+                <div style={{ width: 28, padding: "5px 0" }} />
+              </div>
+
+              {/* Opp team */}
+              {scOppPids.map(pid => <ScPlayerRow key={pid} pid={pid} />)}
+              <ScTeamRow pids={scOppPids} side="opp" />
             </div>
-          )}
+            );
+          })()}
         </>);
       })()}
       <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "6px 8px", marginBottom: 6, display: "flex", alignItems: "center" }}>
