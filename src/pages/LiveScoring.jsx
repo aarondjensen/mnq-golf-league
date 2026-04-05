@@ -250,14 +250,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         });
         return (<>
           <button onClick={() => setShowScorecard(!showScorecard)} style={{ display: "flex", gap: 3, marginBottom: showScorecard ? 0 : 8, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: showScorecard ? "8px 8px 0 0" : 8, cursor: "pointer", padding: "6px 0", alignItems: "center" }}>
-            <div style={{ width: 40, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600, display: "flex", alignItems: "center", paddingLeft: 6 }}>MATCH</div>
+            <div style={{ width: 40, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600, display: "flex", alignItems: "center", paddingLeft: 6, gap: 2 }}><span>MATCH</span><span style={{ fontSize: 10 }}>{showScorecard ? "▾" : "›"}</span></div>
             {holeStatuses.map((st, i) => {
               if (st === null) return <div key={i} style={{ flex: 1, height: 24 }} />;
               const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
               const color = st > 0 ? K.grn : st < 0 ? K.red : K.t3;
               return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "24px" }}>{label}</div>;
             })}
-            <div style={{ width: 20, flexShrink: 0, textAlign: "center", color: K.t3, fontSize: 10 }}>{showScorecard ? "▾" : "›"}</div>
           </button>
           {showScorecard && (
             <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderTop: "none", borderRadius: "0 0 8px 8px", padding: "6px 0", marginBottom: 8 }}>
@@ -317,7 +316,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           )}
         </>);
       })()}
-      <div style={{ background: `linear-gradient(135deg, ${K.card}, #0f2440)`, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "6px 8px", marginBottom: 6, display: "flex", alignItems: "center" }}>
+      <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "6px 8px", marginBottom: 6, display: "flex", alignItems: "center" }}>
         <button onClick={() => { const prev = Math.max(0, curHole - 1); setCurHole(prev); setEditing(prev < currentHoleIdx); }} disabled={curHole === 0} style={{ width: 32, height: 40, borderRadius: 8, background: "none", border: "none", cursor: curHole === 0 ? "default" : "pointer", color: curHole === 0 ? K.t3 + "40" : K.t2, fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
         <div style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 8px" }}>
           <div style={{ textAlign: "center", minWidth: 36 }}><div style={{ fontSize: 9, color: K.t3, fontWeight: 600 }}>Par</div><div style={{ fontSize: 16, fontWeight: 800, color: K.t2 }}>{par}</div></div>
