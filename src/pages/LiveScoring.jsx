@@ -230,6 +230,30 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           return <button key={i} onClick={() => { setCurHole(i); setEditing(i < currentHoleIdx); }} style={{ flex: 1, height: 34, borderRadius: done || cur ? 10 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 12, fontWeight: 700, cursor: "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{i + 1}</button>;
         })}
       </div>
+      <div style={{ background: K.acc, borderRadius: 10, padding: "6px 8px", marginBottom: 6, display: "flex", alignItems: "center" }}>
+        <button onClick={() => { const prev = Math.max(0, curHole - 1); setCurHole(prev); setEditing(prev < currentHoleIdx); }} disabled={curHole === 0} style={{ width: 32, height: 40, borderRadius: 8, background: "none", border: "none", cursor: curHole === 0 ? "default" : "pointer", color: curHole === 0 ? K.bg + "40" : K.bg, fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
+        <div style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 8px" }}>
+          <div style={{ textAlign: "center", minWidth: 36 }}><div style={{ fontSize: 9, color: K.bg, fontWeight: 600, opacity: 0.7 }}>Par</div><div style={{ fontSize: 16, fontWeight: 800, color: K.bg }}>{par}</div></div>
+          <div style={{ textAlign: "center" }}><div style={{ fontSize: 9, color: K.bg, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, opacity: 0.7 }}>Hole</div><div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 30, fontWeight: 700, color: K.bg, lineHeight: 1 }}>{side === 'front' ? curHole + 1 : curHole + 10}</div></div>
+          <div style={{ textAlign: "center", minWidth: 36 }}><div style={{ fontSize: 9, color: K.bg, fontWeight: 600, opacity: 0.7 }}>HCP</div><div style={{ fontSize: 16, fontWeight: 800, color: K.bg }}>{hcp}</div></div>
+        </div>
+        <button onClick={() => { const next = Math.min(8, curHole + 1); setCurHole(next); setEditing(next < currentHoleIdx); }} disabled={curHole === 8} style={{ width: 32, height: 40, borderRadius: 8, background: "none", border: "none", cursor: curHole === 8 ? "default" : "pointer", color: curHole === 8 ? K.bg + "40" : K.bg, fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
+      </div>
+      {isPar3 && <button onClick={() => setShowCTP(!showCTP)} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 8, cursor: "pointer", background: K.acc + "12", border: `1px solid ${K.acc}35`, color: K.acc, fontSize: 12, fontWeight: 700 }}>{showCTP ? "Hide" : "Record"} Closest to Pin</button>}
+      {showCTP && isPar3 && <CTPEntry week={week} hole={curHole} players={players} ctpData={ctpData} saveCtp={saveCtp} side={side} />}
+
+      {editing && (
+        <button onClick={() => { setCurHole(currentHoleIdx); setEditing(false); }} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 6, cursor: "pointer", background: K.teal + "15", border: `1px solid ${K.teal}40`, color: K.teal, fontSize: 12, fontWeight: 700 }}>
+          Hole {side === 'front' ? currentHoleIdx + 1 : currentHoleIdx + 10} →
+        </button>
+      )}
+
+      {allP.map(pid => {
+        const pl = players.find(p => p.id === pid); if (!pl) return null;
+        const score = getS(pid, curHole); const strokes = getStrokes(pid, curHole); const nh = getNineHcp(pid); const run = getRunning(pid);
+        const btns = par === 3 ? [1,2,3,4,5,6,7] : par === 5 ? [2,3,4,5,6,7,8] : [2,3,4,5,6,7,8];
+        return <PlayerScoreCard key={pid} pl={pl} score={score} strokes={strokes} nh={nh} run={run} btns={btns} par={par} pid={pid} week={week} curHole={curHole} saveScore={saveScore} K={K} />;
+      })}
       {/* Match status — tappable to expand scorecard */}
       {(() => {
         const myTeamId = myTeam?.id || t1.id;
@@ -249,7 +273,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           return hasData ? holesUp : null;
         });
         return (<>
-          <button onClick={() => setShowScorecard(!showScorecard)} style={{ display: "flex", gap: 3, marginBottom: showScorecard ? 0 : 8, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: showScorecard ? "8px 8px 0 0" : 8, cursor: "pointer", padding: "6px 0", alignItems: "center" }}>
+          <button onClick={() => setShowScorecard(!showScorecard)} style={{ display: "flex", gap: 3, marginTop: 6, marginBottom: showScorecard ? 0 : 8, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: showScorecard ? "8px 8px 0 0" : 8, cursor: "pointer", padding: "6px 0", alignItems: "center" }}>
             <div style={{ width: 40, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600, display: "flex", alignItems: "center", paddingLeft: 6, gap: 2 }}><span>MATCH</span><span style={{ fontSize: 10 }}>{showScorecard ? "▾" : "›"}</span></div>
             {holeStatuses.map((st, i) => {
               if (st === null) return <div key={i} style={{ flex: 1, height: 24 }} />;
@@ -260,12 +284,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           </button>
           {showScorecard && (() => {
             const gridLine = `1px solid ${K.bdr}25`;
-            const myTeamId = myTeam?.id || t1.id;
             const scIsMyT1 = t1.id === myTeamId;
             const scMyPids = scIsMyT1 ? t1Players : t2Players;
             const scOppPids = scIsMyT1 ? t2Players : t1Players;
 
-            // Hole results & running status for match row + winning-hole borders
             const scHoleResults = [];
             for (let h = 0; h < 9; h++) {
               let mN = 0, oN = 0, mOk = true, oOk = true;
@@ -357,41 +379,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           })()}
         </>);
       })()}
-      <div style={{ display: "flex", gap: 3, marginBottom: 6, alignItems: "center" }}>
-        <div style={{ width: 40, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <button onClick={() => { const prev = Math.max(0, curHole - 1); setCurHole(prev); setEditing(prev < currentHoleIdx); }} disabled={curHole === 0} style={{ width: 28, height: 34, borderRadius: 6, background: "none", border: "none", cursor: curHole === 0 ? "default" : "pointer", color: curHole === 0 ? K.t3 + "40" : K.t2, fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>‹</button>
-        </div>
-        <div style={{ flex: 1, height: 34, borderRadius: 8, background: K.card, border: `1px solid ${K.bdr}`, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-          <span style={{ fontSize: 10, color: K.t3, fontWeight: 600 }}>Par</span>
-          <span style={{ fontSize: 14, fontWeight: 800, color: K.t2 }}>{par}</span>
-        </div>
-        <div style={{ flex: 1.4, height: 34, borderRadius: 8, background: K.acc, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-          <span style={{ fontSize: 10, color: K.bg, fontWeight: 600 }}>Hole</span>
-          <span style={{ fontSize: 18, fontWeight: 800, color: K.bg, lineHeight: 1 }}>{side === 'front' ? curHole + 1 : curHole + 10}</span>
-        </div>
-        <div style={{ flex: 1, height: 34, borderRadius: 8, background: K.card, border: `1px solid ${K.bdr}`, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
-          <span style={{ fontSize: 10, color: K.teal, fontWeight: 600 }}>HCP</span>
-          <span style={{ fontSize: 14, fontWeight: 800, color: K.teal }}>{hcp}</span>
-        </div>
-        <div style={{ width: 40, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <button onClick={() => { const next = Math.min(8, curHole + 1); setCurHole(next); setEditing(next < currentHoleIdx); }} disabled={curHole === 8} style={{ width: 28, height: 34, borderRadius: 6, background: "none", border: "none", cursor: curHole === 8 ? "default" : "pointer", color: curHole === 8 ? K.t3 + "40" : K.t2, fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>›</button>
-        </div>
-      </div>
-      {isPar3 && <button onClick={() => setShowCTP(!showCTP)} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 8, cursor: "pointer", background: K.acc + "12", border: `1px solid ${K.acc}35`, color: K.acc, fontSize: 12, fontWeight: 700 }}>{showCTP ? "Hide" : "Record"} Closest to Pin</button>}
-      {showCTP && isPar3 && <CTPEntry week={week} hole={curHole} players={players} ctpData={ctpData} saveCtp={saveCtp} side={side} />}
-
-      {editing && (
-        <button onClick={() => { setCurHole(currentHoleIdx); setEditing(false); }} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 6, cursor: "pointer", background: K.teal + "15", border: `1px solid ${K.teal}40`, color: K.teal, fontSize: 12, fontWeight: 700 }}>
-          Hole {side === 'front' ? currentHoleIdx + 1 : currentHoleIdx + 10} →
-        </button>
-      )}
-
-      {allP.map(pid => {
-        const pl = players.find(p => p.id === pid); if (!pl) return null;
-        const score = getS(pid, curHole); const strokes = getStrokes(pid, curHole); const nh = getNineHcp(pid); const run = getRunning(pid);
-        const btns = par === 3 ? [1,2,3,4,5,6,7] : par === 5 ? [2,3,4,5,6,7,8] : [2,3,4,5,6,7,8];
-        return <PlayerScoreCard key={pid} pl={pl} score={score} strokes={strokes} nh={nh} run={run} btns={btns} par={par} pid={pid} week={week} curHole={curHole} saveScore={saveScore} K={K} />;
-      })}
       {allComplete && !showFinalize && (
         <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.grn + "15", border: `1.5px solid ${K.grn}50`, color: K.grn, fontSize: 13, fontWeight: 700 }}>
           All Holes Complete — Tap to Finalize
