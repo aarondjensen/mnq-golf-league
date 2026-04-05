@@ -357,62 +357,167 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const oppTeamObj = isMyT1 ? t2 : t1;
         const myNet = myPids.reduce((a, pid) => a + getRunning(pid).net, 0);
         const oppNet = oppPids.reduce((a, pid) => a + getRunning(pid).net, 0);
-        const myGross = myPids.reduce((a, pid) => a + getRunning(pid).gross, 0);
-        const oppGross = oppPids.reduce((a, pid) => a + getRunning(pid).gross, 0);
 
-        // Count holes won
+        // Holes won
         let myHW = 0, oppHW = 0;
+        const holeResults = [];
         for (let h = 0; h < 9; h++) {
           let mN = 0, oN = 0;
           myPids.forEach(pid => { mN += getS(pid, h) - getStrokes(pid, h); });
           oppPids.forEach(pid => { oN += getS(pid, h) - getStrokes(pid, h); });
-          if (mN < oN) myHW++; else if (oN < mN) oppHW++;
+          if (mN < oN) { myHW++; holeResults.push(1); }
+          else if (oN < mN) { oppHW++; holeResults.push(-1); }
+          else holeResults.push(0);
         }
+
+        // Running match status per hole
+        const runningStatus = [];
+        let cum = 0;
+        holeResults.forEach(r => { cum += r; runningStatus.push(cum); });
 
         const matchResult = myNet < oppNet ? "WIN" : myNet > oppNet ? "LOSS" : "TIE";
         const resultColor = matchResult === "WIN" ? K.grn : matchResult === "LOSS" ? K.red : K.t2;
 
+        // Build player scorecard row
+        const PlayerRow = ({ pid, isMyTeam }) => {
+          const pl = players.find(p => p.id === pid); if (!pl) return null;
+          const nh = getNineHcp(pid);
+          let total = 0;
+          const cells = Array.from({ length: 9 }, (_, h) => {
+            const s = getS(pid, h); const st = getStrokes(pid, h);
+            const net = s - st; total += net;
+            return { s, st, net };
+          });
+          const initials = pl.name.split(' ').map(n => n[0]).join('');
+          return (
+            <div style={{ display: "flex", gap: 2, alignItems: "center", padding: "1px 0" }}>
+              <div style={{ width: 36, flexShrink: 0, fontSize: 9, color: K.t2, fontWeight: 600 }}>{initials}<span style={{ color: K.t3, fontSize: 7 }}>({nh})</span></div>
+              {cells.map((c, h) => (
+                <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 700, color: K.t1 }}>
+                  {c.net}{c.st > 0 && <span style={{ color: K.teal, fontSize: 6 }}>{"•".repeat(c.st)}</span>}
+                </div>
+              ))}
+              <div style={{ width: 24, textAlign: "center", fontSize: 10, fontWeight: 800, color: K.t1 }}>{total}</div>
+            </div>
+          );
+        };
+
+        // Team net row
+        const TeamRow = ({ pids, color }) => {
+          let total = 0;
+          return (
+            <div style={{ display: "flex", gap: 2, alignItems: "center", padding: "1px 0" }}>
+              <div style={{ width: 36, flexShrink: 0, fontSize: 8, color, fontWeight: 700 }}>NET</div>
+              {Array.from({ length: 9 }, (_, h) => {
+                let tNet = 0;
+                pids.forEach(pid => { tNet += getS(pid, h) - getStrokes(pid, h); });
+                total += tNet;
+                const won = holeResults[h] === (pids === myPids ? 1 : -1);
+                const lost = holeResults[h] === (pids === myPids ? -1 : 1);
+                return <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 800, color: won ? K.grn : lost ? K.red : K.t2 }}>{tNet}</div>;
+              })}
+              <div style={{ width: 24, textAlign: "center", fontSize: 10, fontWeight: 800, color }}>{total}</div>
+            </div>
+          );
+        };
+
         return (<>
-          <div onClick={() => setShowFinalize(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 500 }} />
-          <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 600, display: "flex", justifyContent: "center" }}>
-            <div style={{ background: K.card, border: `1.5px solid ${resultColor}50`, borderRadius: "16px 16px 0 0", padding: "20px 16px 28px", width: "100%", maxWidth: 900 }}>
-              <div style={{ textAlign: "center", marginBottom: 14 }}>
-                <div style={{ fontSize: 12, color: K.t3, fontWeight: 500, marginBottom: 4 }}>Match Complete</div>
-                <div style={{ fontSize: 22, fontWeight: 800, color: resultColor }}>{matchResult}</div>
+          <div onClick={() => setShowFinalize(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 500 }} />
+          {/* Confetti for wins */}
+          {matchResult === "WIN" && (
+            <div style={{ position: "fixed", inset: 0, zIndex: 550, pointerEvents: "none", overflow: "hidden" }}>
+              {Array.from({ length: 60 }, (_, i) => {
+                const colors = [K.act, K.grn, K.teal, "#fff", K.logoBright, K.red, "#ff6b6b", "#ffd93d"];
+                const c = colors[i % colors.length];
+                const left = Math.random() * 100;
+                const delay = Math.random() * 2;
+                const dur = 2 + Math.random() * 2;
+                const size = 4 + Math.random() * 6;
+                const rot = Math.random() * 360;
+                const drift = (Math.random() - 0.5) * 80;
+                return (
+                  <div key={i} style={{
+                    position: "absolute", top: -20, left: `${left}%`,
+                    width: size, height: size * (Math.random() > 0.5 ? 1 : 0.5),
+                    background: c, borderRadius: Math.random() > 0.5 ? "50%" : 1,
+                    opacity: 0, transform: `rotate(${rot}deg)`,
+                    animation: `confettiFall ${dur}s ${delay}s ease-out forwards`,
+                  }} />
+                );
+              })}
+              <style>{`
+                @keyframes confettiFall {
+                  0% { opacity: 1; transform: translateY(0) translateX(0) rotate(0deg); }
+                  100% { opacity: 0; transform: translateY(100vh) translateX(${Math.random() > 0.5 ? '' : '-'}40px) rotate(720deg); }
+                }
+              `}</style>
+            </div>
+          )}
+          <div style={{ position: "fixed", inset: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+            <div style={{ background: K.bg, border: `1.5px solid ${resultColor}50`, borderRadius: 16, padding: "16px 12px 20px", width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto" }}>
+              {/* Header */}
+              <div style={{ textAlign: "center", marginBottom: 12 }}>
+                <div style={{ fontSize: 11, color: K.t3, fontWeight: 500, marginBottom: 2 }}>Match Complete</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: resultColor }}>{matchResult}</div>
+                <div style={{ fontSize: 11, color: K.t3, marginTop: 2 }}>{myTeamObj.name} vs {oppTeamObj.name}</div>
               </div>
 
-              {/* Team comparison */}
-              <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-                {[{ label: myTeamObj.name, pids: myPids, net: myNet, gross: myGross, hw: myHW, isMy: true },
-                  { label: oppTeamObj.name, pids: oppPids, net: oppNet, gross: oppGross, hw: oppHW, isMy: false }].map((tm, ti) => (
-                  <div key={ti} style={{ flex: 1, background: K.inp, borderRadius: 10, padding: "10px 8px", border: `1px solid ${ti === 0 ? resultColor + "40" : K.bdr}` }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: ti === 0 ? resultColor : K.t2, textAlign: "center", marginBottom: 8 }}>{tm.label}</div>
-                    {tm.pids.map(pid => {
-                      const pl = players.find(p => p.id === pid); if (!pl) return null;
-                      const r = getRunning(pid);
-                      return (
-                        <div key={pid} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 4px", fontSize: 12 }}>
-                          <span style={{ color: K.t2, fontWeight: 500 }}>{pl.name.split(' ')[0]}</span>
-                          <span><span style={{ color: K.t1, fontWeight: 700 }}>{r.gross}</span><span style={{ color: K.t3, fontSize: 10, marginLeft: 4 }}>Net {r.net}</span></span>
-                        </div>
-                      );
-                    })}
-                    <div style={{ borderTop: `1px solid ${K.bdr}40`, marginTop: 6, paddingTop: 6, display: "flex", justifyContent: "space-between", fontSize: 11 }}>
-                      <span style={{ color: K.t3 }}>Team Net</span>
-                      <span style={{ color: K.t1, fontWeight: 800, fontSize: 14 }}>{tm.net}</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, marginTop: 2 }}>
-                      <span style={{ color: K.t3 }}>Holes Won</span>
-                      <span style={{ color: K.teal, fontWeight: 700 }}>{tm.hw}</span>
-                    </div>
-                  </div>
+              {/* Match status triangles */}
+              <div style={{ display: "flex", gap: 2, marginBottom: 10 }}>
+                <div style={{ width: 36, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600 }}>HOLE</div>
+                {Array.from({ length: 9 }, (_, i) => (
+                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, color: K.t3, fontWeight: 700 }}>{side === 'front' ? i + 1 : i + 10}</div>
                 ))}
+                <div style={{ width: 24 }} />
+              </div>
+              <div style={{ display: "flex", gap: 2, marginBottom: 10 }}>
+                <div style={{ width: 36, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600 }}>MATCH</div>
+                {runningStatus.map((st, i) => {
+                  const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
+                  const color = st > 0 ? K.grn : st < 0 ? K.red : K.t3;
+                  return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 800, color }}>{label}</div>;
+                })}
+                <div style={{ width: 24 }} />
+              </div>
+
+              {/* Par row */}
+              <div style={{ display: "flex", gap: 2, marginBottom: 2 }}>
+                <div style={{ width: 36, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600 }}>PAR</div>
+                {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, color: K.t3, fontWeight: 600 }}>{p}</div>)}
+                <div style={{ width: 24, textAlign: "center", fontSize: 9, color: K.t3, fontWeight: 600 }}>{pars.reduce((a, b) => a + b, 0)}</div>
+              </div>
+              <div style={{ borderBottom: `1px solid ${K.bdr}40`, margin: "3px 0" }} />
+
+              {/* My team */}
+              {myPids.map(pid => <PlayerRow key={pid} pid={pid} isMyTeam={true} />)}
+              <TeamRow pids={myPids} color={K.teal} />
+
+              <div style={{ borderBottom: `1px solid ${K.bdr}40`, margin: "4px 0" }} />
+
+              {/* Opp team */}
+              {oppPids.map(pid => <PlayerRow key={pid} pid={pid} isMyTeam={false} />)}
+              <TeamRow pids={oppPids} color={K.t3} />
+
+              {/* Summary */}
+              <div style={{ display: "flex", gap: 8, marginTop: 12, marginBottom: 14 }}>
+                <div style={{ flex: 1, background: K.card, borderRadius: 8, padding: "8px 10px", textAlign: "center", border: `1px solid ${resultColor}30` }}>
+                  <div style={{ fontSize: 10, color: K.t3 }}>Team Net</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: myNet <= oppNet ? K.grn : K.red }}>{myNet}</div>
+                </div>
+                <div style={{ flex: 1, background: K.card, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                  <div style={{ fontSize: 10, color: K.t3 }}>Team Net</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: oppNet <= myNet ? K.grn : K.red }}>{oppNet}</div>
+                </div>
+                <div style={{ flex: 1, background: K.card, borderRadius: 8, padding: "8px 10px", textAlign: "center" }}>
+                  <div style={{ fontSize: 10, color: K.t3 }}>Holes Won</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: K.teal }}>{myHW}-{oppHW}</div>
+                </div>
               </div>
 
               <button onClick={async () => { await finalizeMatch(); setShowFinalize(false); }} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.grn, border: "none", color: K.bg, fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
                 Finalize Match
               </button>
-              <button onClick={() => setShowFinalize(false)} style={{ width: "100%", padding: 10, background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 6 }}>
+              <button onClick={() => setShowFinalize(false)} style={{ width: "100%", padding: 10, background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 4 }}>
                 Go Back & Edit
               </button>
             </div>
