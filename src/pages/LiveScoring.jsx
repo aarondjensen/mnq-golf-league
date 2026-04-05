@@ -288,11 +288,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
                   <div style={{ width: 36, flexShrink: 0, fontSize: 12, color: K.t1, fontWeight: 700, padding: "4px 0", borderRight: gridLine, paddingLeft: 4 }}>{initials}<span style={{ color: K.t3, fontSize: 9 }}>({nh})</span></div>
                   {cells.map((c, h) => (
-                    <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 700, color: c.s <= 0 ? K.t3 + "30" : K.t1, lineHeight: "22px", padding: "4px 0", borderRight: gridLine }}>
+                    <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 700, color: c.s <= 0 ? K.t3 + "30" : K.t1, lineHeight: "22px", padding: "4px 0", borderRight: h < 8 ? gridLine : "none" }}>
                       {c.s > 0 ? <>{c.s}{c.st > 0 && <span style={{ color: K.teal, fontSize: 11 }}>{"•".repeat(c.st)}</span>}</> : "·"}
                     </div>
                   ))}
-                  <div style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 800, color: grossTotal > 0 ? K.t1 : K.t3 + "30", padding: "4px 0" }}>{grossTotal > 0 ? grossTotal : "·"}</div>
                 </div>
               );
             };
@@ -313,7 +312,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       ...(won ? { background: K.bg, border: `2px solid ${K.act}`, borderRadius: 5, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
                     }}>{ok ? tNet : "·"}</div>;
                   })}
-                  <div style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 800, color: hasAll ? K.t2 : K.t3 + "30", padding: "4px 0" }}>{hasAll ? total : "·"}</div>
                 </div>
               );
             };
@@ -324,16 +322,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
                 <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t2, fontWeight: 700, padding: "4px 0", borderRight: gridLine, paddingLeft: 4 }}>HOLE</div>
                 {Array.from({ length: 9 }, (_, i) => (
-                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t1, fontWeight: 700, lineHeight: "22px", padding: "4px 0", borderRight: gridLine }}>{side === 'front' ? i + 1 : i + 10}</div>
+                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t1, fontWeight: 700, lineHeight: "22px", padding: "4px 0", borderRight: i < 8 ? gridLine : "none" }}>{side === 'front' ? i + 1 : i + 10}</div>
                 ))}
-                <div style={{ width: 28, textAlign: "center", fontSize: 10, color: K.t1, fontWeight: 700, padding: "4px 0" }}>TOT</div>
               </div>
 
               {/* Par row */}
               <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
                 <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 600, padding: "4px 0", borderRight: gridLine, paddingLeft: 4 }}>PAR</div>
-                {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t3, fontWeight: 600, lineHeight: "22px", padding: "4px 0", borderRight: gridLine }}>{p}</div>)}
-                <div style={{ width: 28, textAlign: "center", fontSize: 13, color: K.t3, fontWeight: 600, padding: "4px 0" }}>{pars.reduce((a, b) => a + b, 0)}</div>
+                {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t3, fontWeight: 600, lineHeight: "22px", padding: "4px 0", borderRight: i < 8 ? gridLine : "none" }}>{p}</div>)}
               </div>
 
               {/* My team */}
@@ -346,12 +342,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div style={{ display: "flex", alignItems: "center", borderBottom: `2px solid ${K.bdr}40` }}>
                 <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 700, padding: "5px 0", borderRight: gridLine, paddingLeft: 4 }}>MATCH</div>
                 {holeStatuses.map((st, i) => {
-                  if (st === null) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: gridLine, color: K.t3 + "30" }}>—</div>;
+                  if (st === null) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none", color: K.t3 + "30" }}>—</div>;
                   const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
                   const color = st > 0 ? K.grn : st < 0 ? K.red : K.t3;
-                  return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }}>{label}</div>;
+                  return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none" }}>{label}</div>;
                 })}
-                <div style={{ width: 28, padding: "5px 0" }} />
               </div>
 
               {/* Opp team */}
