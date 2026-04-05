@@ -595,10 +595,21 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 }
 
 
-function PlayerScoreCard({ pl, score, strokes, nh, run, btns, par, pid, week, curHole, saveScore, K }) {
+function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, pid, week, curHole, saveScore, K }) {
   const handleScore = (val) => {
     saveScore(week, pid, curHole, val);
   };
+  // Shift button range if score is outside default range
+  const maxBtn = defaultBtns[defaultBtns.length - 1];
+  const minBtn = defaultBtns[0];
+  let btns = defaultBtns;
+  if (score > maxBtn) {
+    const shift = score - maxBtn;
+    btns = defaultBtns.map(b => b + shift);
+  } else if (score > 0 && score < minBtn) {
+    const shift = minBtn - score;
+    btns = defaultBtns.map(b => b - shift);
+  }
   return (
     <Card style={{ marginBottom: 4, padding: "10px 12px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
