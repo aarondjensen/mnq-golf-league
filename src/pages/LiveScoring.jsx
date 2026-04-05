@@ -421,7 +421,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           const initials = pl.name.split(' ').map(n => n[0]).join('');
           return (
             <div style={{ display: "flex", gap: 2, alignItems: "center", padding: "4px 0" }}>
-              <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t2, fontWeight: 600 }}>{initials}<span style={{ color: K.t3, fontSize: 8 }}>({nh})</span></div>
+              <div style={{ width: 36, flexShrink: 0, fontSize: 12, color: K.t1, fontWeight: 700 }}>{initials}<span style={{ color: K.t3, fontSize: 9 }}>({nh})</span></div>
               {cells.map((c, h) => (
                 <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 700, color: K.t1, lineHeight: "22px" }}>
                   {c.s}{c.st > 0 && <span style={{ color: K.teal, fontSize: 8 }}>{"•".repeat(c.st)}</span>}
@@ -492,22 +492,21 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 </div>
               </div>
 
-              {/* Hole numbers */}
-              <div style={{ display: "flex", gap: 2, alignItems: "center", padding: "4px 0" }}>
-                <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 600 }}>HOLE</div>
-                {Array.from({ length: 9 }, (_, i) => (
-                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 11, color: K.t3, fontWeight: 700, lineHeight: "22px" }}>{side === 'front' ? i + 1 : i + 10}</div>
-                ))}
-                <div style={{ width: 28, textAlign: "center", fontSize: 10, color: K.t2, fontWeight: 700 }}>TOT</div>
+              {/* Hole & Par header — subtle background to separate from scores */}
+              <div style={{ background: K.card, borderRadius: 6, padding: "2px 0", marginBottom: 6 }}>
+                <div style={{ display: "flex", gap: 2, alignItems: "center", padding: "4px 0" }}>
+                  <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 600 }}>HOLE</div>
+                  {Array.from({ length: 9 }, (_, i) => (
+                    <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 12, color: K.t3, fontWeight: 700, lineHeight: "22px" }}>{side === 'front' ? i + 1 : i + 10}</div>
+                  ))}
+                  <div style={{ width: 28, textAlign: "center", fontSize: 10, color: K.t2, fontWeight: 700 }}>TOT</div>
+                </div>
+                <div style={{ display: "flex", gap: 2, alignItems: "center", padding: "4px 0" }}>
+                  <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 600 }}>PAR</div>
+                  {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 12, color: K.t3, fontWeight: 600, lineHeight: "22px" }}>{p}</div>)}
+                  <div style={{ width: 28, textAlign: "center", fontSize: 12, color: K.t3, fontWeight: 600 }}>{pars.reduce((a, b) => a + b, 0)}</div>
+                </div>
               </div>
-
-              {/* Par row */}
-              <div style={{ display: "flex", gap: 2, alignItems: "center", padding: "4px 0" }}>
-                <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 600 }}>PAR</div>
-                {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t3, fontWeight: 600, lineHeight: "22px" }}>{p}</div>)}
-                <div style={{ width: 28, textAlign: "center", fontSize: 13, color: K.t3, fontWeight: 600 }}>{pars.reduce((a, b) => a + b, 0)}</div>
-              </div>
-              <div style={{ borderBottom: `1px solid ${K.bdr}40`, margin: "5px 0" }} />
 
               {/* My team */}
               {myPids.map(pid => <PlayerRow key={pid} pid={pid} isMyTeam={true} />)}
