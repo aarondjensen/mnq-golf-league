@@ -39,34 +39,43 @@ export function calcLeagueHandicap(grossScores, par, recentCount, bestCount) {
 // ══════════════════════════════════════════════════════════════
 //  THEME
 // ══════════════════════════════════════════════════════════════
-export const K = {
-  bg: "#0b1829", card: "#111f36", cardHi: "#182d4a", inp: "#0d1e35",
-  bdr: "#1e3a5f", acc: "#c8cfd8", accDim: "#8b95a3",
-  act: "#deab12", actHov: "#c99b0f",
-  grn: "#34d399", grnDim: "#059669", red: "#f87171", teal: "#2dd4bf", logoBlue: "#153453", logoBright: "#10387d",
-  warn: "#fbbf24", t1: "#f1f5f9", t2: "#94a3b8", t3: "#475569",
-  gold: "#fbbf24", silver: "#94a3b8", bronze: "#d97706",
+export const getTheme = (mode = "dark") => {
+  if (mode === "light") return {
+    bg: "#f0f2f5", card: "#ffffff", cardHi: "#f8f9fa", inp: "#e9ecef",
+    bdr: "#d1d5db", acc: "#475569", accDim: "#64748b",
+    act: "#deab12", actHov: "#c99b0f",
+    grn: "#059669", grnDim: "#047857", red: "#dc2626", teal: "#0d9488", logoBlue: "#153453", logoBright: "#10387d",
+    warn: "#d97706", t1: "#111827", t2: "#4b5563", t3: "#9ca3af",
+    gold: "#d97706", silver: "#6b7280", bronze: "#b45309",
+  };
+  return {
+    bg: "#0b1829", card: "#111f36", cardHi: "#182d4a", inp: "#0d1e35",
+    bdr: "#1e3a5f", acc: "#c8cfd8", accDim: "#8b95a3",
+    act: "#deab12", actHov: "#c99b0f",
+    grn: "#34d399", grnDim: "#059669", red: "#f87171", teal: "#2dd4bf", logoBlue: "#153453", logoBright: "#10387d",
+    warn: "#fbbf24", t1: "#f1f5f9", t2: "#94a3b8", t3: "#475569",
+    gold: "#fbbf24", silver: "#94a3b8", bronze: "#d97706",
+  };
 };
 
-export const FONTS = "https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700;800&display=swap";
+const _savedMode = (() => { try { return typeof window !== 'undefined' && localStorage.getItem("mnq_theme") === "light" ? "light" : "dark"; } catch { return "dark"; } })();
+export const K = getTheme(_savedMode);
 
-export const CSS = `
+export const getCSS = (k) => `
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-  html, body { overscroll-behavior: none; background: ${K.bg}; letter-spacing: 0.4px; }
+  html, body { overscroll-behavior: none; background: ${k.bg}; letter-spacing: 0.4px; }
   input, select, textarea, button { font-family: 'League Spartan', sans-serif; letter-spacing: 0.4px; font-size: 15px; }
-  ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: ${K.bdr}; border-radius: 4px; }
+  ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: ${k.bdr}; border-radius: 4px; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
-  .fi { animation: fadeIn .35s ease both; }
-  .pu { animation: pulse 1.8s ease-in-out infinite; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
   input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
   input[type=number] { -moz-appearance: textfield; }
-  .hole-input:focus { outline: 2px solid ${K.acc}; outline-offset: -1px; background: ${K.cardHi} !important; }
-  .app-shell { min-height: 100vh; background: ${K.bg}; color: ${K.t1}; font-family: 'League Spartan', sans-serif; display: flex; flex-direction: column; font-size: 15px; letter-spacing: 0.4px; overflow-x: hidden; }
-  .app-header { padding: 12px 20px; background: ${K.bg}; display: flex; justify-content: center; align-items: center; position: relative; }
+  .hole-input:focus { outline: 2px solid ${k.act}; outline-offset: -1px; background: ${k.cardHi} !important; }
+  .app-shell { min-height: 100vh; background: ${k.bg}; color: ${k.t1}; font-family: 'League Spartan', sans-serif; display: flex; flex-direction: column; font-size: 15px; letter-spacing: 0.4px; overflow-x: hidden; }
+  .app-header { padding: 12px 20px; background: ${k.bg}; display: flex; justify-content: center; align-items: center; position: relative; }
   .app-body { flex: 1; }
   .main-content { padding: 12px 14px; padding-bottom: 74px; max-width: 900px; width: 100%; margin: 0 auto; box-sizing: border-box; }
-  .bottom-nav { background: ${K.card}f0; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid ${K.bdr}; display: flex; justify-content: space-around; padding: 6px 0 12px; z-index: 200; max-width: 900px; width: 100%; }
+  .bottom-nav { background: ${k.card}f0; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid ${k.bdr}; display: flex; justify-content: space-around; padding: 6px 0 12px; z-index: 200; max-width: 900px; width: 100%; }
   .admin-grid { display: flex; flex-direction: column; gap: 6px; }
   .admin-sections-grid { display: flex; flex-direction: column; gap: 6px; }
   .players-grid { display: flex; flex-direction: column; gap: 4px; }
@@ -79,14 +88,14 @@ export const CSS = `
     .admin-sections-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .players-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .scoring-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-    .standings-grid { }
   }
-  @media (min-width: 1100px) {
-    .main-content { padding: 28px 40px; padding-bottom: 80px; }
-    .admin-sections-grid { grid-template-columns: repeat(3, 1fr); }
-    .players-grid { display: grid; grid-template-columns: repeat(3, 1fr); }
-  }
+  .fi { animation: fadeIn .35s ease both; }
+  .pu { animation: pulse 1.8s ease-in-out infinite; }
 `;
+
+export const FONTS = "https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700;800&display=swap";
+
+export const CSS = getCSS(K);
 
 // ── SVG Icons (Lucide-style, stroke-based) ──
 export const I = {

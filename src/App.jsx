@@ -28,12 +28,20 @@ export default function GolfLeagueApp() {
   const [liveWeek, setLiveWeek] = useState(null);
   const [tab, setTab] = useState("standings");
   const [showMore, setShowMore] = useState(false);
+  const [darkMode, setDarkMode] = useState(() => {
+    try { return localStorage.getItem("mnq_theme") !== "light"; } catch { return true; }
+  });
 
   // Pull-to-refresh
   const [pullY, setPullY] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const touchStart = useRef(0);
   const PULL_THRESHOLD = 80;
+
+  const toggleTheme = () => {
+    try { localStorage.setItem("mnq_theme", darkMode ? "light" : "dark"); } catch {}
+    window.location.reload();
+  };
 
   const onTouchStart = useCallback((e) => {
     if (window.scrollY === 0) touchStart.current = e.touches[0].clientY;
@@ -252,7 +260,10 @@ export default function GolfLeagueApp() {
             {syncing && <span className="pu" style={{ fontSize: 8, color: K.grn }}>● LIVE</span>}
           </div>
           <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
-          <div style={{ position: "absolute", right: 14 }}>
+          <div style={{ position: "absolute", right: 14, display: "flex", alignItems: "center", gap: 6 }}>
+            <button onClick={toggleTheme} style={{ background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t3, fontSize: 12, padding: "4px 8px", cursor: "pointer", lineHeight: 1 }} title={darkMode ? "Light mode" : "Dark mode"}>
+              {darkMode ? "☀" : "🌙"}
+            </button>
             <button onClick={doSignOut} style={{ background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t3, fontSize: 10, padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}>Sign Out</button>
           </div>
         </div>
