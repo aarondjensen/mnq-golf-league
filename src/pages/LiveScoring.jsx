@@ -357,14 +357,25 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           })()}
         </>);
       })()}
-      <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "6px 8px", marginBottom: 6, display: "flex", alignItems: "center" }}>
-        <button onClick={() => { const prev = Math.max(0, curHole - 1); setCurHole(prev); setEditing(prev < currentHoleIdx); }} disabled={curHole === 0} style={{ width: 32, height: 40, borderRadius: 8, background: "none", border: "none", cursor: curHole === 0 ? "default" : "pointer", color: curHole === 0 ? K.t3 + "40" : K.t2, fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
-        <div style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 8px" }}>
-          <div style={{ textAlign: "center", minWidth: 36 }}><div style={{ fontSize: 9, color: K.t3, fontWeight: 600 }}>Par</div><div style={{ fontSize: 16, fontWeight: 800, color: K.t2 }}>{par}</div></div>
-          <div style={{ textAlign: "center" }}><div style={{ fontSize: 9, color: K.t1, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1 }}>Hole</div><div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 30, fontWeight: 700, color: K.t1, lineHeight: 1 }}>{side === 'front' ? curHole + 1 : curHole + 10}</div></div>
-          <div style={{ textAlign: "center", minWidth: 36 }}><div style={{ fontSize: 9, color: K.teal, fontWeight: 600 }}>HCP</div><div style={{ fontSize: 16, fontWeight: 800, color: K.teal }}>{hcp}</div></div>
+      <div style={{ display: "flex", gap: 3, marginBottom: 6, alignItems: "center" }}>
+        <div style={{ width: 40, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <button onClick={() => { const prev = Math.max(0, curHole - 1); setCurHole(prev); setEditing(prev < currentHoleIdx); }} disabled={curHole === 0} style={{ width: 28, height: 34, borderRadius: 6, background: "none", border: "none", cursor: curHole === 0 ? "default" : "pointer", color: curHole === 0 ? K.t3 + "40" : K.t2, fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>‹</button>
         </div>
-        <button onClick={() => { const next = Math.min(8, curHole + 1); setCurHole(next); setEditing(next < currentHoleIdx); }} disabled={curHole === 8} style={{ width: 32, height: 40, borderRadius: 8, background: "none", border: "none", cursor: curHole === 8 ? "default" : "pointer", color: curHole === 8 ? K.t3 + "40" : K.t2, fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
+        <div style={{ flex: 1, height: 34, borderRadius: 8, background: K.card, border: `1px solid ${K.bdr}`, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+          <span style={{ fontSize: 10, color: K.t3, fontWeight: 600 }}>Par</span>
+          <span style={{ fontSize: 14, fontWeight: 800, color: K.t2 }}>{par}</span>
+        </div>
+        <div style={{ flex: 1.4, height: 34, borderRadius: 8, background: K.acc, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+          <span style={{ fontSize: 10, color: K.bg, fontWeight: 600 }}>Hole</span>
+          <span style={{ fontSize: 18, fontWeight: 800, color: K.bg, lineHeight: 1 }}>{side === 'front' ? curHole + 1 : curHole + 10}</span>
+        </div>
+        <div style={{ flex: 1, height: 34, borderRadius: 8, background: K.card, border: `1px solid ${K.bdr}`, display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+          <span style={{ fontSize: 10, color: K.teal, fontWeight: 600 }}>HCP</span>
+          <span style={{ fontSize: 14, fontWeight: 800, color: K.teal }}>{hcp}</span>
+        </div>
+        <div style={{ width: 40, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <button onClick={() => { const next = Math.min(8, curHole + 1); setCurHole(next); setEditing(next < currentHoleIdx); }} disabled={curHole === 8} style={{ width: 28, height: 34, borderRadius: 6, background: "none", border: "none", cursor: curHole === 8 ? "default" : "pointer", color: curHole === 8 ? K.t3 + "40" : K.t2, fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 0 }}>›</button>
+        </div>
       </div>
       {isPar3 && <button onClick={() => setShowCTP(!showCTP)} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 8, cursor: "pointer", background: K.acc + "12", border: `1px solid ${K.acc}35`, color: K.acc, fontSize: 12, fontWeight: 700 }}>{showCTP ? "Hide" : "Record"} Closest to Pin</button>}
       {showCTP && isPar3 && <CTPEntry week={week} hole={curHole} players={players} ctpData={ctpData} saveCtp={saveCtp} side={side} />}

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "./firebase";
-import { K, FONTS, CSS, I, DEFAULT_SCORING, SEASON_WEEKS } from "./theme";
+import { K, FONTS, CSS, I, DEFAULT_SCORING, SEASON_WEEKS, applyTheme, getCSS } from "./theme";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
 import StandingsView from "./pages/Standings";
 import LiveScoringView from "./pages/LiveScoring";
@@ -39,8 +39,10 @@ export default function GolfLeagueApp() {
   const PULL_THRESHOLD = 80;
 
   const toggleTheme = () => {
-    try { localStorage.setItem("mnq_theme", darkMode ? "light" : "dark"); } catch {}
-    window.location.reload();
+    const newMode = darkMode ? "light" : "dark";
+    try { localStorage.setItem("mnq_theme", newMode); } catch {}
+    applyTheme(newMode);
+    setDarkMode(!darkMode);
   };
 
   const onTouchStart = useCallback((e) => {
@@ -267,7 +269,7 @@ export default function GolfLeagueApp() {
           </div>
         </div>
       )}
-      <link href={FONTS} rel="stylesheet" /><style>{CSS}</style>
+      <link href={FONTS} rel="stylesheet" /><style>{getCSS(K)}</style>
 
       {/* Header */}
       <div className="app-header">

@@ -59,7 +59,12 @@ export const getTheme = (mode = "dark") => {
 };
 
 const _savedMode = (() => { try { return typeof window !== 'undefined' && localStorage.getItem("mnq_theme") === "light" ? "light" : "dark"; } catch { return "dark"; } })();
-export const K = getTheme(_savedMode);
+export const K = { ...getTheme(_savedMode) };
+export function applyTheme(mode) {
+  const next = getTheme(mode);
+  for (const key in next) K[key] = next[key];
+  for (const key in K) { if (!(key in next)) delete K[key]; }
+}
 
 export const getCSS = (k) => `
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
