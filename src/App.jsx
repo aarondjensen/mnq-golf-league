@@ -263,6 +263,7 @@ export default function GolfLeagueApp() {
   const bannerGrn = "#1a8c3f";
 
   return (
+    <>
     <div className="app-shell" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
       {/* Pull-to-refresh indicator */}
       {pullY > 0 && (
@@ -361,8 +362,9 @@ export default function GolfLeagueApp() {
       {showMore && (
         <div onClick={() => setShowMore(false)} style={{ position: "fixed", inset: 0, zIndex: 150 }} />
       )}
+    </div>
 
-      {/* Bottom Nav */}
+      {/* Bottom Nav — outside app-shell for proper fixed positioning on iOS */}
       <div className="bottom-nav" style={{ position: "fixed", bottom: 0, left: 0, right: 0, margin: "0 auto" }}>
         {tabs.map(t => {
           const active = tab === t.id;
@@ -393,6 +395,6 @@ export default function GolfLeagueApp() {
           )}
         </div>
       </div>
-    </div>
+    </>
   );
 }
