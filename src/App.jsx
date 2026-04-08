@@ -242,6 +242,9 @@ export default function GolfLeagueApp() {
     return null;
   })();
 
+  // Banner green color — a traditional, noticeable green
+  const bannerGrn = "#1a8c3f";
+
   return (
     <div className="app-shell" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
       {/* Pull-to-refresh indicator */}
@@ -297,11 +300,11 @@ export default function GolfLeagueApp() {
             const isLeagueDay = leagueConfig?.dayOfWeek && now.toLocaleDateString('en-US', { weekday: 'long' }) === leagueConfig.dayOfWeek;
             const isLive = isLeagueDay && nowMins >= upcomingBanner.teeMinutes - 30;
             return (
-              <div style={{ background: K.card, border: `1.5px solid ${K.act}`, borderRadius: 10, margin: "6px 14px", padding: "8px 14px", display: "flex", alignItems: "center" }}>
+              <div style={{ background: K.card, border: `1.5px solid ${bannerGrn}`, borderRadius: 10, margin: "6px 14px", padding: "8px 14px", display: "flex", alignItems: "center" }}>
                 {/* Left: Tee time + Front/Back */}
                 <div style={{ width: 90, flexShrink: 0, textAlign: "center" }}>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: K.teal, letterSpacing: .5 }}>{upcomingBanner.teeTime}</div>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: K.teal, letterSpacing: .5 }}>{upcomingBanner.side === 'front' ? 'Front 9' : 'Back 9'}</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: bannerGrn, letterSpacing: .5 }}>{upcomingBanner.teeTime}</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: bannerGrn, letterSpacing: .5 }}>{upcomingBanner.side === 'front' ? 'Front 9' : 'Back 9'}</div>
                 </div>
                 {/* Center: Date, vs, opponent */}
                 <div style={{ flex: 1, textAlign: "center", lineHeight: 1.3 }}>
@@ -312,14 +315,14 @@ export default function GolfLeagueApp() {
                 {/* Right: Live Scoring button */}
                 <div style={{ width: 90, flexShrink: 0, textAlign: "center" }}>
                   <button onClick={() => setTab("scoring")} style={{
-                    background: isLive ? K.teal : "transparent",
-                    border: `1.5px solid ${isLive ? K.teal : K.teal + "30"}`,
+                    background: isLive ? bannerGrn : "transparent",
+                    border: `1.5px solid ${isLive ? bannerGrn : bannerGrn + "50"}`,
                     borderRadius: 8, padding: "8px 10px", cursor: "pointer",
-                    color: isLive ? K.bg : K.teal + "60", fontSize: 13, fontWeight: 700,
+                    color: isLive ? "#fff" : bannerGrn, fontSize: 15, fontWeight: 800,
                     textTransform: "uppercase", letterSpacing: .5, transition: "all .3s",
                     lineHeight: 1.3,
                   }}>
-                    {isLive && <span style={{ fontSize: 10 }}>● </span>}Live<br/>Scoring
+                    {isLive && <span style={{ fontSize: 11 }}>● </span>}Live<br/>Scoring
                   </button>
                 </div>
               </div>

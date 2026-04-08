@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { K, SectionTitle, EmptyState } from "../theme";
+import { K, EmptyState } from "../theme";
 
 // Extract last name from "First Last" or "F. Last" patterns
 // Handles team names like "A. Jensen / B. Smith" → "Jensen / Smith"
@@ -118,9 +118,12 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   const gt = (id) => teams.find(t => t.id === id);
   if (!teams.length) return <EmptyState icon="trophy" title="No teams yet" subtitle="Commissioner needs to set up teams." />;
 
+  // Column style for W-L-T alignment
+  const wltCol = { width: 22, textAlign: "center", fontFamily: "'League Spartan', sans-serif" };
+  const wltDash = { width: 8, textAlign: "center", color: K.t3 };
+
   return (
     <div style={{ padding: "0 2px" }}>
-      <SectionTitle><span style={{ display: "block", textAlign: "center", marginBottom: -2 }}>Season Standings</span></SectionTitle>
       <div className="standings-grid" style={{ gap: 6 }}>
         {standings.map((s, i) => {
           const team = gt(s.teamId); if (!team) return null;
@@ -147,13 +150,21 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                   }}>{i + 1}</div>
                 </div>
                 <div style={{ flex: 1, fontSize: 15, fontWeight: 700, letterSpacing: .5, textAlign: "center" }}>{lastNamesOnly(team.name)}</div>
-                <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
+                <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 0 }}>
                   {isRecord ? (<>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: K.t1, fontFamily: "'League Spartan', sans-serif", whiteSpace: "nowrap" }}>{s.w}-{s.l}-{s.t}</div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: K.teal, minWidth: 22, textAlign: "right" }}>{s.hw}</div>
+                    <div style={{ ...wltCol, fontSize: 15, fontWeight: 800, color: K.t1 }}>{s.w}</div>
+                    <div style={{ ...wltDash, fontSize: 15, fontWeight: 800 }}>-</div>
+                    <div style={{ ...wltCol, fontSize: 15, fontWeight: 800, color: K.t1 }}>{s.l}</div>
+                    <div style={{ ...wltDash, fontSize: 15, fontWeight: 800 }}>-</div>
+                    <div style={{ ...wltCol, fontSize: 15, fontWeight: 800, color: K.t1 }}>{s.t}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: K.teal, minWidth: 26, textAlign: "right", marginLeft: 6 }}>{s.hw}</div>
                   </>) : (<>
-                    <div style={{ fontSize: 11, color: K.t3, whiteSpace: "nowrap" }}>{s.w}-{s.l}-{s.t}</div>
-                    <div style={{ fontSize: 21, fontWeight: 800, color: K.t1, fontFamily: "'League Spartan', sans-serif", minWidth: 30, textAlign: "right" }}>{s.points}</div>
+                    <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.w}</div>
+                    <div style={{ ...wltDash, fontSize: 11, color: K.t3 }}>-</div>
+                    <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.l}</div>
+                    <div style={{ ...wltDash, fontSize: 11, color: K.t3 }}>-</div>
+                    <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.t}</div>
+                    <div style={{ fontSize: 21, fontWeight: 800, color: K.t1, fontFamily: "'League Spartan', sans-serif", minWidth: 30, textAlign: "right", marginLeft: 6 }}>{s.points}</div>
                   </>)}
                 </div>
                 <div style={{ width: 20, flexShrink: 0, textAlign: "right", color: K.t3, fontSize: 14, marginLeft: 6 }}>{isExp ? "▾" : "›"}</div>
