@@ -368,7 +368,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               return (
                 <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
                   <div style={{ width: 24, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, padding: "4px 0", borderRight: gridLine, paddingLeft: 4 }}>{initials}</div>
-                  <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: "#3b82f6", fontWeight: 700, padding: "4px 0", borderRight: gridLine, textAlign: "center" }}>{nh}</div>
+                  <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.t1, fontWeight: 700, padding: "4px 0", borderRight: gridLine, textAlign: "center" }}>{nh}</div>
                   {cells.map((c, h) => (
                     <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 700, color: c.s <= 0 ? K.t3 + "30" : K.t1, lineHeight: "22px", padding: "4px 0", borderRight: h < 8 ? gridLine : "none", position: "relative" }}>
                       {c.s > 0 ? <>{c.s}{c.st > 0 && <span style={{ position: "absolute", top: 2, marginLeft: 0, color: "#3b82f6", fontSize: 10, fontWeight: 800, lineHeight: 1 }}>{"•".repeat(c.st)}</span>}</> : "·"}
@@ -539,7 +539,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           return (
             <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
               <div style={{ width: 24, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>{initials}</div>
-              <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: "#3b82f6", fontWeight: 700, padding: "4px 0", borderRight: gridLine, textAlign: "center" }}>{nh}</div>
+              <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.t1, fontWeight: 700, padding: "4px 0", borderRight: gridLine, textAlign: "center" }}>{nh}</div>
               {cells.map((c, h) => (
                 <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 700, color: K.t1, lineHeight: "22px", padding: "4px 0", borderRight: gridLine, position: "relative" }}>
                   {c.s}{c.st > 0 && <span style={{ position: "absolute", top: 1, right: 1, color: "#3b82f6", fontSize: 8, fontWeight: 800, lineHeight: 1 }}>{"•".repeat(c.st)}</span>}
@@ -693,8 +693,8 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 16, fontWeight: 700 }}>{pl.name}</span>
-          <span style={{ fontSize: 12, fontWeight: 600 }}><span style={{ color: K.acc }}>(</span><span style={{ color: "#3b82f6", fontWeight: 700 }}>{nh}</span><span style={{ color: K.acc }}>)</span></span>
-          {strokes > 0 && <span style={{ color: "#3b82f6", fontSize: 16, letterSpacing: 1 }}>{"●".repeat(strokes)}</span>}
+          <span style={{ fontSize: 12, fontWeight: 600, color: K.t1 }}>({nh})</span>
+          {strokes > 0 && <span style={{ color: "#3b82f6", fontSize: 16, letterSpacing: 1, display: "inline-flex", alignItems: "center", height: 16 }}>{"●".repeat(strokes)}</span>}
         </div>
         {run.thru > 0 && <span style={{ fontSize: 11, color: K.t3 }}>Net: <strong style={{ color: run.netVsPar < 0 ? K.red : K.t1 }}>{run.netVsPar > 0 ? "+" : ""}{run.netVsPar}</strong> thru {run.thru}</span>}
       </div>
