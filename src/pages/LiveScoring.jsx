@@ -371,7 +371,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.acc, fontWeight: 700, padding: "4px 0", borderRight: gridLine, textAlign: "center" }}>{nh}</div>
                   {cells.map((c, h) => (
                     <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 700, color: c.s <= 0 ? K.t3 + "30" : K.t1, lineHeight: "22px", padding: "4px 0", borderRight: h < 8 ? gridLine : "none" }}>
-                      {c.s > 0 ? <>{c.s}{c.st > 0 && <span style={{ color: matchGrn, fontSize: 14, letterSpacing: 1 }}>{"•".repeat(c.st)}</span>}</> : "·"}
+                      {c.s > 0 ? <>{c.s}{c.st > 0 && <span style={{ color: "#f97316", fontSize: 14, letterSpacing: 1 }}>{"•".repeat(c.st)}</span>}</> : "·"}
                     </div>
                   ))}
                 </div>
@@ -542,7 +542,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.acc, fontWeight: 700, padding: "4px 0", borderRight: gridLine, textAlign: "center" }}>{nh}</div>
               {cells.map((c, h) => (
                 <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 700, color: K.t1, lineHeight: "22px", padding: "4px 0", borderRight: gridLine }}>
-                  {c.s}{c.st > 0 && <span style={{ color: matchGrn, fontSize: 14, letterSpacing: 1 }}>{"•".repeat(c.st)}</span>}
+                  {c.s}{c.st > 0 && <span style={{ color: "#f97316", fontSize: 14, letterSpacing: 1 }}>{"•".repeat(c.st)}</span>}
                 </div>
               ))}
               <div style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t1, padding: "4px 0" }}>{grossTotal}</div>
@@ -694,7 +694,7 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
           <span style={{ fontSize: 16, fontWeight: 700 }}>{pl.name}</span>
           <Pill color={K.acc} style={{ fontSize: 12 }}>({nh})</Pill>
-          {strokes > 0 && <span style={{ color: "#1a8c3f", fontSize: 16, letterSpacing: 1 }}>{"●".repeat(strokes)}</span>}
+          {strokes > 0 && <span style={{ color: "#f97316", fontSize: 16, letterSpacing: 1 }}>{"●".repeat(strokes)}</span>}
         </div>
         {run.thru > 0 && <span style={{ fontSize: 11, color: K.t3 }}>Net: <strong style={{ color: run.netVsPar < 0 ? "#1a8c3f" : run.netVsPar > 0 ? K.red : K.t1 }}>{run.netVsPar > 0 ? "+" : ""}{run.netVsPar}</strong> thru {run.thru}</span>}
       </div>
