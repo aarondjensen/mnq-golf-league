@@ -356,6 +356,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     const isMyT1 = t1.id === myTeamId;
     const myPids = isMyT1 ? t1Players : t2Players;
     const oppPids = isMyT1 ? t2Players : t1Players;
+    const myTeamObj = isMyT1 ? t1 : t2;
+    const oppTeamObj = isMyT1 ? t2 : t1;
 
     let myHW = 0, oppHW = 0;
     const holeResults = [];
@@ -393,7 +395,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     const matchResult = isWin ? "WIN" : isLoss ? "LOSS" : "TIE";
     const resultColor = isWin ? K.grn : isLoss ? K.red : K.t2;
 
-    return { myPids, oppPids, holeResults, runningStatus, matchResultText, matchResult, resultColor, isMyT1 };
+    return { myPids, oppPids, myTeamObj, oppTeamObj, myHW, oppHW, holeResults, runningStatus, matchResultText, matchResult, resultColor, isMyT1, matchEndHole };
   };
 
   return (
@@ -656,22 +658,19 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         };
 
         const AttestTeamRow = ({ pids, isMyTeam }) => {
-          let total = 0;
+          const hw = isMyTeam ? sc.myHW : sc.oppHW;
           return (
             <div style={{ display: "flex", alignItems: "center", position: "relative" }}>
-              <div style={{ width: 44, flexShrink: 0, fontSize: 9, color: K.t3, fontWeight: 700, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>NET</div>
+              <div style={{ width: 44, flexShrink: 0, fontSize: 9, color: K.t3, fontWeight: 700, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>WON</div>
               {Array.from({ length: 9 }, (_, h) => {
-                let tNet = 0;
-                pids.forEach(pid => { tNet += getS(pid, h) - getStrokes(pid, h); });
-                total += tNet;
                 const won = sc.holeResults[h] === (isMyTeam ? 1 : -1);
                 return <div key={h} style={{
-                  flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t2, lineHeight: "22px",
+                  flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color: won ? K.t1 : K.t3 + "30", lineHeight: "22px",
                   padding: "3px 0", borderRight: won ? "none" : gridLine,
                   ...(won ? { background: K.bg, border: `2px solid ${K.act}`, borderRadius: 5, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
-                }}>{tNet}</div>;
+                }}>{won ? "●" : "·"}</div>;
               })}
-              <div style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t2, padding: "4px 0" }}>{total}</div>
+              <div style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t1, padding: "4px 0" }}>{hw}</div>
             </div>
           );
         };
@@ -683,12 +682,20 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           <div style={{ position: "fixed", inset: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
             <div style={{ background: K.bg, border: `1.5px solid ${K.warn}50`, borderRadius: 16, padding: "16px 12px 20px", width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto" }}>
               <div style={{ textAlign: "center", marginBottom: 6 }}>
-                <div style={{ fontSize: 11, color: K.t3, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Attest Scorecard</div>
-                <div style={{ fontSize: 13, color: K.t2, marginBottom: 12 }}>{finalizingTeamName} signed this scorecard. Please review and confirm the scores are correct.</div>
+                <div style={{ fontSize: 12, color: K.t3, fontWeight: 600, marginBottom: 8 }}>{finalizingTeamName} signed this scorecard. Please review and confirm.</div>
               </div>
 
-              <div style={{ textAlign: "center", marginBottom: 10 }}>
-                <div style={{ fontSize: 24, fontWeight: 800, color: sc.resultColor }}>{sc.matchResultText}</div>
+              {/* Header — Team vs Team with match score */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginBottom: 14, padding: "0 4px" }}>
+                <div style={{ flex: 1, textAlign: "right" }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: sc.matchResult === "WIN" ? K.grn : K.t1 }}>{sc.myTeamObj.name}</div>
+                </div>
+                <div style={{ textAlign: "center", minWidth: 70 }}>
+                  <div style={{ fontSize: 26, fontWeight: 800, color: sc.resultColor, lineHeight: 1 }}>{sc.matchResultText}</div>
+                </div>
+                <div style={{ flex: 1, textAlign: "left" }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: sc.matchResult === "LOSS" ? K.grn : K.t1 }}>{sc.oppTeamObj.name}</div>
+                </div>
               </div>
 
               {/* Scorecard */}
@@ -709,9 +716,17 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <AttestTeamRow pids={sc.myPids} isMyTeam={true} />
               <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "2px 0" }} />
 
+              {/* Match status — clinch aware */}
               <div style={{ display: "flex", alignItems: "center", borderBottom: `2px solid ${K.bdr}40` }}>
                 <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 700, padding: "5px 0", borderRight: gridLine, paddingLeft: 2 }}>MATCH</div>
                 {sc.runningStatus.map((st, i) => {
+                  if (sc.matchEndHole < 8 && i === sc.matchEndHole) {
+                    const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
+                    return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 8, color, fontWeight: 700, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }}>FINAL</div>;
+                  }
+                  if (sc.matchEndHole < 8 && i > sc.matchEndHole) {
+                    return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }} />;
+                  }
                   const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
                   const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
                   return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }}>{label}</div>;
@@ -765,22 +780,19 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         };
 
         const TeamRow = ({ pids, isMyTeam }) => {
-          let total = 0;
+          const hw = isMyTeam ? sc.myHW : sc.oppHW;
           return (
             <div style={{ display: "flex", alignItems: "center", position: "relative" }}>
-              <div style={{ width: 44, flexShrink: 0, fontSize: 9, color: K.t3, fontWeight: 700, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>NET</div>
+              <div style={{ width: 44, flexShrink: 0, fontSize: 9, color: K.t3, fontWeight: 700, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>WON</div>
               {Array.from({ length: 9 }, (_, h) => {
-                let tNet = 0;
-                pids.forEach(pid => { tNet += getS(pid, h) - getStrokes(pid, h); });
-                total += tNet;
                 const won = sc.holeResults[h] === (isMyTeam ? 1 : -1);
                 return <div key={h} style={{
-                  flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t2, lineHeight: "22px",
+                  flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color: won ? K.t1 : K.t3 + "30", lineHeight: "22px",
                   padding: "3px 0", borderRight: won ? "none" : gridLine,
                   ...(won ? { background: K.bg, border: `2px solid ${K.act}`, borderRadius: 5, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
-                }}>{tNet}</div>;
+                }}>{won ? "●" : "·"}</div>;
               })}
-              <div style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t2, padding: "4px 0" }}>{total}</div>
+              <div style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t1, padding: "4px 0" }}>{hw}</div>
             </div>
           );
         };
@@ -819,13 +831,17 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           )}
           <div style={{ position: "fixed", inset: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
             <div style={{ background: K.bg, border: `1.5px solid ${sc.resultColor}50`, borderRadius: 16, padding: "16px 12px 20px", width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto" }}>
-              {/* Header */}
-              <div style={{ textAlign: "center", marginBottom: 14 }}>
-                <div style={{ fontSize: 28, fontWeight: 800, color: sc.resultColor }}>
-                  {sc.matchResultText}
+              {/* Header — Team vs Team with match score */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginBottom: 14, padding: "0 4px" }}>
+                <div style={{ flex: 1, textAlign: "right" }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: sc.matchResult === "WIN" ? K.grn : K.t1 }}>{sc.myTeamObj.name}</div>
                 </div>
-                {isAttested && <div style={{ fontSize: 10, color: K.grn, fontWeight: 700, marginTop: 4, textTransform: "uppercase", letterSpacing: 1 }}>✓ Scorecard Attested</div>}
-                {isAlreadyFinalized && !isAttested && <div style={{ fontSize: 10, color: K.warn, fontWeight: 700, marginTop: 4, textTransform: "uppercase", letterSpacing: 1 }}>Awaiting Attestation</div>}
+                <div style={{ textAlign: "center", minWidth: 70 }}>
+                  <div style={{ fontSize: 26, fontWeight: 800, color: sc.resultColor, lineHeight: 1 }}>{sc.matchResultText}</div>
+                </div>
+                <div style={{ flex: 1, textAlign: "left" }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: sc.matchResult === "LOSS" ? K.grn : K.t1 }}>{sc.oppTeamObj.name}</div>
+                </div>
               </div>
 
               {/* Hole numbers */}
@@ -850,10 +866,19 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
               <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "2px 0" }} />
 
-              {/* Match status triangles */}
+              {/* Match status triangles — clinch aware */}
               <div style={{ display: "flex", alignItems: "center", borderBottom: `2px solid ${K.bdr}40` }}>
                 <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 700, padding: "5px 0", borderRight: gridLine, paddingLeft: 2 }}>MATCH</div>
                 {sc.runningStatus.map((st, i) => {
+                  // On the clinch hole, show the match result text (e.g. "3&1")
+                  if (sc.matchEndHole < 8 && i === sc.matchEndHole) {
+                    const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
+                    return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 8, color, fontWeight: 700, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }}>FINAL</div>;
+                  }
+                  // Blank after clinch
+                  if (sc.matchEndHole < 8 && i > sc.matchEndHole) {
+                    return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }} />;
+                  }
                   const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
                   const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
                   return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }}>{label}</div>;
