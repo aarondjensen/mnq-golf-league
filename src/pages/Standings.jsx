@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { K, EmptyState } from "../theme";
 
 // Extract last name from "First Last" or "F. Last" patterns
@@ -14,6 +14,17 @@ function lastNamesOnly(teamName) {
 export default function StandingsView({ teams, players, matchResults, leagueConfig, schedule, fetchSeasonScores }) {
   const isRecord = leagueConfig?.standingsMethod === "record";
   const [expanded, setExpanded] = useState(null);
+  const expandedRef = useRef(null);
+
+  const handleExpand = (teamId) => {
+    const next = expanded === teamId ? null : teamId;
+    setExpanded(next);
+    if (next) {
+      setTimeout(() => {
+        expandedRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }, 50);
+    }
+  };
 
   // Calculate holes won per team from saved match result data
   const teamHolesWon = useMemo(() => {
@@ -117,7 +128,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
 
           return (
             <div key={s.teamId}>
-              <button onClick={() => setExpanded(isExp ? null : s.teamId)} style={{
+              <button onClick={() => handleExpand(s.teamId)} style={{
                 display: "flex", alignItems: "center", width: "100%", color: K.t1,
                 background: K.card, borderRadius: isExp ? "10px 10px 0 0" : 10,
                 border: `1px solid ${i === 0 ? K.act + '30' : K.bdr + '60'}`,
@@ -155,7 +166,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
               </button>
 
               {isExp && (
-                <div style={{ background: K.inp, border: `1px solid ${i === 0 ? K.act + '30' : K.bdr + '60'}`, borderTop: "none", borderRadius: "0 0 10px 10px", padding: "8px 10px" }}>
+                <div ref={expandedRef} style={{ background: K.inp, border: `1px solid ${i === 0 ? K.act + '30' : K.bdr + '60'}`, borderTop: "none", borderRadius: "0 0 10px 10px", padding: "8px 10px" }}>
                   <div style={{ display: "flex", padding: "5px 8px", fontSize: 9, color: K.logoBright, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8 }}>
                     <div style={{ width: 50 }}>Date</div>
                     <div style={{ width: 26 }}>Wk</div>
@@ -174,12 +185,6 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                       <div style={{ width: 30, textAlign: "center", color: K.teal, fontWeight: 700 }}>{r.holesWon}</div>
                     </div>
                   ))}
-                  {results.length > 0 && (
-                    <div style={{ display: "flex", alignItems: "center", padding: "8px 8px 6px", borderTop: `1px solid ${K.bdr}`, fontSize: 11, fontWeight: 700 }}>
-                      <div style={{ flex: 1, color: K.t3 }}>Total</div>
-                      <div style={{ width: 30, textAlign: "center", color: K.teal }}>{results.reduce((a, r) => a + r.holesWon, 0)}</div>
-                    </div>
-                  )}
                 </div>
               )}
             </div>
