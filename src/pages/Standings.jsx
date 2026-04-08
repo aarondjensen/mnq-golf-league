@@ -109,9 +109,9 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   if (!teams.length) return <EmptyState icon="trophy" title="No teams yet" subtitle="Commissioner needs to set up teams." />;
 
   return (
-    <div>
-      <SectionTitle><span style={{ display: "block", textAlign: "center", marginBottom: -6 }}>Season Standings</span></SectionTitle>
-      <div className="standings-grid">
+    <div style={{ padding: "0 2px" }}>
+      <SectionTitle><span style={{ display: "block", textAlign: "center", marginBottom: -2 }}>Season Standings</span></SectionTitle>
+      <div className="standings-grid" style={{ gap: 6 }}>
         {standings.map((s, i) => {
           const team = gt(s.teamId); if (!team) return null;
           const mc = i === 0 ? K.gold : i === 1 ? K.silver : i === 2 ? K.bronze : K.logoBright;
@@ -122,57 +122,57 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
             <div key={s.teamId}>
               <button onClick={() => setExpanded(isExp ? null : s.teamId)} style={{
                 display: "flex", alignItems: "center", width: "100%", color: K.t1,
-                background: K.card, borderRadius: isExp ? "8px 8px 0 0" : 8,
+                background: K.card, borderRadius: isExp ? "10px 10px 0 0" : 10,
                 border: `1px solid ${i === 0 ? K.act + '30' : K.bdr + '60'}`,
                 borderBottom: isExp ? "none" : `1px solid ${i === 0 ? K.act + '30' : K.bdr + '60'}`,
-                padding: "6px 12px", cursor: "pointer",
+                padding: "10px 14px", cursor: "pointer",
               }}>
                 <div style={{ width: 40, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
                   <div style={{
-                    width: 26, height: 26, borderRadius: 6,
+                    width: 28, height: 28, borderRadius: 7,
                     background: i < 3 ? mc + "20" : K.logoBright + "20",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: 13, fontWeight: 800, color: mc,
                     border: i < 3 ? `1.5px solid ${mc}40` : `1.5px solid ${K.logoBright}30`,
                   }}>{i + 1}</div>
                 </div>
-                <div style={{ flex: 1, fontSize: 14, fontWeight: 700, letterSpacing: .3, textAlign: "center" }}>{team.name}</div>
-                <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
+                <div style={{ flex: 1, fontSize: 15, fontWeight: 700, letterSpacing: .5, textAlign: "center" }}>{team.name}</div>
+                <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
                   {isRecord ? (<>
-                    <div style={{ fontSize: 14, fontWeight: 800, color: K.t1, fontFamily: "'League Spartan', sans-serif", whiteSpace: "nowrap" }}>{s.w}-{s.l}-{s.t}</div>
+                    <div style={{ fontSize: 15, fontWeight: 800, color: K.t1, fontFamily: "'League Spartan', sans-serif", whiteSpace: "nowrap" }}>{s.w}-{s.l}-{s.t}</div>
                     <div style={{ fontSize: 12, fontWeight: 700, color: K.teal, minWidth: 22, textAlign: "right" }}>{s.hw}</div>
                   </>) : (<>
-                    <div style={{ fontSize: 10, color: K.t3, whiteSpace: "nowrap" }}>{s.w}-{s.l}-{s.t}</div>
-                    <div style={{ fontSize: 20, fontWeight: 800, color: K.t1, fontFamily: "'League Spartan', sans-serif", minWidth: 28, textAlign: "right" }}>{s.points}</div>
+                    <div style={{ fontSize: 11, color: K.t3, whiteSpace: "nowrap" }}>{s.w}-{s.l}-{s.t}</div>
+                    <div style={{ fontSize: 21, fontWeight: 800, color: K.t1, fontFamily: "'League Spartan', sans-serif", minWidth: 30, textAlign: "right" }}>{s.points}</div>
                   </>)}
                 </div>
-                <div style={{ width: 18, flexShrink: 0, textAlign: "right", color: K.t3, fontSize: 14, marginLeft: 4 }}>{isExp ? "▾" : "›"}</div>
+                <div style={{ width: 20, flexShrink: 0, textAlign: "right", color: K.t3, fontSize: 14, marginLeft: 6 }}>{isExp ? "▾" : "›"}</div>
               </button>
 
               {isExp && (
-                <div style={{ background: K.inp, border: `1px solid ${i === 0 ? K.act + '30' : K.bdr + '60'}`, borderTop: "none", borderRadius: "0 0 8px 8px", padding: "6px 8px" }}>
-                  <div style={{ display: "flex", padding: "4px 6px", fontSize: 9, color: K.logoBright, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8 }}>
+                <div style={{ background: K.inp, border: `1px solid ${i === 0 ? K.act + '30' : K.bdr + '60'}`, borderTop: "none", borderRadius: "0 0 10px 10px", padding: "8px 10px" }}>
+                  <div style={{ display: "flex", padding: "5px 8px", fontSize: 9, color: K.logoBright, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8 }}>
                     <div style={{ width: 60 }}>Date</div>
                     <div style={{ width: 30 }}>Wk</div>
                     <div style={{ flex: 1 }}>Opponent</div>
                     <div style={{ width: 24, textAlign: "center" }}>R</div>
-                    <div style={{ width: 40, textAlign: "center" }}>Score</div>
+                    <div style={{ width: 44, textAlign: "center" }}>Score</div>
                     <div style={{ width: 30, textAlign: "center" }}>HW</div>
                   </div>
                   {results.length === 0 ? (
-                    <div style={{ padding: "8px 6px", fontSize: 12, color: K.t3, fontStyle: "italic" }}>No matches played yet</div>
+                    <div style={{ padding: "10px 8px", fontSize: 12, color: K.t3, fontStyle: "italic" }}>No matches played yet</div>
                   ) : results.map((r, ri) => (
-                    <div key={ri} style={{ display: "flex", alignItems: "center", padding: "5px 6px", borderTop: `1px solid ${K.bdr}30`, fontSize: 12 }}>
+                    <div key={ri} style={{ display: "flex", alignItems: "center", padding: "7px 8px", borderTop: `1px solid ${K.bdr}30`, fontSize: 12 }}>
                       <div style={{ width: 60, color: K.t3, fontSize: 11 }}>{r.date || "—"}</div>
                       <div style={{ width: 30, color: K.t3, fontSize: 11 }}>{r.week}</div>
                       <div style={{ flex: 1, color: K.t2, fontWeight: 500 }}>{r.oppName}</div>
                       <div style={{ width: 24, textAlign: "center", fontWeight: 700, color: r.result === "W" ? K.grn : r.result === "L" ? K.red : K.t2 }}>{r.result}</div>
-                      <div style={{ width: 40, textAlign: "center", color: K.t1, fontWeight: 600 }}>{r.score}</div>
+                      <div style={{ width: 44, textAlign: "center", color: K.t1, fontWeight: 600 }}>{r.score}</div>
                       <div style={{ width: 30, textAlign: "center", color: K.teal, fontWeight: 700 }}>{r.holesWon}</div>
                     </div>
                   ))}
                   {results.length > 0 && (
-                    <div style={{ display: "flex", alignItems: "center", padding: "6px 6px 4px", borderTop: `1px solid ${K.bdr}`, fontSize: 11, fontWeight: 700 }}>
+                    <div style={{ display: "flex", alignItems: "center", padding: "8px 8px 6px", borderTop: `1px solid ${K.bdr}`, fontSize: 11, fontWeight: 700 }}>
                       <div style={{ flex: 1, color: K.t3 }}>Total</div>
                       <div style={{ width: 30, textAlign: "center", color: K.teal }}>{results.reduce((a, r) => a + r.holesWon, 0)}</div>
                     </div>
