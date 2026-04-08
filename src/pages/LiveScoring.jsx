@@ -371,7 +371,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.acc, fontWeight: 700, padding: "4px 0", borderRight: gridLine, textAlign: "center" }}>{nh}</div>
                   {cells.map((c, h) => (
                     <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 700, color: c.s <= 0 ? K.t3 + "30" : K.t1, lineHeight: "22px", padding: "4px 0", borderRight: h < 8 ? gridLine : "none", position: "relative" }}>
-                      {c.s > 0 ? <>{c.s}{c.st > 0 && <span style={{ position: "absolute", top: 1, right: 1, color: "#f97316", fontSize: 8, fontWeight: 800, lineHeight: 1 }}>{"•".repeat(c.st)}</span>}</> : "·"}
+                      {c.s > 0 ? <>{c.s}{c.st > 0 && <span style={{ position: "absolute", top: 2, marginLeft: 0, color: "#f97316", fontSize: 10, fontWeight: 800, lineHeight: 1 }}>{"•".repeat(c.st)}</span>}</> : "·"}
                     </div>
                   ))}
                 </div>
