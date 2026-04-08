@@ -275,15 +275,14 @@ export default function GolfLeagueApp() {
       <div className="app-header">
         <div style={{ maxWidth: 900, width: "100%", margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: "0 14px" }}>
           <div style={{ position: "absolute", left: 14, display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ fontSize: 11, color: K.t3, fontWeight: 500 }}>{leagueUser.name}</div>
+            <button onClick={toggleTheme} style={{ background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t3, fontSize: 14, padding: "5px 10px", cursor: "pointer", lineHeight: 1 }} title={darkMode ? "Light mode" : "Dark mode"}>
+              {darkMode ? "☀" : "🌙"}
+            </button>
             {syncing && <span className="pu" style={{ fontSize: 8, color: K.grn }}>● LIVE</span>}
           </div>
           <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
           <div style={{ position: "absolute", right: 14, display: "flex", alignItems: "center", gap: 6 }}>
-            <button onClick={toggleTheme} style={{ background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t3, fontSize: 12, padding: "4px 8px", cursor: "pointer", lineHeight: 1 }} title={darkMode ? "Light mode" : "Dark mode"}>
-              {darkMode ? "☀" : "🌙"}
-            </button>
-            <button onClick={doSignOut} style={{ background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t3, fontSize: 10, padding: "4px 10px", cursor: "pointer", fontWeight: 600 }}>Sign Out</button>
+            <button onClick={doSignOut} style={{ background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t3, fontSize: 12, padding: "5px 12px", cursor: "pointer", fontWeight: 600, letterSpacing: .4 }}>Sign Out</button>
           </div>
         </div>
       </div>

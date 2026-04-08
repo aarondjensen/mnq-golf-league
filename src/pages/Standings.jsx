@@ -1,6 +1,16 @@
 import { useState, useEffect, useMemo } from "react";
 import { K, SectionTitle, EmptyState } from "../theme";
 
+// Extract last name from "First Last" or "F. Last" patterns
+// Handles team names like "A. Jensen / B. Smith" → "Jensen / Smith"
+function lastNamesOnly(teamName) {
+  if (!teamName) return "";
+  return teamName.split(/\s*\/\s*/).map(part => {
+    const words = part.trim().split(/\s+/);
+    return words.length > 1 ? words[words.length - 1] : words[0];
+  }).join(" / ");
+}
+
 export default function StandingsView({ teams, players, matchResults, leagueConfig, schedule, fetchSeasonScores }) {
   const isRecord = leagueConfig?.standingsMethod === "record";
   const [expanded, setExpanded] = useState(null);
@@ -101,7 +111,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
           }
         }
 
-        return { week: r.week, date: wk?.date || "", oppName: opp?.name || "TBD", myPts, oppPts, result, holesWon, score: `${myPts}-${oppPts}` };
+        return { week: r.week, date: wk?.date || "", oppName: lastNamesOnly(opp?.name || "TBD"), myPts, oppPts, result, holesWon, score: `${myPts}-${oppPts}` };
       });
   };
 
@@ -136,7 +146,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                     border: i < 3 ? `1.5px solid ${mc}40` : `1.5px solid ${K.logoBright}30`,
                   }}>{i + 1}</div>
                 </div>
-                <div style={{ flex: 1, fontSize: 15, fontWeight: 700, letterSpacing: .5, textAlign: "center", textTransform: "uppercase" }}>{team.name}</div>
+                <div style={{ flex: 1, fontSize: 15, fontWeight: 700, letterSpacing: .5, textAlign: "center" }}>{lastNamesOnly(team.name)}</div>
                 <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 8 }}>
                   {isRecord ? (<>
                     <div style={{ fontSize: 15, fontWeight: 800, color: K.t1, fontFamily: "'League Spartan', sans-serif", whiteSpace: "nowrap" }}>{s.w}-{s.l}-{s.t}</div>
