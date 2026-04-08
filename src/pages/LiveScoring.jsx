@@ -106,6 +106,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   // For lowHighBonus: interleave low/high pairs. For teamNetTotal: group by team
   const t1Players = [t1.player1, t1.player2];
   const t2Players = [t2.player1, t2.player2];
+  const getHcp = (pid) => {
+    const p = players.find(pl => pl.id === pid);
+    return p ? Math.round(p.handicapIndex || 0) : 0;
+  };
   const allP = isTeamNet
     ? [...t1Players, ...t2Players]
     : (() => { const t1s = [...t1Players].sort((a, b) => getHcp(a) - getHcp(b)); const t2s = [...t2Players].sort((a, b) => getHcp(a) - getHcp(b)); return [t1s[0], t2s[0], t1s[1], t2s[1]]; })();
@@ -213,7 +217,57 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       }
       if (b1 < b2) { t1Pts += sr.bw; t2Pts += sr.bl; } else if (b1 > b2) { t1Pts += sr.bl; t2Pts += sr.bw; } else { t1Pts += sr.bt; t2Pts += sr.bt; }
     }
-    await saveMatchResult({ id: `${LEAGUE_ID}_w${week}_${t1.id}_${t2.id}`, week, team1Id: t1.id, team2Id: t2.id, team1Points: t1Pts, team2Points: t2Pts, t1Total: t1Net, t2Total: t2Net });
+
+    // Calculate holes won per team (net-based) and match result text
+    let hw1 = 0, hw2 = 0;
+    const holeResults = [];
+    for (let h = 0; h < 9; h++) {
+      let n1 = 0, n2 = 0;
+      t1Players.forEach(pid => { n1 += getS(pid, h) - getStrokes(pid, h); });
+      t2Players.forEach(pid => { n2 += getS(pid, h) - getStrokes(pid, h); });
+      if (n1 < n2) { hw1++; holeResults.push(1); }
+      else if (n2 < n1) { hw2++; holeResults.push(-1); }
+      else { holeResults.push(0); }
+    }
+
+    // Running match status to determine match play result text
+    const runningStatus = [];
+    let cum = 0;
+    holeResults.forEach(r => { cum += r; runningStatus.push(cum); });
+
+    let matchEndHole = 8;
+    let matchMargin = Math.abs(runningStatus[8]);
+    for (let h = 0; h < 9; h++) {
+      const lead = Math.abs(runningStatus[h]);
+      const remaining = 8 - h;
+      if (lead > remaining) {
+        matchEndHole = h;
+        matchMargin = lead;
+        break;
+      }
+    }
+    const holesRemaining = 8 - matchEndHole;
+    const finalStatus = runningStatus[8]; // positive = t1 up
+
+    let matchResultText;
+    if (finalStatus === 0) {
+      matchResultText = "ALL SQUARE";
+    } else if (holesRemaining > 0) {
+      matchResultText = `${matchMargin}&${holesRemaining}`;
+    } else {
+      matchResultText = `${Math.abs(finalStatus)}UP`;
+    }
+
+    await saveMatchResult({
+      id: `${LEAGUE_ID}_w${week}_${t1.id}_${t2.id}`, week,
+      team1Id: t1.id, team2Id: t2.id,
+      team1Points: t1Pts, team2Points: t2Pts,
+      t1Total: t1Net, t2Total: t2Net,
+      t1HolesWon: hw1, t2HolesWon: hw2,
+      matchResultText,
+      // positive finalStatus means t1 won the match play
+      matchWinnerId: finalStatus > 0 ? t1.id : finalStatus < 0 ? t2.id : null,
+    });
   };
 
   return (

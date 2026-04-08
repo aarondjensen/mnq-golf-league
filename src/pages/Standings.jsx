@@ -21,14 +21,21 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     fetchSeasonScores().then(scores => setSeasonScores(scores));
   }, []);
 
-  // Calculate holes won per team per match
+  // Calculate holes won per team — prefer saved data, fallback to gross calc
   const teamHolesWon = useMemo(() => {
-    if (!seasonScores) return {};
     const hw = {};
     teams.forEach(t => { hw[t.id] = 0; });
 
     matchResults.forEach(r => {
       if (!r) return;
+      // Use saved holes won data if available
+      if (r.t1HolesWon !== undefined && r.t2HolesWon !== undefined) {
+        if (hw[r.team1Id] !== undefined) hw[r.team1Id] += r.t1HolesWon;
+        if (hw[r.team2Id] !== undefined) hw[r.team2Id] += r.t2HolesWon;
+        return;
+      }
+      // Fallback: calculate from gross scores (legacy matches without saved data)
+      if (!seasonScores) return;
       const t1 = teams.find(t => t.id === r.team1Id);
       const t2 = teams.find(t => t.id === r.team2Id);
       if (!t1 || !t2) return;
@@ -93,11 +100,15 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
         const opp = teams.find(t => t.id === oppId);
         const myPts = isTeam1 ? r.team1Points : r.team2Points;
         const oppPts = isTeam1 ? r.team2Points : r.team1Points;
-        const result = myPts > oppPts ? "W" : myPts < oppPts ? "L" : "T";
+        const wResult = myPts > oppPts ? "W" : myPts < oppPts ? "L" : "T";
         const wk = schedule.find(s => s.week === r.week);
 
+        // Get holes won from saved data
         let holesWon = 0;
-        if (seasonScores && opp) {
+        if (r.t1HolesWon !== undefined && r.t2HolesWon !== undefined) {
+          holesWon = isTeam1 ? r.t1HolesWon : r.t2HolesWon;
+        } else if (seasonScores && opp) {
+          // Fallback: calculate from gross scores (legacy matches)
           const myTeam = teams.find(t => t.id === teamId);
           if (myTeam) {
             const myPids = [myTeam.player1, myTeam.player2];
@@ -111,7 +122,19 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
           }
         }
 
-        return { week: r.week, date: wk?.date || "", oppName: lastNamesOnly(opp?.name || "TBD"), myPts, oppPts, result, holesWon, score: `${myPts}-${oppPts}` };
+        // Build result display text: "W 3&1" or "L 3&1" or "T"
+        let resultDisplay = wResult;
+        if (r.matchResultText) {
+          if (r.matchResultText === "ALL SQUARE") {
+            resultDisplay = "T";
+          } else {
+            resultDisplay = `${wResult} ${r.matchResultText}`;
+          }
+        } else {
+          resultDisplay = `${wResult} ${myPts}-${oppPts}`;
+        }
+
+        return { week: r.week, date: wk?.date || "", oppName: lastNamesOnly(opp?.name || "TBD"), myPts, oppPts, result: wResult, holesWon, resultDisplay };
       });
   };
 
@@ -173,22 +196,20 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
               {isExp && (
                 <div style={{ background: K.inp, border: `1px solid ${i === 0 ? K.act + '30' : K.bdr + '60'}`, borderTop: "none", borderRadius: "0 0 10px 10px", padding: "8px 10px" }}>
                   <div style={{ display: "flex", padding: "5px 8px", fontSize: 9, color: K.logoBright, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8 }}>
-                    <div style={{ width: 60 }}>Date</div>
-                    <div style={{ width: 30 }}>Wk</div>
+                    <div style={{ width: 50 }}>Date</div>
+                    <div style={{ width: 26 }}>Wk</div>
                     <div style={{ flex: 1 }}>Opponent</div>
-                    <div style={{ width: 24, textAlign: "center" }}>R</div>
-                    <div style={{ width: 44, textAlign: "center" }}>Score</div>
+                    <div style={{ width: 62, textAlign: "center" }}>Result</div>
                     <div style={{ width: 30, textAlign: "center" }}>HW</div>
                   </div>
                   {results.length === 0 ? (
                     <div style={{ padding: "10px 8px", fontSize: 12, color: K.t3, fontStyle: "italic" }}>No matches played yet</div>
                   ) : results.map((r, ri) => (
                     <div key={ri} style={{ display: "flex", alignItems: "center", padding: "7px 8px", borderTop: `1px solid ${K.bdr}30`, fontSize: 12 }}>
-                      <div style={{ width: 60, color: K.t3, fontSize: 11 }}>{r.date || "—"}</div>
-                      <div style={{ width: 30, color: K.t3, fontSize: 11 }}>{r.week}</div>
+                      <div style={{ width: 50, color: K.t3, fontSize: 11 }}>{r.date || "—"}</div>
+                      <div style={{ width: 26, color: K.t3, fontSize: 11 }}>{r.week}</div>
                       <div style={{ flex: 1, color: K.t2, fontWeight: 500 }}>{r.oppName}</div>
-                      <div style={{ width: 24, textAlign: "center", fontWeight: 700, color: r.result === "W" ? K.grn : r.result === "L" ? K.red : K.t2 }}>{r.result}</div>
-                      <div style={{ width: 44, textAlign: "center", color: K.t1, fontWeight: 600 }}>{r.score}</div>
+                      <div style={{ width: 62, textAlign: "center", fontWeight: 700, fontSize: 11, color: r.result === "W" ? K.grn : r.result === "L" ? K.red : K.t2 }}>{r.resultDisplay}</div>
                       <div style={{ width: 30, textAlign: "center", color: K.teal, fontWeight: 700 }}>{r.holesWon}</div>
                     </div>
                   ))}
