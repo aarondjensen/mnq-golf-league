@@ -393,7 +393,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     else matchResultText = `${Math.abs(finalStatus)}UP`;
 
     const matchResult = isWin ? "WIN" : isLoss ? "LOSS" : "TIE";
-    const resultColor = isWin ? K.grn : isLoss ? K.red : K.t2;
+    const resultColor = isTie ? K.t2 : K.grn;
 
     // Sort players by handicap (low first) for header display
     const myPidsSorted = [...myPids].sort((a, b) => getHcp(a) - getHcp(b));
@@ -501,9 +501,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 return <div key={i} style={{ flex: 1, height: 24 }} />;
               }
               if (st === null) return <div key={i} style={{ flex: 1, height: 24 }} />;
-              const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
               const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "24px" }}>{label}</div>;
+              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "24px" }}>{st > 0 ? <><span style={{ fontSize: 15 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 15 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
             })}
           </button>
           {showScorecard && (() => {
@@ -598,9 +597,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none" }} />;
                     }
                     if (st === null) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none", color: K.t3 + "30" }}>—</div>;
-                    const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
                     const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-                    return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none" }}>{label}</div>;
+                    return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none" }}>{st > 0 ? <><span style={{ fontSize: 15 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 15 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
                   })}
                 </div>
 
@@ -670,7 +668,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           const hw = isMyTeam ? sc.myHW : sc.oppHW;
           return (
             <div style={{ display: "flex", alignItems: "center", position: "relative" }}>
-              <div style={{ width: 44, flexShrink: 0, fontSize: 9, color: K.t3, fontWeight: 700, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>NET</div>
+              <div style={{ width: 44, flexShrink: 0, padding: "4px 0", borderRight: gridLine }} />
               {Array.from({ length: 9 }, (_, h) => {
                 let tNet = 0;
                 pids.forEach(pid => { tNet += getS(pid, h) - getStrokes(pid, h); });
@@ -697,7 +695,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   {sc.myPidsSorted.map(pid => {
                     const pl = players.find(p => p.id === pid);
                     const last = pl?.name?.split(' ').slice(1).join(' ') || pl?.name || "?";
-                    return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "LOSS" ? K.red : K.t1, lineHeight: 1.3 }}>{last}</div>;
+                    return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "WIN" ? K.grn : K.t1, lineHeight: 1.3 }}>{last}</div>;
                   })}
                 </div>
                 <div style={{ textAlign: "center", minWidth: 70 }}>
@@ -707,7 +705,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   {sc.oppPidsSorted.map(pid => {
                     const pl = players.find(p => p.id === pid);
                     const last = pl?.name?.split(' ').slice(1).join(' ') || pl?.name || "?";
-                    return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "WIN" ? K.red : K.t1, lineHeight: 1.3 }}>{last}</div>;
+                    return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "LOSS" ? K.grn : K.t1, lineHeight: 1.3 }}>{last}</div>;
                   })}
                 </div>
               </div>
@@ -741,9 +739,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   if (sc.matchEndHole < 8 && i > sc.matchEndHole) {
                     return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }} />;
                   }
-                  const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
                   const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-                  return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }}>{label}</div>;
+                  return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }}>{st > 0 ? <><span style={{ fontSize: 15 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 15 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
                 })}
                 <div style={{ width: 28, padding: "5px 0" }} />
               </div>
@@ -798,7 +795,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           const hw = isMyTeam ? sc.myHW : sc.oppHW;
           return (
             <div style={{ display: "flex", alignItems: "center", position: "relative" }}>
-              <div style={{ width: 44, flexShrink: 0, fontSize: 9, color: K.t3, fontWeight: 700, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>NET</div>
+              <div style={{ width: 44, flexShrink: 0, padding: "4px 0", borderRight: gridLine }} />
               {Array.from({ length: 9 }, (_, h) => {
                 let tNet = 0;
                 pids.forEach(pid => { tNet += getS(pid, h) - getStrokes(pid, h); });
@@ -855,7 +852,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   {sc.myPidsSorted.map(pid => {
                     const pl = players.find(p => p.id === pid);
                     const last = pl?.name?.split(' ').slice(1).join(' ') || pl?.name || "?";
-                    return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "LOSS" ? K.red : K.t1, lineHeight: 1.3 }}>{last}</div>;
+                    return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "WIN" ? K.grn : K.t1, lineHeight: 1.3 }}>{last}</div>;
                   })}
                 </div>
                 <div style={{ textAlign: "center", minWidth: 70 }}>
@@ -865,7 +862,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   {sc.oppPidsSorted.map(pid => {
                     const pl = players.find(p => p.id === pid);
                     const last = pl?.name?.split(' ').slice(1).join(' ') || pl?.name || "?";
-                    return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "WIN" ? K.red : K.t1, lineHeight: 1.3 }}>{last}</div>;
+                    return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "LOSS" ? K.grn : K.t1, lineHeight: 1.3 }}>{last}</div>;
                   })}
                 </div>
               </div>
@@ -905,9 +902,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   if (sc.matchEndHole < 8 && i > sc.matchEndHole) {
                     return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }} />;
                   }
-                  const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
                   const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-                  return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }}>{label}</div>;
+                  return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }}>{st > 0 ? <><span style={{ fontSize: 15 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 15 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
                 })}
                 <div style={{ width: 28, padding: "5px 0" }} />
               </div>
