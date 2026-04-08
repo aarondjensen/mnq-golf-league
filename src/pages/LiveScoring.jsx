@@ -340,6 +340,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           </button>
           {showScorecard && (() => {
             const gridLine = `1px solid ${K.bdr}25`;
+            const headerBg = K.cardHi;
+            const netBg = K.act + "0c";
             const scIsMyT1 = t1.id === myTeamId;
             const scMyPids = scIsMyT1 ? t1Players : t2Players;
             const scOppPids = scIsMyT1 ? t2Players : t1Players;
@@ -377,16 +379,16 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             const ScTeamRow = ({ pids, side: teamSide }) => {
               let total = 0; let hasAll = true;
               return (
-                <div style={{ display: "flex", alignItems: "center", position: "relative" }}>
-                  <div style={{ width: 36, flexShrink: 0, fontSize: 9, color: K.t3, fontWeight: 700, padding: "4px 0", borderRight: gridLine, paddingLeft: 4 }}>NET</div>
+                <div style={{ display: "flex", alignItems: "center", position: "relative", background: netBg, borderBottom: `1.5px solid ${K.act}20` }}>
+                  <div style={{ width: 36, flexShrink: 0, fontSize: 9, color: K.act, fontWeight: 800, padding: "5px 0", borderRight: gridLine, paddingLeft: 4, letterSpacing: .5 }}>NET</div>
                   {Array.from({ length: 9 }, (_, h) => {
                     let tNet = 0; let ok = true;
                     pids.forEach(pid => { const s = getS(pid, h); if (s <= 0) ok = false; else tNet += s - getStrokes(pid, h); });
                     if (ok) total += tNet; else hasAll = false;
                     const won = scHoleResults[h] === (teamSide === "my" ? 1 : -1);
                     return <div key={h} style={{
-                      flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color: !ok ? K.t3 + "30" : K.t2, lineHeight: "22px",
-                      padding: "3px 0", borderRight: won ? "none" : gridLine,
+                      flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color: !ok ? K.t3 + "30" : K.t1, lineHeight: "22px",
+                      padding: "4px 0", borderRight: won ? "none" : gridLine,
                       ...(won ? { background: K.bg, border: `2px solid ${K.act}`, borderRadius: 5, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
                     }}>{ok ? tNet : "·"}</div>;
                   })}
@@ -396,44 +398,48 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
             return (<>
             <div onClick={() => setShowScorecard(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 400 }} />
-            <div style={{ position: "fixed", inset: 0, zIndex: 450, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
-            <div style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 12, padding: "10px 6px 14px", width: "100%", maxWidth: 420, maxHeight: "85vh", overflowY: "auto" }}>
-              {/* Hole numbers */}
-              <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
-                <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t2, fontWeight: 700, padding: "4px 0", borderRight: gridLine, paddingLeft: 4 }}>HOLE</div>
+            <div onClick={() => setShowScorecard(false)} style={{ position: "fixed", inset: 0, zIndex: 450, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "0 0 10px", width: "100%", maxWidth: 420, maxHeight: "85vh", overflowY: "auto", overflow: "hidden" }}>
+              {/* Hole header row */}
+              <div style={{ display: "flex", alignItems: "center", background: headerBg, borderBottom: `1.5px solid ${K.bdr}40`, borderRadius: "14px 14px 0 0" }}>
+                <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t2, fontWeight: 800, padding: "6px 0", borderRight: gridLine, paddingLeft: 4, letterSpacing: .5 }}>HOLE</div>
                 {Array.from({ length: 9 }, (_, i) => (
-                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t1, fontWeight: 700, lineHeight: "22px", padding: "4px 0", borderRight: i < 8 ? gridLine : "none" }}>{side === 'front' ? i + 1 : i + 10}</div>
+                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t1, fontWeight: 800, lineHeight: "22px", padding: "6px 0", borderRight: i < 8 ? gridLine : "none" }}>{side === 'front' ? i + 1 : i + 10}</div>
                 ))}
               </div>
 
               {/* Par row */}
-              <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
+              <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine, background: headerBg }}>
                 <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 600, padding: "4px 0", borderRight: gridLine, paddingLeft: 4 }}>PAR</div>
                 {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t3, fontWeight: 600, lineHeight: "22px", padding: "4px 0", borderRight: i < 8 ? gridLine : "none" }}>{p}</div>)}
               </div>
 
-              {/* My team */}
-              {scMyPids.map(pid => <ScPlayerRow key={pid} pid={pid} />)}
-              <ScTeamRow pids={scMyPids} side="my" />
+              <div style={{ padding: "0 4px" }}>
+                {/* My team */}
+                {scMyPids.map(pid => <ScPlayerRow key={pid} pid={pid} />)}
+                <ScTeamRow pids={scMyPids} side="my" />
 
-              <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "2px 0" }} />
+                <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "3px 0" }} />
 
-              {/* Match status triangles */}
-              <div style={{ display: "flex", alignItems: "center", borderBottom: `2px solid ${K.bdr}40` }}>
-                <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 700, padding: "5px 0", borderRight: gridLine, paddingLeft: 4 }}>MATCH</div>
-                {holeStatuses.map((st, i) => {
-                  if (st === null) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none", color: K.t3 + "30" }}>—</div>;
-                  const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
-                  const color = st > 0 ? K.grn : st < 0 ? K.red : K.t3;
-                  return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none" }}>{label}</div>;
-                })}
+                {/* Match status triangles */}
+                <div style={{ display: "flex", alignItems: "center", borderBottom: `2px solid ${K.bdr}40` }}>
+                  <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 700, padding: "5px 0", borderRight: gridLine, paddingLeft: 4 }}>MATCH</div>
+                  {holeStatuses.map((st, i) => {
+                    if (st === null) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none", color: K.t3 + "30" }}>—</div>;
+                    const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
+                    const color = st > 0 ? K.grn : st < 0 ? K.red : K.t3;
+                    return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none" }}>{label}</div>;
+                  })}
+                </div>
+
+                <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "3px 0" }} />
+
+                {/* Opp team */}
+                {scOppPids.map(pid => <ScPlayerRow key={pid} pid={pid} />)}
+                <ScTeamRow pids={scOppPids} side="opp" />
               </div>
 
-              {/* Opp team */}
-              {scOppPids.map(pid => <ScPlayerRow key={pid} pid={pid} />)}
-              <ScTeamRow pids={scOppPids} side="opp" />
-
-              <button onClick={() => setShowScorecard(false)} style={{ width: "100%", padding: 10, background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 8 }}>
+              <button onClick={() => setShowScorecard(false)} style={{ display: "block", width: "calc(100% - 20px)", margin: "10px auto 0", padding: "9px", background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.t2, fontSize: 13, fontWeight: 600, cursor: "pointer", letterSpacing: .4 }}>
                 Close
               </button>
             </div>
