@@ -79,7 +79,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                   <span style={{ fontSize: 10, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1 }}>Match {mi + 1} · {getTeeTime(mi)}</span>
                   <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                    {mr && !mr.attested && <Pill color={K.warn}>AWAITING ATTEST</Pill>}
+                    {mr && !mr.attested && <Pill color={K.warn}>SIGNED</Pill>}
                     {mr?.attested && <Pill color={K.grn}>ATTESTED</Pill>}
                     {prog > 0 && !mr && <Pill color={K.warn}>{`${Math.round(prog * 100)}%`}</Pill>}
                   </div>
@@ -192,7 +192,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   // Wrapped saveScore — block when locked
   const guardedSaveScore = (w, pid, h, val) => {
     if (scoresLocked) {
-      setToast(isWeekLocked ? "Week is locked — scores cannot be changed" : "Match attested — only commissioner can edit");
+      setToast(isWeekLocked ? "Week is locked — scores cannot be changed" : "Scorecard attested — only commissioner can edit");
       setTimeout(() => setToast(null), 2500);
       return;
     }
@@ -332,6 +332,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       matchResultText,
       matchWinnerId: finalStatus > 0 ? t1.id : finalStatus < 0 ? t2.id : null,
       finalizedByTeamId: myTeam?.id || null,
+      signedByPlayerId: leagueUser.playerId || null,
       attested: false,
     });
   };
@@ -342,9 +343,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       ...existingResult,
       attested: true,
       attestedByTeamId: myTeam?.id || null,
+      attestedByPlayerId: leagueUser.playerId || null,
     });
     setShowAttest(false);
-    setToast("Match attested ✓");
+    setToast("Scorecard attested ✓");
     setTimeout(() => setToast(null), 2000);
   };
 
@@ -409,12 +411,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       )}
       {isAttested && !isWeekLocked && (
         <div style={{ background: K.grn + "18", border: `1px solid ${K.grn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 6, fontSize: 11, color: K.grn, fontWeight: 700, textAlign: "center" }}>
-          Match attested — scores are locked
+          Scorecard attested — scores are locked
         </div>
       )}
       {isAlreadyFinalized && !isAttested && !isWeekLocked && (
         <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 6, fontSize: 11, color: K.warn, fontWeight: 700, textAlign: "center" }}>
-          {needsAttestation ? "Awaiting your attestation" : "Awaiting opponent attestation"}
+          {needsAttestation ? "Scorecard signed — awaiting your attestation" : "Scorecard signed — awaiting opponent attestation"}
         </div>
       )}
       <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
@@ -610,12 +612,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       {/* Finalize / Attest / Show Match Details buttons */}
       {allComplete && !showFinalize && !showAttest && !isAlreadyFinalized && (
         <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.grn + "15", border: `1.5px solid ${K.grn}50`, color: K.grn, fontSize: 13, fontWeight: 700 }}>
-          All Holes Complete — Tap to Finalize
+          All Holes Complete — Sign Scorecard
         </button>
       )}
       {allComplete && !showFinalize && !showAttest && isAlreadyFinalized && needsAttestation && (
         <button onClick={() => setShowAttest(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 13, fontWeight: 700 }}>
-          Attest Match Scores
+          Attest Scorecard
         </button>
       )}
       {allComplete && !showFinalize && !showAttest && isAlreadyFinalized && !needsAttestation && (
@@ -681,8 +683,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           <div style={{ position: "fixed", inset: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
             <div style={{ background: K.bg, border: `1.5px solid ${K.warn}50`, borderRadius: 16, padding: "16px 12px 20px", width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto" }}>
               <div style={{ textAlign: "center", marginBottom: 6 }}>
-                <div style={{ fontSize: 11, color: K.t3, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Attest Match</div>
-                <div style={{ fontSize: 13, color: K.t2, marginBottom: 12 }}>{finalizingTeamName} finalized this match. Please review and confirm the scores are correct.</div>
+                <div style={{ fontSize: 11, color: K.t3, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Attest Scorecard</div>
+                <div style={{ fontSize: 13, color: K.t2, marginBottom: 12 }}>{finalizingTeamName} signed this scorecard. Please review and confirm the scores are correct.</div>
               </div>
 
               <div style={{ textAlign: "center", marginBottom: 10 }}>
@@ -722,7 +724,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
               <div style={{ marginTop: 16 }}>
                 <button onClick={attestMatch} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.grn, border: "none", color: K.bg, fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
-                  Attest — Scores Are Correct
+                  Attest Scorecard
                 </button>
                 <button onClick={() => setShowAttest(false)} style={{ width: "100%", padding: 10, background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 4 }}>
                   Close
@@ -822,7 +824,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 <div style={{ fontSize: 28, fontWeight: 800, color: sc.resultColor }}>
                   {sc.matchResultText}
                 </div>
-                {isAttested && <div style={{ fontSize: 10, color: K.grn, fontWeight: 700, marginTop: 4, textTransform: "uppercase", letterSpacing: 1 }}>✓ Attested</div>}
+                {isAttested && <div style={{ fontSize: 10, color: K.grn, fontWeight: 700, marginTop: 4, textTransform: "uppercase", letterSpacing: 1 }}>✓ Scorecard Attested</div>}
                 {isAlreadyFinalized && !isAttested && <div style={{ fontSize: 10, color: K.warn, fontWeight: 700, marginTop: 4, textTransform: "uppercase", letterSpacing: 1 }}>Awaiting Attestation</div>}
               </div>
 
@@ -864,11 +866,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <TeamRow pids={sc.oppPids} isMyTeam={false} />
 
               <div style={{ marginTop: 16 }}>
-                {/* First finalize */}
+                {/* First finalize — Sign Scorecard */}
                 {!isAlreadyFinalized && (
                   <>
                     <button onClick={async () => { await finalizeMatch(); setShowFinalize(false); }} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.grn, border: "none", color: K.bg, fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
-                      Finalize Match
+                      Sign Scorecard
                     </button>
                     <button onClick={() => setShowFinalize(false)} style={{ width: "100%", padding: 10, background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 4 }}>
                       Go Back & Edit
