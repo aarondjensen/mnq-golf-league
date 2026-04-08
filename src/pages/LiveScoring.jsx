@@ -340,8 +340,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           </button>
           {showScorecard && (() => {
             const gridLine = `1px solid ${K.bdr}25`;
-            const headerBg = K.cardHi;
             const netBg = K.act + "0c";
+            const subHeaderBg = K.acc + "18";
             const scIsMyT1 = t1.id === myTeamId;
             const scMyPids = scIsMyT1 ? t1Players : t2Players;
             const scOppPids = scIsMyT1 ? t2Players : t1Players;
@@ -400,18 +400,18 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             <div onClick={() => setShowScorecard(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 400 }} />
             <div onClick={() => setShowScorecard(false)} style={{ position: "fixed", inset: 0, zIndex: 450, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
             <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "0 0 10px", width: "100%", maxWidth: 420, maxHeight: "85vh", overflowY: "auto", overflow: "hidden" }}>
-              {/* Hole header row */}
-              <div style={{ display: "flex", alignItems: "center", background: headerBg, borderBottom: `1.5px solid ${K.bdr}40`, borderRadius: "14px 14px 0 0" }}>
-                <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t2, fontWeight: 800, padding: "6px 0", borderRight: gridLine, paddingLeft: 4, letterSpacing: .5 }}>HOLE</div>
+              {/* Hole header row — matches current hole bar */}
+              <div style={{ display: "flex", alignItems: "center", background: K.acc, borderRadius: "14px 14px 0 0" }}>
+                <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.bg, fontWeight: 800, padding: "7px 0", paddingLeft: 4, letterSpacing: .5, opacity: .8 }}>HOLE</div>
                 {Array.from({ length: 9 }, (_, i) => (
-                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t1, fontWeight: 800, lineHeight: "22px", padding: "6px 0", borderRight: i < 8 ? gridLine : "none" }}>{side === 'front' ? i + 1 : i + 10}</div>
+                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.bg, fontWeight: 800, lineHeight: "22px", padding: "7px 0" }}>{side === 'front' ? i + 1 : i + 10}</div>
                 ))}
               </div>
 
-              {/* Par row */}
-              <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine, background: headerBg }}>
-                <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 600, padding: "4px 0", borderRight: gridLine, paddingLeft: 4 }}>PAR</div>
-                {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t3, fontWeight: 600, lineHeight: "22px", padding: "4px 0", borderRight: i < 8 ? gridLine : "none" }}>{p}</div>)}
+              {/* Par row — lighter version of hole row */}
+              <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine, background: subHeaderBg }}>
+                <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700, padding: "5px 0", borderRight: gridLine, paddingLeft: 4, letterSpacing: .3 }}>PAR</div>
+                {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t2, fontWeight: 700, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none" }}>{p}</div>)}
               </div>
 
               <div style={{ padding: "0 4px" }}>
@@ -421,9 +421,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
                 <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "3px 0" }} />
 
-                {/* Match status triangles */}
-                <div style={{ display: "flex", alignItems: "center", borderBottom: `2px solid ${K.bdr}40` }}>
-                  <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 700, padding: "5px 0", borderRight: gridLine, paddingLeft: 4 }}>MATCH</div>
+                {/* Match status triangles — matches PAR row style */}
+                <div style={{ display: "flex", alignItems: "center", background: subHeaderBg, borderBottom: `2px solid ${K.bdr}40` }}>
+                  <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700, padding: "5px 0", borderRight: gridLine, paddingLeft: 4, letterSpacing: .3 }}>MATCH</div>
                   {holeStatuses.map((st, i) => {
                     if (st === null) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none", color: K.t3 + "30" }}>—</div>;
                     const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
