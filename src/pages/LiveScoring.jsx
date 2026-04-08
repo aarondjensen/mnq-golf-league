@@ -139,6 +139,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const allComplete = allP.every(pid => { for (let h = 0; h < 9; h++) if (getS(pid, h) <= 0) return false; return true; });
   const holeComplete = allP.every(pid => getS(pid, curHole) > 0);
 
+  // Check if this match is already finalized
+  const isAlreadyFinalized = matchResults.some(r => r.week === week && r.team1Id === t1.id && r.team2Id === t2.id);
+
   // Find the "current" hole — first incomplete hole
   const currentHoleIdx = (() => {
     for (let h = 0; h < 9; h++) { if (!allP.every(pid => getS(pid, h) > 0)) return h; }
@@ -172,13 +175,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     setToast(null);
   }, [curHole]);
 
-  // Auto-show finalize popup when all holes complete
+  // Auto-show finalize popup when all holes complete (only if not already finalized)
   useEffect(() => {
-    if (allComplete && !showFinalize) {
+    if (allComplete && !showFinalize && !isAlreadyFinalized) {
       const timer = setTimeout(() => setShowFinalize(true), 600);
       return () => clearTimeout(timer);
     }
-  }, [allComplete]);
+  }, [allComplete, isAlreadyFinalized]);
 
   const finalizeMatch = async () => {
     const sr = week > REGULAR_WEEKS
@@ -265,7 +268,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       t1Total: t1Net, t2Total: t2Net,
       t1HolesWon: hw1, t2HolesWon: hw2,
       matchResultText,
-      // positive finalStatus means t1 won the match play
       matchWinnerId: finalStatus > 0 ? t1.id : finalStatus < 0 ? t2.id : null,
     });
   };
@@ -433,9 +435,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           })()}
         </>);
       })()}
-      {allComplete && !showFinalize && (
+      {/* Finalize / Re-finalize button */}
+      {allComplete && !showFinalize && !isAlreadyFinalized && (
         <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.grn + "15", border: `1.5px solid ${K.grn}50`, color: K.grn, fontSize: 13, fontWeight: 700 }}>
           All Holes Complete — Tap to Finalize
+        </button>
+      )}
+      {allComplete && !showFinalize && isAlreadyFinalized && isComm && (
+        <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 13, fontWeight: 700 }}>
+          Re-finalize Match
         </button>
       )}
 
@@ -551,7 +559,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         return (<>
           <div onClick={() => setShowFinalize(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 500 }} />
           {/* Confetti for wins */}
-          {matchResult === "WIN" && (
+          {matchResult === "WIN" && !isAlreadyFinalized && (
             <div style={{ position: "fixed", inset: 0, zIndex: 550, pointerEvents: "none", overflow: "hidden" }}>
               {Array.from({ length: 60 }, (_, i) => {
                 const colors = [K.act, K.grn, K.teal, "#fff", K.logoBright, K.red, "#ff6b6b", "#ffd93d"];
@@ -627,8 +635,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <TeamRow pids={oppPids} />
 
               <div style={{ marginTop: 16 }}>
-                <button onClick={async () => { await finalizeMatch(); setShowFinalize(false); }} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.grn, border: "none", color: K.bg, fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
-                  Finalize Match
+                <button onClick={async () => { await finalizeMatch(); setShowFinalize(false); }} style={{ width: "100%", padding: "14px", borderRadius: 12, background: isAlreadyFinalized ? K.warn : K.grn, border: "none", color: K.bg, fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
+                  {isAlreadyFinalized ? "Re-finalize Match" : "Finalize Match"}
                 </button>
                 <button onClick={() => setShowFinalize(false)} style={{ width: "100%", padding: 10, background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 4 }}>
                   Go Back & Edit

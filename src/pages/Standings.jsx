@@ -14,46 +14,21 @@ function lastNamesOnly(teamName) {
 export default function StandingsView({ teams, players, matchResults, leagueConfig, schedule, fetchSeasonScores }) {
   const isRecord = leagueConfig?.standingsMethod === "record";
   const [expanded, setExpanded] = useState(null);
-  const [seasonScores, setSeasonScores] = useState(null);
 
-  // Fetch all season scores once on mount
-  useEffect(() => {
-    fetchSeasonScores().then(scores => setSeasonScores(scores));
-  }, []);
-
-  // Calculate holes won per team — prefer saved data, fallback to gross calc
+  // Calculate holes won per team from saved match result data
   const teamHolesWon = useMemo(() => {
     const hw = {};
     teams.forEach(t => { hw[t.id] = 0; });
 
     matchResults.forEach(r => {
       if (!r) return;
-      // Use saved holes won data if available
       if (r.t1HolesWon !== undefined && r.t2HolesWon !== undefined) {
         if (hw[r.team1Id] !== undefined) hw[r.team1Id] += r.t1HolesWon;
         if (hw[r.team2Id] !== undefined) hw[r.team2Id] += r.t2HolesWon;
-        return;
-      }
-      // Fallback: calculate from gross scores (legacy matches without saved data)
-      if (!seasonScores) return;
-      const t1 = teams.find(t => t.id === r.team1Id);
-      const t2 = teams.find(t => t.id === r.team2Id);
-      if (!t1 || !t2) return;
-      const t1Pids = [t1.player1, t1.player2];
-      const t2Pids = [t2.player1, t2.player2];
-
-      for (let h = 0; h < 9; h++) {
-        let t1Net = 0, t2Net = 0, t1Has = true, t2Has = true;
-        t1Pids.forEach(pid => { const s = seasonScores[`w${r.week}_p${pid}_h${h}`]; if (!s || s <= 0) t1Has = false; else t1Net += s; });
-        t2Pids.forEach(pid => { const s = seasonScores[`w${r.week}_p${pid}_h${h}`]; if (!s || s <= 0) t2Has = false; else t2Net += s; });
-        if (t1Has && t2Has) {
-          if (t1Net < t2Net) { if (hw[r.team1Id] !== undefined) hw[r.team1Id]++; }
-          else if (t2Net < t1Net) { if (hw[r.team2Id] !== undefined) hw[r.team2Id]++; }
-        }
       }
     });
     return hw;
-  }, [seasonScores, matchResults, teams]);
+  }, [matchResults, teams]);
 
   const standings = useMemo(() => {
     const pts = {};
@@ -104,23 +79,9 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
         const wk = schedule.find(s => s.week === r.week);
 
         // Get holes won from saved data
-        let holesWon = 0;
-        if (r.t1HolesWon !== undefined && r.t2HolesWon !== undefined) {
-          holesWon = isTeam1 ? r.t1HolesWon : r.t2HolesWon;
-        } else if (seasonScores && opp) {
-          // Fallback: calculate from gross scores (legacy matches)
-          const myTeam = teams.find(t => t.id === teamId);
-          if (myTeam) {
-            const myPids = [myTeam.player1, myTeam.player2];
-            const oppPids = [opp.player1, opp.player2];
-            for (let h = 0; h < 9; h++) {
-              let myNet = 0, oppNet = 0, myHas = true, oppHas = true;
-              myPids.forEach(pid => { const s = seasonScores[`w${r.week}_p${pid}_h${h}`]; if (!s || s <= 0) myHas = false; else myNet += s; });
-              oppPids.forEach(pid => { const s = seasonScores[`w${r.week}_p${pid}_h${h}`]; if (!s || s <= 0) oppHas = false; else oppNet += s; });
-              if (myHas && oppHas && myNet < oppNet) holesWon++;
-            }
-          }
-        }
+        const holesWon = (r.t1HolesWon !== undefined && r.t2HolesWon !== undefined)
+          ? (isTeam1 ? r.t1HolesWon : r.t2HolesWon)
+          : 0;
 
         // Build result display text: "W 3&1" or "L 3&1" or "T"
         let resultDisplay = wResult;
