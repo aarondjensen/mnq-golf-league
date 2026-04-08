@@ -149,7 +149,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                     border: i < 3 ? `1.5px solid ${mc}40` : `1.5px solid ${K.logoBright}30`,
                   }}>{i + 1}</div>
                 </div>
-                <div style={{ flex: 1, fontSize: 15, fontWeight: 700, letterSpacing: .5, textAlign: "center" }}>{lastNamesOnly(team.name)}</div>
+                <div style={{ flex: 1, fontSize: 15, fontWeight: 700, letterSpacing: .5, textAlign: "left" }}>{lastNamesOnly(team.name)}</div>
                 <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 0 }}>
                   {isRecord ? (<>
                     <div style={{ ...wltCol, fontSize: 15, fontWeight: 800, color: K.t1 }}>{s.w}</div>

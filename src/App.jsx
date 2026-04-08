@@ -8,6 +8,14 @@ import ScheduleView from "./pages/Schedule";
 import MoreView from "./pages/More";
 import AdminView from "./pages/Admin";
 
+function lastNamesOnly(teamName) {
+  if (!teamName) return "";
+  return teamName.split(/\s*\/\s*/).map(part => {
+    const words = part.trim().split(/\s+/);
+    return words.length > 1 ? words[words.length - 1] : words[0];
+  }).join(" / ");
+}
+
 export default function GolfLeagueApp() {
   const [authUser, setAuthUser] = useState(undefined);
   const [leagueUser, setLeagueUser] = useState(null);
@@ -302,15 +310,15 @@ export default function GolfLeagueApp() {
             return (
               <div style={{ background: K.card, border: `1.5px solid ${bannerGrn}`, borderRadius: 10, margin: "6px 14px", padding: "8px 14px", display: "flex", alignItems: "center" }}>
                 {/* Left: Tee time + Front/Back */}
-                <div style={{ width: 90, flexShrink: 0, textAlign: "center" }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: bannerGrn, letterSpacing: .5 }}>{upcomingBanner.teeTime}</div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: bannerGrn, letterSpacing: .5 }}>{upcomingBanner.side === 'front' ? 'Front 9' : 'Back 9'}</div>
+                <div style={{ width: 90, flexShrink: 0, textAlign: "center", lineHeight: 1.3, padding: "8px 0" }}>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: bannerGrn, letterSpacing: .5, textTransform: "uppercase" }}>{upcomingBanner.teeTime}</div>
+                  <div style={{ fontSize: 15, fontWeight: 800, color: bannerGrn, letterSpacing: .5, textTransform: "uppercase" }}>{upcomingBanner.side === 'front' ? 'FRONT 9' : 'BACK 9'}</div>
                 </div>
                 {/* Center: Date, vs, opponent */}
                 <div style={{ flex: 1, textAlign: "center", lineHeight: 1.3 }}>
                   <div style={{ fontSize: 12, color: K.t2, fontWeight: 500 }}>{upcomingBanner.date ? `${upcomingBanner.date} — ` : ""}Week {upcomingBanner.week}</div>
                   <div style={{ fontSize: 9, color: K.logoBright, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" }}>vs</div>
-                  <div style={{ color: K.t1, fontWeight: 700, fontSize: 15 }}>{upcomingBanner.opp}</div>
+                  <div style={{ color: K.t1, fontWeight: 700, fontSize: 15 }}>{lastNamesOnly(upcomingBanner.opp)}</div>
                 </div>
                 {/* Right: Live Scoring button */}
                 <div style={{ width: 90, flexShrink: 0, textAlign: "center" }}>
