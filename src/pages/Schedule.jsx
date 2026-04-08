@@ -146,11 +146,18 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {matches.map((m, mi) => {
-                const t1 = teams.find(t => t.id === m.team1);
-                const t2 = teams.find(t => t.id === m.team2);
+                const rawT1 = teams.find(t => t.id === m.team1);
+                const rawT2 = teams.find(t => t.id === m.team2);
                 const res = matchResults.find(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2);
                 const isMyMatch = myTeam && (m.team1 === myTeam.id || m.team2 === myTeam.id);
                 const origIdx = wk.matches.indexOf(m);
+
+                // If user's team is team2, swap so they always appear on the left
+                const swapped = isMyMatch && m.team2 === myTeam.id;
+                const t1 = swapped ? rawT2 : rawT1;
+                const t2 = swapped ? rawT1 : rawT2;
+                const score1 = res ? (swapped ? res.team2Points : res.team1Points) : null;
+                const score2 = res ? (swapped ? res.team1Points : res.team2Points) : null;
 
                 return (
                   <div key={mi} style={{ background: K.card, borderRadius: 8, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}40`, padding: "8px 10px", display: "flex", alignItems: "center" }}>
@@ -162,7 +169,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                     {/* Center — tee time or result */}
                     <div style={{ textAlign: "center", minWidth: 74, flexShrink: 0, padding: "0 4px" }}>
                       {res ? (<>
-                        <div style={{ fontSize: 17, fontWeight: 800, color: K.t1 }}>{res.team1Points}–{res.team2Points}</div>
+                        <div style={{ fontSize: 17, fontWeight: 800, color: K.t1 }}>{score1}–{score2}</div>
                         {res.matchResultText && <div style={{ fontSize: 9, color: K.t3, fontWeight: 600 }}>{res.matchResultText}</div>}
                       </>) : (
                         <div style={{ fontSize: 18, fontWeight: 800, color: K.act, letterSpacing: .3 }}>{formatTeeTime(origIdx)}</div>
