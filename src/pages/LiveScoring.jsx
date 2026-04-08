@@ -695,7 +695,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 <div style={{ flex: 1, textAlign: "right" }}>
                   {sc.myPidsSorted.map(pid => {
                     const pl = players.find(p => p.id === pid);
-                    return <div key={pid} style={{ fontSize: 14, fontWeight: 700, color: sc.matchResult === "WIN" ? K.grn : K.t1, lineHeight: 1.4 }}>{pl?.name?.split(' ')[0] || "?"}</div>;
+                    const last = pl?.name?.split(' ').slice(1).join(' ') || pl?.name || "?";
+                    return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "WIN" ? K.grn : K.t1, lineHeight: 1.3 }}>{last}</div>;
                   })}
                 </div>
                 <div style={{ textAlign: "center", minWidth: 70 }}>
@@ -704,7 +705,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 <div style={{ flex: 1, textAlign: "left" }}>
                   {sc.oppPidsSorted.map(pid => {
                     const pl = players.find(p => p.id === pid);
-                    return <div key={pid} style={{ fontSize: 14, fontWeight: 700, color: sc.matchResult === "LOSS" ? K.grn : K.t1, lineHeight: 1.4 }}>{pl?.name?.split(' ')[0] || "?"}</div>;
+                    const last = pl?.name?.split(' ').slice(1).join(' ') || pl?.name || "?";
+                    return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "LOSS" ? K.grn : K.t1, lineHeight: 1.3 }}>{last}</div>;
                   })}
                 </div>
               </div>
@@ -850,7 +852,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 <div style={{ flex: 1, textAlign: "right" }}>
                   {sc.myPidsSorted.map(pid => {
                     const pl = players.find(p => p.id === pid);
-                    return <div key={pid} style={{ fontSize: 14, fontWeight: 700, color: sc.matchResult === "WIN" ? K.grn : K.t1, lineHeight: 1.4 }}>{pl?.name?.split(' ')[0] || "?"}</div>;
+                    const last = pl?.name?.split(' ').slice(1).join(' ') || pl?.name || "?";
+                    return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "WIN" ? K.grn : K.t1, lineHeight: 1.3 }}>{last}</div>;
                   })}
                 </div>
                 <div style={{ textAlign: "center", minWidth: 70 }}>
@@ -859,7 +862,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 <div style={{ flex: 1, textAlign: "left" }}>
                   {sc.oppPidsSorted.map(pid => {
                     const pl = players.find(p => p.id === pid);
-                    return <div key={pid} style={{ fontSize: 14, fontWeight: 700, color: sc.matchResult === "LOSS" ? K.grn : K.t1, lineHeight: 1.4 }}>{pl?.name?.split(' ')[0] || "?"}</div>;
+                    const last = pl?.name?.split(' ').slice(1).join(' ') || pl?.name || "?";
+                    return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "LOSS" ? K.grn : K.t1, lineHeight: 1.3 }}>{last}</div>;
                   })}
                 </div>
               </div>
