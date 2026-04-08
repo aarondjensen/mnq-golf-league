@@ -3,7 +3,7 @@ import { K, FONTS, CSS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card,
   SEASON_WEEKS, REGULAR_WEEKS, TEAMS_COUNT, getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 
-export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig }) {
+export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
   const [showCTP, setShowCTP] = useState(false);
@@ -12,7 +12,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const [editing, setEditing] = useState(false);
   const [showScorecard, setShowScorecard] = useState(false);
   const [showFinalize, setShowFinalize] = useState(false);
-  const initialJump = useRef(false); // true when user manually navigated to a previous hole
+  const [showEditConfirm, setShowEditConfirm] = useState(false);
+  const [showAttest, setShowAttest] = useState(false);
+  const initialJump = useRef(false);
   const matchGrn = "#1a8c3f";
 
   // Find current week: first week where not all matches are finalized
@@ -41,6 +43,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   // Find user's match
   const myMatch = myTeam ? matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id) : null;
 
+  // Week finalization checks
+  const isWeekLocked = weekSch?.locked === true;
+  const allMatchesFinalized = matches.every(m =>
+    matchResults.some(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2)
+  );
+
   if (!course?.name) return <EmptyState icon="flag" title="Course not configured" subtitle="Commissioner needs to set up the course." />;
   if (!matches.length) return <EmptyState icon="calendar" title="No matches this week" subtitle="Commissioner needs to set the schedule." />;
 
@@ -64,12 +72,17 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             const t1 = teams.find(t => t.id === m.team1); const t2 = teams.find(t => t.id === m.team2);
             if (!t1 || !t2) return null;
             const prog = getProgress(m);
+            const mr = matchResults.find(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2);
             const gn = id => players.find(p => p.id === id)?.name?.split(' ')[0] || "?";
             return (
               <button key={mi} onClick={() => { setActiveMatch(m); setCurHole(0); setShowCTP(false); }} style={{ background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 10, padding: "10px 14px", cursor: "pointer", textAlign: "left", width: "100%" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                   <span style={{ fontSize: 10, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1 }}>Match {mi + 1} · {getTeeTime(mi)}</span>
-                  {prog > 0 && <Pill color={prog >= 1 ? K.grn : K.warn}>{prog >= 1 ? "FINAL" : `${Math.round(prog * 100)}%`}</Pill>}
+                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                    {mr && !mr.attested && <Pill color={K.warn}>AWAITING ATTEST</Pill>}
+                    {mr?.attested && <Pill color={K.grn}>ATTESTED</Pill>}
+                    {prog > 0 && !mr && <Pill color={K.warn}>{`${Math.round(prog * 100)}%`}</Pill>}
+                  </div>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 700 }}>{t1.name}</div></div>
@@ -81,6 +94,29 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             );
           })}
         </div>
+
+        {/* Finalize Week button — commissioner only, after all matches finalized */}
+        {allMatchesFinalized && isComm && !isWeekLocked && saveWeekSchedule && (
+          <button onClick={async () => {
+            await saveWeekSchedule({ ...weekSch, locked: true });
+            setToast("Week " + week + " locked");
+            setTimeout(() => setToast(null), 2000);
+          }} style={{ width: "100%", padding: 14, borderRadius: 12, marginTop: 16, cursor: "pointer", background: K.navy || K.act, border: "none", color: "#fff", fontSize: 14, fontWeight: 800, letterSpacing: .3 }}>
+            Finalize Week — Lock All Scores
+          </button>
+        )}
+        {isWeekLocked && (
+          <div style={{ textAlign: "center", marginTop: 12, fontSize: 12, color: K.t3, fontWeight: 600 }}>
+            Week {week} is locked
+          </div>
+        )}
+
+        {/* Toast */}
+        {toast && (
+          <div style={{ position: "fixed", top: 80, left: "50%", transform: "translateX(-50%)", background: K.act, color: K.bg, padding: "12px 48px", borderRadius: 12, fontSize: 14, fontWeight: 700, zIndex: 1000, whiteSpace: "nowrap", textAlign: "center", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
+            {toast}
+          </div>
+        )}
       </div>
     );
   }
@@ -104,7 +140,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const scoringFormat = leagueConfig?.scoringFormat || "lowHighBonus";
   const isTeamNet = scoringFormat === "teamNetTotal";
 
-  // For lowHighBonus: interleave low/high pairs. For teamNetTotal: group by team
   const t1Players = [t1.player1, t1.player2];
   const t2Players = [t2.player1, t2.player2];
   const getHcp = (pid) => {
@@ -140,13 +175,42 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const allComplete = allP.every(pid => { for (let h = 0; h < 9; h++) if (getS(pid, h) <= 0) return false; return true; });
   const holeComplete = allP.every(pid => getS(pid, curHole) > 0);
 
-  // Check if this match is already finalized
-  const isAlreadyFinalized = matchResults.some(r => r.week === week && r.team1Id === t1.id && r.team2Id === t2.id);
+  // Check if this match is already finalized & attestation status
+  const existingResult = matchResults.find(r => r.week === week && r.team1Id === t1.id && r.team2Id === t2.id);
+  const isAlreadyFinalized = !!existingResult;
+  const isAttested = existingResult?.attested === true;
+  const finalizedByTeamId = existingResult?.finalizedByTeamId || null;
+
+  // Determine if current user is on the opposing team (needs to attest)
+  const isOnFinalizingTeam = myTeam && finalizedByTeamId === myTeam.id;
+  const isOnOpposingTeam = myTeam && !isOnFinalizingTeam && (myTeam.id === t1.id || myTeam.id === t2.id);
+  const needsAttestation = isAlreadyFinalized && !isAttested && isOnOpposingTeam;
+
+  // Scores are locked once attested (unless commissioner)
+  const scoresLocked = (isWeekLocked && !isComm) || (isAttested && !isComm);
+
+  // Wrapped saveScore — block when locked
+  const guardedSaveScore = (w, pid, h, val) => {
+    if (scoresLocked) {
+      setToast(isWeekLocked ? "Week is locked — scores cannot be changed" : "Match attested — only commissioner can edit");
+      setTimeout(() => setToast(null), 2500);
+      return;
+    }
+    saveScore(w, pid, h, val);
+  };
+
+  // Auto-show attestation popup for opposing team
+  useEffect(() => {
+    if (needsAttestation && !showAttest && !showFinalize) {
+      const timer = setTimeout(() => setShowAttest(true), 600);
+      return () => clearTimeout(timer);
+    }
+  }, [needsAttestation, showAttest, showFinalize]);
 
   // Find the "current" hole — first incomplete hole
   const currentHoleIdx = (() => {
     for (let h = 0; h < 9; h++) { if (!allP.every(pid => getS(pid, h) > 0)) return h; }
-    return 8; // all complete
+    return 8;
   })();
 
   // Jump to current hole on initial load (not hole 1)
@@ -200,7 +264,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       else if (t1Net > t2Net) { t1Pts = sr.ml; t2Pts = sr.mw; }
       else { t1Pts = sr.mt; t2Pts = sr.mt; }
     } else {
-      // Low/High matches
       const t1s = [...t1Players].sort((a, b) => getHcp(a) - getHcp(b));
       const t2s = [...t2Players].sort((a, b) => getHcp(a) - getHcp(b));
       const t1L = getRunning(t1s[0]).net, t2L = getRunning(t2s[0]).net;
@@ -208,7 +271,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       if (t1L < t2L) { t1Pts += sr.mw; t2Pts += sr.ml; } else if (t1L > t2L) { t1Pts += sr.ml; t2Pts += sr.mw; } else { t1Pts += sr.mt; t2Pts += sr.mt; }
       if (t1H < t2H) { t1Pts += sr.mw; t2Pts += sr.ml; } else if (t1H > t2H) { t1Pts += sr.ml; t2Pts += sr.mw; } else { t1Pts += sr.mt; t2Pts += sr.mt; }
 
-      // Bonus — depends on bonusType
       const bonusType = leagueConfig?.bonusType || "teamNetTotal";
       let b1, b2;
       if (bonusType === "lowestNet") {
@@ -234,7 +296,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       else { holeResults.push(0); }
     }
 
-    // Running match status to determine match play result text
     const runningStatus = [];
     let cum = 0;
     holeResults.forEach(r => { cum += r; runningStatus.push(cum); });
@@ -251,7 +312,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       }
     }
     const holesRemaining = 8 - matchEndHole;
-    const finalStatus = runningStatus[8]; // positive = t1 up
+    const finalStatus = runningStatus[8];
 
     let matchResultText;
     if (finalStatus === 0) {
@@ -270,7 +331,67 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       t1HolesWon: hw1, t2HolesWon: hw2,
       matchResultText,
       matchWinnerId: finalStatus > 0 ? t1.id : finalStatus < 0 ? t2.id : null,
+      finalizedByTeamId: myTeam?.id || null,
+      attested: false,
     });
+  };
+
+  const attestMatch = async () => {
+    if (!existingResult) return;
+    await saveMatchResult({
+      ...existingResult,
+      attested: true,
+      attestedByTeamId: myTeam?.id || null,
+    });
+    setShowAttest(false);
+    setToast("Match attested ✓");
+    setTimeout(() => setToast(null), 2000);
+  };
+
+  // ── Shared scorecard data builder ──
+  const buildScorecardData = () => {
+    const myTeamId = myTeam?.id || t1.id;
+    const isMyT1 = t1.id === myTeamId;
+    const myPids = isMyT1 ? t1Players : t2Players;
+    const oppPids = isMyT1 ? t2Players : t1Players;
+
+    let myHW = 0, oppHW = 0;
+    const holeResults = [];
+    for (let h = 0; h < 9; h++) {
+      let mN = 0, oN = 0;
+      myPids.forEach(pid => { mN += getS(pid, h) - getStrokes(pid, h); });
+      oppPids.forEach(pid => { oN += getS(pid, h) - getStrokes(pid, h); });
+      if (mN < oN) { myHW++; holeResults.push(1); }
+      else if (oN < mN) { oppHW++; holeResults.push(-1); }
+      else holeResults.push(0);
+    }
+
+    const runningStatus = [];
+    let cum = 0;
+    holeResults.forEach(r => { cum += r; runningStatus.push(cum); });
+
+    let matchEndHole = 8;
+    let matchMargin = Math.abs(runningStatus[8]);
+    for (let h = 0; h < 9; h++) {
+      const lead = Math.abs(runningStatus[h]);
+      const remaining = 8 - h;
+      if (lead > remaining) { matchEndHole = h; matchMargin = lead; break; }
+    }
+    const holesRemaining = 8 - matchEndHole;
+    const finalStatus = runningStatus[8];
+    const isWin = finalStatus > 0;
+    const isLoss = finalStatus < 0;
+    const isTie = finalStatus === 0;
+
+    let matchResultText;
+    if (isTie) matchResultText = "ALL SQUARE";
+    else if (holesRemaining > 0) matchResultText = `${matchMargin}&${holesRemaining}`;
+    else matchResultText = `${Math.abs(finalStatus)}UP`;
+
+    const matchResult = isWin ? "WIN" : isLoss ? "LOSS" : "TIE";
+    const resultColor = isWin ? K.grn : isLoss ? K.red : K.t2;
+
+    return { myPids, oppPids, holeResults, runningStatus, matchResultText, matchResult, resultColor, isMyT1 };
   };
 
   return (
@@ -278,6 +399,22 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       {activeMatch && (
         <div style={{ marginBottom: 8 }}>
           <BackBtn onClick={() => { setActiveMatch(null); if (!commMode) setCommMode(false); }} />
+        </div>
+      )}
+      {/* Status banners */}
+      {isWeekLocked && (
+        <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 6, fontSize: 11, color: K.warn, fontWeight: 700, textAlign: "center" }}>
+          Week {week} is locked — scores are read-only
+        </div>
+      )}
+      {isAttested && !isWeekLocked && (
+        <div style={{ background: K.grn + "18", border: `1px solid ${K.grn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 6, fontSize: 11, color: K.grn, fontWeight: 700, textAlign: "center" }}>
+          Match attested — scores are locked
+        </div>
+      )}
+      {isAlreadyFinalized && !isAttested && !isWeekLocked && (
+        <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 6, fontSize: 11, color: K.warn, fontWeight: 700, textAlign: "center" }}>
+          {needsAttestation ? "Awaiting your attestation" : "Awaiting opponent attestation"}
         </div>
       )}
       <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
@@ -309,7 +446,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const pl = players.find(p => p.id === pid); if (!pl) return null;
         const score = getS(pid, curHole); const strokes = getStrokes(pid, curHole); const nh = getNineHcp(pid); const run = getRunning(pid);
         const btns = par === 3 ? [1,2,3,4,5,6,7] : par === 5 ? [2,3,4,5,6,7,8] : [2,3,4,5,6,7,8];
-        return <PlayerScoreCard key={pid} pl={pl} score={score} strokes={strokes} nh={nh} run={run} btns={btns} par={par} pid={pid} week={week} curHole={curHole} saveScore={saveScore} K={K} />;
+        return <PlayerScoreCard key={pid} pl={pl} score={score} strokes={strokes} nh={nh} run={run} btns={btns} par={par} pid={pid} week={week} curHole={curHole} saveScore={guardedSaveScore} K={K} />;
       })}
       {/* Match status — tappable to expand scorecard */}
       {(() => {
@@ -329,10 +466,29 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           }
           return hasData ? holesUp : null;
         });
+
+        // Calculate match clinch hole
+        let matchClinchHole = null;
+        for (let h = 0; h < 9; h++) {
+          if (holeStatuses[h] === null) break;
+          const lead = Math.abs(holeStatuses[h]);
+          const remaining = 8 - h;
+          if (lead > remaining) {
+            matchClinchHole = h;
+            break;
+          }
+        }
+
         return (<>
           <button onClick={() => setShowScorecard(!showScorecard)} style={{ display: "flex", gap: 3, marginTop: 6, marginBottom: showScorecard ? 0 : 8, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: showScorecard ? "8px 8px 0 0" : 8, cursor: "pointer", padding: "6px 0", alignItems: "center" }}>
             <div style={{ width: 40, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600, display: "flex", alignItems: "center", paddingLeft: 6, gap: 2 }}><span>MATCH</span><span style={{ fontSize: 10 }}>{showScorecard ? "▾" : "›"}</span></div>
             {holeStatuses.map((st, i) => {
+              if (matchClinchHole !== null && i === matchClinchHole) {
+                return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 8, color: K.t3, fontWeight: 700, lineHeight: "24px" }}>FINAL</div>;
+              }
+              if (matchClinchHole !== null && i > matchClinchHole) {
+                return <div key={i} style={{ flex: 1, height: 24 }} />;
+              }
               if (st === null) return <div key={i} style={{ flex: 1, height: 24 }} />;
               const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
               const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
@@ -402,7 +558,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             <div onClick={() => setShowScorecard(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 400 }} />
             <div onClick={() => setShowScorecard(false)} style={{ position: "fixed", inset: 0, zIndex: 450, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
             <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "0 0 10px", width: "100%", maxWidth: 420, maxHeight: "85vh", overflowY: "auto", overflow: "hidden" }}>
-              {/* Hole header row — matches current hole bar */}
               <div style={{ display: "flex", alignItems: "center", background: K.acc, borderRadius: "14px 14px 0 0" }}>
                 <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.bg, fontWeight: 800, padding: "7px 0", paddingLeft: 4, letterSpacing: .5, opacity: .8 }}>HOLE</div>
                 {Array.from({ length: 9 }, (_, i) => (
@@ -410,23 +565,26 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 ))}
               </div>
 
-              {/* Par row — lighter version of hole row */}
               <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine, background: subHeaderBg }}>
                 <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700, padding: "5px 0", borderRight: gridLine, paddingLeft: 4, letterSpacing: .3 }}>PAR</div>
                 {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t2, fontWeight: 700, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none" }}>{p}</div>)}
               </div>
 
               <div style={{ padding: "0 4px" }}>
-                {/* My team */}
                 {scMyPids.map(pid => <ScPlayerRow key={pid} pid={pid} />)}
                 <ScTeamRow pids={scMyPids} side="my" />
 
                 <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "3px 0" }} />
 
-                {/* Match status triangles — matches PAR row style */}
                 <div style={{ display: "flex", alignItems: "center", background: subHeaderBg, borderBottom: `2px solid ${K.bdr}40` }}>
                   <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700, padding: "5px 0", borderRight: gridLine, paddingLeft: 4, letterSpacing: .3 }}>MATCH</div>
                   {holeStatuses.map((st, i) => {
+                    if (matchClinchHole !== null && i === matchClinchHole) {
+                      return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 8, color: K.t3, fontWeight: 700, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none" }}>FINAL</div>;
+                    }
+                    if (matchClinchHole !== null && i > matchClinchHole) {
+                      return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none" }} />;
+                    }
                     if (st === null) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none", color: K.t3 + "30" }}>—</div>;
                     const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
                     const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
@@ -436,7 +594,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
                 <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "3px 0" }} />
 
-                {/* Opp team */}
                 {scOppPids.map(pid => <ScPlayerRow key={pid} pid={pid} />)}
                 <ScTeamRow pids={scOppPids} side="opp" />
               </div>
@@ -450,83 +607,29 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           })()}
         </>);
       })()}
-      {/* Finalize / Re-finalize button */}
-      {allComplete && !showFinalize && !isAlreadyFinalized && (
+      {/* Finalize / Attest / Show Match Details buttons */}
+      {allComplete && !showFinalize && !showAttest && !isAlreadyFinalized && (
         <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.grn + "15", border: `1.5px solid ${K.grn}50`, color: K.grn, fontSize: 13, fontWeight: 700 }}>
           All Holes Complete — Tap to Finalize
         </button>
       )}
-      {allComplete && !showFinalize && isAlreadyFinalized && isComm && (
-        <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 13, fontWeight: 700 }}>
-          Re-finalize Match
+      {allComplete && !showFinalize && !showAttest && isAlreadyFinalized && needsAttestation && (
+        <button onClick={() => setShowAttest(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 13, fontWeight: 700 }}>
+          Attest Match Scores
+        </button>
+      )}
+      {allComplete && !showFinalize && !showAttest && isAlreadyFinalized && !needsAttestation && (
+        <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.acc + "15", border: `1.5px solid ${K.acc}50`, color: K.acc, fontSize: 13, fontWeight: 700 }}>
+          Show Match Details
         </button>
       )}
 
-      {/* Finalize Popup */}
-      {showFinalize && (() => {
-        const myTeamId = myTeam?.id || t1.id;
-        const isMyT1 = t1.id === myTeamId;
-        const myPids = isMyT1 ? t1Players : t2Players;
-        const oppPids = isMyT1 ? t2Players : t1Players;
-        const myTeamObj = isMyT1 ? t1 : t2;
-        const oppTeamObj = isMyT1 ? t2 : t1;
-        const myNet = myPids.reduce((a, pid) => a + getRunning(pid).net, 0);
-        const oppNet = oppPids.reduce((a, pid) => a + getRunning(pid).net, 0);
-
-        // Holes won
-        let myHW = 0, oppHW = 0;
-        const holeResults = [];
-        for (let h = 0; h < 9; h++) {
-          let mN = 0, oN = 0;
-          myPids.forEach(pid => { mN += getS(pid, h) - getStrokes(pid, h); });
-          oppPids.forEach(pid => { oN += getS(pid, h) - getStrokes(pid, h); });
-          if (mN < oN) { myHW++; holeResults.push(1); }
-          else if (oN < mN) { oppHW++; holeResults.push(-1); }
-          else holeResults.push(0);
-        }
-
-        // Running match status per hole
-        const runningStatus = [];
-        let cum = 0;
-        holeResults.forEach(r => { cum += r; runningStatus.push(cum); });
-
-        // Calculate proper match play result
-        // Match is "clinched" when lead > remaining holes
-        let matchEndHole = 8; // default: goes to 9
-        let matchMargin = Math.abs(runningStatus[8]);
-        for (let h = 0; h < 9; h++) {
-          const lead = Math.abs(runningStatus[h]);
-          const remaining = 8 - h;
-          if (lead > remaining) {
-            matchEndHole = h;
-            matchMargin = lead;
-            break;
-          }
-        }
-        const holesRemaining = 8 - matchEndHole;
-        const finalStatus = runningStatus[8]; // positive = my team up
-        const isWin = finalStatus > 0;
-        const isLoss = finalStatus < 0;
-        const isTie = finalStatus === 0;
-
-        let matchResultText;
-        if (isTie) {
-          matchResultText = "ALL SQUARE";
-        } else if (holesRemaining > 0) {
-          // Clinched early: "X&Y"
-          matchResultText = `${matchMargin}&${holesRemaining}`;
-        } else {
-          // Went to final hole: "X UP"
-          matchResultText = `${Math.abs(finalStatus)}UP`;
-        }
-
-        const matchResult = isWin ? "WIN" : isLoss ? "LOSS" : "TIE";
-        const resultColor = isWin ? K.grn : isLoss ? K.red : K.t2;
-
+      {/* ═══ Attestation Popup ═══ */}
+      {showAttest && (() => {
+        const sc = buildScorecardData();
         const gridLine = `1px solid ${K.bdr}25`;
 
-        // Build player scorecard row
-        const PlayerRow = ({ pid, isMyTeam }) => {
+        const AttestPlayerRow = ({ pid }) => {
           const pl = players.find(p => p.id === pid); if (!pl) return null;
           const nh = getNineHcp(pid);
           let grossTotal = 0;
@@ -550,8 +653,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           );
         };
 
-        // Team net row — maize border on winning holes
-        const TeamRow = ({ pids }) => {
+        const AttestTeamRow = ({ pids, isMyTeam }) => {
           let total = 0;
           return (
             <div style={{ display: "flex", alignItems: "center", position: "relative" }}>
@@ -560,7 +662,116 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 let tNet = 0;
                 pids.forEach(pid => { tNet += getS(pid, h) - getStrokes(pid, h); });
                 total += tNet;
-                const won = holeResults[h] === (pids === myPids ? 1 : -1);
+                const won = sc.holeResults[h] === (isMyTeam ? 1 : -1);
+                return <div key={h} style={{
+                  flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t2, lineHeight: "22px",
+                  padding: "3px 0", borderRight: won ? "none" : gridLine,
+                  ...(won ? { background: K.bg, border: `2px solid ${K.act}`, borderRadius: 5, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
+                }}>{tNet}</div>;
+              })}
+              <div style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t2, padding: "4px 0" }}>{total}</div>
+            </div>
+          );
+        };
+
+        const finalizingTeamName = teams.find(t => t.id === finalizedByTeamId)?.name || "Opponent";
+
+        return (<>
+          <div onClick={() => setShowAttest(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 500 }} />
+          <div style={{ position: "fixed", inset: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+            <div style={{ background: K.bg, border: `1.5px solid ${K.warn}50`, borderRadius: 16, padding: "16px 12px 20px", width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto" }}>
+              <div style={{ textAlign: "center", marginBottom: 6 }}>
+                <div style={{ fontSize: 11, color: K.t3, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>Attest Match</div>
+                <div style={{ fontSize: 13, color: K.t2, marginBottom: 12 }}>{finalizingTeamName} finalized this match. Please review and confirm the scores are correct.</div>
+              </div>
+
+              <div style={{ textAlign: "center", marginBottom: 10 }}>
+                <div style={{ fontSize: 24, fontWeight: 800, color: sc.resultColor }}>{sc.matchResultText}</div>
+              </div>
+
+              {/* Scorecard */}
+              <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
+                <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.t2, fontWeight: 700, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>HOLE</div>
+                {Array.from({ length: 9 }, (_, i) => (
+                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t1, fontWeight: 700, lineHeight: "22px", padding: "4px 0", borderRight: gridLine }}>{side === 'front' ? i + 1 : i + 10}</div>
+                ))}
+                <div style={{ width: 28, textAlign: "center", fontSize: 10, color: K.t1, fontWeight: 700, padding: "4px 0" }}>TOT</div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
+                <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 600, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>PAR</div>
+                {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t3, fontWeight: 600, lineHeight: "22px", padding: "4px 0", borderRight: gridLine }}>{p}</div>)}
+                <div style={{ width: 28, textAlign: "center", fontSize: 13, color: K.t3, fontWeight: 600, padding: "4px 0" }}>{pars.reduce((a, b) => a + b, 0)}</div>
+              </div>
+
+              {sc.myPids.map(pid => <AttestPlayerRow key={pid} pid={pid} />)}
+              <AttestTeamRow pids={sc.myPids} isMyTeam={true} />
+              <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "2px 0" }} />
+
+              <div style={{ display: "flex", alignItems: "center", borderBottom: `2px solid ${K.bdr}40` }}>
+                <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 700, padding: "5px 0", borderRight: gridLine, paddingLeft: 2 }}>MATCH</div>
+                {sc.runningStatus.map((st, i) => {
+                  const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
+                  const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
+                  return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }}>{label}</div>;
+                })}
+                <div style={{ width: 28, padding: "5px 0" }} />
+              </div>
+
+              {sc.oppPids.map(pid => <AttestPlayerRow key={pid} pid={pid} />)}
+              <AttestTeamRow pids={sc.oppPids} isMyTeam={false} />
+
+              <div style={{ marginTop: 16 }}>
+                <button onClick={attestMatch} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.grn, border: "none", color: K.bg, fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
+                  Attest — Scores Are Correct
+                </button>
+                <button onClick={() => setShowAttest(false)} style={{ width: "100%", padding: 10, background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 4 }}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        </>);
+      })()}
+
+      {/* ═══ Finalize Popup ═══ */}
+      {showFinalize && (() => {
+        const sc = buildScorecardData();
+        const gridLine = `1px solid ${K.bdr}25`;
+
+        const PlayerRow = ({ pid }) => {
+          const pl = players.find(p => p.id === pid); if (!pl) return null;
+          const nh = getNineHcp(pid);
+          let grossTotal = 0;
+          const cells = Array.from({ length: 9 }, (_, h) => {
+            const s = getS(pid, h); const st = getStrokes(pid, h);
+            grossTotal += s;
+            return { s, st };
+          });
+          const initials = pl.name.split(' ').map(n => n[0]).join('');
+          return (
+            <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
+              <div style={{ width: 24, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>{initials}</div>
+              <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.t1, fontWeight: 700, padding: "4px 0", borderRight: gridLine, textAlign: "center" }}>{nh}</div>
+              {cells.map((c, h) => (
+                <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 700, color: K.t1, lineHeight: "22px", padding: "4px 0", borderRight: gridLine, position: "relative" }}>
+                  {c.s}{c.st > 0 && <span style={{ position: "absolute", top: 1, right: 1, color: "#3b82f6", fontSize: 8, fontWeight: 800, lineHeight: 1 }}>{"•".repeat(c.st)}</span>}
+                </div>
+              ))}
+              <div style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t1, padding: "4px 0" }}>{grossTotal}</div>
+            </div>
+          );
+        };
+
+        const TeamRow = ({ pids, isMyTeam }) => {
+          let total = 0;
+          return (
+            <div style={{ display: "flex", alignItems: "center", position: "relative" }}>
+              <div style={{ width: 44, flexShrink: 0, fontSize: 9, color: K.t3, fontWeight: 700, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>NET</div>
+              {Array.from({ length: 9 }, (_, h) => {
+                let tNet = 0;
+                pids.forEach(pid => { tNet += getS(pid, h) - getStrokes(pid, h); });
+                total += tNet;
+                const won = sc.holeResults[h] === (isMyTeam ? 1 : -1);
                 return <div key={h} style={{
                   flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t2, lineHeight: "22px",
                   padding: "3px 0", borderRight: won ? "none" : gridLine,
@@ -573,9 +784,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         };
 
         return (<>
-          <div onClick={() => setShowFinalize(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 500 }} />
-          {/* Confetti for wins */}
-          {matchResult === "WIN" && !isAlreadyFinalized && (
+          <div onClick={() => { setShowFinalize(false); setShowEditConfirm(false); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 500 }} />
+          {/* Confetti for wins — only on first finalize */}
+          {sc.matchResult === "WIN" && !isAlreadyFinalized && (
             <div style={{ position: "fixed", inset: 0, zIndex: 550, pointerEvents: "none", overflow: "hidden" }}>
               {Array.from({ length: 60 }, (_, i) => {
                 const colors = [K.act, K.grn, K.teal, "#fff", K.logoBright, K.red, "#ff6b6b", "#ffd93d"];
@@ -605,12 +816,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             </div>
           )}
           <div style={{ position: "fixed", inset: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-            <div style={{ background: K.bg, border: `1.5px solid ${resultColor}50`, borderRadius: 16, padding: "16px 12px 20px", width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ background: K.bg, border: `1.5px solid ${sc.resultColor}50`, borderRadius: 16, padding: "16px 12px 20px", width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto" }}>
               {/* Header */}
               <div style={{ textAlign: "center", marginBottom: 14 }}>
-                <div style={{ fontSize: 28, fontWeight: 800, color: resultColor }}>
-                  {matchResultText}
+                <div style={{ fontSize: 28, fontWeight: 800, color: sc.resultColor }}>
+                  {sc.matchResultText}
                 </div>
+                {isAttested && <div style={{ fontSize: 10, color: K.grn, fontWeight: 700, marginTop: 4, textTransform: "uppercase", letterSpacing: 1 }}>✓ Attested</div>}
+                {isAlreadyFinalized && !isAttested && <div style={{ fontSize: 10, color: K.warn, fontWeight: 700, marginTop: 4, textTransform: "uppercase", letterSpacing: 1 }}>Awaiting Attestation</div>}
               </div>
 
               {/* Hole numbers */}
@@ -630,15 +843,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               </div>
 
               {/* My team */}
-              {myPids.map(pid => <PlayerRow key={pid} pid={pid} isMyTeam={true} />)}
-              <TeamRow pids={myPids} />
+              {sc.myPids.map(pid => <PlayerRow key={pid} pid={pid} />)}
+              <TeamRow pids={sc.myPids} isMyTeam={true} />
 
               <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "2px 0" }} />
 
-              {/* Match status triangles — between teams */}
+              {/* Match status triangles */}
               <div style={{ display: "flex", alignItems: "center", borderBottom: `2px solid ${K.bdr}40` }}>
                 <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 700, padding: "5px 0", borderRight: gridLine, paddingLeft: 2 }}>MATCH</div>
-                {runningStatus.map((st, i) => {
+                {sc.runningStatus.map((st, i) => {
                   const label = st > 0 ? `▲${st}` : st < 0 ? `▼${Math.abs(st)}` : "—";
                   const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
                   return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }}>{label}</div>;
@@ -647,16 +860,47 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               </div>
 
               {/* Opp team */}
-              {oppPids.map(pid => <PlayerRow key={pid} pid={pid} isMyTeam={false} />)}
-              <TeamRow pids={oppPids} />
+              {sc.oppPids.map(pid => <PlayerRow key={pid} pid={pid} />)}
+              <TeamRow pids={sc.oppPids} isMyTeam={false} />
 
               <div style={{ marginTop: 16 }}>
-                <button onClick={async () => { await finalizeMatch(); setShowFinalize(false); }} style={{ width: "100%", padding: "14px", borderRadius: 12, background: isAlreadyFinalized ? K.warn : K.grn, border: "none", color: K.bg, fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
-                  {isAlreadyFinalized ? "Re-finalize Match" : "Finalize Match"}
-                </button>
-                <button onClick={() => setShowFinalize(false)} style={{ width: "100%", padding: 10, background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 4 }}>
-                  Go Back & Edit
-                </button>
+                {/* First finalize */}
+                {!isAlreadyFinalized && (
+                  <>
+                    <button onClick={async () => { await finalizeMatch(); setShowFinalize(false); }} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.grn, border: "none", color: K.bg, fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
+                      Finalize Match
+                    </button>
+                    <button onClick={() => setShowFinalize(false)} style={{ width: "100%", padding: 10, background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 4 }}>
+                      Go Back & Edit
+                    </button>
+                  </>
+                )}
+                {/* Already finalized: Edit Scores (comm only) + Close */}
+                {isAlreadyFinalized && (
+                  <>
+                    {isComm && !showEditConfirm && (
+                      <button onClick={() => setShowEditConfirm(true)} style={{ width: "100%", padding: "12px", borderRadius: 12, background: K.warn, border: "none", color: K.bg, fontSize: 14, fontWeight: 800, cursor: "pointer", marginBottom: 6 }}>
+                        Edit Scores
+                      </button>
+                    )}
+                    {isComm && showEditConfirm && (
+                      <div style={{ background: K.warn + "15", border: `1px solid ${K.warn}40`, borderRadius: 10, padding: 12, marginBottom: 6 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: K.t1, marginBottom: 10 }}>This will allow score edits. Continue?</div>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={() => { setShowEditConfirm(false); setShowFinalize(false); }} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.warn, border: "none", color: K.bg, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                            Yes
+                          </button>
+                          <button onClick={() => setShowEditConfirm(false)} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                            No
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    <button onClick={() => { setShowFinalize(false); setShowEditConfirm(false); }} style={{ width: "100%", padding: 10, background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 4 }}>
+                      Close
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -677,7 +921,6 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
   const handleScore = (val) => {
     saveScore(week, pid, curHole, val);
   };
-  // Shift button range if score is outside default range
   const maxBtn = defaultBtns[defaultBtns.length - 1];
   const minBtn = defaultBtns[0];
   let btns = defaultBtns;
