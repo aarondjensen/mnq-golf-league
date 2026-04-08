@@ -370,8 +370,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   <div style={{ width: 24, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, padding: "4px 0", borderRight: gridLine, paddingLeft: 4 }}>{initials}</div>
                   <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.acc, fontWeight: 700, padding: "4px 0", borderRight: gridLine, textAlign: "center" }}>{nh}</div>
                   {cells.map((c, h) => (
-                    <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 700, color: c.s <= 0 ? K.t3 + "30" : K.t1, lineHeight: "22px", padding: "4px 0", borderRight: h < 8 ? gridLine : "none" }}>
-                      {c.s > 0 ? <>{c.s}{c.st > 0 && <span style={{ color: "#f97316", fontSize: 14, letterSpacing: 1 }}>{"•".repeat(c.st)}</span>}</> : "·"}
+                    <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 700, color: c.s <= 0 ? K.t3 + "30" : K.t1, lineHeight: "22px", padding: "4px 0", borderRight: h < 8 ? gridLine : "none", position: "relative" }}>
+                      {c.s > 0 ? <>{c.s}{c.st > 0 && <span style={{ position: "absolute", top: 1, right: 1, color: "#f97316", fontSize: 8, fontWeight: 800, lineHeight: 1 }}>{"•".repeat(c.st)}</span>}</> : "·"}
                     </div>
                   ))}
                 </div>
@@ -541,8 +541,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div style={{ width: 24, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>{initials}</div>
               <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.acc, fontWeight: 700, padding: "4px 0", borderRight: gridLine, textAlign: "center" }}>{nh}</div>
               {cells.map((c, h) => (
-                <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 700, color: K.t1, lineHeight: "22px", padding: "4px 0", borderRight: gridLine }}>
-                  {c.s}{c.st > 0 && <span style={{ color: "#f97316", fontSize: 14, letterSpacing: 1 }}>{"•".repeat(c.st)}</span>}
+                <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 700, color: K.t1, lineHeight: "22px", padding: "4px 0", borderRight: gridLine, position: "relative" }}>
+                  {c.s}{c.st > 0 && <span style={{ position: "absolute", top: 1, right: 1, color: "#f97316", fontSize: 8, fontWeight: 800, lineHeight: 1 }}>{"•".repeat(c.st)}</span>}
                 </div>
               ))}
               <div style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t1, padding: "4px 0" }}>{grossTotal}</div>
