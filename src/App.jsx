@@ -44,6 +44,7 @@ export default function GolfLeagueApp() {
   const [pullY, setPullY] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
   const touchStart = useRef(0);
+  const pullYRef = useRef(0);
   const PULL_THRESHOLD = 80;
 
   const toggleTheme = () => {
@@ -61,20 +62,28 @@ export default function GolfLeagueApp() {
   const onTouchMove = useCallback((e) => {
     if (!touchStart.current || refreshing) return;
     const diff = e.touches[0].clientY - touchStart.current;
-    if (diff > 0 && window.scrollY === 0) setPullY(Math.min(diff * 0.4, 120));
-    else setPullY(0);
+    if (diff > 0 && window.scrollY === 0) {
+      const val = Math.min(diff * 0.4, 120);
+      pullYRef.current = val;
+      setPullY(val);
+    } else {
+      pullYRef.current = 0;
+      setPullY(0);
+    }
   }, [refreshing]);
 
   const onTouchEnd = useCallback(() => {
-    if (pullY >= PULL_THRESHOLD && !refreshing) {
+    if (pullYRef.current >= PULL_THRESHOLD && !refreshing) {
       setRefreshing(true);
       setPullY(PULL_THRESHOLD);
+      pullYRef.current = PULL_THRESHOLD;
       setTimeout(() => window.location.reload(), 600);
     } else {
       setPullY(0);
+      pullYRef.current = 0;
     }
     touchStart.current = 0;
-  }, [pullY, refreshing]);
+  }, [refreshing]);
 
   // Firebase Auth listener
   useEffect(() => {
