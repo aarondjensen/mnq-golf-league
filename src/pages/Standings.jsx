@@ -191,6 +191,8 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
           );
         })}
       </div>
+      {/* Scroll spacer — ensures expanded content at bottom of list is always scrollable into view */}
+      {expanded && <div style={{ height: 300 }} />}
     </div>
   );
 }
