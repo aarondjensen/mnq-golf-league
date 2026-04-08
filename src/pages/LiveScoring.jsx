@@ -394,8 +394,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               );
             };
 
-            return (
-            <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderTop: "none", borderRadius: "0 0 8px 8px", padding: "6px 4px", marginBottom: 8 }}>
+            return (<>
+            <div onClick={() => setShowScorecard(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 400 }} />
+            <div style={{ position: "fixed", inset: 0, zIndex: 450, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
+            <div style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 12, padding: "10px 6px 14px", width: "100%", maxWidth: 420, maxHeight: "85vh", overflowY: "auto" }}>
               {/* Hole numbers */}
               <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
                 <div style={{ width: 36, flexShrink: 0, fontSize: 10, color: K.t2, fontWeight: 700, padding: "4px 0", borderRight: gridLine, paddingLeft: 4 }}>HOLE</div>
@@ -430,8 +432,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               {/* Opp team */}
               {scOppPids.map(pid => <ScPlayerRow key={pid} pid={pid} />)}
               <ScTeamRow pids={scOppPids} side="opp" />
+
+              <button onClick={() => setShowScorecard(false)} style={{ width: "100%", padding: 10, background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 8 }}>
+                Close
+              </button>
             </div>
-            );
+            </div>
+            </>);
           })()}
         </>);
       })()}
