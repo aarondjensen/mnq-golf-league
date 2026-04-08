@@ -54,15 +54,20 @@ export default function GolfLeagueApp() {
     setDarkMode(!darkMode);
   };
 
+  const getScrollTop = () => {
+    const el = document.querySelector('.app-body');
+    return el ? el.scrollTop : window.scrollY;
+  };
+
   const onTouchStart = useCallback((e) => {
-    if (window.scrollY === 0) touchStart.current = e.touches[0].clientY;
+    if (getScrollTop() === 0) touchStart.current = e.touches[0].clientY;
     else touchStart.current = 0;
   }, []);
 
   const onTouchMove = useCallback((e) => {
     if (!touchStart.current || refreshing) return;
     const diff = e.touches[0].clientY - touchStart.current;
-    if (diff > 0 && window.scrollY === 0) {
+    if (diff > 0 && getScrollTop() === 0) {
       const val = Math.min(diff * 0.4, 120);
       pullYRef.current = val;
       setPullY(val);
@@ -362,8 +367,8 @@ export default function GolfLeagueApp() {
         <div onClick={() => setShowMore(false)} style={{ position: "fixed", inset: 0, zIndex: 150 }} />
       )}
 
-      {/* Bottom Nav — sticky at bottom */}
-      <div className="bottom-nav" style={{ position: "sticky", bottom: 0, left: 0, right: 0, margin: "0 auto" }}>
+      {/* Bottom Nav */}
+      <div className="bottom-nav" style={{ margin: "0 auto" }}>
         {tabs.map(t => {
           const active = tab === t.id;
           return (

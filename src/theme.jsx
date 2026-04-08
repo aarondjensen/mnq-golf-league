@@ -76,10 +76,10 @@ export const getCSS = (k) => `
   input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
   input[type=number] { -moz-appearance: textfield; }
   .hole-input:focus { outline: 2px solid ${k.act}; outline-offset: -1px; background: ${k.cardHi} !important; }
-  .app-shell { min-height: 100vh; min-height: -webkit-fill-available; background: ${k.bg}; color: ${k.t1}; font-family: 'League Spartan', sans-serif; display: flex; flex-direction: column; font-size: 15px; letter-spacing: 0.8px; overflow-x: hidden; }
+  .app-shell { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: ${k.bg}; color: ${k.t1}; font-family: 'League Spartan', sans-serif; display: flex; flex-direction: column; font-size: 15px; letter-spacing: 0.8px; overflow: hidden; }
   .app-header { padding: 12px 20px; background: ${k.bg}; display: flex; justify-content: center; align-items: center; position: relative; }
-  .app-body { flex: 1; }
-  .main-content { padding: 12px 14px; padding-bottom: 20px; max-width: 900px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+  .app-body { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
+  .main-content { padding: 12px 14px; padding-bottom: 24px; max-width: 900px; width: 100%; margin: 0 auto; box-sizing: border-box; }
   .bottom-nav { background: ${k.card}f0; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid ${k.bdr}; display: flex; justify-content: space-around; padding: 10px 0 28px; padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px)); z-index: 200; max-width: 900px; width: 100%; }
   .admin-grid { display: flex; flex-direction: column; gap: 6px; }
   .admin-sections-grid { display: flex; flex-direction: column; gap: 6px; }
