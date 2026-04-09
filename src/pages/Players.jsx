@@ -71,7 +71,6 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
                 {p.name}
                 {commPlayerIds.includes(p.id) && <span style={{ fontSize: 8, fontWeight: 700, color: K.warn, background: K.warn + "18", padding: "1px 5px", borderRadius: 3, textTransform: "uppercase", letterSpacing: .5 }}>Comm</span>}
               </div>
-              <div style={{ fontSize: 11, color: K.t3 }}>{p.totalRounds} rds</div>
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 <button onClick={() => setExpanded(expanded === p.id ? null : p.id)} style={{
                   background: K.logoBright + "20", border: `1px solid ${K.logoBright}50`, borderRadius: 6, padding: "4px 10px", cursor: "pointer",
