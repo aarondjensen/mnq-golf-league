@@ -323,14 +323,35 @@ export default function GolfLeagueApp() {
             {syncing && <span className="pu" style={{ fontSize: 8, color: K.grn }}>● LIVE</span>}
           </div>
           <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
-          <div style={{ position: "absolute", right: 14, display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ position: "absolute", right: 14, display: "flex", alignItems: "center" }}>
             {isComm ? (
-              <button onClick={() => setShowPlayerPicker(true)} style={{ background: impersonating ? K.teal + "15" : "none", border: `1px solid ${impersonating ? K.teal + "40" : K.bdr}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
-                <span style={{ fontSize: 11, color: impersonating ? K.teal : K.t3, fontWeight: 600 }}>{impersonating ? impersonating.name : leagueUser.name}</span>
+              <button onClick={() => setShowPlayerPicker(true)} style={{ background: impersonating ? K.teal + "15" : "none", border: `1px solid ${impersonating ? K.teal + "40" : K.bdr}`, borderRadius: 6, padding: "3px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}>
+                <div style={{ textAlign: "right", lineHeight: 1.15 }}>
+                  {(() => {
+                    const name = impersonating ? impersonating.name : leagueUser.name;
+                    const parts = name.split(' ');
+                    const first = parts[0] || '';
+                    const last = parts.slice(1).join(' ') || '';
+                    return (<>
+                      <div style={{ fontSize: 10, color: impersonating ? K.teal : K.t3, fontWeight: 600 }}>{first}</div>
+                      {last && <div style={{ fontSize: 10, color: impersonating ? K.teal : K.t3, fontWeight: 700 }}>{last}</div>}
+                    </>);
+                  })()}
+                </div>
                 <span style={{ fontSize: 8, color: K.t3 }}>▾</span>
               </button>
             ) : (
-              <div style={{ fontSize: 11, color: K.t3, fontWeight: 500 }}>{leagueUser.name}</div>
+              <div style={{ textAlign: "right", lineHeight: 1.15 }}>
+                {(() => {
+                  const parts = leagueUser.name.split(' ');
+                  const first = parts[0] || '';
+                  const last = parts.slice(1).join(' ') || '';
+                  return (<>
+                    <div style={{ fontSize: 10, color: K.t3, fontWeight: 500 }}>{first}</div>
+                    {last && <div style={{ fontSize: 10, color: K.t3, fontWeight: 600 }}>{last}</div>}
+                  </>);
+                })()}
+              </div>
             )}
           </div>
         </div>
