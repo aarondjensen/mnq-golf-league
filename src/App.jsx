@@ -88,6 +88,14 @@ export default function GolfLeagueApp() {
     }
   }, [refreshing]);
 
+  const resetPull = useCallback(() => {
+    if (!refreshing) {
+      setPullY(0);
+      pullYRef.current = 0;
+      touchStart.current = 0;
+    }
+  }, [refreshing]);
+
   const onTouchEnd = useCallback(() => {
     if (pullYRef.current >= PULL_THRESHOLD && !refreshing) {
       setRefreshing(true);
@@ -95,11 +103,21 @@ export default function GolfLeagueApp() {
       pullYRef.current = PULL_THRESHOLD;
       setTimeout(() => window.location.reload(), 600);
     } else {
-      setPullY(0);
-      pullYRef.current = 0;
+      resetPull();
     }
-    touchStart.current = 0;
-  }, [refreshing]);
+  }, [refreshing, resetPull]);
+
+  // Safety: if pull indicator is showing but no refresh triggered, reset after 3s
+  useEffect(() => {
+    if (pullY > 0 && !refreshing) {
+      const safety = setTimeout(() => {
+        setPullY(0);
+        pullYRef.current = 0;
+        touchStart.current = 0;
+      }, 3000);
+      return () => clearTimeout(safety);
+    }
+  }, [pullY, refreshing]);
 
   // Firebase Auth listener
   useEffect(() => {
@@ -241,7 +259,7 @@ export default function GolfLeagueApp() {
 
   const tabs = [
     { id: "standings", label: "Standings", icon: "trophy" },
-    { id: "scoring", label: "Score", icon: "flag" },
+    { id: "scoring", label: "Scoring", icon: "flag" },
     { id: "schedule", label: "Schedule", icon: "calendar" },
   ];
 
@@ -285,7 +303,7 @@ export default function GolfLeagueApp() {
   const bannerGrn = "#1a8c3f";
 
   return (
-    <div className="app-shell" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}>
+    <div className="app-shell" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={resetPull}>
       {/* Pull-to-refresh indicator */}
       {pullY > 0 && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 999, display: "flex", justifyContent: "center", paddingTop: Math.min(pullY, 100) - 20, transition: refreshing ? "all .3s" : "none" }}>
