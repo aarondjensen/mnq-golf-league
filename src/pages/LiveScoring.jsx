@@ -584,11 +584,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               });
               const initials = pl.name.split(' ').map(n => n[0]).join('');
               return (
-                <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
-                  <div style={{ width: 24, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, padding: "4px 0", borderRight: gridLine, paddingLeft: 4 }}>{initials}</div>
-                  <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.t1, fontWeight: 700, padding: "4px 0", borderRight: gridLine, textAlign: "center" }}>{nh}</div>
+                <div style={{ display: "flex", alignItems: "stretch", borderBottom: gridLine }}>
+                  <div style={{ width: 24, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, borderRight: gridLine, paddingLeft: 4, display: "flex", alignItems: "center" }}>{initials}</div>
+                  <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.t1, fontWeight: 700, borderRight: gridLine, display: "flex", alignItems: "center", justifyContent: "center" }}>{nh}</div>
                   {cells.map((c, h) => (
-                    <div key={h} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 32, borderRight: h < 8 ? gridLine : "none" }}>
+                    <div key={h} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 38, borderRight: h < 8 ? gridLine : "none" }}>
                       <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={13} />
                     </div>
                   ))}
@@ -682,6 +682,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           scOppPids.forEach(pid => { oN += getS(pid, h) - getStrokes(pid, h); });
           scHoleResults.push(mN < oN ? 1 : oN < mN ? -1 : 0);
         }
+        // Running match status: cumulative holes up/down
+        const scRunningStatus = [];
+        let cum = 0;
+        scHoleResults.forEach(r => { cum += r; scRunningStatus.push(cum); });
 
         const SignedPlayerRow = ({ pid }) => {
           const pl = players.find(p => p.id === pid); if (!pl) return null;
@@ -747,7 +751,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         return (
           <div style={{ marginBottom: 6 }}>
             {/* My team card */}
-            <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, padding: "10px 8px 8px", marginBottom: 8 }}>
+            <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, padding: "10px 8px 8px", marginBottom: 4 }}>
               <HoleHeaderRow />
               {scMyPids.map(pid => {
                 const pl = players.find(p => p.id === pid);
@@ -758,6 +762,19 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               })}
               <div style={{ fontSize: 13, fontWeight: 700, color: K.t3, marginBottom: 3, marginTop: 8, textTransform: "uppercase", letterSpacing: .5 }}>Team</div>
               <SignedTeamRow pids={scMyPids} isMyTeam={true} />
+            </div>
+
+            {/* Match status row — between teams */}
+            <div style={{ display: "flex", padding: "6px 8px", marginBottom: 4 }}>
+              {scHoleResults.map((st, i) => {
+                const colBorderR = i < 8 ? { borderRight: `1px solid ${K.bdr}30` } : {};
+                if (st === null) return <div key={i} style={{ flex: 1, height: 26, ...colBorderR }} />;
+                const running = scRunningStatus[i];
+                const color = running > 0 ? matchGrn : running < 0 ? K.red : K.t3;
+                return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "26px", ...colBorderR }}>
+                  {running > 0 ? <><span style={{ fontSize: 14 }}>▲</span>{running}</> : running < 0 ? <><span style={{ fontSize: 14 }}>▼</span>{Math.abs(running)}</> : "—"}
+                </div>;
+              })}
             </div>
 
             {/* Opp team card */}
@@ -828,15 +845,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           });
           const initials = pl.name.split(' ').map(n => n[0]).join('');
           return (
-            <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
-              <div style={{ width: 24, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>{initials}</div>
-              <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.t1, fontWeight: 700, padding: "4px 0", borderRight: gridLine, textAlign: "center" }}>{nh}</div>
+            <div style={{ display: "flex", alignItems: "stretch", borderBottom: gridLine }}>
+              <div style={{ width: 24, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, borderRight: gridLine, paddingLeft: 2, display: "flex", alignItems: "center" }}>{initials}</div>
+              <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.t1, fontWeight: 700, borderRight: gridLine, display: "flex", alignItems: "center", justifyContent: "center" }}>{nh}</div>
               {cells.map((c, h) => (
-                <div key={h} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 32, borderRight: gridLine }}>
+                <div key={h} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 38, borderRight: gridLine }}>
                   <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={13} />
                 </div>
               ))}
-              <div style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t1, padding: "4px 0" }}>{grossTotal}</div>
+              <div style={{ width: 28, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: K.t1 }}>{grossTotal}</div>
             </div>
           );
         };
@@ -955,15 +972,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           });
           const initials = pl.name.split(' ').map(n => n[0]).join('');
           return (
-            <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
-              <div style={{ width: 24, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>{initials}</div>
-              <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.t1, fontWeight: 700, padding: "4px 0", borderRight: gridLine, textAlign: "center" }}>{nh}</div>
+            <div style={{ display: "flex", alignItems: "stretch", borderBottom: gridLine }}>
+              <div style={{ width: 24, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, borderRight: gridLine, paddingLeft: 2, display: "flex", alignItems: "center" }}>{initials}</div>
+              <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.t1, fontWeight: 700, borderRight: gridLine, display: "flex", alignItems: "center", justifyContent: "center" }}>{nh}</div>
               {cells.map((c, h) => (
-                <div key={h} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 32, borderRight: gridLine }}>
+                <div key={h} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 38, borderRight: gridLine }}>
                   <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={13} />
                 </div>
               ))}
-              <div style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t1, padding: "4px 0" }}>{grossTotal}</div>
+              <div style={{ width: 28, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: K.t1 }}>{grossTotal}</div>
             </div>
           );
         };
