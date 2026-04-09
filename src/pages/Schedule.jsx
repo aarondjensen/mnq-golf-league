@@ -338,21 +338,32 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
                 return (
                   <div key={mi} style={{ background: K.card, borderRadius: 8, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}40`, padding: "8px 10px", display: "flex", alignItems: "center" }}>
-                    <div style={{ flex: 1, textAlign: "right", paddingRight: 18, overflow: "hidden" }}>
-                      <div style={{ fontSize: 15, color: K.t1, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player1)}</div>
-                      <div style={{ fontSize: 15, color: K.t1, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player2)}</div>
+                    {/* Left team */}
+                    <div style={{ flex: 1, textAlign: "right", paddingRight: res && score1 > score2 ? 8 : 18, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                      <div style={{ fontSize: 15, color: res && score1 > score2 ? K.t1 : K.t1, fontWeight: res && score1 > score2 ? 700 : 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player1)}</div>
+                      <div style={{ fontSize: 15, color: res && score1 > score2 ? K.t1 : K.t1, fontWeight: res && score1 > score2 ? 700 : 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player2)}</div>
                     </div>
-                    <div style={{ textAlign: "center", minWidth: 74, flexShrink: 0, padding: "0 4px" }}>
+                    {/* Winner triangle left */}
+                    {res && score1 > score2 && (
+                      <div style={{ color: "#1a8c3f", fontSize: 11, marginRight: 4, flexShrink: 0 }}>◀</div>
+                    )}
+                    {/* Center — score or tee time */}
+                    <div style={{ textAlign: "center", minWidth: 74, flexShrink: 0, padding: "0 2px" }}>
                       {res ? (<>
-                        <div style={{ fontSize: 17, fontWeight: 800, color: K.t1 }}>{score1}–{score2}</div>
+                        <div style={{ fontSize: 20, fontWeight: 800, color: K.t1, letterSpacing: .5 }}>{score1}–{score2}</div>
                         {res.matchResultText && <div style={{ fontSize: 9, color: K.t3, fontWeight: 600 }}>{res.matchResultText}</div>}
                       </>) : (
                         <div style={{ fontSize: 18, fontWeight: 800, color: K.act, letterSpacing: .3 }}>{formatTeeTime(origIdx)}</div>
                       )}
                     </div>
-                    <div style={{ flex: 1, textAlign: "left", paddingLeft: 18, overflow: "hidden" }}>
-                      <div style={{ fontSize: 15, color: K.t1, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player1)}</div>
-                      <div style={{ fontSize: 15, color: K.t1, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player2)}</div>
+                    {/* Winner triangle right */}
+                    {res && score2 > score1 && (
+                      <div style={{ color: "#1a8c3f", fontSize: 11, marginLeft: 4, flexShrink: 0 }}>▶</div>
+                    )}
+                    {/* Right team */}
+                    <div style={{ flex: 1, textAlign: "left", paddingLeft: res && score2 > score1 ? 8 : 18, overflow: "hidden" }}>
+                      <div style={{ fontSize: 15, color: res && score2 > score1 ? K.t1 : K.t1, fontWeight: res && score2 > score1 ? 700 : 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player1)}</div>
+                      <div style={{ fontSize: 15, color: res && score2 > score1 ? K.t1 : K.t1, fontWeight: res && score2 > score1 ? 700 : 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player2)}</div>
                     </div>
                   </div>
                 );
