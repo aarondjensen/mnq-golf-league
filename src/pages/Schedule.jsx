@@ -192,9 +192,28 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       'END:VCALENDAR',
     ].join('\r\n');
 
-    // Use data URI — works on iOS Safari, Android, and desktop
-    const dataUri = 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics);
-    window.open(dataUri);
+    // iOS Safari needs location.href with a data URI to trigger calendar import
+    // Desktop/Android can use blob download as fallback
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    if (isIOS) {
+      // On iOS, create a blob URL and navigate to it — Safari will recognize .ics
+      const blob = new Blob([ics], { type: 'text/calendar' });
+      const url = URL.createObjectURL(blob);
+      window.location.href = url;
+      // Clean up after a delay
+      setTimeout(() => URL.revokeObjectURL(url), 5000);
+    } else {
+      // Desktop/Android: standard download
+      const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `mnq-golf-${year}-schedule.ics`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
   };
 
   // ── My Schedule row ──
