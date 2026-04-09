@@ -76,7 +76,7 @@ export default function GolfLeagueApp() {
     touchStart.current = 0;
   }, []);
 
-  // Native touch handlers on app-body for reliable pull-to-refresh
+  // Native touch handlers on document for reliable pull-to-refresh (works through popups)
   useEffect(() => {
     const el = document.querySelector('.app-body');
     if (!el) return;
@@ -86,8 +86,6 @@ export default function GolfLeagueApp() {
       const tag = target.tagName?.toLowerCase();
       if (tag === 'button' || tag === 'input' || tag === 'select' || tag === 'textarea') return true;
       if (target.closest('button')) return true;
-      // Block pull-to-refresh when a popup/overlay is open
-      if (target.closest('[data-popup]')) return true;
       return false;
     };
 
@@ -124,16 +122,16 @@ export default function GolfLeagueApp() {
       }
     };
 
-    el.addEventListener('touchstart', handleStart, { passive: true });
-    el.addEventListener('touchmove', handleMove, { passive: false });
-    el.addEventListener('touchend', handleEnd, { passive: true });
-    el.addEventListener('touchcancel', handleEnd, { passive: true });
+    document.addEventListener('touchstart', handleStart, { passive: true });
+    document.addEventListener('touchmove', handleMove, { passive: false });
+    document.addEventListener('touchend', handleEnd, { passive: true });
+    document.addEventListener('touchcancel', handleEnd, { passive: true });
 
     return () => {
-      el.removeEventListener('touchstart', handleStart);
-      el.removeEventListener('touchmove', handleMove);
-      el.removeEventListener('touchend', handleEnd);
-      el.removeEventListener('touchcancel', handleEnd);
+      document.removeEventListener('touchstart', handleStart);
+      document.removeEventListener('touchmove', handleMove);
+      document.removeEventListener('touchend', handleEnd);
+      document.removeEventListener('touchcancel', handleEnd);
     };
   }, [refreshing]);
 
