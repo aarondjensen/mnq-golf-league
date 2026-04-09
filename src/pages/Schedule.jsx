@@ -345,7 +345,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                     </div>
                     {/* Winner triangle left */}
                     {res && score1 > score2 && (
-                      <div style={{ color: "#1a8c3f", fontSize: 11, marginRight: 4, flexShrink: 0 }}>◀</div>
+                      <div style={{ color: "#1a8c3f", fontSize: 16, fontWeight: 800, marginRight: 2, flexShrink: 0, lineHeight: 1 }}>◀</div>
                     )}
                     {/* Center — score or tee time */}
                     <div style={{ textAlign: "center", minWidth: 74, flexShrink: 0, padding: "0 2px" }}>
@@ -358,7 +358,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                     </div>
                     {/* Winner triangle right */}
                     {res && score2 > score1 && (
-                      <div style={{ color: "#1a8c3f", fontSize: 11, marginLeft: 4, flexShrink: 0 }}>▶</div>
+                      <div style={{ color: "#1a8c3f", fontSize: 16, fontWeight: 800, marginLeft: 2, flexShrink: 0, lineHeight: 1 }}>▶</div>
                     )}
                     {/* Right team */}
                     <div style={{ flex: 1, textAlign: "left", paddingLeft: res && score2 > score1 ? 8 : 18, overflow: "hidden" }}>
