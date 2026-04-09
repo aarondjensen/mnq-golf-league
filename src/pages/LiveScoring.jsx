@@ -67,6 +67,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const [showFinalize, setShowFinalize] = useState(false);
   const [showEditConfirm, setShowEditConfirm] = useState(false);
   const [showAttest, setShowAttest] = useState(false);
+  const [absentPlayers, setAbsentPlayers] = useState({}); // { playerId: true }
+  // Load absent status from holeScores on mount/match change
+  useEffect(() => {
+    const abs = {};
+    [...t1Players, ...t2Players].forEach(pid => {
+      if (holeScores[`w${week}_p${pid}_habsent`] === 1) abs[pid] = true;
+    });
+    setAbsentPlayers(abs);
+  }, [week, matchKey]);
   const initialJump = useRef(false);
   const matchGrn = "#1a8c3f";
 
@@ -214,6 +223,25 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     const p = players.find(pl => pl.id === pid);
     return p ? Math.round(p.handicapIndex || 0) : 0;
   };
+
+  // Absent player helpers
+  const getTeammate = (pid) => {
+    if (t1Players.includes(pid)) return t1Players.find(p => p !== pid);
+    if (t2Players.includes(pid)) return t2Players.find(p => p !== pid);
+    return null;
+  };
+  const isPlayerAbsent = (pid) => !!absentPlayers[pid];
+  const toggleAbsent = (pid) => {
+    const nowAbsent = !absentPlayers[pid];
+    setAbsentPlayers(prev => {
+      const next = { ...prev };
+      if (nowAbsent) next[pid] = true; else delete next[pid];
+      return next;
+    });
+    // Persist to Firestore using saveScore with special "absent" hole marker
+    saveScore(week, pid, "absent", nowAbsent ? 1 : 0);
+  };
+
   const allP = isTeamNet
     ? [...t1Players, ...t2Players]
     : (() => { const t1s = [...t1Players].sort((a, b) => getHcp(a) - getHcp(b)); const t2s = [...t2Players].sort((a, b) => getHcp(a) - getHcp(b)); return [t1s[0], t2s[0], t1s[1], t2s[1]]; })();
@@ -221,9 +249,20 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const par = pars[curHole] || 4;
   const hcp = hcps[curHole] || 1;
 
-  const getS = (pid, h) => holeScores[`w${week}_p${pid}_h${h}`] || 0;
+  // Raw score from Firestore
+  const getRawScore = (pid, h) => holeScores[`w${week}_p${pid}_h${h}`] || 0;
+  // getS returns teammate's score if player is absent (scores replicated for match purposes)
+  const getS = (pid, h) => {
+    if (isPlayerAbsent(pid)) {
+      const tm = getTeammate(pid);
+      return tm ? getRawScore(tm, h) : 0;
+    }
+    return getRawScore(pid, h);
+  };
   const getNineHcp = (pid) => {
-    const p = players.find(pl => pl.id === pid);
+    // Absent player uses teammate's handicap (since their scores are replicated)
+    const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
+    const p = players.find(pl => pl.id === effectivePid);
     return p ? Math.round(p.handicapIndex || 0) : 0;
   };
   const getStrokesMap = (nh) => {
@@ -837,19 +876,21 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         };
 
         const MatchStatusRow = () => {
-          const remainingAfterClinch = scClinchHole !== null ? 8 - scClinchHole : 0;
           return (
             <div style={{ display: "flex", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 8, padding: "4px 0", marginBottom: 4, marginTop: 4 }}>
               <div style={{ ...lblStyle, height: 28, fontSize: 8, fontWeight: 800, color: K.t2 }}>MATCH</div>
               {scRunningStatus.map((rs, i) => {
                 const colBorderR = i < 8 ? { borderRight: colBdr } : {};
+                // After clinch — empty
+                if (scClinchHole !== null && i > scClinchHole) {
+                  return <div key={i} style={{ flex: 1, height: 28, ...colBorderR }} />;
+                }
+                // On clinch hole — show result text
                 if (scClinchHole !== null && i === scClinchHole) {
                   const color = rs > 0 ? matchGrn : rs < 0 ? K.red : K.t3;
-                  return <div key={i} style={{ flex: 1 + remainingAfterClinch, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "28px" }}>{scClinchText}</div>;
+                  return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>{scClinchText}</div>;
                 }
-                if (scClinchHole !== null && i > scClinchHole) {
-                  return null;
-                }
+                // Normal hole — show running status
                 const color = rs > 0 ? matchGrn : rs < 0 ? K.red : K.t3;
                 return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>
                   {rs > 0 ? <><span style={{ fontSize: 14 }}>▲</span>{rs}</> : rs < 0 ? <><span style={{ fontSize: 14 }}>▼</span>{Math.abs(rs)}</> : "—"}
@@ -917,9 +958,31 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
       {allP.map(pid => {
         const pl = players.find(p => p.id === pid); if (!pl) return null;
+        const absent = isPlayerAbsent(pid);
         const score = getS(pid, curHole); const strokes = getStrokes(pid, curHole); const nh = getNineHcp(pid); const run = getRunning(pid);
         const btns = par === 3 ? [1,2,3,4,5,6,7] : par === 5 ? [2,3,4,5,6,7,8] : [2,3,4,5,6,7,8];
-        return <PlayerScoreCard key={pid} pl={pl} score={score} strokes={strokes} nh={nh} run={run} btns={btns} par={par} pid={pid} week={week} curHole={curHole} saveScore={guardedSaveScore} K={K} />;
+        return <div key={pid}>
+          {/* Absent toggle */}
+          {!isAlreadyFinalized && (
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "2px 4px 0", gap: 6 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 10, color: absent ? K.red : K.t3, fontWeight: 600 }}>
+                <input type="checkbox" checked={absent} onChange={() => toggleAbsent(pid)} style={{ width: 14, height: 14, cursor: "pointer", accentColor: K.red }} />
+                Absent
+              </label>
+            </div>
+          )}
+          {absent ? (
+            <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "12px 14px", marginBottom: 6, opacity: 0.5 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: K.t1 }}>{pl.name}</div>
+                <span style={{ fontSize: 10, color: K.red, fontWeight: 700, background: K.red + "15", padding: "2px 6px", borderRadius: 4 }}>ABSENT</span>
+              </div>
+              <div style={{ fontSize: 11, color: K.t3, marginTop: 4 }}>Teammate's scores will be used for match calculations</div>
+            </div>
+          ) : (
+            <PlayerScoreCard pl={pl} score={score} strokes={strokes} nh={nh} run={run} btns={btns} par={par} pid={pid} week={week} curHole={curHole} saveScore={guardedSaveScore} K={K} />
+          )}
+        </div>;
       })}
       </>)}
       {/* Finalize / Attest / Show Match Details buttons */}
