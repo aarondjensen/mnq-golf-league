@@ -731,10 +731,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             break;
           }
         }
-        // If no clinch but match is over (all 9 holes), show final result
+        // If no clinch but match is over (all 9 holes), show final result on hole 9
         if (scClinchHole === null && scRunningStatus.length === 9) {
+          scClinchHole = 8;
           const final = scRunningStatus[8];
           if (final !== 0) scClinchText = `${Math.abs(final)}UP`;
+          else scClinchText = "TIED";
         }
 
         const SignedPlayerRow = ({ pid }) => {
@@ -1110,11 +1112,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div style={{ display: "flex", alignItems: "center", borderBottom: `2px solid ${K.bdr}40` }}>
                 <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 700, padding: "5px 0", borderRight: gridLine, paddingLeft: 2 }}>MATCH</div>
                 {sc.runningStatus.map((st, i) => {
-                  if (sc.matchEndHole < 8 && i === sc.matchEndHole) {
+                  if (i === sc.matchEndHole) {
                     const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
                     return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color, fontWeight: 800, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }}>{sc.matchResultText}</div>;
                   }
-                  if (sc.matchEndHole < 8 && i > sc.matchEndHole) {
+                  if (i > sc.matchEndHole) {
                     return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }} />;
                   }
                   const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
@@ -1235,11 +1237,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             <div style={{ ...lblStyle, height: 28, fontSize: 8, fontWeight: 800, color: K.t2 }}>MATCH</div>
             {sc.runningStatus.map((st, i) => {
               const colBorderR = i < 8 ? { borderRight: colBdr } : {};
-              if (sc.matchEndHole < 8 && i === sc.matchEndHole) {
+              if (i === sc.matchEndHole) {
                 const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
                 return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>{sc.matchResultText}</div>;
               }
-              if (sc.matchEndHole < 8 && i > sc.matchEndHole) {
+              if (i > sc.matchEndHole) {
                 return <div key={i} style={{ flex: 1, height: 28, ...colBorderR }} />;
               }
               const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
