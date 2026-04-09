@@ -152,8 +152,8 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           padding: "10px 12px", cursor: "pointer",
           opacity: dimmed ? 0.7 : 1, gap: 0,
         }}>
-          <div style={{ width: 52, flexShrink: 0, fontSize: 13, fontWeight: 700, color: K.t1 }}>Wk {wk.week}</div>
-          <div style={{ width: 52, flexShrink: 0, fontSize: 12, color: K.t3 }}>{wk.date || "—"}</div>
+          <div style={{ width: 62, flexShrink: 0, fontSize: 13, fontWeight: 700, color: K.t1 }}>Week {wk.week}</div>
+          <div style={{ width: 56, flexShrink: 0, fontSize: 12, color: K.t3 }}>{wk.date || "—"}</div>
           <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: K.act, textAlign: "center" }}>{formatTeeTime(origIdx)}</div>
           <div style={{ width: 58, flexShrink: 0, textAlign: "right" }}>
             <Pill color={K.logoBright} style={{ fontSize: 9 }}>{side === 'front' ? 'FRONT 9' : 'BACK 9'}</Pill>
@@ -287,7 +287,6 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
   return (
     <div>
-      <SectionTitle>Schedule</SectionTitle>
 
       {/* Filter bar */}
       <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
@@ -317,8 +316,8 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       {/* My Schedule column header */}
       {myOnly && (
         <div style={{ display: "flex", alignItems: "center", padding: "0 12px 6px", fontSize: 9, color: K.t3, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8 }}>
-          <div style={{ width: 52 }}>Week</div>
-          <div style={{ width: 52 }}>Date</div>
+          <div style={{ width: 62 }}>Week</div>
+          <div style={{ width: 56 }}>Date</div>
           <div style={{ flex: 1, textAlign: "center" }}>Tee Time</div>
           <div style={{ width: 58, textAlign: "right" }}>Side</div>
           <div style={{ width: 18 }} />
