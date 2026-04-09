@@ -802,7 +802,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       </>)}
       {/* Finalize / Attest / Show Match Details buttons */}
       {allComplete && !showFinalize && !showAttest && !isAlreadyFinalized && (
-        <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.grn + "15", border: `1.5px solid ${K.grn}50`, color: K.grn, fontSize: 15, fontWeight: 700 }}>
+        <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: "#3b82f615", border: `1.5px solid #3b82f650`, color: "#3b82f6", fontSize: 15, fontWeight: 700 }}>
           All Holes Complete — Sign Scorecard
         </button>
       )}
@@ -1094,7 +1094,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 {/* First finalize — Sign Scorecard */}
                 {!isAlreadyFinalized && (
                   <>
-                    <button onClick={async () => { await finalizeMatch(); setShowFinalize(false); }} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.grn, border: "none", color: K.bg, fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
+                    <button onClick={async () => { await finalizeMatch(); setShowFinalize(false); }} style={{ width: "100%", padding: "14px", borderRadius: 12, background: "#3b82f6", border: "none", color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
                       Sign Scorecard
                     </button>
                     <button onClick={() => setShowFinalize(false)} style={{ width: "100%", padding: 10, background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 4 }}>
