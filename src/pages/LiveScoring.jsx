@@ -409,24 +409,24 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       )}
       {/* Status banners */}
       {isWeekLocked && (
-        <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 6, fontSize: 11, color: K.warn, fontWeight: 700, textAlign: "center" }}>
+        <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 6, fontSize: 13, color: K.warn, fontWeight: 700, textAlign: "center" }}>
           Week {week} is locked — scores are read-only
         </div>
       )}
       {isAttested && !isWeekLocked && (
-        <div style={{ background: K.grn + "18", border: `1px solid ${K.grn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 6, fontSize: 11, color: K.grn, fontWeight: 700, textAlign: "center" }}>
+        <div style={{ background: K.grn + "18", border: `1px solid ${K.grn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 6, fontSize: 13, color: K.grn, fontWeight: 700, textAlign: "center" }}>
           Scorecard attested — scores are locked
         </div>
       )}
       {isAlreadyFinalized && !isAttested && !isWeekLocked && (
-        <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 6, fontSize: 11, color: K.warn, fontWeight: 700, textAlign: "center" }}>
+        <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 6, fontSize: 13, color: K.warn, fontWeight: 700, textAlign: "center" }}>
           {needsAttestation ? "Scorecard signed — awaiting your attestation" : "Scorecard signed — awaiting opponent attestation"}
         </div>
       )}
       <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
         {Array.from({ length: 9 }, (_, i) => {
           const cur = !isAlreadyFinalized && i === curHole; const done = allP.every(pid => getS(pid, i) > 0);
-          return <button key={i} onClick={() => { if (!isAlreadyFinalized) { setCurHole(i); setEditing(i < currentHoleIdx); } }} style={{ flex: 1, height: 34, borderRadius: done || cur ? 10 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 12, fontWeight: 700, cursor: isAlreadyFinalized ? "default" : "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{i + 1}</button>;
+          return <button key={i} onClick={() => { if (!isAlreadyFinalized) { setCurHole(i); setEditing(i < currentHoleIdx); } }} style={{ flex: 1, height: 38, borderRadius: done || cur ? 10 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 16, fontWeight: 700, cursor: isAlreadyFinalized ? "default" : "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{i + 1}</button>;
         })}
       </div>
       {/* Match status — tappable to expand scorecard */}
@@ -463,18 +463,18 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         }
 
         return (<>
-          <button onClick={() => setShowScorecard(!showScorecard)} style={{ display: "flex", gap: 3, marginTop: 6, marginBottom: showScorecard ? 0 : 8, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: showScorecard ? "8px 8px 0 0" : 8, cursor: "pointer", padding: "6px 0", alignItems: "center" }}>
+          <button onClick={() => setShowScorecard(!showScorecard)} style={{ display: "flex", gap: 3, marginTop: 6, marginBottom: showScorecard ? 0 : 8, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: showScorecard ? "8px 8px 0 0" : 8, cursor: "pointer", padding: "8px 0", alignItems: "center" }}>
             {holeStatuses.map((st, i) => {
               if (matchClinchHole !== null && i === matchClinchHole) {
                 const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-                return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color, fontWeight: 800, lineHeight: "24px" }}>{clinchScoreText}</div>;
+                return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 15, color, fontWeight: 800, lineHeight: "30px" }}>{clinchScoreText}</div>;
               }
               if (matchClinchHole !== null && i > matchClinchHole) {
-                return <div key={i} style={{ flex: 1, height: 24 }} />;
+                return <div key={i} style={{ flex: 1, height: 30 }} />;
               }
-              if (st === null) return <div key={i} style={{ flex: 1, height: 24 }} />;
+              if (st === null) return <div key={i} style={{ flex: 1, height: 30 }} />;
               const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "24px" }}>{st > 0 ? <><span style={{ fontSize: 15 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 15 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
+              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 16, fontWeight: 800, color, lineHeight: "30px" }}>{st > 0 ? <><span style={{ fontSize: 18 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 18 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
             })}
           </button>
           {showScorecard && (() => {
@@ -615,9 +615,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           return (
             <div style={{ display: "flex", gap: 3, marginBottom: 2 }}>
               {cells.map((c, h) => (
-                <div key={h} style={{ flex: 1, height: 28, borderRadius: 6, background: K.card, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
-                  <span style={{ fontSize: 13, fontWeight: 700, color: c.s > 0 ? K.t1 : K.t3 + "30" }}>{c.s > 0 ? c.s : "·"}</span>
-                  {c.st > 0 && c.s > 0 && <span style={{ position: "absolute", top: 1, right: 2, color: "#3b82f6", fontSize: 8, fontWeight: 800, lineHeight: 1 }}>{"•".repeat(c.st)}</span>}
+                <div key={h} style={{ flex: 1, height: 34, borderRadius: 6, background: K.card, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+                  <span style={{ fontSize: 16, fontWeight: 700, color: c.s > 0 ? K.t1 : K.t3 + "30" }}>{c.s > 0 ? c.s : "·"}</span>
+                  {c.st > 0 && c.s > 0 && <span style={{ position: "absolute", top: 1, right: 2, color: "#3b82f6", fontSize: 10, fontWeight: 800, lineHeight: 1 }}>{"•".repeat(c.st)}</span>}
                 </div>
               ))}
             </div>
@@ -633,11 +633,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 pids.forEach(pid => { tNet += getS(pid, h) - getStrokes(pid, h); });
                 const won = scHoleResults[h] === (isMyTeam ? 1 : -1);
                 return <div key={h} style={{
-                  flex: 1, height: 28, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center",
+                  flex: 1, height: 34, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center",
                   background: won ? K.act + "18" : K.card,
                   border: won ? `2px solid ${K.act}` : "none",
                 }}>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: K.t2 }}>{tNet}</span>
+                  <span style={{ fontSize: 16, fontWeight: 800, color: K.t2 }}>{tNet}</span>
                 </div>;
               })}
             </div>
@@ -650,19 +650,19 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             {scMyPids.map(pid => {
               const pl = players.find(p => p.id === pid);
               return <div key={pid}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: K.t2, marginBottom: 2, marginTop: 4 }}>{pl?.name} <span style={{ color: K.t3, fontWeight: 600 }}>({getNineHcp(pid)})</span></div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: K.t2, marginBottom: 2, marginTop: 6 }}>{pl?.name} <span style={{ color: K.t3, fontWeight: 600 }}>({getNineHcp(pid)})</span></div>
                 <SignedPlayerRow pid={pid} />
               </div>;
             })}
             <SignedTeamRow pids={scMyPids} isMyTeam={true} />
 
-            <div style={{ borderBottom: `2px solid ${K.bdr}30`, margin: "6px 0" }} />
+            <div style={{ borderBottom: `2px solid ${K.bdr}30`, margin: "8px 0" }} />
 
             {/* Opp team */}
             {scOppPids.map(pid => {
               const pl = players.find(p => p.id === pid);
               return <div key={pid}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: K.t2, marginBottom: 2, marginTop: 4 }}>{pl?.name} <span style={{ color: K.t3, fontWeight: 600 }}>({getNineHcp(pid)})</span></div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: K.t2, marginBottom: 2, marginTop: 6 }}>{pl?.name} <span style={{ color: K.t3, fontWeight: 600 }}>({getNineHcp(pid)})</span></div>
                 <SignedPlayerRow pid={pid} />
               </div>;
             })}
@@ -696,17 +696,17 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       </>)}
       {/* Finalize / Attest / Show Match Details buttons */}
       {allComplete && !showFinalize && !showAttest && !isAlreadyFinalized && (
-        <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.grn + "15", border: `1.5px solid ${K.grn}50`, color: K.grn, fontSize: 13, fontWeight: 700 }}>
+        <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.grn + "15", border: `1.5px solid ${K.grn}50`, color: K.grn, fontSize: 15, fontWeight: 700 }}>
           All Holes Complete — Sign Scorecard
         </button>
       )}
       {allComplete && !showFinalize && !showAttest && isAlreadyFinalized && needsAttestation && (
-        <button onClick={() => setShowAttest(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 13, fontWeight: 700 }}>
+        <button onClick={() => setShowAttest(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 15, fontWeight: 700 }}>
           Attest Scorecard
         </button>
       )}
       {allComplete && !showFinalize && !showAttest && isAlreadyFinalized && !needsAttestation && (
-        <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.acc + "15", border: `1.5px solid ${K.acc}50`, color: K.acc, fontSize: 13, fontWeight: 700 }}>
+        <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.acc + "15", border: `1.5px solid ${K.acc}50`, color: K.acc, fontSize: 15, fontWeight: 700 }}>
           Show Match Details
         </button>
       )}
