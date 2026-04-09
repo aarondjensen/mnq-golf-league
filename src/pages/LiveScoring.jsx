@@ -588,7 +588,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   <div style={{ width: 24, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, padding: "4px 0", borderRight: gridLine, paddingLeft: 4 }}>{initials}</div>
                   <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.t1, fontWeight: 700, padding: "4px 0", borderRight: gridLine, textAlign: "center" }}>{nh}</div>
                   {cells.map((c, h) => (
-                    <div key={h} style={{ flex: 1, textAlign: "center", lineHeight: "26px", padding: "3px 0", borderRight: h < 8 ? gridLine : "none", position: "relative" }}>
+                    <div key={h} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 32, borderRight: h < 8 ? gridLine : "none" }}>
                       <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={13} />
                     </div>
                   ))}
@@ -832,7 +832,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div style={{ width: 24, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>{initials}</div>
               <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.t1, fontWeight: 700, padding: "4px 0", borderRight: gridLine, textAlign: "center" }}>{nh}</div>
               {cells.map((c, h) => (
-                <div key={h} style={{ flex: 1, textAlign: "center", lineHeight: "26px", padding: "3px 0", borderRight: gridLine, position: "relative" }}>
+                <div key={h} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 32, borderRight: gridLine }}>
                   <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={13} />
                 </div>
               ))}
@@ -959,7 +959,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div style={{ width: 24, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>{initials}</div>
               <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.t1, fontWeight: 700, padding: "4px 0", borderRight: gridLine, textAlign: "center" }}>{nh}</div>
               {cells.map((c, h) => (
-                <div key={h} style={{ flex: 1, textAlign: "center", lineHeight: "26px", padding: "3px 0", borderRight: gridLine, position: "relative" }}>
+                <div key={h} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 32, borderRight: gridLine }}>
                   <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={13} />
                 </div>
               ))}
