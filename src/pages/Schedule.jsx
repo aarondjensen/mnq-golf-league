@@ -129,7 +129,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   if (!schedule.length) return <EmptyState icon="calendar" title="No schedule yet" subtitle="Commissioner needs to generate the schedule." />;
 
   // ── Generate ICS calendar file with ALL upcoming matches ──
-  const addAllToCalendar = () => {
+  const addAllToCalendar = async () => {
     if (!myTeam) return;
     const base = leagueConfig?.startTime || "4:28 PM";
     const interval = leagueConfig?.teeInterval || 8;
@@ -192,18 +192,21 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       'END:VCALENDAR',
     ].join('\r\n');
 
-    // Encode as base64 data URI — the only reliable method for iOS Safari
-    const b64 = btoa(unescape(encodeURIComponent(ics)));
-    const dataUri = `data:text/calendar;base64,${b64}`;
-    
-    // Create a temporary link and simulate click
-    const a = document.createElement('a');
-    a.href = dataUri;
-    a.download = `mnq-golf-${year}-schedule.ics`;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => document.body.removeChild(a), 100);
+    // POST to API route — returns file with proper Content-Type headers
+    // This is the only approach that works reliably on iOS Safari
+    try {
+      const resp = await fetch('/api/calendar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ics, filename: `mnq-golf-${year}-schedule.ics` }),
+      });
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      window.location.href = url;
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    } catch (e) {
+      console.error('Calendar download failed:', e);
+    }
   };
 
   // ── My Schedule row ──
