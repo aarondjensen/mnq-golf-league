@@ -755,6 +755,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const colBdr = `1px solid ${K.bdr}30`;
         const lw = 40; // label column width
         const lblStyle = { width: lw, flexShrink: 0, fontSize: 9, fontWeight: 700, color: K.t3, display: "flex", alignItems: "center", paddingLeft: 3, borderRight: colBdr, textTransform: "uppercase", letterSpacing: .3 };
+        const tw = 30; // total column width
+        const totStyle = { width: tw, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", borderLeft: colBdr };
 
         // Helper: get player initials
         const getInitials = (pid) => {
@@ -771,6 +773,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 <span style={{ fontSize: 12, fontWeight: 700, color: K.t3 }}>{side === 'front' ? i + 1 : i + 10}</span>
               </div>
             ))}
+            <div style={{ ...totStyle, height: 24 }}><span style={{ fontSize: 10, fontWeight: 700, color: K.t3 }}>TOT</span></div>
           </div>
         );
 
@@ -782,12 +785,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 <span style={{ fontSize: 11, fontWeight: 600, color: K.t3 }}>{p}</span>
               </div>
             ))}
+            <div style={{ ...totStyle, height: 22 }}><span style={{ fontSize: 11, fontWeight: 700, color: K.t3 }}>{pars.reduce((a, b) => a + b, 0)}</span></div>
           </div>
         );
 
         const PlayerScoreRow = ({ pid }) => {
+          let grossTotal = 0;
           const cells = Array.from({ length: 9 }, (_, h) => {
             const s = getS(pid, h); const st = getStrokes(pid, h);
+            if (s > 0) grossTotal += s;
             return { s, st };
           });
           return (
@@ -803,33 +809,39 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} />
                 </div>
               ))}
+              <div style={{ ...totStyle, minHeight: 38 }}><span style={{ fontSize: 14, fontWeight: 800, color: K.t1 }}>{grossTotal || ""}</span></div>
             </div>
           );
         };
 
-        const TeamNetRow = ({ pids, isMyTeam }) => (
-          <div style={{ display: "flex" }}>
-            <div style={{ ...lblStyle, height: 34, fontSize: 9, fontWeight: 800 }}>TEAM</div>
-            {Array.from({ length: 9 }, (_, h) => {
-              let tNet = 0;
-              pids.forEach(pid => { tNet += getS(pid, h) - getStrokes(pid, h); });
-              const won = scHoleResults[h] === (isMyTeam ? 1 : -1);
-              return <div key={h} style={{
-                flex: 1, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
-                borderRight: h < 8 ? colBdr : "none",
-                background: won ? K.act + "18" : "transparent",
-              }}>
-                <div style={{
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  width: 26, height: 26, borderRadius: 3,
-                  border: won ? `1.5px solid ${K.act}` : "none",
+        const TeamNetRow = ({ pids, isMyTeam }) => {
+          let netTotal = 0;
+          return (
+            <div style={{ display: "flex" }}>
+              <div style={{ ...lblStyle, height: 34, fontSize: 9, fontWeight: 800 }}>TEAM</div>
+              {Array.from({ length: 9 }, (_, h) => {
+                let tNet = 0;
+                pids.forEach(pid => { tNet += getS(pid, h) - getStrokes(pid, h); });
+                netTotal += tNet;
+                const won = scHoleResults[h] === (isMyTeam ? 1 : -1);
+                return <div key={h} style={{
+                  flex: 1, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
+                  borderRight: h < 8 ? colBdr : "none",
+                  background: won ? K.act + "18" : "transparent",
                 }}>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: K.t2 }}>{tNet}</span>
-                </div>
-              </div>;
-            })}
-          </div>
-        );
+                  <div style={{
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 26, height: 26, borderRadius: 3,
+                    border: won ? `1.5px solid ${K.act}` : "none",
+                  }}>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: K.t2 }}>{tNet}</span>
+                  </div>
+                </div>;
+              })}
+              <div style={{ ...totStyle, height: 34 }}><span style={{ fontSize: 14, fontWeight: 800, color: K.t1 }}>{netTotal}</span></div>
+            </div>
+          );
+        };
 
         const MatchStatusRow = () => (
           <div style={{ display: "flex", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 8, padding: "4px 0", marginBottom: 4, marginTop: 4 }}>
