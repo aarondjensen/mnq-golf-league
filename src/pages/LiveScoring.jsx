@@ -13,83 +13,69 @@ function ScoreCell({ score, par, strokes, size = 13 }) {
   const net = score - (strokes || 0);
   const diff = net - par;
   const s = size;
-  const cellH = s + 14;
-  const bc = K.t2; // single border color for all indicators
-
-  // Stroke dots — large, clearly above the score
-  const dots = strokes > 0 ? (
-    <span style={{ position: "absolute", top: -6, left: "50%", transform: "translateX(-50%)", color: "#3b82f6", fontSize: s, fontWeight: 900, lineHeight: 1, letterSpacing: 2 }}>
-      {"•".repeat(strokes)}
-    </span>
-  ) : null;
+  const sh = s + 6; // shape size (circle/square)
+  const bc = K.t2;
 
   const num = <span style={{ fontSize: s, fontWeight: 700, lineHeight: 1 }}>{score}</span>;
 
+  // Dots row — sits above the score, only rendered when strokes > 0
+  const dotsRow = strokes > 0 ? (
+    <div style={{ display: "flex", justifyContent: "center", lineHeight: 1, height: 8 }}>
+      <span style={{ color: "#3b82f6", fontSize: 11, fontWeight: 900, letterSpacing: 1 }}>{"•".repeat(strokes)}</span>
+    </div>
+  ) : null;
+
+  // Wrap indicator shape
+  const wrap = (shape) => (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0 }}>
+      {dotsRow}
+      {shape}
+    </div>
+  );
+
   if (diff <= -2) {
-    // Eagle or better — double circle
-    return (
-      <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: cellH, height: cellH }}>
-        {dots}
-        <span style={{ width: cellH, height: cellH, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-          <span style={{ width: cellH - 6, height: cellH - 6, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-            {num}
-          </span>
+    return wrap(
+      <span style={{ width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ width: sh - 5, height: sh - 5, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          {num}
         </span>
       </span>
     );
   }
   if (diff === -1) {
-    // Birdie — single circle
-    return (
-      <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: cellH, height: cellH }}>
-        {dots}
-        <span style={{ width: cellH, height: cellH, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-          {num}
-        </span>
+    return wrap(
+      <span style={{ width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+        {num}
       </span>
     );
   }
   if (diff === 0) {
-    // Par — plain
-    return (
-      <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: cellH, height: cellH }}>
-        {dots}
+    return wrap(
+      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: sh, height: sh }}>
         {num}
       </span>
     );
   }
   if (diff === 1) {
-    // Bogey — single square
-    return (
-      <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: cellH, height: cellH }}>
-        {dots}
-        <span style={{ width: cellH, height: cellH, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-          {num}
-        </span>
+    return wrap(
+      <span style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+        {num}
       </span>
     );
   }
   if (diff === 2) {
-    // Double bogey — double square
-    return (
-      <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: cellH, height: cellH }}>
-        {dots}
-        <span style={{ width: cellH, height: cellH, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-          <span style={{ width: cellH - 6, height: cellH - 6, borderRadius: 2, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-            {num}
-          </span>
+    return wrap(
+      <span style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ width: sh - 5, height: sh - 5, borderRadius: 2, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          {num}
         </span>
       </span>
     );
   }
-  // Triple bogey+ — double square
-  return (
-    <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: cellH, height: cellH }}>
-      {dots}
-      <span style={{ width: cellH, height: cellH, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ width: cellH - 6, height: cellH - 6, borderRadius: 2, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-          {num}
-        </span>
+  return wrap(
+    <span style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+      <span style={{ width: sh - 5, height: sh - 5, borderRadius: 2, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+        {num}
       </span>
     </span>
   );
