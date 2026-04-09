@@ -799,10 +799,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           return (
             <div style={{ display: "flex", borderBottom: colBdr }}>
               <div style={{ ...lblStyle, minHeight: 38 }}>
-                <div style={{ lineHeight: 1.2 }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: K.t1 }}>{getInitials(pid)}</div>
-                  <div style={{ fontSize: 11, color: "#3b82f6", fontWeight: 700 }}>{getNineHcp(pid)}</div>
-                </div>
+                <span style={{ fontSize: 15, fontWeight: 800, color: K.t1 }}>{getInitials(pid)}</span>
+                <span style={{ fontSize: 11, color: "#3b82f6", fontWeight: 700, marginLeft: 2 }}>{getNineHcp(pid)}</span>
               </div>
               {cells.map((c, h) => (
                 <div key={h} style={{ flex: 1, minHeight: 38, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? colBdr : "none" }}>
