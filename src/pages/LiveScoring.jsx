@@ -9,75 +9,56 @@ import { LEAGUE_ID } from "../firebase";
 // Double bogey (+2): double square  |  Triple+ (+3): double square
 // All borders use same muted color for clean look
 function ScoreCell({ score, par, strokes, size = 13 }) {
-  if (!score || score <= 0) return <span style={{ color: K.t3 + "30" }}>·</span>;
+  if (!score || score <= 0) return <span style={{ color: K.t3 + "30", fontSize: size }}>·</span>;
   const net = score - (strokes || 0);
   const diff = net - par;
   const s = size;
-  const sh = s + 6; // shape size (circle/square)
+  const sh = s + 6; // shape size
   const bc = K.t2;
+  const dotH = 10; // fixed height reserved for dots row
+  const totalH = dotH + sh + 2; // total cell height: dots + gap + shape
 
   const num = <span style={{ fontSize: s, fontWeight: 700, lineHeight: 1 }}>{score}</span>;
 
-  // Dots row — sits above the score, only rendered when strokes > 0
-  const dotsRow = strokes > 0 ? (
-    <div style={{ display: "flex", justifyContent: "center", lineHeight: 1, height: 8 }}>
-      <span style={{ color: "#3b82f6", fontSize: 11, fontWeight: 900, letterSpacing: 1 }}>{"•".repeat(strokes)}</span>
-    </div>
-  ) : null;
+  // Build the indicator shape based on score vs par
+  let shape;
+  if (diff <= -2) {
+    shape = (
+      <span style={{ width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ width: sh - 5, height: sh - 5, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{num}</span>
+      </span>
+    );
+  } else if (diff === -1) {
+    shape = (
+      <span style={{ width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{num}</span>
+    );
+  } else if (diff === 0) {
+    shape = <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: sh, height: sh }}>{num}</span>;
+  } else if (diff === 1) {
+    shape = (
+      <span style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{num}</span>
+    );
+  } else if (diff === 2) {
+    shape = (
+      <span style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ width: sh - 5, height: sh - 5, borderRadius: 2, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{num}</span>
+      </span>
+    );
+  } else {
+    shape = (
+      <span style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ width: sh - 5, height: sh - 5, borderRadius: 2, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{num}</span>
+      </span>
+    );
+  }
 
-  // Wrap indicator shape
-  const wrap = (shape) => (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 0 }}>
-      {dotsRow}
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", height: totalH, justifyContent: "flex-end" }}>
+      <div style={{ height: dotH, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+        {strokes > 0 && <span style={{ color: "#3b82f6", fontSize: 10, fontWeight: 900, letterSpacing: 1, lineHeight: 1 }}>{"•".repeat(strokes)}</span>}
+      </div>
       {shape}
     </div>
-  );
-
-  if (diff <= -2) {
-    return wrap(
-      <span style={{ width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ width: sh - 5, height: sh - 5, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-          {num}
-        </span>
-      </span>
-    );
-  }
-  if (diff === -1) {
-    return wrap(
-      <span style={{ width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-        {num}
-      </span>
-    );
-  }
-  if (diff === 0) {
-    return wrap(
-      <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: sh, height: sh }}>
-        {num}
-      </span>
-    );
-  }
-  if (diff === 1) {
-    return wrap(
-      <span style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-        {num}
-      </span>
-    );
-  }
-  if (diff === 2) {
-    return wrap(
-      <span style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ width: sh - 5, height: sh - 5, borderRadius: 2, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-          {num}
-        </span>
-      </span>
-    );
-  }
-  return wrap(
-    <span style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-      <span style={{ width: sh - 5, height: sh - 5, borderRadius: 2, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-        {num}
-      </span>
-    </span>
   );
 }
 
@@ -566,14 +547,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             {holeStatuses.map((st, i) => {
               if (matchClinchHole !== null && i === matchClinchHole) {
                 const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-                return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 15, color, fontWeight: 800, lineHeight: "30px" }}>{clinchScoreText}</div>;
+                return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 16, color, fontWeight: 800, lineHeight: "30px" }}>{clinchScoreText}</div>;
               }
               if (matchClinchHole !== null && i > matchClinchHole) {
                 return <div key={i} style={{ flex: 1, height: 30 }} />;
               }
               if (st === null) return <div key={i} style={{ flex: 1, height: 30 }} />;
               const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 16, fontWeight: 800, color, lineHeight: "30px" }}>{st > 0 ? <><span style={{ fontSize: 18 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 18 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
+              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 16, fontWeight: 800, color, lineHeight: "30px" }}>{st > 0 ? <><span style={{ fontSize: 16 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 16 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
             })}
           </button>
           {showScorecard && (() => {
@@ -735,7 +716,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   background: won ? K.act + "18" : K.card,
                   border: won ? `1.5px solid ${K.act}` : "none",
                 }}>
-                  <span style={{ fontSize: 16, fontWeight: 800, color: K.t2 }}>{tNet}</span>
+                  <span style={{ fontSize: 15, fontWeight: 800, color: K.t2 }}>{tNet}</span>
                 </div>;
               })}
             </div>
