@@ -488,11 +488,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           Week {week} is locked — scores are read-only
         </div>
       )}
-      {isAttested && !isWeekLocked && (
-        <div style={{ background: K.grn + "18", border: `1px solid ${K.grn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 6, fontSize: 13, color: K.grn, fontWeight: 700, textAlign: "center" }}>
-          Scorecard attested — scores are locked
-        </div>
-      )}
       {isAlreadyFinalized && !isAttested && !isWeekLocked && (
         <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 6, fontSize: 13, color: K.warn, fontWeight: 700, textAlign: "center" }}>
           {needsAttestation ? "Scorecard signed — awaiting your attestation" : "Scorecard signed — awaiting opponent attestation"}
@@ -841,28 +836,46 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           );
         };
 
-        const MatchStatusRow = () => (
-          <div style={{ display: "flex", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 8, padding: "4px 0", marginBottom: 4, marginTop: 4 }}>
-            <div style={{ ...lblStyle, height: 28, fontSize: 8, fontWeight: 800, color: K.t2 }}>MATCH</div>
-            {scRunningStatus.map((rs, i) => {
-              const colBorderR = i < 8 ? { borderRight: colBdr } : {};
-              if (scClinchHole !== null && i === scClinchHole) {
+        const MatchStatusRow = () => {
+          const remainingAfterClinch = scClinchHole !== null ? 8 - scClinchHole : 0;
+          return (
+            <div style={{ display: "flex", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 8, padding: "4px 0", marginBottom: 4, marginTop: 4 }}>
+              <div style={{ ...lblStyle, height: 28, fontSize: 8, fontWeight: 800, color: K.t2 }}>MATCH</div>
+              {scRunningStatus.map((rs, i) => {
+                const colBorderR = i < 8 ? { borderRight: colBdr } : {};
+                if (scClinchHole !== null && i === scClinchHole) {
+                  const color = rs > 0 ? matchGrn : rs < 0 ? K.red : K.t3;
+                  return <div key={i} style={{ flex: 1 + remainingAfterClinch, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "28px" }}>{scClinchText}</div>;
+                }
+                if (scClinchHole !== null && i > scClinchHole) {
+                  return null;
+                }
                 const color = rs > 0 ? matchGrn : rs < 0 ? K.red : K.t3;
-                return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>{scClinchText}</div>;
-              }
-              if (scClinchHole !== null && i > scClinchHole) {
-                return <div key={i} style={{ flex: 1, height: 28, ...colBorderR }} />;
-              }
-              const color = rs > 0 ? matchGrn : rs < 0 ? K.red : K.t3;
-              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>
-                {rs > 0 ? <><span style={{ fontSize: 14 }}>▲</span>{rs}</> : rs < 0 ? <><span style={{ fontSize: 14 }}>▼</span>{Math.abs(rs)}</> : "—"}
-              </div>;
-            })}
-          </div>
-        );
+                return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>
+                  {rs > 0 ? <><span style={{ fontSize: 14 }}>▲</span>{rs}</> : rs < 0 ? <><span style={{ fontSize: 14 }}>▼</span>{Math.abs(rs)}</> : "—"}
+                </div>;
+              })}
+            </div>
+          );
+        };
 
         return (
-          <div style={{ marginBottom: 6 }}>
+          <div style={{ marginBottom: 6, position: "relative" }}>
+            {/* FINAL watermark */}
+            {isAttested && (
+              <div style={{
+                position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
+                pointerEvents: "none", zIndex: 2,
+              }}>
+                <div style={{
+                  fontSize: 72, fontWeight: 900, color: K.t3 + "15",
+                  transform: "rotate(-25deg)",
+                  letterSpacing: 12, textTransform: "uppercase",
+                  userSelect: "none", whiteSpace: "nowrap",
+                }}>FINAL</div>
+              </div>
+            )}
+
             {/* My team card */}
             <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, overflow: "hidden", marginBottom: 4 }}>
               <HoleRow />
