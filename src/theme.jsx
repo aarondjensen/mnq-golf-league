@@ -68,28 +68,28 @@ export function applyTheme(mode) {
 
 export const getCSS = (k) => `
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-  html, body { overscroll-behavior: none; background: ${k.bg}; letter-spacing: 0.8px; }
-  input, select, textarea, button { font-family: 'League Spartan', sans-serif; letter-spacing: 0.8px; font-size: 15px; }
+  html, body { overscroll-behavior: none; background: ${k.bg}; letter-spacing: 0.4px; }
+  input, select, textarea, button { font-family: 'League Spartan', sans-serif; letter-spacing: 0.4px; font-size: 15px; }
   ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: ${k.bdr}; border-radius: 4px; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
   input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
   input[type=number] { -moz-appearance: textfield; }
   .hole-input:focus { outline: 2px solid ${k.act}; outline-offset: -1px; background: ${k.cardHi} !important; }
-  .app-shell { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: ${k.bg}; color: ${k.t1}; font-family: 'League Spartan', sans-serif; display: flex; flex-direction: column; font-size: 15px; letter-spacing: 0.8px; overflow: hidden; }
+  .app-shell { min-height: 100vh; background: ${k.bg}; color: ${k.t1}; font-family: 'League Spartan', sans-serif; display: flex; flex-direction: column; font-size: 15px; letter-spacing: 0.4px; overflow-x: hidden; }
   .app-header { padding: 12px 20px; background: ${k.bg}; display: flex; justify-content: center; align-items: center; position: relative; }
-  .app-body { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; }
-  .main-content { padding: 12px 14px; padding-bottom: 24px; max-width: 900px; width: 100%; margin: 0 auto; box-sizing: border-box; }
-  .bottom-nav { background: ${k.card}f0; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid ${k.bdr}; display: flex; justify-content: space-around; padding: 10px 0 28px; padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px)); z-index: 200; max-width: 900px; width: 100%; }
+  .app-body { flex: 1; }
+  .main-content { padding: 12px 14px; padding-bottom: 74px; max-width: 900px; width: 100%; margin: 0 auto; box-sizing: border-box; }
+  .bottom-nav { background: ${k.card}f0; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid ${k.bdr}; display: flex; justify-content: space-around; padding: 6px 0 12px; z-index: 200; max-width: 900px; width: 100%; }
   .admin-grid { display: flex; flex-direction: column; gap: 6px; }
   .admin-sections-grid { display: flex; flex-direction: column; gap: 6px; }
   .players-grid { display: flex; flex-direction: column; gap: 4px; }
   .scoring-grid { display: flex; flex-direction: column; gap: 10px; }
   .schedule-weeks { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
-  .standings-grid { display: flex; flex-direction: column; gap: 4px; }
+  .standings-grid { display: flex; flex-direction: column; gap: clamp(4px, 1.2vw, 8px); }
   @media (min-width: 768px) {
-    .main-content { padding: 24px 32px; padding-bottom: 20px; margin: 0 auto; }
-    .standings-grid { gap: 5px; }
+    .main-content { padding: 24px 32px; padding-bottom: 80px; margin: 0 auto; }
+    .standings-grid { gap: 8px; }
     .admin-sections-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .players-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .scoring-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
@@ -121,19 +121,19 @@ export const I = {
 
 // ── Shared UI components ──
 export const Pill = ({ children, color = K.acc, style, ...rest }) => (
-  <span style={{ fontSize: 11, fontWeight: 600, color, background: color + "14", padding: "2px 8px", borderRadius: 4, letterSpacing: 1.0, textTransform: "uppercase", ...style }} {...rest}>{children}</span>
+  <span style={{ fontSize: 11, fontWeight: 600, color, background: color + "14", padding: "2px 8px", borderRadius: 4, letterSpacing: .6, textTransform: "uppercase", ...style }} {...rest}>{children}</span>
 );
 export const BackBtn = ({ onClick }) => (
-  <button onClick={onClick} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t2, fontSize: 13, padding: "7px 14px", cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: 5, letterSpacing: .8 }}>{I.arrowLeft(13, K.t2)} Back</button>
+  <button onClick={onClick} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t2, fontSize: 13, padding: "7px 14px", cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: 5, letterSpacing: .4 }}>{I.arrowLeft(13, K.t2)} Back</button>
 );
 export const SaveBtn = ({ onClick, label = "Save" }) => (
-  <button onClick={onClick} style={{ background: K.act, border: "none", borderRadius: 6, color: K.bg, fontSize: 13, padding: "7px 16px", cursor: "pointer", fontWeight: 600, letterSpacing: .8 }}>{label}</button>
+  <button onClick={onClick} style={{ background: K.act, border: "none", borderRadius: 6, color: K.bg, fontSize: 13, padding: "7px 16px", cursor: "pointer", fontWeight: 600, letterSpacing: .4 }}>{label}</button>
 );
 export const SectionTitle = ({ children }) => (
-  <div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 22, fontWeight: 700, color: K.t1, letterSpacing: 1.0, marginBottom: 14 }}>{children}</div>
+  <div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 22, fontWeight: 700, color: K.t1, letterSpacing: .6, marginBottom: 14 }}>{children}</div>
 );
 export const SubLabel = ({ children, color = K.acc, style }) => (
-  <div style={{ fontSize: 11, fontWeight: 600, color, textTransform: "uppercase", letterSpacing: 1.8, marginBottom: 6, ...style }}>{children}</div>
+  <div style={{ fontSize: 11, fontWeight: 600, color, textTransform: "uppercase", letterSpacing: 1.4, marginBottom: 6, ...style }}>{children}</div>
 );
 export const Card = ({ children, highlight, style, ...rest }) => (
   <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${highlight ? K.acc + '40' : K.bdr}`, padding: "13px 15px", ...style }} {...rest}>{children}</div>
@@ -141,7 +141,7 @@ export const Card = ({ children, highlight, style, ...rest }) => (
 export const EmptyState = ({ icon, title, subtitle }) => (
   <div style={{ textAlign: "center", padding: 40 }}>
     <div style={{ marginBottom: 12, display: "flex", justifyContent: "center", opacity: .4 }}>{typeof icon === "string" ? I[icon]?.(40, K.t3) || null : icon}</div>
-    <div style={{ color: K.t2, fontSize: 15, fontWeight: 500, letterSpacing: .8 }}>{title}</div>
-    {subtitle && <div style={{ color: K.t3, fontSize: 13, marginTop: 4, letterSpacing: .7 }}>{subtitle}</div>}
+    <div style={{ color: K.t2, fontSize: 15, fontWeight: 500, letterSpacing: .4 }}>{title}</div>
+    {subtitle && <div style={{ color: K.t3, fontSize: 13, marginTop: 4, letterSpacing: .3 }}>{subtitle}</div>}
   </div>
 );
