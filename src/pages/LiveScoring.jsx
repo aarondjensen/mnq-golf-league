@@ -6,7 +6,6 @@ import { LEAGUE_ID } from "../firebase";
 export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
-  const [showCTP, setShowCTP] = useState(false);
   const [commMode, setCommMode] = useState(false);
   const [toast, setToast] = useState(null);
   const [editing, setEditing] = useState(false);
@@ -75,7 +74,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             const mr = matchResults.find(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2);
             const gn = id => players.find(p => p.id === id)?.name?.split(' ')[0] || "?";
             return (
-              <button key={mi} onClick={() => { setActiveMatch(m); setCurHole(0); setShowCTP(false); }} style={{ background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 10, padding: "10px 14px", cursor: "pointer", textAlign: "left", width: "100%" }}>
+              <button key={mi} onClick={() => { setActiveMatch(m); setCurHole(0); }} style={{ background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 10, padding: "10px 14px", cursor: "pointer", textAlign: "left", width: "100%" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
                   <span style={{ fontSize: 10, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1 }}>Match {mi + 1} · {getTeeTime(mi)}</span>
                   <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
@@ -152,7 +151,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   const par = pars[curHole] || 4;
   const hcp = hcps[curHole] || 1;
-  const isPar3 = par === 3;
 
   const getS = (pid, h) => holeScores[`w${week}_p${pid}_h${h}`] || 0;
   const getNineHcp = (pid) => {
@@ -427,10 +425,91 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       )}
       <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
         {Array.from({ length: 9 }, (_, i) => {
-          const cur = i === curHole; const done = allP.every(pid => getS(pid, i) > 0);
-          return <button key={i} onClick={() => { setCurHole(i); setEditing(i < currentHoleIdx); }} style={{ flex: 1, height: 34, borderRadius: done || cur ? 10 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 12, fontWeight: 700, cursor: "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{i + 1}</button>;
+          const cur = !isAlreadyFinalized && i === curHole; const done = allP.every(pid => getS(pid, i) > 0);
+          return <button key={i} onClick={() => { if (!isAlreadyFinalized) { setCurHole(i); setEditing(i < currentHoleIdx); } }} style={{ flex: 1, height: 34, borderRadius: done || cur ? 10 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 12, fontWeight: 700, cursor: isAlreadyFinalized ? "default" : "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{i + 1}</button>;
         })}
       </div>
+      {/* After signed: show inline scorecard. Before signed: show hole card + scoring UI */}
+      {isAlreadyFinalized ? (() => {
+        const myTeamId = myTeam?.id || t1.id;
+        const isMyT1 = t1.id === myTeamId;
+        const scMyPids = isMyT1 ? t1Players : t2Players;
+        const scOppPids = isMyT1 ? t2Players : t1Players;
+        const scHoleResults = [];
+        for (let h = 0; h < 9; h++) {
+          let mN = 0, oN = 0;
+          scMyPids.forEach(pid => { mN += getS(pid, h) - getStrokes(pid, h); });
+          scOppPids.forEach(pid => { oN += getS(pid, h) - getStrokes(pid, h); });
+          scHoleResults.push(mN < oN ? 1 : oN < mN ? -1 : 0);
+        }
+
+        const SignedPlayerRow = ({ pid }) => {
+          const pl = players.find(p => p.id === pid); if (!pl) return null;
+          const nh = getNineHcp(pid);
+          let grossTotal = 0;
+          const cells = Array.from({ length: 9 }, (_, h) => {
+            const s = getS(pid, h); const st = getStrokes(pid, h);
+            if (s > 0) grossTotal += s;
+            return { s, st };
+          });
+          return (
+            <div style={{ display: "flex", gap: 3, marginBottom: 2 }}>
+              {cells.map((c, h) => (
+                <div key={h} style={{ flex: 1, height: 28, borderRadius: 6, background: K.card, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: c.s > 0 ? K.t1 : K.t3 + "30" }}>{c.s > 0 ? c.s : "·"}</span>
+                  {c.st > 0 && c.s > 0 && <span style={{ position: "absolute", top: 1, right: 2, color: "#3b82f6", fontSize: 8, fontWeight: 800, lineHeight: 1 }}>{"•".repeat(c.st)}</span>}
+                </div>
+              ))}
+            </div>
+          );
+        };
+
+        const SignedTeamRow = ({ pids, isMyTeam }) => {
+          const hw = isMyTeam ? (scHoleResults.filter(r => r === 1).length) : (scHoleResults.filter(r => r === -1).length);
+          return (
+            <div style={{ display: "flex", gap: 3, marginBottom: 2 }}>
+              {Array.from({ length: 9 }, (_, h) => {
+                let tNet = 0;
+                pids.forEach(pid => { tNet += getS(pid, h) - getStrokes(pid, h); });
+                const won = scHoleResults[h] === (isMyTeam ? 1 : -1);
+                return <div key={h} style={{
+                  flex: 1, height: 28, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center",
+                  background: won ? K.act + "18" : K.card,
+                  border: won ? `2px solid ${K.act}` : "none",
+                }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: K.t2 }}>{tNet}</span>
+                </div>;
+              })}
+            </div>
+          );
+        };
+
+        return (
+          <div style={{ marginBottom: 6 }}>
+            {/* My team */}
+            {scMyPids.map(pid => {
+              const pl = players.find(p => p.id === pid);
+              return <div key={pid}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: K.t2, marginBottom: 2, marginTop: 4 }}>{pl?.name} <span style={{ color: K.t3, fontWeight: 600 }}>({getNineHcp(pid)})</span></div>
+                <SignedPlayerRow pid={pid} />
+              </div>;
+            })}
+            <SignedTeamRow pids={scMyPids} isMyTeam={true} />
+
+            <div style={{ borderBottom: `2px solid ${K.bdr}30`, margin: "6px 0" }} />
+
+            {/* Opp team */}
+            {scOppPids.map(pid => {
+              const pl = players.find(p => p.id === pid);
+              return <div key={pid}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: K.t2, marginBottom: 2, marginTop: 4 }}>{pl?.name} <span style={{ color: K.t3, fontWeight: 600 }}>({getNineHcp(pid)})</span></div>
+                <SignedPlayerRow pid={pid} />
+              </div>;
+            })}
+            <SignedTeamRow pids={scOppPids} isMyTeam={false} />
+          </div>
+        );
+      })() : (<>
       <div style={{ background: K.acc, borderRadius: 10, padding: "6px 8px", marginBottom: 6, display: "flex", alignItems: "center" }}>
         <button onClick={() => { const prev = Math.max(0, curHole - 1); setCurHole(prev); setEditing(prev < currentHoleIdx); }} disabled={curHole === 0} style={{ width: 32, height: 40, borderRadius: 8, background: "none", border: "none", cursor: curHole === 0 ? "default" : "pointer", color: curHole === 0 ? K.bg + "40" : K.bg, fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
         <div style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 8px" }}>
@@ -440,6 +519,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         </div>
         <button onClick={() => { const next = Math.min(8, curHole + 1); setCurHole(next); setEditing(next < currentHoleIdx); }} disabled={curHole === 8} style={{ width: 32, height: 40, borderRadius: 8, background: "none", border: "none", cursor: curHole === 8 ? "default" : "pointer", color: curHole === 8 ? K.bg + "40" : K.bg, fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
       </div>
+      </>)}
       {/* Match status — tappable to expand scorecard */}
       {(() => {
         const myTeamId = myTeam?.id || t1.id;
@@ -600,9 +680,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           })()}
         </>);
       })()}
-      {isPar3 && <button onClick={() => setShowCTP(!showCTP)} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 8, cursor: "pointer", background: K.acc + "12", border: `1px solid ${K.acc}35`, color: K.acc, fontSize: 12, fontWeight: 700 }}>{showCTP ? "Hide" : "Record"} Closest to Pin</button>}
-      {showCTP && isPar3 && <CTPEntry week={week} hole={curHole} players={players} ctpData={ctpData} saveCtp={saveCtp} side={side} />}
-
+      {!isAlreadyFinalized && (<>
       {editing && (
         <button onClick={() => { setCurHole(currentHoleIdx); setEditing(false); }} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 6, cursor: "pointer", background: K.teal + "15", border: `1px solid ${K.teal}40`, color: K.teal, fontSize: 12, fontWeight: 700 }}>
           Hole {side === 'front' ? currentHoleIdx + 1 : currentHoleIdx + 10} →
@@ -615,6 +693,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const btns = par === 3 ? [1,2,3,4,5,6,7] : par === 5 ? [2,3,4,5,6,7,8] : [2,3,4,5,6,7,8];
         return <PlayerScoreCard key={pid} pl={pl} score={score} strokes={strokes} nh={nh} run={run} btns={btns} par={par} pid={pid} week={week} curHole={curHole} saveScore={guardedSaveScore} K={K} />;
       })}
+      </>)}
       {/* Finalize / Attest / Show Match Details buttons */}
       {allComplete && !showFinalize && !showAttest && !isAlreadyFinalized && (
         <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.grn + "15", border: `1.5px solid ${K.grn}50`, color: K.grn, fontSize: 13, fontWeight: 700 }}>
@@ -1001,25 +1080,6 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
         <button onClick={() => handleScore(Math.max(1, (score || par) - 1))} style={{ width: 28, height: 42, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>−</button>
         <button onClick={() => handleScore((score || par) + 1)} style={{ width: 28, height: 42, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>+</button>
       </div>
-    </Card>
-  );
-}
-
-
-function CTPEntry({ week, hole, players, ctpData, saveCtp, side }) {
-  const existing = ctpData.find(c => c.week === week && c.hole === hole);
-  const [pid, setPid] = useState(existing?.playerId || "");
-  const [dist, setDist] = useState(existing?.distance || "");
-  const save = async () => { await saveCtp({ id: `${LEAGUE_ID}_w${week}_h${hole}`, week, hole, holeNum: side === 'front' ? hole + 1 : hole + 10, playerId: pid, distance: parseFloat(dist) || 0 }); };
-  return (
-    <Card style={{ marginBottom: 8, border: `1px solid ${K.acc}30` }}>
-      <SubLabel>Closest to Pin — Hole {side === 'front' ? hole + 1 : hole + 10}</SubLabel>
-      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-        <select value={pid} onChange={e => setPid(e.target.value)} style={{ flex: 1, padding: 8, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13 }}><option value="">Select player</option>{players.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-        <input value={dist} onChange={e => setDist(e.target.value)} placeholder="Ft" type="number" style={{ width: 64, padding: 8, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13, textAlign: "center" }} />
-        <SaveBtn onClick={save} />
-      </div>
-      {existing?.playerId && <div style={{ marginTop: 6, fontSize: 11, color: K.grn }}>Current: {players.find(p => p.id === existing.playerId)?.name} — {existing.distance} ft</div>}
     </Card>
   );
 }
