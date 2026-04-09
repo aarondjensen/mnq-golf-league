@@ -865,11 +865,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             {isAttested && (
               <div style={{
                 position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                pointerEvents: "none", zIndex: 2,
+                pointerEvents: "none", zIndex: 2, overflow: "hidden",
               }}>
                 <div style={{
-                  fontSize: 110, fontWeight: 900, color: K.t3 + "12",
-                  letterSpacing: 16, textTransform: "uppercase",
+                  fontSize: "18vw", fontWeight: 900, color: K.t3 + "10",
+                  letterSpacing: "3vw", textTransform: "uppercase",
                   userSelect: "none", whiteSpace: "nowrap",
                 }}>FINAL</div>
               </div>
