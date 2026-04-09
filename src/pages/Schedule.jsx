@@ -192,20 +192,18 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       'END:VCALENDAR',
     ].join('\r\n');
 
-    // Use a hidden anchor with blob — append .ics extension hint for iOS
-    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
+    // Encode as base64 data URI — the only reliable method for iOS Safari
+    const b64 = btoa(unescape(encodeURIComponent(ics)));
+    const dataUri = `data:text/calendar;base64,${b64}`;
+    
+    // Create a temporary link and simulate click
     const a = document.createElement('a');
-    a.href = url;
+    a.href = dataUri;
     a.download = `mnq-golf-${year}-schedule.ics`;
     a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
-    // Fallback for iOS: also try location assign after a tick
-    setTimeout(() => {
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    }, 1000);
+    setTimeout(() => document.body.removeChild(a), 100);
   };
 
   // ── My Schedule row ──
@@ -368,35 +366,35 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   return (
     <div>
 
-      {/* Filter bar */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 14, flexWrap: "wrap", alignItems: "center" }}>
+      {/* Filter bar — single row */}
+      <div style={{ display: "flex", gap: 5, marginBottom: 14, alignItems: "center" }}>
         <button onClick={() => { setShowAll(false); setMyOnly(false); }} style={{
-          padding: "7px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600,
+          padding: "7px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600,
           background: !showAll && !myOnly ? K.acc : K.card, color: !showAll && !myOnly ? K.bg : K.t2,
-          border: `1px solid ${!showAll && !myOnly ? K.acc : K.bdr}`,
+          border: `1px solid ${!showAll && !myOnly ? K.acc : K.bdr}`, whiteSpace: "nowrap",
         }}>This Week</button>
         <button onClick={() => { setShowAll(true); setMyOnly(false); }} style={{
-          padding: "7px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600,
+          padding: "7px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600,
           background: showAll && !myOnly ? K.acc : K.card, color: showAll && !myOnly ? K.bg : K.t2,
-          border: `1px solid ${showAll && !myOnly ? K.acc : K.bdr}`,
+          border: `1px solid ${showAll && !myOnly ? K.acc : K.bdr}`, whiteSpace: "nowrap",
         }}>All Weeks</button>
 
         {myTeam && (
           <>
-            <div style={{ width: 1, height: 20, background: K.bdr, margin: "0 4px" }} />
+            <div style={{ width: 1, height: 20, background: K.bdr, flexShrink: 0 }} />
             <button onClick={() => { setMyOnly(true); setShowAll(true); }} style={{
-              padding: "7px 14px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 600,
+              padding: "7px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600,
               background: myOnly ? K.act : K.card, color: myOnly ? K.bg : K.t2,
-              border: `1px solid ${myOnly ? K.act : K.bdr}`,
+              border: `1px solid ${myOnly ? K.act : K.bdr}`, whiteSpace: "nowrap",
             }}>My Schedule</button>
             {myOnly && (
               <button onClick={addAllToCalendar} style={{
-                display: "flex", alignItems: "center", gap: 4,
-                padding: "6px 10px", borderRadius: 6, cursor: "pointer",
+                display: "flex", alignItems: "center", gap: 3,
+                padding: "6px 8px", borderRadius: 6, cursor: "pointer",
                 background: K.act + "12", border: `1px solid ${K.act}30`, color: K.act,
-                fontSize: 11, fontWeight: 600,
+                fontSize: 10, fontWeight: 600, whiteSpace: "nowrap",
               }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
                 Add All
               </button>
             )}
