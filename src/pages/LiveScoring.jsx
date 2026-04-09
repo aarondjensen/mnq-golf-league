@@ -802,7 +802,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               </div>
 
               {/* Scorecard */}
-              <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
+              <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine, background: K.cardHi }}>
                 <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.t2, fontWeight: 700, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>HOLE</div>
                 {Array.from({ length: 9 }, (_, i) => (
                   <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t1, fontWeight: 700, lineHeight: "22px", padding: "4px 0", borderRight: gridLine }}>{side === 'front' ? i + 1 : i + 10}</div>
@@ -959,7 +959,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               </div>
 
               {/* Hole numbers */}
-              <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
+              <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine, background: K.cardHi }}>
                 <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.t2, fontWeight: 700, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>HOLE</div>
                 {Array.from({ length: 9 }, (_, i) => (
                   <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t1, fontWeight: 700, lineHeight: "22px", padding: "4px 0", borderRight: gridLine }}>{side === 'front' ? i + 1 : i + 10}</div>
