@@ -542,7 +542,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         }
 
         return (<>
-          <button onClick={() => setShowScorecard(!showScorecard)} style={{ display: "flex", marginTop: 6, marginBottom: showScorecard ? 0 : 8, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: showScorecard ? "8px 8px 0 0" : 8, cursor: "pointer", padding: "8px 0", alignItems: "center" }}>
+          <button onClick={() => setShowScorecard(!showScorecard)} style={{ display: isAlreadyFinalized ? "none" : "flex", marginTop: 6, marginBottom: showScorecard ? 0 : 8, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: showScorecard ? "8px 8px 0 0" : 8, cursor: "pointer", padding: "8px 0", alignItems: "center" }}>
             {holeStatuses.map((st, i) => {
               const colBorderR = i < 8 ? { borderRight: `1px solid ${K.bdr}30` } : {};
               if (matchClinchHole !== null && i === matchClinchHole) {
@@ -687,6 +687,24 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         let cum = 0;
         scHoleResults.forEach(r => { cum += r; scRunningStatus.push(cum); });
 
+        // Calculate clinch hole
+        let scClinchHole = null;
+        let scClinchText = null;
+        for (let h = 0; h < 9; h++) {
+          const lead = Math.abs(scRunningStatus[h]);
+          const remaining = 8 - h;
+          if (lead > remaining && lead > 0) {
+            scClinchHole = h;
+            scClinchText = `${lead}&${remaining}`;
+            break;
+          }
+        }
+        // If no clinch but match is over (all 9 holes), show final result
+        if (scClinchHole === null && scRunningStatus.length === 9) {
+          const final = scRunningStatus[8];
+          if (final !== 0) scClinchText = `${Math.abs(final)}UP`;
+        }
+
         const SignedPlayerRow = ({ pid }) => {
           const pl = players.find(p => p.id === pid); if (!pl) return null;
           const nh = getNineHcp(pid);
@@ -766,13 +784,20 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
             {/* Match status row — between teams */}
             <div style={{ display: "flex", padding: "6px 8px", marginBottom: 4 }}>
-              {scHoleResults.map((st, i) => {
+              {scRunningStatus.map((rs, i) => {
                 const colBorderR = i < 8 ? { borderRight: `1px solid ${K.bdr}30` } : {};
-                if (st === null) return <div key={i} style={{ flex: 1, height: 26, ...colBorderR }} />;
-                const running = scRunningStatus[i];
-                const color = running > 0 ? matchGrn : running < 0 ? K.red : K.t3;
+                // Show clinch result on the clinch hole
+                if (scClinchHole !== null && i === scClinchHole) {
+                  const color = rs > 0 ? matchGrn : rs < 0 ? K.red : K.t3;
+                  return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "26px", ...colBorderR }}>{scClinchText}</div>;
+                }
+                // Empty after clinch
+                if (scClinchHole !== null && i > scClinchHole) {
+                  return <div key={i} style={{ flex: 1, height: 26, ...colBorderR }} />;
+                }
+                const color = rs > 0 ? matchGrn : rs < 0 ? K.red : K.t3;
                 return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "26px", ...colBorderR }}>
-                  {running > 0 ? <><span style={{ fontSize: 14 }}>▲</span>{running}</> : running < 0 ? <><span style={{ fontSize: 14 }}>▼</span>{Math.abs(running)}</> : "—"}
+                  {rs > 0 ? <><span style={{ fontSize: 14 }}>▲</span>{rs}</> : rs < 0 ? <><span style={{ fontSize: 14 }}>▼</span>{Math.abs(rs)}</> : "—"}
                 </div>;
               })}
             </div>
