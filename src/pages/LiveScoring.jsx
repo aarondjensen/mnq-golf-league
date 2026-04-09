@@ -17,40 +17,37 @@ function ScoreCell({ score, par, strokes, size = 13 }) {
   const dotH = 10;
   const totalH = dotH + sh + 2;
 
-  const num = <span style={{ fontSize: s, fontWeight: 700, lineHeight: 1, marginTop: -1 }}>{score}</span>;
+  const num = <span style={{ fontSize: s, fontWeight: 700 }}>{score}</span>;
 
   // Build the indicator shape based on gross score vs par
   let shape;
   if (diff <= -2) {
-    // Eagle — double circle with more space between rings
     shape = (
-      <span style={{ width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ width: sh - 6, height: sh - 6, borderRadius: "50%", border: `1px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{num}</span>
-      </span>
+      <div style={{ width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: sh - 6, height: sh - 6, borderRadius: "50%", border: `1px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>{num}</div>
+      </div>
     );
   } else if (diff === -1) {
     shape = (
-      <span style={{ width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{num}</span>
+      <div style={{ width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>{num}</div>
     );
   } else if (diff === 0) {
-    shape = <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: sh, height: sh }}>{num}</span>;
+    shape = <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: sh, height: sh }}>{num}</div>;
   } else if (diff === 1) {
     shape = (
-      <span style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{num}</span>
+      <div style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>{num}</div>
     );
   } else if (diff === 2) {
-    // Double bogey — double square with more space between borders
     shape = (
-      <span style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ width: sh - 6, height: sh - 6, borderRadius: 2, border: `1px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{num}</span>
-      </span>
+      <div style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: sh - 6, height: sh - 6, borderRadius: 2, border: `1px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>{num}</div>
+      </div>
     );
   } else {
-    // Triple+ — same as double bogey
     shape = (
-      <span style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ width: sh - 6, height: sh - 6, borderRadius: 2, border: `1px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{num}</span>
-      </span>
+      <div style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: sh - 6, height: sh - 6, borderRadius: 2, border: `1px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>{num}</div>
+      </div>
     );
   }
 
