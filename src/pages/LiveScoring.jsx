@@ -961,26 +961,45 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const absent = isPlayerAbsent(pid);
         const score = getS(pid, curHole); const strokes = getStrokes(pid, curHole); const nh = getNineHcp(pid); const run = getRunning(pid);
         const btns = par === 3 ? [1,2,3,4,5,6,7] : par === 5 ? [2,3,4,5,6,7,8] : [2,3,4,5,6,7,8];
+        // Disable absent toggle after hole 1 has scores from all present players
+        const hole1Done = allP.filter(p => !isPlayerAbsent(p)).every(p => getRawScore(p, 0) > 0);
+        const absentLocked = hole1Done && !absent;
         return <div key={pid}>
-          {/* Absent toggle */}
-          {!isAlreadyFinalized && (
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", padding: "2px 4px 0", gap: 6 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 4, cursor: "pointer", fontSize: 10, color: absent ? K.red : K.t3, fontWeight: 600 }}>
-                <input type="checkbox" checked={absent} onChange={() => toggleAbsent(pid)} style={{ width: 14, height: 14, cursor: "pointer", accentColor: K.red }} />
-                Absent
-              </label>
-            </div>
-          )}
           {absent ? (
-            <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "12px 14px", marginBottom: 6, opacity: 0.5 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ fontSize: 16, fontWeight: 700, color: K.t1 }}>{pl.name}</div>
-                <span style={{ fontSize: 10, color: K.red, fontWeight: 700, background: K.red + "15", padding: "2px 6px", borderRadius: 4 }}>ABSENT</span>
+            <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "12px 14px", marginBottom: 6, opacity: 0.6 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: K.t1 }}>{pl.name}</div>
+                  <span style={{ fontSize: 10, color: K.red, fontWeight: 700, background: K.red + "15", padding: "2px 6px", borderRadius: 4 }}>ABSENT</span>
+                </div>
+                {!isAlreadyFinalized && (
+                  <button onClick={() => { if (window.confirm(`Mark ${pl.name} as present?`)) toggleAbsent(pid); }} style={{ fontSize: 11, fontWeight: 700, color: "#3b82f6", background: "none", border: `1px solid #3b82f640`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>
+                    Undo
+                  </button>
+                )}
               </div>
-              <div style={{ fontSize: 11, color: K.t3, marginTop: 4 }}>Teammate's scores will be used for match calculations</div>
+              <div style={{ fontSize: 11, color: K.t3, marginTop: 4 }}>Teammate's scores used for match calculations</div>
             </div>
           ) : (
-            <PlayerScoreCard pl={pl} score={score} strokes={strokes} nh={nh} run={run} btns={btns} par={par} pid={pid} week={week} curHole={curHole} saveScore={guardedSaveScore} K={K} />
+            <div>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 12px 0 12px", marginBottom: -4, marginTop: 2 }}>
+                <div />
+                {!isAlreadyFinalized && (
+                  <button
+                    onClick={() => { if (!absentLocked && window.confirm(`Mark ${pl.name} as absent? Their teammate's scores will count double.`)) toggleAbsent(pid); }}
+                    style={{
+                      fontSize: 11, fontWeight: 600, color: absentLocked ? K.t3 + "50" : K.t3, background: "none",
+                      border: `1px solid ${absentLocked ? K.bdr + "30" : K.bdr}`, borderRadius: 6,
+                      padding: "3px 10px", cursor: absentLocked ? "default" : "pointer",
+                      opacity: absentLocked ? 0.4 : 1,
+                    }}
+                  >
+                    Absent
+                  </button>
+                )}
+              </div>
+              <PlayerScoreCard pl={pl} score={score} strokes={strokes} nh={nh} run={run} btns={btns} par={par} pid={pid} week={week} curHole={curHole} saveScore={guardedSaveScore} K={K} />
+            </div>
           )}
         </div>;
       })}
