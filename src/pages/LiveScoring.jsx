@@ -3,6 +3,97 @@ import { K, FONTS, CSS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card,
   SEASON_WEEKS, REGULAR_WEEKS, TEAMS_COUNT, getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 
+// Golf scorecard cell — shows score with standard indicators:
+// Eagle (−2): double circle (gold)  |  Birdie (−1): circle (red/dark)
+// Par (0): plain  |  Bogey (+1): square (navy)
+// Double bogey (+2): double square (navy)  |  Triple+ (+3): double square (amber)
+function ScoreCell({ score, par, strokes, size = 13 }) {
+  if (!score || score <= 0) return <span style={{ color: K.t3 + "30" }}>·</span>;
+  const net = score - (strokes || 0);
+  const diff = net - par;
+  const s = size;
+  const dotSize = Math.max(7, s - 4);
+
+  // Stroke dots
+  const dots = strokes > 0 ? (
+    <span style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", color: "#3b82f6", fontSize: dotSize, fontWeight: 800, lineHeight: 1, letterSpacing: -1 }}>
+      {"•".repeat(strokes)}
+    </span>
+  ) : null;
+
+  const num = <span style={{ position: "relative", zIndex: 1, fontSize: s, fontWeight: 700 }}>{score}</span>;
+  const cellH = s + 10;
+
+  if (diff <= -2) {
+    // Eagle or better — double circle (gold)
+    return (
+      <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: cellH, height: cellH }}>
+        {dots}
+        <span style={{ width: cellH - 2, height: cellH - 2, borderRadius: "50%", border: "2px solid #b8960c", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ width: cellH - 8, height: cellH - 8, borderRadius: "50%", border: "1.5px solid #b8960c", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+            {num}
+          </span>
+        </span>
+      </span>
+    );
+  }
+  if (diff === -1) {
+    // Birdie — single circle (dark red)
+    return (
+      <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: cellH, height: cellH }}>
+        {dots}
+        <span style={{ width: cellH - 2, height: cellH - 2, borderRadius: "50%", border: "2px solid #8b2020", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          {num}
+        </span>
+      </span>
+    );
+  }
+  if (diff === 0) {
+    // Par — plain
+    return (
+      <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: cellH, height: cellH }}>
+        {dots}
+        {num}
+      </span>
+    );
+  }
+  if (diff === 1) {
+    // Bogey — single square (navy)
+    return (
+      <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: cellH, height: cellH }}>
+        {dots}
+        <span style={{ width: cellH - 2, height: cellH - 2, borderRadius: 3, border: "2px solid #153453", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          {num}
+        </span>
+      </span>
+    );
+  }
+  if (diff === 2) {
+    // Double bogey — double square (navy)
+    return (
+      <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: cellH, height: cellH }}>
+        {dots}
+        <span style={{ width: cellH - 2, height: cellH - 2, borderRadius: 3, border: "2px solid #153453", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ width: cellH - 8, height: cellH - 8, borderRadius: 2, border: "1.5px solid #153453", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+            {num}
+          </span>
+        </span>
+      </span>
+    );
+  }
+  // Triple bogey+ — double square (amber)
+  return (
+    <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: cellH, height: cellH }}>
+      {dots}
+      <span style={{ width: cellH - 2, height: cellH - 2, borderRadius: 3, border: "2px solid #d97706", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ width: cellH - 8, height: cellH - 8, borderRadius: 2, border: "1.5px solid #d97706", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          {num}
+        </span>
+      </span>
+    </span>
+  );
+}
+
 export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
@@ -529,8 +620,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   <div style={{ width: 24, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, padding: "4px 0", borderRight: gridLine, paddingLeft: 4 }}>{initials}</div>
                   <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.t1, fontWeight: 700, padding: "4px 0", borderRight: gridLine, textAlign: "center" }}>{nh}</div>
                   {cells.map((c, h) => (
-                    <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 700, color: c.s <= 0 ? K.t3 + "30" : K.t1, lineHeight: "22px", padding: "4px 0", borderRight: h < 8 ? gridLine : "none", position: "relative" }}>
-                      {c.s > 0 ? <>{c.s}{c.st > 0 && <span style={{ position: "absolute", top: 2, marginLeft: 0, color: "#3b82f6", fontSize: 10, fontWeight: 800, lineHeight: 1 }}>{"•".repeat(c.st)}</span>}</> : "·"}
+                    <div key={h} style={{ flex: 1, textAlign: "center", lineHeight: "26px", padding: "3px 0", borderRight: h < 8 ? gridLine : "none", position: "relative" }}>
+                      <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={13} />
                     </div>
                   ))}
                 </div>
@@ -636,9 +727,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           return (
             <div style={{ display: "flex", gap: 3, marginBottom: 2 }}>
               {cells.map((c, h) => (
-                <div key={h} style={{ flex: 1, height: 34, borderRadius: 6, background: K.card, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
-                  <span style={{ fontSize: 16, fontWeight: 700, color: c.s > 0 ? K.t1 : K.t3 + "30" }}>{c.s > 0 ? c.s : "·"}</span>
-                  {c.st > 0 && c.s > 0 && <span style={{ position: "absolute", top: 1, right: 2, color: "#3b82f6", fontSize: 10, fontWeight: 800, lineHeight: 1 }}>{"•".repeat(c.st)}</span>}
+                <div key={h} style={{ flex: 1, height: 36, borderRadius: 6, background: K.card, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+                  <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} />
                 </div>
               ))}
             </div>
@@ -766,8 +856,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div style={{ width: 24, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>{initials}</div>
               <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.t1, fontWeight: 700, padding: "4px 0", borderRight: gridLine, textAlign: "center" }}>{nh}</div>
               {cells.map((c, h) => (
-                <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 700, color: K.t1, lineHeight: "22px", padding: "4px 0", borderRight: gridLine, position: "relative" }}>
-                  {c.s}{c.st > 0 && <span style={{ position: "absolute", top: 1, right: 1, color: "#3b82f6", fontSize: 8, fontWeight: 800, lineHeight: 1 }}>{"•".repeat(c.st)}</span>}
+                <div key={h} style={{ flex: 1, textAlign: "center", lineHeight: "26px", padding: "3px 0", borderRight: gridLine, position: "relative" }}>
+                  <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={13} />
                 </div>
               ))}
               <div style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t1, padding: "4px 0" }}>{grossTotal}</div>
@@ -893,8 +983,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div style={{ width: 24, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>{initials}</div>
               <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.t1, fontWeight: 700, padding: "4px 0", borderRight: gridLine, textAlign: "center" }}>{nh}</div>
               {cells.map((c, h) => (
-                <div key={h} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 700, color: K.t1, lineHeight: "22px", padding: "4px 0", borderRight: gridLine, position: "relative" }}>
-                  {c.s}{c.st > 0 && <span style={{ position: "absolute", top: 1, right: 1, color: "#3b82f6", fontSize: 8, fontWeight: 800, lineHeight: 1 }}>{"•".repeat(c.st)}</span>}
+                <div key={h} style={{ flex: 1, textAlign: "center", lineHeight: "26px", padding: "3px 0", borderRight: gridLine, position: "relative" }}>
+                  <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={13} />
                 </div>
               ))}
               <div style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t1, padding: "4px 0" }}>{grossTotal}</div>
