@@ -68,14 +68,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const [showEditConfirm, setShowEditConfirm] = useState(false);
   const [showAttest, setShowAttest] = useState(false);
   const [absentPlayers, setAbsentPlayers] = useState({}); // { playerId: true }
-  // Load absent status from holeScores on mount/match change
-  useEffect(() => {
-    const abs = {};
-    [...t1Players, ...t2Players].forEach(pid => {
-      if (holeScores[`w${week}_p${pid}_habsent`] === 1) abs[pid] = true;
-    });
-    setAbsentPlayers(abs);
-  }, [week, matchKey]);
   const initialJump = useRef(false);
   const matchGrn = "#1a8c3f";
 
@@ -238,9 +230,17 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       if (nowAbsent) next[pid] = true; else delete next[pid];
       return next;
     });
-    // Persist to Firestore using saveScore with special "absent" hole marker
     saveScore(week, pid, "absent", nowAbsent ? 1 : 0);
   };
+
+  // Load absent status from holeScores on match change
+  useEffect(() => {
+    const abs = {};
+    [...t1Players, ...t2Players].forEach(pid => {
+      if (holeScores[`w${week}_p${pid}_habsent`] === 1) abs[pid] = true;
+    });
+    setAbsentPlayers(abs);
+  }, [matchKey]);
 
   const allP = isTeamNet
     ? [...t1Players, ...t2Players]
