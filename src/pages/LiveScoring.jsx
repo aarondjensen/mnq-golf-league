@@ -964,6 +964,19 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         // Disable absent toggle after hole 1 has scores from all present players
         const hole1Done = allP.filter(p => !isPlayerAbsent(p)).every(p => getRawScore(p, 0) > 0);
         const absentLocked = hole1Done && !absent;
+        const absentBtn = !isAlreadyFinalized ? (
+          <button
+            onClick={() => { if (!absentLocked && window.confirm(`Mark ${pl.name} as absent? Their teammate's scores will count double.`)) toggleAbsent(pid); }}
+            style={{
+              fontSize: 11, fontWeight: 600, color: absentLocked ? K.t3 + "50" : K.t3, background: "none",
+              border: `1px solid ${absentLocked ? K.bdr + "30" : K.bdr}`, borderRadius: 6,
+              padding: "3px 10px", cursor: absentLocked ? "default" : "pointer",
+              opacity: absentLocked ? 0.4 : 1, flexShrink: 0,
+            }}
+          >
+            Absent
+          </button>
+        ) : null;
         return <div key={pid}>
           {absent ? (
             <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "12px 14px", marginBottom: 6, opacity: 0.6 }}>
@@ -981,25 +994,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div style={{ fontSize: 11, color: K.t3, marginTop: 4 }}>Teammate's scores used for match calculations</div>
             </div>
           ) : (
-            <div>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 12px 0 12px", marginBottom: -4, marginTop: 2 }}>
-                <div />
-                {!isAlreadyFinalized && (
-                  <button
-                    onClick={() => { if (!absentLocked && window.confirm(`Mark ${pl.name} as absent? Their teammate's scores will count double.`)) toggleAbsent(pid); }}
-                    style={{
-                      fontSize: 11, fontWeight: 600, color: absentLocked ? K.t3 + "50" : K.t3, background: "none",
-                      border: `1px solid ${absentLocked ? K.bdr + "30" : K.bdr}`, borderRadius: 6,
-                      padding: "3px 10px", cursor: absentLocked ? "default" : "pointer",
-                      opacity: absentLocked ? 0.4 : 1,
-                    }}
-                  >
-                    Absent
-                  </button>
-                )}
-              </div>
-              <PlayerScoreCard pl={pl} score={score} strokes={strokes} nh={nh} run={run} btns={btns} par={par} pid={pid} week={week} curHole={curHole} saveScore={guardedSaveScore} K={K} />
-            </div>
+            <PlayerScoreCard pl={pl} score={score} strokes={strokes} nh={nh} run={run} btns={btns} par={par} pid={pid} week={week} curHole={curHole} saveScore={guardedSaveScore} K={K} absentBtn={absentBtn} />
           )}
         </div>;
       })}
@@ -1389,7 +1384,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 }
 
 
-function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, pid, week, curHole, saveScore, K }) {
+function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, pid, week, curHole, saveScore, K, absentBtn }) {
   const handleScore = (val) => {
     saveScore(week, pid, curHole, val);
   };
@@ -1411,7 +1406,10 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
           <span style={{ fontSize: 12, fontWeight: 600, color: K.t1 }}>({nh})</span>
           {strokes > 0 && <span style={{ color: "#3b82f6", fontSize: 16, letterSpacing: 1, display: "inline-flex", alignItems: "center", height: 16 }}>{"●".repeat(strokes)}</span>}
         </div>
-        {run.thru > 0 && <span style={{ fontSize: 11, color: K.t3 }}>Net: <strong style={{ color: run.netVsPar < 0 ? K.red : K.t1 }}>{run.netVsPar > 0 ? "+" : ""}{run.netVsPar}</strong> thru {run.thru}</span>}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {run.thru > 0 && <span style={{ fontSize: 11, color: K.t3 }}>Net: <strong style={{ color: run.netVsPar < 0 ? K.red : K.t1 }}>{run.netVsPar > 0 ? "+" : ""}{run.netVsPar}</strong> thru {run.thru}</span>}
+          {absentBtn}
+        </div>
       </div>
       <div style={{ display: "flex", gap: 3 }}>
         {btns.map(btn => {
