@@ -67,57 +67,83 @@ export default function GolfLeagueApp() {
 
   const getScrollTop = () => {
     const el = document.querySelector('.app-body');
-    return el ? el.scrollTop : window.scrollY;
+    return el ? el.scrollTop : 0;
   };
 
-  const onTouchStart = useCallback((e) => {
-    if (getScrollTop() === 0) touchStart.current = e.touches[0].clientY;
-    else touchStart.current = 0;
+  const resetPull = useCallback(() => {
+    setPullY(0);
+    pullYRef.current = 0;
+    touchStart.current = 0;
   }, []);
 
-  const onTouchMove = useCallback((e) => {
-    if (!touchStart.current || refreshing) return;
-    const diff = e.touches[0].clientY - touchStart.current;
-    if (diff > 0 && getScrollTop() === 0) {
-      const val = Math.min(diff * 0.4, 120);
-      pullYRef.current = val;
-      setPullY(val);
-    } else {
-      pullYRef.current = 0;
-      setPullY(0);
-    }
-  }, [refreshing]);
-
-  const resetPull = useCallback(() => {
-    if (!refreshing) {
-      setPullY(0);
-      pullYRef.current = 0;
-      touchStart.current = 0;
-    }
-  }, [refreshing]);
-
-  const onTouchEnd = useCallback(() => {
-    if (pullYRef.current >= PULL_THRESHOLD && !refreshing) {
-      setRefreshing(true);
-      setPullY(PULL_THRESHOLD);
-      pullYRef.current = PULL_THRESHOLD;
-      setTimeout(() => window.location.reload(), 600);
-    } else {
-      resetPull();
-    }
-  }, [refreshing, resetPull]);
-
-  // Safety: if pull indicator is showing but no refresh triggered, reset after 3s
+  // Native touch handlers on app-body for reliable pull-to-refresh
   useEffect(() => {
-    if (pullY > 0 && !refreshing) {
-      const safety = setTimeout(() => {
+    const el = document.querySelector('.app-body');
+    if (!el) return;
+
+    const isInteractive = (target) => {
+      if (!target) return false;
+      const tag = target.tagName?.toLowerCase();
+      if (tag === 'button' || tag === 'input' || tag === 'select' || tag === 'textarea') return true;
+      if (target.closest('button')) return true;
+      // Block pull-to-refresh when a popup/overlay is open
+      if (target.closest('[data-popup]')) return true;
+      return false;
+    };
+
+    const handleStart = (e) => {
+      if (isInteractive(e.target)) { touchStart.current = 0; return; }
+      if (el.scrollTop === 0) touchStart.current = e.touches[0].clientY;
+      else touchStart.current = 0;
+    };
+
+    const handleMove = (e) => {
+      if (!touchStart.current) return;
+      const diff = e.touches[0].clientY - touchStart.current;
+      if (diff > 0 && el.scrollTop === 0) {
+        const val = Math.min(diff * 0.4, 120);
+        pullYRef.current = val;
+        setPullY(val);
+        if (val > 10) e.preventDefault();
+      } else {
+        pullYRef.current = 0;
+        setPullY(0);
+      }
+    };
+
+    const handleEnd = () => {
+      if (pullYRef.current >= PULL_THRESHOLD) {
+        setPullY(PULL_THRESHOLD);
+        pullYRef.current = PULL_THRESHOLD;
+        setRefreshing(true);
+        setTimeout(() => window.location.reload(), 600);
+      } else {
         setPullY(0);
         pullYRef.current = 0;
         touchStart.current = 0;
-      }, 3000);
+      }
+    };
+
+    el.addEventListener('touchstart', handleStart, { passive: true });
+    el.addEventListener('touchmove', handleMove, { passive: false });
+    el.addEventListener('touchend', handleEnd, { passive: true });
+    el.addEventListener('touchcancel', handleEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener('touchstart', handleStart);
+      el.removeEventListener('touchmove', handleMove);
+      el.removeEventListener('touchend', handleEnd);
+      el.removeEventListener('touchcancel', handleEnd);
+    };
+  }, [refreshing]);
+
+  // Safety: if pull indicator stuck, reset after 2s
+  useEffect(() => {
+    if (pullY > 0 && !refreshing) {
+      const safety = setTimeout(resetPull, 2000);
       return () => clearTimeout(safety);
     }
-  }, [pullY, refreshing]);
+  }, [pullY, refreshing, resetPull]);
 
   // Firebase Auth listener
   useEffect(() => {
@@ -303,7 +329,7 @@ export default function GolfLeagueApp() {
   const bannerGrn = "#1a8c3f";
 
   return (
-    <div className="app-shell" onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={resetPull}>
+    <div className="app-shell">
       {/* Pull-to-refresh indicator */}
       {pullY > 0 && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 999, display: "flex", justifyContent: "center", paddingTop: Math.min(pullY, 100) - 20, transition: refreshing ? "all .3s" : "none" }}>

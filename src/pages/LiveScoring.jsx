@@ -649,7 +649,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             };
 
             return (<>
-            <div onClick={() => setShowScorecard(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 400 }} />
+            <div onClick={() => setShowScorecard(false)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 400 }} />
             <div onClick={() => setShowScorecard(false)} style={{ position: "fixed", inset: 0, zIndex: 450, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
             <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "0 0 10px", width: "100%", maxWidth: 420, maxHeight: "85vh", overflowY: "auto", overflow: "hidden" }}>
               <div style={{ display: "flex", alignItems: "center", background: K.acc, borderRadius: "14px 14px 0 0" }}>
@@ -1064,8 +1064,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         };
 
         return (<>
-          <div onClick={() => setShowAttest(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 500 }} />
-          <div style={{ position: "fixed", inset: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: "60px 16px 16px" }}>
+          <div onClick={() => setShowAttest(false)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 500 }} />
+          <div data-popup style={{ position: "fixed", inset: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: "60px 16px 16px" }}>
             <div style={{ background: K.bg, border: `1.5px solid ${K.warn}50`, borderRadius: 16, padding: "16px 12px 20px", width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto" }}>
               {/* Header — Players vs Players with match score */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 14, padding: "0 4px" }}>
@@ -1252,7 +1252,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         );
 
         return (<>
-          <div onClick={() => { setShowFinalize(false); setShowEditConfirm(false); }} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 500 }} />
+          <div onClick={() => { setShowFinalize(false); setShowEditConfirm(false); }} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 500 }} />
           {/* Confetti for wins — only on first finalize */}
           {sc.matchResult === "WIN" && !isAlreadyFinalized && (
             <div style={{ position: "fixed", inset: 0, zIndex: 550, pointerEvents: "none", overflow: "hidden" }}>
@@ -1283,7 +1283,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               `}</style>
             </div>
           )}
-          <div style={{ position: "fixed", inset: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: "60px 16px 16px" }}>
+          <div data-popup style={{ position: "fixed", inset: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: "60px 16px 16px" }}>
             <div style={{ background: K.bg, border: `1.5px solid ${sc.resultColor}50`, borderRadius: 16, padding: "16px 12px 20px", width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto" }}>
               {/* Header — Players vs Players with match score and winner arrow */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 14, padding: "0 4px" }}>
