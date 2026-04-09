@@ -10,22 +10,22 @@ import { LEAGUE_ID } from "../firebase";
 // All borders use same muted color for clean look
 function ScoreCell({ score, par, strokes, size = 13 }) {
   if (!score || score <= 0) return <span style={{ color: K.t3 + "30", fontSize: size }}>·</span>;
-  const net = score - (strokes || 0);
-  const diff = net - par;
+  const diff = score - par; // gross score vs par (not net)
   const s = size;
-  const sh = s + 6; // shape size
+  const sh = s + 8; // shape size — slightly larger for better spacing
   const bc = K.t2;
-  const dotH = 10; // fixed height reserved for dots row
-  const totalH = dotH + sh + 2; // total cell height: dots + gap + shape
+  const dotH = 10;
+  const totalH = dotH + sh + 2;
 
   const num = <span style={{ fontSize: s, fontWeight: 700, lineHeight: 1 }}>{score}</span>;
 
-  // Build the indicator shape based on score vs par
+  // Build the indicator shape based on gross score vs par
   let shape;
   if (diff <= -2) {
+    // Eagle — double circle with more space between rings
     shape = (
       <span style={{ width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ width: sh - 5, height: sh - 5, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{num}</span>
+        <span style={{ width: sh - 6, height: sh - 6, borderRadius: "50%", border: `1px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{num}</span>
       </span>
     );
   } else if (diff === -1) {
@@ -39,15 +39,17 @@ function ScoreCell({ score, par, strokes, size = 13 }) {
       <span style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{num}</span>
     );
   } else if (diff === 2) {
+    // Double bogey — double square with more space between borders
     shape = (
       <span style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ width: sh - 5, height: sh - 5, borderRadius: 2, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{num}</span>
+        <span style={{ width: sh - 6, height: sh - 6, borderRadius: 2, border: `1px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{num}</span>
       </span>
     );
   } else {
+    // Triple+ — same as double bogey
     shape = (
       <span style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ width: sh - 5, height: sh - 5, borderRadius: 2, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{num}</span>
+        <span style={{ width: sh - 6, height: sh - 6, borderRadius: 2, border: `1px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>{num}</span>
       </span>
     );
   }
