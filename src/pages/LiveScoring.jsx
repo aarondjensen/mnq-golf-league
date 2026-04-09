@@ -13,13 +13,13 @@ function ScoreCell({ score, par, strokes, size = 13 }) {
   const net = score - (strokes || 0);
   const diff = net - par;
   const s = size;
-  const cellH = s + 12;
+  const cellH = s + 14;
   const bc = K.t2; // single border color for all indicators
 
-  // Stroke dots — larger, positioned above with gap
+  // Stroke dots — large, clearly above the score
   const dots = strokes > 0 ? (
-    <span style={{ position: "absolute", top: -2, left: "50%", transform: "translateX(-50%)", color: "#3b82f6", fontSize: s - 2, fontWeight: 900, lineHeight: 1, letterSpacing: 1 }}>
-      {"·".repeat(strokes)}
+    <span style={{ position: "absolute", top: -6, left: "50%", transform: "translateX(-50%)", color: "#3b82f6", fontSize: s, fontWeight: 900, lineHeight: 1, letterSpacing: 2 }}>
+      {"•".repeat(strokes)}
     </span>
   ) : null;
 
@@ -642,7 +642,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     return <div key={h} style={{
                       flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color: !ok ? K.t3 + "30" : K.t1, lineHeight: "22px",
                       padding: "4px 0", borderRight: won ? "none" : gridLine,
-                      ...(won ? { background: K.bg, border: `2px solid ${K.act}`, borderRadius: 5, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
+                      ...(won ? { background: K.bg, border: `1.5px solid ${K.act}`, borderRadius: 3, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
                     }}>{ok ? tNet : "·"}</div>;
                   })}
                 </div>
@@ -747,7 +747,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 return <div key={h} style={{
                   flex: 1, height: 34, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center",
                   background: won ? K.act + "18" : K.card,
-                  border: won ? `2px solid ${K.act}` : "none",
+                  border: won ? `1.5px solid ${K.act}` : "none",
                 }}>
                   <span style={{ fontSize: 16, fontWeight: 800, color: K.t2 }}>{tNet}</span>
                 </div>;
@@ -880,7 +880,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 return <div key={h} style={{
                   flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t2, lineHeight: "22px",
                   padding: "3px 0", borderRight: won ? "none" : gridLine,
-                  ...(won ? { background: K.bg, border: `2px solid ${K.act}`, borderRadius: 5, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
+                  ...(won ? { background: K.bg, border: `1.5px solid ${K.act}`, borderRadius: 3, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
                 }}>{tNet}</div>;
               })}
               <div style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t1, padding: "4px 0" }}>{hw}</div>
@@ -1007,7 +1007,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 return <div key={h} style={{
                   flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t2, lineHeight: "22px",
                   padding: "3px 0", borderRight: won ? "none" : gridLine,
-                  ...(won ? { background: K.bg, border: `2px solid ${K.act}`, borderRadius: 5, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
+                  ...(won ? { background: K.bg, border: `1.5px solid ${K.act}`, borderRadius: 3, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
                 }}>{tNet}</div>;
               })}
               <div style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t1, padding: "4px 0" }}>{hw}</div>
