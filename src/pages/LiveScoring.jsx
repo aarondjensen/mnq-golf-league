@@ -833,7 +833,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           });
           return (
             <div style={{ display: "flex", alignItems: "center", borderBottom: colBdr }}>
-              <div style={{ ...lblStyle, height: 38 }}>
+              <div style={{ ...lblStyle, height: 38, paddingTop: 10 }}>
                 <span style={{ fontSize: 15, fontWeight: 800, color: K.t1, width: 24, flexShrink: 0 }}>{getInitials(pid)}</span>
                 <span style={{ fontSize: 11, color: "#3b82f6", fontWeight: 700 }}>{getNineHcp(pid)}</span>
               </div>
@@ -842,7 +842,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} />
                 </div>
               ))}
-              <div style={{ ...totStyle, height: 38 }}><span style={{ fontSize: 14, fontWeight: 800, color: K.t1 }}>{grossTotal || ""}</span></div>
+              <div style={{ ...totStyle, height: 38, paddingTop: 10 }}><span style={{ fontSize: 14, fontWeight: 800, color: K.t1 }}>{grossTotal || ""}</span></div>
             </div>
           );
         };
@@ -1187,7 +1187,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           });
           return (
             <div style={{ display: "flex", alignItems: "center", borderBottom: colBdr }}>
-              <div style={{ ...lblStyle, height: 38 }}>
+              <div style={{ ...lblStyle, height: 38, paddingTop: 10 }}>
                 <span style={{ fontSize: 15, fontWeight: 800, color: K.t1, width: 24, flexShrink: 0 }}>{getInitials(pid)}</span>
                 <span style={{ fontSize: 11, color: "#3b82f6", fontWeight: 700 }}>{getNineHcp(pid)}</span>
               </div>
@@ -1196,7 +1196,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} />
                 </div>
               ))}
-              <div style={{ ...totStyle, height: 38 }}><span style={{ fontSize: 14, fontWeight: 800, color: K.t1 }}>{grossTotal || ""}</span></div>
+              <div style={{ ...totStyle, height: 38, paddingTop: 10 }}><span style={{ fontSize: 14, fontWeight: 800, color: K.t1 }}>{grossTotal || ""}</span></div>
             </div>
           );
         };
