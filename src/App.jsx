@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "./firebase";
 import { K, FONTS, CSS, I, DEFAULT_SCORING, SEASON_WEEKS, applyTheme, getCSS } from "./theme";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
@@ -36,7 +36,6 @@ export default function GolfLeagueApp() {
   const [liveWeek, setLiveWeek] = useState(null);
   const [tab, setTab] = useState("standings");
   const [showMore, setShowMore] = useState(false);
-  const [commOverride, setCommOverride] = useState(null); // { playerId, name } or null
   const [darkMode, setDarkMode] = useState(() => {
     try { return localStorage.getItem("mnq_theme") !== "light"; } catch { return true; }
   });
@@ -60,17 +59,15 @@ export default function GolfLeagueApp() {
     return el ? el.scrollTop : window.scrollY;
   };
 
-  const refreshingRef = useRef(false);
-
-  const onTouchStart = (e) => {
-    if (getScrollTop() <= 1) touchStart.current = e.touches[0].clientY;
+  const onTouchStart = useCallback((e) => {
+    if (getScrollTop() === 0) touchStart.current = e.touches[0].clientY;
     else touchStart.current = 0;
-  };
+  }, []);
 
-  const onTouchMove = (e) => {
-    if (!touchStart.current || refreshingRef.current) return;
+  const onTouchMove = useCallback((e) => {
+    if (!touchStart.current || refreshing) return;
     const diff = e.touches[0].clientY - touchStart.current;
-    if (diff > 0 && getScrollTop() <= 1) {
+    if (diff > 0 && getScrollTop() === 0) {
       const val = Math.min(diff * 0.4, 120);
       pullYRef.current = val;
       setPullY(val);
@@ -78,11 +75,10 @@ export default function GolfLeagueApp() {
       pullYRef.current = 0;
       setPullY(0);
     }
-  };
+  }, [refreshing]);
 
-  const onTouchEnd = () => {
-    if (pullYRef.current >= PULL_THRESHOLD && !refreshingRef.current) {
-      refreshingRef.current = true;
+  const onTouchEnd = useCallback(() => {
+    if (pullYRef.current >= PULL_THRESHOLD && !refreshing) {
       setRefreshing(true);
       setPullY(PULL_THRESHOLD);
       pullYRef.current = PULL_THRESHOLD;
@@ -92,7 +88,7 @@ export default function GolfLeagueApp() {
       pullYRef.current = 0;
     }
     touchStart.current = 0;
-  };
+  }, [refreshing]);
 
   // Firebase Auth listener
   useEffect(() => {
@@ -222,11 +218,6 @@ export default function GolfLeagueApp() {
   const isComm = leagueUser?.isCommissioner === true;
   const activePlayers = players.filter(p => p.status !== "inactive");
 
-  // Commissioner can impersonate another player
-  const effectiveLeagueUser = isComm && commOverride
-    ? { ...leagueUser, playerId: commOverride.playerId, name: commOverride.name }
-    : leagueUser;
-
   if (authLoading) return <LoadingScreen />;
   if (!authUser) return <AuthScreen onGoogle={doGoogleSignIn} onEmail={doEmailSignIn} />;
   if (!membersLoaded) return <LoadingScreen />;
@@ -246,7 +237,7 @@ export default function GolfLeagueApp() {
   ];
 
   // Find upcoming match info for banner
-  const myTeam = teams.find(t => t.player1 === effectiveLeagueUser.playerId || t.player2 === effectiveLeagueUser.playerId);
+  const myTeam = teams.find(t => t.player1 === leagueUser.playerId || t.player2 === leagueUser.playerId);
   const upcomingBanner = (() => {
     if (!myTeam || !schedule.length) return null;
     // Find current week (first week without all matches finalized)
@@ -316,20 +307,7 @@ export default function GolfLeagueApp() {
           </div>
           <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
           <div style={{ position: "absolute", right: 14, display: "flex", alignItems: "center", gap: 6 }}>
-            {isComm && (
-              <select
-                value={commOverride?.playerId || ""}
-                onChange={e => {
-                  if (!e.target.value) { setCommOverride(null); return; }
-                  const pl = activePlayers.find(p => p.id === e.target.value);
-                  if (pl) setCommOverride({ playerId: pl.id, name: pl.name });
-                }}
-                style={{ background: K.inp, border: `1px solid ${commOverride ? K.warn : K.bdr}`, borderRadius: 6, color: commOverride ? K.warn : K.t2, fontSize: 11, padding: "5px 8px", cursor: "pointer", maxWidth: 130 }}
-              >
-                <option value="">Me</option>
-                {activePlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-              </select>
-            )}
+            <button onClick={doSignOut} style={{ background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t3, fontSize: 12, padding: "5px 12px", cursor: "pointer", fontWeight: 600, letterSpacing: .4 }}>Sign Out</button>
           </div>
         </div>
       </div>
@@ -374,7 +352,7 @@ export default function GolfLeagueApp() {
           })()}
           <div className="main-content fi" key={tab}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} />}
-          {tab === "scoring" && <LiveScoringView leagueUser={effectiveLeagueUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} />}
+          {tab === "scoring" && <LiveScoringView leagueUser={leagueUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={leagueUser} leagueConfig={leagueConfig} />}
           {tab === "players" && <MoreView view="players" players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} ctpData={ctpData} members={members} />}
           {tab === "stats" && <MoreView view="stats" players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} ctpData={ctpData} members={members} />}
@@ -406,7 +384,7 @@ export default function GolfLeagueApp() {
             <span style={{ fontSize: 9, fontWeight: showMore || moreItems.some(m => m.id === tab) ? 600 : 400, color: showMore || moreItems.some(m => m.id === tab) ? K.acc : K.t2 }}>More</span>
           </button>
           {showMore && (
-            <div style={{ position: "absolute", bottom: "100%", right: 0, marginBottom: 8, background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 12, padding: "6px 0", zIndex: 200, minWidth: 180, boxShadow: "0 -4px 20px rgba(0,0,0,.4)" }}>
+            <div style={{ position: "fixed", bottom: `calc(56px + env(safe-area-inset-bottom, 0px))`, right: 14, background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 12, padding: "6px 0", zIndex: 300, minWidth: 180, boxShadow: "0 -4px 20px rgba(0,0,0,.4)" }}>
               {moreItems.map(item => {
                 const active = tab === item.id;
                 return (
@@ -416,10 +394,6 @@ export default function GolfLeagueApp() {
                   </button>
                 );
               })}
-              <div style={{ borderTop: `1px solid ${K.bdr}`, margin: "4px 0" }} />
-              <button onClick={() => { setShowMore(false); doSignOut(); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 16px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
-                <span style={{ fontSize: 14, fontWeight: 400, color: K.red }}>Sign Out</span>
-              </button>
             </div>
           )}
         </div>
