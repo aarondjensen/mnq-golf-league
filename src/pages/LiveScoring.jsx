@@ -10,43 +10,36 @@ import { LEAGUE_ID } from "../firebase";
 // All borders use same muted color for clean look
 function ScoreCell({ score, par, strokes, size = 13 }) {
   if (!score || score <= 0) return <span style={{ color: K.t3 + "30", fontSize: size }}>·</span>;
-  const diff = score - par; // gross score vs par (not net)
+  const diff = score - par;
   const s = size;
-  const sh = s + 8; // shape size — slightly larger for better spacing
+  const sh = s + 8;
   const bc = K.t2;
   const dotH = 10;
-  const totalH = dotH + sh + 2;
+  const scoreAreaH = sh + 2;
+  const totalH = dotH + scoreAreaH;
 
-  const num = <div style={{ fontSize: s, fontWeight: 700, lineHeight: `${s}px`, height: s, display: "flex", alignItems: "center", justifyContent: "center" }}>{score}</div>;
-
-  // Build the indicator shape based on gross score vs par
-  let shape;
+  // Border shape — centered absolutely in the score area
+  let border = null;
   if (diff <= -2) {
-    shape = (
-      <div style={{ width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ width: sh - 6, height: sh - 6, borderRadius: "50%", border: `1px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>{num}</div>
+    border = (
+      <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: sh - 6, height: sh - 6, borderRadius: "50%", border: `1px solid ${bc}` }} />
       </div>
     );
   } else if (diff === -1) {
-    shape = (
-      <div style={{ width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>{num}</div>
-    );
-  } else if (diff === 0) {
-    shape = <div style={{ display: "flex", alignItems: "center", justifyContent: "center", width: sh, height: sh }}>{num}</div>;
+    border = <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}` }} />;
   } else if (diff === 1) {
-    shape = (
-      <div style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>{num}</div>
-    );
+    border = <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}` }} />;
   } else if (diff === 2) {
-    shape = (
-      <div style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ width: sh - 6, height: sh - 6, borderRadius: 2, border: `1px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>{num}</div>
+    border = (
+      <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: sh - 6, height: sh - 6, borderRadius: 2, border: `1px solid ${bc}` }} />
       </div>
     );
-  } else {
-    shape = (
-      <div style={{ width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ width: sh - 6, height: sh - 6, borderRadius: 2, border: `1px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>{num}</div>
+  } else if (diff >= 3) {
+    border = (
+      <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: sh - 6, height: sh - 6, borderRadius: 2, border: `1px solid ${bc}` }} />
       </div>
     );
   }
@@ -56,7 +49,10 @@ function ScoreCell({ score, par, strokes, size = 13 }) {
       <div style={{ height: dotH, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
         {strokes > 0 && <span style={{ color: "#3b82f6", fontSize: 10, fontWeight: 900, letterSpacing: 1, lineHeight: 1 }}>{"•".repeat(strokes)}</span>}
       </div>
-      {shape}
+      <div style={{ position: "relative", width: sh, height: scoreAreaH, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {border}
+        <span style={{ position: "relative", zIndex: 1, fontSize: s, fontWeight: 700 }}>{score}</span>
+      </div>
     </div>
   );
 }
