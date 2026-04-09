@@ -4,33 +4,34 @@ import { K, FONTS, CSS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card,
 import { LEAGUE_ID } from "../firebase";
 
 // Golf scorecard cell — shows score with standard indicators:
-// Eagle (−2): double circle (gold)  |  Birdie (−1): circle (red/dark)
-// Par (0): plain  |  Bogey (+1): square (navy)
-// Double bogey (+2): double square (navy)  |  Triple+ (+3): double square (amber)
+// Eagle (−2): double circle  |  Birdie (−1): circle
+// Par (0): plain  |  Bogey (+1): square
+// Double bogey (+2): double square  |  Triple+ (+3): double square
+// All borders use same muted color for clean look
 function ScoreCell({ score, par, strokes, size = 13 }) {
   if (!score || score <= 0) return <span style={{ color: K.t3 + "30" }}>·</span>;
   const net = score - (strokes || 0);
   const diff = net - par;
   const s = size;
-  const dotSize = Math.max(7, s - 4);
+  const cellH = s + 12;
+  const bc = K.t2; // single border color for all indicators
 
-  // Stroke dots
+  // Stroke dots — larger, positioned above with gap
   const dots = strokes > 0 ? (
-    <span style={{ position: "absolute", top: 0, left: "50%", transform: "translateX(-50%)", color: "#3b82f6", fontSize: dotSize, fontWeight: 800, lineHeight: 1, letterSpacing: -1 }}>
-      {"•".repeat(strokes)}
+    <span style={{ position: "absolute", top: -2, left: "50%", transform: "translateX(-50%)", color: "#3b82f6", fontSize: s - 2, fontWeight: 900, lineHeight: 1, letterSpacing: 1 }}>
+      {"·".repeat(strokes)}
     </span>
   ) : null;
 
-  const num = <span style={{ position: "relative", zIndex: 1, fontSize: s, fontWeight: 700 }}>{score}</span>;
-  const cellH = s + 10;
+  const num = <span style={{ fontSize: s, fontWeight: 700, lineHeight: 1 }}>{score}</span>;
 
   if (diff <= -2) {
-    // Eagle or better — double circle (gold)
+    // Eagle or better — double circle
     return (
       <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: cellH, height: cellH }}>
         {dots}
-        <span style={{ width: cellH - 2, height: cellH - 2, borderRadius: "50%", border: "2px solid #b8960c", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-          <span style={{ width: cellH - 8, height: cellH - 8, borderRadius: "50%", border: "1.5px solid #b8960c", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ width: cellH, height: cellH, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ width: cellH - 6, height: cellH - 6, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
             {num}
           </span>
         </span>
@@ -38,11 +39,11 @@ function ScoreCell({ score, par, strokes, size = 13 }) {
     );
   }
   if (diff === -1) {
-    // Birdie — single circle (dark red)
+    // Birdie — single circle
     return (
       <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: cellH, height: cellH }}>
         {dots}
-        <span style={{ width: cellH - 2, height: cellH - 2, borderRadius: "50%", border: "2px solid #8b2020", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ width: cellH, height: cellH, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
           {num}
         </span>
       </span>
@@ -58,35 +59,35 @@ function ScoreCell({ score, par, strokes, size = 13 }) {
     );
   }
   if (diff === 1) {
-    // Bogey — single square (navy)
+    // Bogey — single square
     return (
       <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: cellH, height: cellH }}>
         {dots}
-        <span style={{ width: cellH - 2, height: cellH - 2, borderRadius: 3, border: "2px solid #153453", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ width: cellH, height: cellH, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
           {num}
         </span>
       </span>
     );
   }
   if (diff === 2) {
-    // Double bogey — double square (navy)
+    // Double bogey — double square
     return (
       <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: cellH, height: cellH }}>
         {dots}
-        <span style={{ width: cellH - 2, height: cellH - 2, borderRadius: 3, border: "2px solid #153453", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-          <span style={{ width: cellH - 8, height: cellH - 8, borderRadius: 2, border: "1.5px solid #153453", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ width: cellH, height: cellH, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ width: cellH - 6, height: cellH - 6, borderRadius: 2, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
             {num}
           </span>
         </span>
       </span>
     );
   }
-  // Triple bogey+ — double square (amber)
+  // Triple bogey+ — double square
   return (
     <span style={{ position: "relative", display: "inline-flex", alignItems: "center", justifyContent: "center", width: cellH, height: cellH }}>
       {dots}
-      <span style={{ width: cellH - 2, height: cellH - 2, borderRadius: 3, border: "2px solid #d97706", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
-        <span style={{ width: cellH - 8, height: cellH - 8, borderRadius: 2, border: "1.5px solid #d97706", display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+      <span style={{ width: cellH, height: cellH, borderRadius: 3, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
+        <span style={{ width: cellH - 6, height: cellH - 6, borderRadius: 2, border: `1.5px solid ${bc}`, display: "inline-flex", alignItems: "center", justifyContent: "center" }}>
           {num}
         </span>
       </span>
