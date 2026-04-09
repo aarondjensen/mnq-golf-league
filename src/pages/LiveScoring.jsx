@@ -692,9 +692,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             return { s, st };
           });
           return (
-            <div style={{ display: "flex", gap: 3, marginBottom: 2 }}>
+            <div style={{ display: "flex" }}>
               {cells.map((c, h) => (
-                <div key={h} style={{ flex: 1, height: 36, borderRadius: 6, background: K.card, display: "flex", alignItems: "center", justifyContent: "center", position: "relative" }}>
+                <div key={h} style={{ flex: 1, minHeight: 38, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? colBdr : "none" }}>
                   <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} />
                 </div>
               ))}
@@ -705,17 +705,23 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const SignedTeamRow = ({ pids, isMyTeam }) => {
           const hw = isMyTeam ? (scHoleResults.filter(r => r === 1).length) : (scHoleResults.filter(r => r === -1).length);
           return (
-            <div style={{ display: "flex", gap: 3, marginBottom: 2 }}>
+            <div style={{ display: "flex" }}>
               {Array.from({ length: 9 }, (_, h) => {
                 let tNet = 0;
                 pids.forEach(pid => { tNet += getS(pid, h) - getStrokes(pid, h); });
                 const won = scHoleResults[h] === (isMyTeam ? 1 : -1);
                 return <div key={h} style={{
-                  flex: 1, height: 34, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center",
-                  background: won ? K.act + "18" : K.card,
-                  border: won ? `1.5px solid ${K.act}` : "none",
+                  flex: 1, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
+                  borderRight: h < 8 ? colBdr : "none",
+                  background: won ? K.act + "18" : "transparent",
                 }}>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: K.t2 }}>{tNet}</span>
+                  <div style={{
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 26, height: 26, borderRadius: 3,
+                    border: won ? `1.5px solid ${K.act}` : "none",
+                  }}>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: K.t2 }}>{tNet}</span>
+                  </div>
                 </div>;
               })}
             </div>
@@ -725,10 +731,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const myTeamName = isMyT1 ? t1.name : t2.name;
         const oppTeamName = isMyT1 ? t2.name : t1.name;
 
+        const colBdr = `1px solid ${K.bdr}30`;
+
         const HoleHeaderRow = () => (
-          <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
+          <div style={{ display: "flex", background: K.inp, borderRadius: "6px 6px 0 0" }}>
             {Array.from({ length: 9 }, (_, i) => (
-              <div key={i} style={{ flex: 1, height: 24, display: "flex", alignItems: "center", justifyContent: "center", background: K.inp, borderRadius: 4 }}>
+              <div key={i} style={{ flex: 1, height: 24, display: "flex", alignItems: "center", justifyContent: "center", borderRight: i < 8 ? colBdr : "none" }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: K.t3 }}>{side === 'front' ? i + 1 : i + 10}</span>
               </div>
             ))}
