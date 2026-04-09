@@ -73,8 +73,9 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                 <button onClick={() => setExpanded(expanded === p.id ? null : p.id)} style={{
-                  background: K.logoBright + "20", border: `1px solid ${K.logoBright}50`, borderRadius: 6, padding: "4px 10px", cursor: "pointer",
-                  fontSize: 16, fontWeight: 800, color: K.t1, minWidth: 36, textAlign: "center",
+                  background: K.logoBright + "20", border: `1px solid ${K.logoBright}50`, borderRadius: 6,
+                  width: 38, height: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 16, fontWeight: 800, color: K.t1, padding: 0,
                 }}>{p.idx}</button>
                 {p.hcpChange !== null && p.hcpChange !== 0 ? (
                   <div style={{ fontSize: 11, fontWeight: 700, color: p.hcpChange < 0 ? "#1a8c3f" : K.red, display: "flex", alignItems: "center", gap: 1, minWidth: 28 }}>
