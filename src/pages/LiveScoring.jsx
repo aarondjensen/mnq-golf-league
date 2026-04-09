@@ -498,12 +498,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           {needsAttestation ? "Scorecard signed — awaiting your attestation" : "Scorecard signed — awaiting opponent attestation"}
         </div>
       )}
+      {!isAlreadyFinalized && (
       <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
         {Array.from({ length: 9 }, (_, i) => {
-          const cur = !isAlreadyFinalized && i === curHole; const done = allP.every(pid => getS(pid, i) > 0);
-          return <button key={i} onClick={() => { if (!isAlreadyFinalized) { setCurHole(i); setEditing(i < currentHoleIdx); } }} style={{ flex: 1, height: 38, borderRadius: done || cur ? 10 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 16, fontWeight: 700, cursor: isAlreadyFinalized ? "default" : "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{i + 1}</button>;
+          const cur = i === curHole; const done = allP.every(pid => getS(pid, i) > 0);
+          return <button key={i} onClick={() => { setCurHole(i); setEditing(i < currentHoleIdx); }} style={{ flex: 1, height: 38, borderRadius: done || cur ? 10 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 16, fontWeight: 700, cursor: "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{i + 1}</button>;
         })}
       </div>
+      )}
       {/* Match status — tappable to expand scorecard */}
       {(() => {
         const myTeamId = myTeam?.id || t1.id;
