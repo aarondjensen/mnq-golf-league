@@ -647,10 +647,21 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const myTeamName = isMyT1 ? t1.name : t2.name;
         const oppTeamName = isMyT1 ? t2.name : t1.name;
 
+        const HoleHeaderRow = () => (
+          <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
+            {Array.from({ length: 9 }, (_, i) => (
+              <div key={i} style={{ flex: 1, height: 24, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: K.t3 }}>{side === 'front' ? i + 1 : i + 10}</span>
+              </div>
+            ))}
+          </div>
+        );
+
         return (
           <div style={{ marginBottom: 6 }}>
             {/* My team card */}
             <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, padding: "10px 8px 8px", marginBottom: 8 }}>
+              <HoleHeaderRow />
               {scMyPids.map(pid => {
                 const pl = players.find(p => p.id === pid);
                 return <div key={pid}>
@@ -664,6 +675,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
             {/* Opp team card */}
             <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, padding: "10px 8px 8px" }}>
+              <HoleHeaderRow />
               {scOppPids.map(pid => {
                 const pl = players.find(p => p.id === pid);
                 return <div key={pid}>
@@ -710,11 +722,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       {allComplete && !showFinalize && !showAttest && isAlreadyFinalized && needsAttestation && (
         <button onClick={() => setShowAttest(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 15, fontWeight: 700 }}>
           Attest Scorecard
-        </button>
-      )}
-      {allComplete && !showFinalize && !showAttest && isAlreadyFinalized && !needsAttestation && (
-        <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.acc + "15", border: `1.5px solid ${K.acc}50`, color: K.acc, fontSize: 15, fontWeight: 700 }}>
-          Show Match Details
         </button>
       )}
 
