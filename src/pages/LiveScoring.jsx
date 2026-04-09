@@ -855,6 +855,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   {rs > 0 ? <><span style={{ fontSize: 14 }}>▲</span>{rs}</> : rs < 0 ? <><span style={{ fontSize: 14 }}>▼</span>{Math.abs(rs)}</> : "—"}
                 </div>;
               })}
+              <div style={{ width: tw, flexShrink: 0, height: 28 }} />
             </div>
           );
         };
