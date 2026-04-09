@@ -200,7 +200,6 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     a.click();
     URL.revokeObjectURL(url);
   };
-  };
 
   // ── My Schedule row ──
   const renderMyWeek = (wk, dimmed) => {
