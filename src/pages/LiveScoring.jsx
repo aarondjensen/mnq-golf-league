@@ -799,7 +799,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           return (
             <div style={{ display: "flex", borderBottom: colBdr }}>
               <div style={{ ...lblStyle, minHeight: 38 }}>
-                <span style={{ fontSize: 15, fontWeight: 800, color: K.t1, width: 22, flexShrink: 0 }}>{getInitials(pid)}</span>
+                <span style={{ fontSize: 15, fontWeight: 800, color: K.t1, width: 24, flexShrink: 0 }}>{getInitials(pid)}</span>
                 <span style={{ fontSize: 11, color: "#3b82f6", fontWeight: 700 }}>{getNineHcp(pid)}</span>
               </div>
               {cells.map((c, h) => (
@@ -1095,7 +1095,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           return (
             <div style={{ display: "flex", borderBottom: colBdr }}>
               <div style={{ ...lblStyle, minHeight: 38 }}>
-                <span style={{ fontSize: 15, fontWeight: 800, color: K.t1, width: 22, flexShrink: 0 }}>{getInitials(pid)}</span>
+                <span style={{ fontSize: 15, fontWeight: 800, color: K.t1, width: 24, flexShrink: 0 }}>{getInitials(pid)}</span>
                 <span style={{ fontSize: 11, color: "#3b82f6", fontWeight: 700 }}>{getNineHcp(pid)}</span>
               </div>
               {cells.map((c, h) => (
@@ -1192,8 +1192,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           )}
           <div style={{ position: "fixed", inset: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
             <div style={{ background: K.bg, border: `1.5px solid ${sc.resultColor}50`, borderRadius: 16, padding: "16px 12px 20px", width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto" }}>
-              {/* Header — Players vs Players with match score */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 14, padding: "0 4px" }}>
+              {/* Header — Players vs Players with match score and winner arrow */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 14, padding: "0 4px" }}>
                 <div style={{ flex: 1, textAlign: "right" }}>
                   {sc.myPidsSorted.map(pid => {
                     const pl = players.find(p => p.id === pid);
@@ -1201,9 +1201,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "WIN" ? K.grn : K.t1, lineHeight: 1.3 }}>{last}</div>;
                   })}
                 </div>
-                <div style={{ textAlign: "center", minWidth: 70 }}>
+                {sc.matchResult !== "TIE" && (
+                  <div style={{ color: sc.matchResult === "WIN" ? "#1a8c3f" : K.red, fontSize: 15, fontWeight: 800, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>
+                )}
+                <div style={{ textAlign: "center", minWidth: 60 }}>
                   <div style={{ fontSize: 26, fontWeight: 800, color: sc.resultColor, lineHeight: 1 }}>{sc.matchResultText}</div>
                 </div>
+                {sc.matchResult !== "TIE" && (
+                  <div style={{ color: sc.matchResult === "LOSS" ? "#1a8c3f" : K.red, fontSize: 15, fontWeight: 800, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>
+                )}
                 <div style={{ flex: 1, textAlign: "left" }}>
                   {sc.oppPidsSorted.map(pid => {
                     const pl = players.find(p => p.id === pid);
