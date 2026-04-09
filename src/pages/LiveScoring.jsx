@@ -136,6 +136,20 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const t2 = teams.find(t => t.id === matchToScore.team2);
   if (!t1 || !t2) return null;
 
+  // Reset hole position when match changes (e.g. commissioner switches player)
+  const matchKey = `${matchToScore.team1}_${matchToScore.team2}`;
+  const prevMatchKey = useRef(matchKey);
+  useEffect(() => {
+    if (prevMatchKey.current !== matchKey) {
+      setCurHole(0);
+      initialJump.current = false;
+      setEditing(false);
+      setShowScorecard(false);
+      setShowFinalize(false);
+      prevMatchKey.current = matchKey;
+    }
+  }, [matchKey]);
+
   const scoringFormat = leagueConfig?.scoringFormat || "lowHighBonus";
   const isTeamNet = scoringFormat === "teamNetTotal";
 
