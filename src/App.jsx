@@ -317,9 +317,6 @@ export default function GolfLeagueApp() {
       <div className="app-header">
         <div style={{ maxWidth: 900, width: "100%", margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: "0 14px" }}>
           <div style={{ position: "absolute", left: 14, display: "flex", alignItems: "center", gap: 8 }}>
-            <button onClick={toggleTheme} style={{ background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t3, fontSize: 14, padding: "5px 10px", cursor: "pointer", lineHeight: 1 }} title={darkMode ? "Light mode" : "Dark mode"}>
-              {darkMode ? "☀" : "🌙"}
-            </button>
             {syncing && <span className="pu" style={{ fontSize: 8, color: K.grn }}>● LIVE</span>}
           </div>
           <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
@@ -485,7 +482,28 @@ export default function GolfLeagueApp() {
                 const isSignOut = item.id === "signout";
                 return (
                   <div key={item.id}>
-                    {isSignOut && <div style={{ borderTop: `1px solid ${K.bdr}`, margin: "4px 0" }} />}
+                    {isSignOut && (<>
+                      {/* Dark mode toggle */}
+                      <div style={{ borderTop: `1px solid ${K.bdr}`, margin: "4px 0" }} />
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px" }}>
+                        <span style={{ fontSize: 14, fontWeight: 400, color: K.t1 }}>Dark Mode</span>
+                        <button onClick={(e) => { e.stopPropagation(); toggleTheme(); }} style={{
+                          width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
+                          background: darkMode ? K.act : K.bdr,
+                          position: "relative", transition: "background .2s",
+                        }}>
+                          <div style={{
+                            width: 20, height: 20, borderRadius: 10,
+                            background: "#fff",
+                            position: "absolute", top: 2,
+                            left: darkMode ? 22 : 2,
+                            transition: "left .2s",
+                            boxShadow: "0 1px 3px rgba(0,0,0,.3)",
+                          }} />
+                        </button>
+                      </div>
+                      <div style={{ borderTop: `1px solid ${K.bdr}`, margin: "4px 0" }} />
+                    </>)}
                     <button onClick={() => {
                       if (isSignOut) { doSignOut(); }
                       else { setTab(item.id); }
