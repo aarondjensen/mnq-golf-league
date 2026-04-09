@@ -192,13 +192,9 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       'END:VCALENDAR',
     ].join('\r\n');
 
-    const blob = new Blob([ics], { type: 'text/calendar;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `mnq-golf-${year}-schedule.ics`;
-    a.click();
-    URL.revokeObjectURL(url);
+    // Use data URI — works on iOS Safari, Android, and desktop
+    const dataUri = 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics);
+    window.open(dataUri);
   };
 
   // ── My Schedule row ──
