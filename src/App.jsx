@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "./firebase";
 import { K, FONTS, CSS, I, DEFAULT_SCORING, SEASON_WEEKS, applyTheme, getCSS } from "./theme";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
@@ -59,15 +59,17 @@ export default function GolfLeagueApp() {
     return el ? el.scrollTop : window.scrollY;
   };
 
-  const onTouchStart = useCallback((e) => {
-    if (getScrollTop() === 0) touchStart.current = e.touches[0].clientY;
-    else touchStart.current = 0;
-  }, []);
+  const refreshingRef = useRef(false);
 
-  const onTouchMove = useCallback((e) => {
-    if (!touchStart.current || refreshing) return;
+  const onTouchStart = (e) => {
+    if (getScrollTop() <= 1) touchStart.current = e.touches[0].clientY;
+    else touchStart.current = 0;
+  };
+
+  const onTouchMove = (e) => {
+    if (!touchStart.current || refreshingRef.current) return;
     const diff = e.touches[0].clientY - touchStart.current;
-    if (diff > 0 && getScrollTop() === 0) {
+    if (diff > 0 && getScrollTop() <= 1) {
       const val = Math.min(diff * 0.4, 120);
       pullYRef.current = val;
       setPullY(val);
@@ -75,10 +77,11 @@ export default function GolfLeagueApp() {
       pullYRef.current = 0;
       setPullY(0);
     }
-  }, [refreshing]);
+  };
 
-  const onTouchEnd = useCallback(() => {
-    if (pullYRef.current >= PULL_THRESHOLD && !refreshing) {
+  const onTouchEnd = () => {
+    if (pullYRef.current >= PULL_THRESHOLD && !refreshingRef.current) {
+      refreshingRef.current = true;
       setRefreshing(true);
       setPullY(PULL_THRESHOLD);
       pullYRef.current = PULL_THRESHOLD;
@@ -88,7 +91,7 @@ export default function GolfLeagueApp() {
       pullYRef.current = 0;
     }
     touchStart.current = 0;
-  }, [refreshing]);
+  };
 
   // Firebase Auth listener
   useEffect(() => {
