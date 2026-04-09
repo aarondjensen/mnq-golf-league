@@ -428,7 +428,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
     let matchResultText;
     if (finalStatus === 0) {
-      matchResultText = "ALL SQUARE";
+      matchResultText = "TIED";
     } else if (holesRemaining > 0) {
       matchResultText = `${matchMargin}&${holesRemaining}`;
     } else {
@@ -500,7 +500,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     const isTie = finalStatus === 0;
 
     let matchResultText;
-    if (isTie) matchResultText = "ALL SQUARE";
+    if (isTie) matchResultText = "TIED";
     else if (holesRemaining > 0) matchResultText = `${matchMargin}&${holesRemaining}`;
     else matchResultText = `${Math.abs(finalStatus)}UP`;
 
@@ -794,7 +794,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
         // Helper: get player initials
         const getInitials = (pid) => {
-          const pl = players.find(p => p.id === pid);
+          const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
+          const pl = players.find(p => p.id === effectivePid);
           return pl ? pl.name.split(' ').map(n => n[0]).join('') : "?";
         };
 
@@ -1064,7 +1065,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
         return (<>
           <div onClick={() => setShowAttest(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 500 }} />
-          <div style={{ position: "fixed", inset: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ position: "fixed", inset: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: "60px 16px 16px" }}>
             <div style={{ background: K.bg, border: `1.5px solid ${K.warn}50`, borderRadius: 16, padding: "16px 12px 20px", width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto" }}>
               {/* Header — Players vs Players with match score */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 14, padding: "0 4px" }}>
@@ -1148,7 +1149,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const totStyle = { width: tw, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", borderLeft: colBdr };
 
         const getInitials = (pid) => {
-          const pl = players.find(p => p.id === pid);
+          const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
+          const pl = players.find(p => p.id === effectivePid);
           return pl ? pl.name.split(' ').map(n => n[0]).join('') : "?";
         };
 
@@ -1281,13 +1283,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               `}</style>
             </div>
           )}
-          <div style={{ position: "fixed", inset: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div style={{ position: "fixed", inset: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: "60px 16px 16px" }}>
             <div style={{ background: K.bg, border: `1.5px solid ${sc.resultColor}50`, borderRadius: 16, padding: "16px 12px 20px", width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto" }}>
               {/* Header — Players vs Players with match score and winner arrow */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 14, padding: "0 4px" }}>
                 <div style={{ flex: 1, textAlign: "right" }}>
                   {sc.myPidsSorted.map(pid => {
-                    const pl = players.find(p => p.id === pid);
+                    const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
+                    const pl = players.find(p => p.id === effectivePid);
                     const last = pl?.name?.split(' ').slice(1).join(' ') || pl?.name || "?";
                     return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "WIN" ? K.grn : K.t1, lineHeight: 1.3 }}>{last}</div>;
                   })}
@@ -1303,7 +1306,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 )}
                 <div style={{ flex: 1, textAlign: "left" }}>
                   {sc.oppPidsSorted.map(pid => {
-                    const pl = players.find(p => p.id === pid);
+                    const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
+                    const pl = players.find(p => p.id === effectivePid);
                     const last = pl?.name?.split(' ').slice(1).join(' ') || pl?.name || "?";
                     return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "LOSS" ? K.grn : K.t1, lineHeight: 1.3 }}>{last}</div>;
                   })}
