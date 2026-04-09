@@ -426,7 +426,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         </div>
       )}
       <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
-        <div style={{ width: 40, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600, display: "flex", alignItems: "center", paddingLeft: 2 }}>HOLE</div>
         {Array.from({ length: 9 }, (_, i) => {
           const cur = i === curHole; const done = allP.every(pid => getS(pid, i) > 0);
           return <button key={i} onClick={() => { setCurHole(i); setEditing(i < currentHoleIdx); }} style={{ flex: 1, height: 34, borderRadius: done || cur ? 10 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 12, fontWeight: 700, cursor: "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{i + 1}</button>;
@@ -491,7 +490,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
         return (<>
           <button onClick={() => setShowScorecard(!showScorecard)} style={{ display: "flex", gap: 3, marginTop: 6, marginBottom: showScorecard ? 0 : 8, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: showScorecard ? "8px 8px 0 0" : 8, cursor: "pointer", padding: "6px 0", alignItems: "center" }}>
-            <div style={{ width: 40, flexShrink: 0, fontSize: 8, color: K.t3, fontWeight: 600, display: "flex", alignItems: "center", paddingLeft: 6, gap: 2 }}><span>MATCH</span><span style={{ fontSize: 10 }}>{showScorecard ? "▾" : "›"}</span></div>
             {holeStatuses.map((st, i) => {
               if (matchClinchHole !== null && i === matchClinchHole) {
                 const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
