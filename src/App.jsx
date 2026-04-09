@@ -306,8 +306,9 @@ export default function GolfLeagueApp() {
             {syncing && <span className="pu" style={{ fontSize: 8, color: K.grn }}>● LIVE</span>}
           </div>
           <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
-          <div style={{ position: "absolute", right: 14, display: "flex", alignItems: "center", gap: 6 }}>
+          <div style={{ position: "absolute", right: 14, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
             <button onClick={doSignOut} style={{ background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t3, fontSize: 12, padding: "5px 12px", cursor: "pointer", fontWeight: 600, letterSpacing: .4 }}>Sign Out</button>
+            <div style={{ fontSize: 10, color: K.t3, fontWeight: 500 }}>{leagueUser.name}</div>
           </div>
         </div>
       </div>
