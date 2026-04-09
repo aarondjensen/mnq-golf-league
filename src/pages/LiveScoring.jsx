@@ -17,7 +17,7 @@ function ScoreCell({ score, par, strokes, size = 13 }) {
   const dotH = 10;
   const totalH = dotH + sh + 2;
 
-  const num = <span style={{ fontSize: s, fontWeight: 700 }}>{score}</span>;
+  const num = <div style={{ fontSize: s, fontWeight: 700, lineHeight: `${s}px`, height: s, display: "flex", alignItems: "center", justifyContent: "center" }}>{score}</div>;
 
   // Build the indicator shape based on gross score vs par
   let shape;
