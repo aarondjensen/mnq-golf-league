@@ -644,6 +644,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           );
         };
 
+        const myTeamName = isMyT1 ? t1.name : t2.name;
+        const oppTeamName = isMyT1 ? t2.name : t1.name;
+
         return (
           <div style={{ marginBottom: 6 }}>
             {/* My team */}
@@ -654,6 +657,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 <SignedPlayerRow pid={pid} />
               </div>;
             })}
+            <div style={{ fontSize: 12, fontWeight: 700, color: K.t3, marginBottom: 2, marginTop: 6, textTransform: "uppercase", letterSpacing: .5 }}>Team</div>
             <SignedTeamRow pids={scMyPids} isMyTeam={true} />
 
             <div style={{ borderBottom: `2px solid ${K.bdr}30`, margin: "8px 0" }} />
@@ -666,6 +670,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 <SignedPlayerRow pid={pid} />
               </div>;
             })}
+            <div style={{ fontSize: 12, fontWeight: 700, color: K.t3, marginBottom: 2, marginTop: 6, textTransform: "uppercase", letterSpacing: .5 }}>Team</div>
             <SignedTeamRow pids={scOppPids} isMyTeam={false} />
           </div>
         );
