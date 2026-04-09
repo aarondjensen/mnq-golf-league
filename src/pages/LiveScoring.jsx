@@ -649,29 +649,31 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
         return (
           <div style={{ marginBottom: 6 }}>
-            {/* My team */}
-            {scMyPids.map(pid => {
-              const pl = players.find(p => p.id === pid);
-              return <div key={pid}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: K.t2, marginBottom: 2, marginTop: 6 }}>{pl?.name} <span style={{ color: K.t3, fontWeight: 600 }}>({getNineHcp(pid)})</span></div>
-                <SignedPlayerRow pid={pid} />
-              </div>;
-            })}
-            <div style={{ fontSize: 12, fontWeight: 700, color: K.t3, marginBottom: 2, marginTop: 6, textTransform: "uppercase", letterSpacing: .5 }}>Team</div>
-            <SignedTeamRow pids={scMyPids} isMyTeam={true} />
+            {/* My team card */}
+            <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, padding: "10px 8px 8px", marginBottom: 8 }}>
+              {scMyPids.map(pid => {
+                const pl = players.find(p => p.id === pid);
+                return <div key={pid}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: K.t1, marginBottom: 3, marginTop: 4 }}>{pl?.name} <span style={{ color: K.t3, fontWeight: 600, fontSize: 14 }}>({getNineHcp(pid)})</span></div>
+                  <SignedPlayerRow pid={pid} />
+                </div>;
+              })}
+              <div style={{ fontSize: 13, fontWeight: 700, color: K.t3, marginBottom: 3, marginTop: 8, textTransform: "uppercase", letterSpacing: .5 }}>Team</div>
+              <SignedTeamRow pids={scMyPids} isMyTeam={true} />
+            </div>
 
-            <div style={{ borderBottom: `2px solid ${K.bdr}30`, margin: "8px 0" }} />
-
-            {/* Opp team */}
-            {scOppPids.map(pid => {
-              const pl = players.find(p => p.id === pid);
-              return <div key={pid}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: K.t2, marginBottom: 2, marginTop: 6 }}>{pl?.name} <span style={{ color: K.t3, fontWeight: 600 }}>({getNineHcp(pid)})</span></div>
-                <SignedPlayerRow pid={pid} />
-              </div>;
-            })}
-            <div style={{ fontSize: 12, fontWeight: 700, color: K.t3, marginBottom: 2, marginTop: 6, textTransform: "uppercase", letterSpacing: .5 }}>Team</div>
-            <SignedTeamRow pids={scOppPids} isMyTeam={false} />
+            {/* Opp team card */}
+            <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, padding: "10px 8px 8px" }}>
+              {scOppPids.map(pid => {
+                const pl = players.find(p => p.id === pid);
+                return <div key={pid}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: K.t1, marginBottom: 3, marginTop: 4 }}>{pl?.name} <span style={{ color: K.t3, fontWeight: 600, fontSize: 14 }}>({getNineHcp(pid)})</span></div>
+                  <SignedPlayerRow pid={pid} />
+                </div>;
+              })}
+              <div style={{ fontSize: 13, fontWeight: 700, color: K.t3, marginBottom: 3, marginTop: 8, textTransform: "uppercase", letterSpacing: .5 }}>Team</div>
+              <SignedTeamRow pids={scOppPids} isMyTeam={false} />
+            </div>
           </div>
         );
       })() : (<>
