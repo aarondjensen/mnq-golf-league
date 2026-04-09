@@ -36,6 +36,7 @@ export default function GolfLeagueApp() {
   const [liveWeek, setLiveWeek] = useState(null);
   const [tab, setTab] = useState("standings");
   const [showMore, setShowMore] = useState(false);
+  const [commOverride, setCommOverride] = useState(null); // { playerId, name } or null
   const [darkMode, setDarkMode] = useState(() => {
     try { return localStorage.getItem("mnq_theme") !== "light"; } catch { return true; }
   });
@@ -221,6 +222,11 @@ export default function GolfLeagueApp() {
   const isComm = leagueUser?.isCommissioner === true;
   const activePlayers = players.filter(p => p.status !== "inactive");
 
+  // Commissioner can impersonate another player
+  const effectiveLeagueUser = isComm && commOverride
+    ? { ...leagueUser, playerId: commOverride.playerId, name: commOverride.name }
+    : leagueUser;
+
   if (authLoading) return <LoadingScreen />;
   if (!authUser) return <AuthScreen onGoogle={doGoogleSignIn} onEmail={doEmailSignIn} />;
   if (!membersLoaded) return <LoadingScreen />;
@@ -240,7 +246,7 @@ export default function GolfLeagueApp() {
   ];
 
   // Find upcoming match info for banner
-  const myTeam = teams.find(t => t.player1 === leagueUser.playerId || t.player2 === leagueUser.playerId);
+  const myTeam = teams.find(t => t.player1 === effectiveLeagueUser.playerId || t.player2 === effectiveLeagueUser.playerId);
   const upcomingBanner = (() => {
     if (!myTeam || !schedule.length) return null;
     // Find current week (first week without all matches finalized)
@@ -310,6 +316,20 @@ export default function GolfLeagueApp() {
           </div>
           <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
           <div style={{ position: "absolute", right: 14, display: "flex", alignItems: "center", gap: 6 }}>
+            {isComm && (
+              <select
+                value={commOverride?.playerId || ""}
+                onChange={e => {
+                  if (!e.target.value) { setCommOverride(null); return; }
+                  const pl = activePlayers.find(p => p.id === e.target.value);
+                  if (pl) setCommOverride({ playerId: pl.id, name: pl.name });
+                }}
+                style={{ background: K.inp, border: `1px solid ${commOverride ? K.warn : K.bdr}`, borderRadius: 6, color: commOverride ? K.warn : K.t2, fontSize: 11, padding: "4px 6px", cursor: "pointer", maxWidth: 110 }}
+              >
+                <option value="">Me</option>
+                {activePlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            )}
             <button onClick={doSignOut} style={{ background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t3, fontSize: 12, padding: "5px 12px", cursor: "pointer", fontWeight: 600, letterSpacing: .4 }}>Sign Out</button>
           </div>
         </div>
@@ -355,7 +375,7 @@ export default function GolfLeagueApp() {
           })()}
           <div className="main-content fi" key={tab}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} />}
-          {tab === "scoring" && <LiveScoringView leagueUser={leagueUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} />}
+          {tab === "scoring" && <LiveScoringView leagueUser={effectiveLeagueUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={leagueUser} leagueConfig={leagueConfig} />}
           {tab === "players" && <MoreView view="players" players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} ctpData={ctpData} members={members} />}
           {tab === "stats" && <MoreView view="stats" players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} ctpData={ctpData} members={members} />}
