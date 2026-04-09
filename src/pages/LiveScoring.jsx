@@ -728,7 +728,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const HoleHeaderRow = () => (
           <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
             {Array.from({ length: 9 }, (_, i) => (
-              <div key={i} style={{ flex: 1, height: 24, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <div key={i} style={{ flex: 1, height: 24, display: "flex", alignItems: "center", justifyContent: "center", background: K.inp, borderRadius: 4 }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: K.t3 }}>{side === 'front' ? i + 1 : i + 10}</span>
               </div>
             ))}
