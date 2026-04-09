@@ -439,22 +439,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           <div style={{ textAlign: "center", minWidth: 36 }}><div style={{ fontSize: 9, color: K.bg, fontWeight: 600, opacity: 0.7 }}>HCP</div><div style={{ fontSize: 16, fontWeight: 800, color: K.bg }}>{hcp}</div></div>
         </div>
         <button onClick={() => { const next = Math.min(8, curHole + 1); setCurHole(next); setEditing(next < currentHoleIdx); }} disabled={curHole === 8} style={{ width: 32, height: 40, borderRadius: 8, background: "none", border: "none", cursor: curHole === 8 ? "default" : "pointer", color: curHole === 8 ? K.bg + "40" : K.bg, fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
-      </div>
-      {isPar3 && <button onClick={() => setShowCTP(!showCTP)} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 8, cursor: "pointer", background: K.acc + "12", border: `1px solid ${K.acc}35`, color: K.acc, fontSize: 12, fontWeight: 700 }}>{showCTP ? "Hide" : "Record"} Closest to Pin</button>}
-      {showCTP && isPar3 && <CTPEntry week={week} hole={curHole} players={players} ctpData={ctpData} saveCtp={saveCtp} side={side} />}
-
-      {editing && (
-        <button onClick={() => { setCurHole(currentHoleIdx); setEditing(false); }} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 6, cursor: "pointer", background: K.teal + "15", border: `1px solid ${K.teal}40`, color: K.teal, fontSize: 12, fontWeight: 700 }}>
-          Hole {side === 'front' ? currentHoleIdx + 1 : currentHoleIdx + 10} →
-        </button>
-      )}
-
-      {allP.map(pid => {
-        const pl = players.find(p => p.id === pid); if (!pl) return null;
-        const score = getS(pid, curHole); const strokes = getStrokes(pid, curHole); const nh = getNineHcp(pid); const run = getRunning(pid);
-        const btns = par === 3 ? [1,2,3,4,5,6,7] : par === 5 ? [2,3,4,5,6,7,8] : [2,3,4,5,6,7,8];
-        return <PlayerScoreCard key={pid} pl={pl} score={score} strokes={strokes} nh={nh} run={run} btns={btns} par={par} pid={pid} week={week} curHole={curHole} saveScore={guardedSaveScore} K={K} />;
-      })}
       {/* Match status — tappable to expand scorecard */}
       {(() => {
         const myTeamId = myTeam?.id || t1.id;
@@ -615,6 +599,22 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           })()}
         </>);
       })()}
+      </div>
+      {isPar3 && <button onClick={() => setShowCTP(!showCTP)} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 8, cursor: "pointer", background: K.acc + "12", border: `1px solid ${K.acc}35`, color: K.acc, fontSize: 12, fontWeight: 700 }}>{showCTP ? "Hide" : "Record"} Closest to Pin</button>}
+      {showCTP && isPar3 && <CTPEntry week={week} hole={curHole} players={players} ctpData={ctpData} saveCtp={saveCtp} side={side} />}
+
+      {editing && (
+        <button onClick={() => { setCurHole(currentHoleIdx); setEditing(false); }} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 6, cursor: "pointer", background: K.teal + "15", border: `1px solid ${K.teal}40`, color: K.teal, fontSize: 12, fontWeight: 700 }}>
+          Hole {side === 'front' ? currentHoleIdx + 1 : currentHoleIdx + 10} →
+        </button>
+      )}
+
+      {allP.map(pid => {
+        const pl = players.find(p => p.id === pid); if (!pl) return null;
+        const score = getS(pid, curHole); const strokes = getStrokes(pid, curHole); const nh = getNineHcp(pid); const run = getRunning(pid);
+        const btns = par === 3 ? [1,2,3,4,5,6,7] : par === 5 ? [2,3,4,5,6,7,8] : [2,3,4,5,6,7,8];
+        return <PlayerScoreCard key={pid} pl={pl} score={score} strokes={strokes} nh={nh} run={run} btns={btns} par={par} pid={pid} week={week} curHole={curHole} saveScore={guardedSaveScore} K={K} />;
+      })}
       {/* Finalize / Attest / Show Match Details buttons */}
       {allComplete && !showFinalize && !showAttest && !isAlreadyFinalized && (
         <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.grn + "15", border: `1.5px solid ${K.grn}50`, color: K.grn, fontSize: 13, fontWeight: 700 }}>
