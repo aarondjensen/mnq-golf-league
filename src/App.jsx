@@ -324,13 +324,12 @@ export default function GolfLeagueApp() {
                   const pl = activePlayers.find(p => p.id === e.target.value);
                   if (pl) setCommOverride({ playerId: pl.id, name: pl.name });
                 }}
-                style={{ background: K.inp, border: `1px solid ${commOverride ? K.warn : K.bdr}`, borderRadius: 6, color: commOverride ? K.warn : K.t2, fontSize: 11, padding: "4px 6px", cursor: "pointer", maxWidth: 110 }}
+                style={{ background: K.inp, border: `1px solid ${commOverride ? K.warn : K.bdr}`, borderRadius: 6, color: commOverride ? K.warn : K.t2, fontSize: 11, padding: "5px 8px", cursor: "pointer", maxWidth: 130 }}
               >
                 <option value="">Me</option>
                 {activePlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             )}
-            <button onClick={doSignOut} style={{ background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t3, fontSize: 12, padding: "5px 12px", cursor: "pointer", fontWeight: 600, letterSpacing: .4 }}>Sign Out</button>
           </div>
         </div>
       </div>
@@ -417,6 +416,10 @@ export default function GolfLeagueApp() {
                   </button>
                 );
               })}
+              <div style={{ borderTop: `1px solid ${K.bdr}`, margin: "4px 0" }} />
+              <button onClick={() => { setShowMore(false); doSignOut(); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 16px", background: "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
+                <span style={{ fontSize: 14, fontWeight: 400, color: K.red }}>Sign Out</span>
+              </button>
             </div>
           )}
         </div>
