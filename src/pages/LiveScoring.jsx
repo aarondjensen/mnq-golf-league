@@ -542,18 +542,19 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         }
 
         return (<>
-          <button onClick={() => setShowScorecard(!showScorecard)} style={{ display: "flex", gap: 3, marginTop: 6, marginBottom: showScorecard ? 0 : 8, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: showScorecard ? "8px 8px 0 0" : 8, cursor: "pointer", padding: "8px 0", alignItems: "center" }}>
+          <button onClick={() => setShowScorecard(!showScorecard)} style={{ display: "flex", marginTop: 6, marginBottom: showScorecard ? 0 : 8, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: showScorecard ? "8px 8px 0 0" : 8, cursor: "pointer", padding: "8px 0", alignItems: "center" }}>
             {holeStatuses.map((st, i) => {
+              const colBorderR = i < 8 ? { borderRight: `1px solid ${K.bdr}30` } : {};
               if (matchClinchHole !== null && i === matchClinchHole) {
                 const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-                return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 16, color, fontWeight: 800, lineHeight: "30px" }}>{clinchScoreText}</div>;
+                return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 16, color, fontWeight: 800, lineHeight: "30px", ...colBorderR }}>{clinchScoreText}</div>;
               }
               if (matchClinchHole !== null && i > matchClinchHole) {
-                return <div key={i} style={{ flex: 1, height: 30 }} />;
+                return <div key={i} style={{ flex: 1, height: 30, ...colBorderR }} />;
               }
-              if (st === null) return <div key={i} style={{ flex: 1, height: 30 }} />;
+              if (st === null) return <div key={i} style={{ flex: 1, height: 30, ...colBorderR }} />;
               const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 16, fontWeight: 800, color, lineHeight: "30px" }}>{st > 0 ? <><span style={{ fontSize: 16 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 16 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
+              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 16, fontWeight: 800, color, lineHeight: "30px", ...colBorderR }}>{st > 0 ? <><span style={{ fontSize: 16 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 16 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
             })}
           </button>
           {showScorecard && (() => {
