@@ -211,13 +211,16 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     return 8;
   })();
 
-  // Jump to current hole on initial load (not hole 1)
+  // Check if ANY scores exist for this match
+  const hasAnyScores = allP.some(pid => { for (let h = 0; h < 9; h++) if (getS(pid, h) > 0) return true; return false; });
+
+  // Jump to current hole on initial load (not hole 1), but only if scores exist
   useEffect(() => {
-    if (!initialJump.current && currentHoleIdx > 0) {
+    if (!initialJump.current && currentHoleIdx > 0 && hasAnyScores) {
       setCurHole(currentHoleIdx);
       initialJump.current = true;
     }
-  }, [currentHoleIdx]);
+  }, [currentHoleIdx, hasAnyScores]);
 
   // Auto-advance when all 4 scores entered on current hole (only when not editing)
   useEffect(() => {
@@ -802,8 +805,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               </div>
 
               {/* Scorecard */}
-              <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine, background: K.cardHi }}>
-                <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.t2, fontWeight: 700, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>HOLE</div>
+              <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine, background: K.inp, borderRadius: "4px 4px 0 0" }}>
+                <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.t2, fontWeight: 800, padding: "6px 0", borderRight: gridLine, paddingLeft: 2, letterSpacing: .3 }}>HOLE</div>
                 {Array.from({ length: 9 }, (_, i) => (
                   <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t1, fontWeight: 700, lineHeight: "22px", padding: "4px 0", borderRight: gridLine }}>{side === 'front' ? i + 1 : i + 10}</div>
                 ))}
@@ -959,8 +962,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               </div>
 
               {/* Hole numbers */}
-              <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine, background: K.cardHi }}>
-                <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.t2, fontWeight: 700, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>HOLE</div>
+              <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine, background: K.inp, borderRadius: "4px 4px 0 0" }}>
+                <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.t2, fontWeight: 800, padding: "6px 0", borderRight: gridLine, paddingLeft: 2, letterSpacing: .3 }}>HOLE</div>
                 {Array.from({ length: 9 }, (_, i) => (
                   <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t1, fontWeight: 700, lineHeight: "22px", padding: "4px 0", borderRight: gridLine }}>{side === 'front' ? i + 1 : i + 10}</div>
                 ))}
