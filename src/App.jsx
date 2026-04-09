@@ -36,6 +36,8 @@ export default function GolfLeagueApp() {
   const [liveWeek, setLiveWeek] = useState(null);
   const [tab, setTab] = useState("standings");
   const [showMore, setShowMore] = useState(false);
+  const [impersonating, setImpersonating] = useState(null); // { playerId, name } when comm is acting as another player
+  const [showPlayerPicker, setShowPlayerPicker] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
     try { return localStorage.getItem("mnq_theme") !== "light"; } catch { return true; }
   });
@@ -218,6 +220,11 @@ export default function GolfLeagueApp() {
   const isComm = leagueUser?.isCommissioner === true;
   const activePlayers = players.filter(p => p.status !== "inactive");
 
+  // When commissioner impersonates a player, effectiveUser overrides leagueUser for scoring/schedule
+  const effectiveUser = impersonating
+    ? { ...leagueUser, playerId: impersonating.playerId, name: impersonating.name }
+    : leagueUser;
+
   if (authLoading) return <LoadingScreen />;
   if (!authUser) return <AuthScreen onGoogle={doGoogleSignIn} onEmail={doEmailSignIn} />;
   if (!membersLoaded) return <LoadingScreen />;
@@ -234,6 +241,8 @@ export default function GolfLeagueApp() {
     { id: "stats", label: "Stats", icon: "barChart" },
     { id: "ctp", label: "CTP", icon: "target" },
     ...(isComm ? [{ id: "admin", label: "Admin", icon: "settings" }] : []),
+    ...(isComm ? [{ id: "loginAs", label: impersonating ? `Playing as ${impersonating.name}` : "Login as Player", icon: "user" }] : []),
+    { id: "signout", label: "Sign Out", icon: "key" },
   ];
 
   // Find upcoming match info for banner
@@ -306,9 +315,8 @@ export default function GolfLeagueApp() {
             {syncing && <span className="pu" style={{ fontSize: 8, color: K.grn }}>● LIVE</span>}
           </div>
           <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
-          <div style={{ position: "absolute", right: 14, display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 2 }}>
-            <button onClick={doSignOut} style={{ background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t3, fontSize: 12, padding: "5px 12px", cursor: "pointer", fontWeight: 600, letterSpacing: .4 }}>Sign Out</button>
-            <div style={{ fontSize: 10, color: K.t3, fontWeight: 500 }}>{leagueUser.name}</div>
+          <div style={{ position: "absolute", right: 14, display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ fontSize: 11, color: K.t3, fontWeight: 500 }}>{leagueUser.name}</div>
           </div>
         </div>
       </div>
@@ -353,8 +361,8 @@ export default function GolfLeagueApp() {
           })()}
           <div className="main-content fi" key={tab}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} />}
-          {tab === "scoring" && <LiveScoringView leagueUser={leagueUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} />}
-          {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={leagueUser} leagueConfig={leagueConfig} />}
+          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} />}
+          {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} />}
           {tab === "players" && <MoreView view="players" players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} ctpData={ctpData} members={members} />}
           {tab === "stats" && <MoreView view="stats" players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} ctpData={ctpData} members={members} />}
           {tab === "ctp" && <MoreView view="ctp" players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} ctpData={ctpData} members={members} />}
@@ -366,6 +374,56 @@ export default function GolfLeagueApp() {
       {/* More popup menu */}
       {showMore && (
         <div onClick={() => setShowMore(false)} style={{ position: "fixed", inset: 0, zIndex: 150 }} />
+      )}
+
+      {/* Player picker popup (commissioner) */}
+      {showPlayerPicker && (
+        <>
+          <div onClick={() => setShowPlayerPicker(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 400 }} />
+          <div style={{ position: "fixed", inset: 0, zIndex: 450, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+            <div style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "16px", width: "100%", maxWidth: 340, maxHeight: "70vh", overflowY: "auto" }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 12, textAlign: "center" }}>Login as Player</div>
+              {impersonating && (
+                <button onClick={() => { setImpersonating(null); setShowPlayerPicker(false); }} style={{ width: "100%", padding: "10px 14px", marginBottom: 8, borderRadius: 8, background: K.teal + "15", border: `1px solid ${K.teal}40`, color: K.teal, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                  Back to My Account
+                </button>
+              )}
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {activePlayers.map(p => {
+                  const isSelf = p.id === leagueUser.playerId;
+                  const isActive = impersonating?.playerId === p.id;
+                  return (
+                    <button key={p.id} onClick={() => {
+                      if (isSelf) { setImpersonating(null); }
+                      else { setImpersonating({ playerId: p.id, name: p.name }); }
+                      setShowPlayerPicker(false);
+                    }} style={{
+                      padding: "10px 14px", borderRadius: 8, cursor: "pointer", textAlign: "left",
+                      background: isActive ? K.teal + "15" : isSelf ? K.acc + "10" : K.card,
+                      border: `1px solid ${isActive ? K.teal + "40" : isSelf ? K.acc + "30" : K.bdr}`,
+                      color: K.t1, fontSize: 14, fontWeight: 600, display: "flex", justifyContent: "space-between", alignItems: "center",
+                    }}>
+                      <span>{p.name}</span>
+                      {isSelf && <span style={{ fontSize: 10, color: K.t3, fontWeight: 500 }}>(you)</span>}
+                      {isActive && <span style={{ fontSize: 10, color: K.teal, fontWeight: 500 }}>active</span>}
+                    </button>
+                  );
+                })}
+              </div>
+              <button onClick={() => setShowPlayerPicker(false)} style={{ display: "block", width: "100%", margin: "12px 0 0", padding: "9px", background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.t2, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </>
+      )}
+
+      {/* Impersonation banner */}
+      {impersonating && (
+        <div style={{ background: K.teal + "20", borderTop: `1px solid ${K.teal}40`, padding: "6px 14px", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, flexShrink: 0 }}>
+          <span style={{ fontSize: 11, color: K.teal, fontWeight: 600 }}>Playing as {impersonating.name}</span>
+          <button onClick={() => setImpersonating(null)} style={{ background: "none", border: `1px solid ${K.teal}40`, borderRadius: 4, color: K.teal, fontSize: 10, padding: "2px 8px", cursor: "pointer", fontWeight: 600 }}>Exit</button>
+        </div>
       )}
 
       {/* Bottom Nav */}
@@ -386,13 +444,23 @@ export default function GolfLeagueApp() {
           </button>
           {showMore && (
             <div style={{ position: "fixed", bottom: `calc(56px + env(safe-area-inset-bottom, 0px))`, right: 14, background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 12, padding: "6px 0", zIndex: 300, minWidth: 180, boxShadow: "0 -4px 20px rgba(0,0,0,.4)" }}>
-              {moreItems.map(item => {
+              {moreItems.map((item, idx) => {
                 const active = tab === item.id;
+                const isSignOut = item.id === "signout";
+                const isLoginAs = item.id === "loginAs";
                 return (
-                  <button key={item.id} onClick={() => { setTab(item.id); setShowMore(false); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 16px", background: active ? K.acc + "12" : "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
-                    <span style={{ display: "flex" }}>{I[item.icon](16, active ? K.acc : K.t3)}</span>
-                    <span style={{ fontSize: 14, fontWeight: active ? 600 : 400, color: active ? K.acc : K.t1 }}>{item.label}</span>
-                  </button>
+                  <div key={item.id}>
+                    {isSignOut && <div style={{ borderTop: `1px solid ${K.bdr}`, margin: "4px 0" }} />}
+                    <button onClick={() => {
+                      if (isSignOut) { doSignOut(); }
+                      else if (isLoginAs) { setShowPlayerPicker(true); }
+                      else { setTab(item.id); }
+                      setShowMore(false);
+                    }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 16px", background: active && !isSignOut && !isLoginAs ? K.acc + "12" : "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
+                      <span style={{ display: "flex" }}>{I[item.icon](16, isSignOut ? K.red : isLoginAs && impersonating ? K.teal : active ? K.acc : K.t3)}</span>
+                      <span style={{ fontSize: 14, fontWeight: active && !isSignOut ? 600 : 400, color: isSignOut ? K.red : isLoginAs && impersonating ? K.teal : active ? K.acc : K.t1 }}>{item.label}</span>
+                    </button>
+                  </div>
                 );
               })}
             </div>
