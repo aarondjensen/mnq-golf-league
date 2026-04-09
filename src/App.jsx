@@ -5,7 +5,9 @@ import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
 import StandingsView from "./pages/Standings";
 import LiveScoringView from "./pages/LiveScoring";
 import ScheduleView from "./pages/Schedule";
-import MoreView from "./pages/More";
+import PlayersView from "./pages/Players";
+import StatsView from "./pages/Stats";
+import CTPView from "./pages/CTP";
 import AdminView from "./pages/Admin";
 
 function lastNamesOnly(teamName) {
@@ -241,7 +243,6 @@ export default function GolfLeagueApp() {
     { id: "stats", label: "Stats", icon: "barChart" },
     { id: "ctp", label: "CTP", icon: "target" },
     ...(isComm ? [{ id: "admin", label: "Admin", icon: "settings" }] : []),
-    ...(isComm ? [{ id: "loginAs", label: impersonating ? `Playing as ${impersonating.name}` : "Login as Player", icon: "user" }] : []),
     { id: "signout", label: "Sign Out", icon: "key" },
   ];
 
@@ -316,7 +317,14 @@ export default function GolfLeagueApp() {
           </div>
           <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
           <div style={{ position: "absolute", right: 14, display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ fontSize: 11, color: K.t3, fontWeight: 500 }}>{leagueUser.name}</div>
+            {isComm ? (
+              <button onClick={() => setShowPlayerPicker(true)} style={{ background: impersonating ? K.teal + "15" : "none", border: `1px solid ${impersonating ? K.teal + "40" : K.bdr}`, borderRadius: 6, padding: "4px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ fontSize: 11, color: impersonating ? K.teal : K.t3, fontWeight: 600 }}>{impersonating ? impersonating.name : leagueUser.name}</span>
+                <span style={{ fontSize: 8, color: K.t3 }}>▾</span>
+              </button>
+            ) : (
+              <div style={{ fontSize: 11, color: K.t3, fontWeight: 500 }}>{leagueUser.name}</div>
+            )}
           </div>
         </div>
       </div>
@@ -363,9 +371,9 @@ export default function GolfLeagueApp() {
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} />}
           {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} />}
-          {tab === "players" && <MoreView view="players" players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} ctpData={ctpData} members={members} />}
-          {tab === "stats" && <MoreView view="stats" players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} ctpData={ctpData} members={members} />}
-          {tab === "ctp" && <MoreView view="ctp" players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} ctpData={ctpData} members={members} />}
+          {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} />}
+          {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
+          {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} />}
           {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} />}
           </div>
         </div>
@@ -447,18 +455,16 @@ export default function GolfLeagueApp() {
               {moreItems.map((item, idx) => {
                 const active = tab === item.id;
                 const isSignOut = item.id === "signout";
-                const isLoginAs = item.id === "loginAs";
                 return (
                   <div key={item.id}>
                     {isSignOut && <div style={{ borderTop: `1px solid ${K.bdr}`, margin: "4px 0" }} />}
                     <button onClick={() => {
                       if (isSignOut) { doSignOut(); }
-                      else if (isLoginAs) { setShowPlayerPicker(true); }
                       else { setTab(item.id); }
                       setShowMore(false);
-                    }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 16px", background: active && !isSignOut && !isLoginAs ? K.acc + "12" : "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
-                      <span style={{ display: "flex" }}>{I[item.icon](16, isSignOut ? K.red : isLoginAs && impersonating ? K.teal : active ? K.acc : K.t3)}</span>
-                      <span style={{ fontSize: 14, fontWeight: active && !isSignOut ? 600 : 400, color: isSignOut ? K.red : isLoginAs && impersonating ? K.teal : active ? K.acc : K.t1 }}>{item.label}</span>
+                    }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 16px", background: active && !isSignOut ? K.acc + "12" : "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
+                      <span style={{ display: "flex" }}>{I[item.icon](16, isSignOut ? K.red : active ? K.acc : K.t3)}</span>
+                      <span style={{ fontSize: 14, fontWeight: active && !isSignOut ? 600 : 400, color: isSignOut ? K.red : active ? K.acc : K.t1 }}>{item.label}</span>
                     </button>
                   </div>
                 );
