@@ -779,7 +779,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             </div>
 
             {/* Match status row — between teams */}
-            <div style={{ display: "flex", padding: "6px 8px", marginBottom: 4 }}>
+            <div style={{ display: "flex", padding: "8px 8px", marginBottom: 4, background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 8 }}>
               {scRunningStatus.map((rs, i) => {
                 const colBorderR = i < 8 ? { borderRight: `1px solid ${K.bdr}30` } : {};
                 // Show clinch result on the clinch hole
