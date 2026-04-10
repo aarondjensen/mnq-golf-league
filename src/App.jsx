@@ -76,31 +76,55 @@ export default function GolfLeagueApp() {
     touchStart.current = 0;
   }, []);
 
-  // Native touch handlers on app-body for reliable pull-to-refresh (iOS requires handlers on scroll container)
+  // Pull-to-refresh — iOS-compatible approach
+  // On iOS, -webkit-overflow-scrolling:touch creates a compositor scroll layer that
+  // commits scroll before JS can preventDefault. We work around this by temporarily
+  // setting overflow:hidden on the scroll container during the pull gesture.
   useEffect(() => {
     const el = document.querySelector('.app-body');
     if (!el) return;
+    let pulling = false;
 
     const handleStart = (e) => {
-      if (el.scrollTop === 0) touchStart.current = e.touches[0].clientY;
-      else touchStart.current = 0;
+      if (el.scrollTop <= 0) {
+        touchStart.current = e.touches[0].clientY;
+      } else {
+        touchStart.current = 0;
+      }
+      pulling = false;
     };
 
     const handleMove = (e) => {
       if (!touchStart.current) return;
       const diff = e.touches[0].clientY - touchStart.current;
-      if (diff > 0 && el.scrollTop === 0) {
+      if (diff > 5 && el.scrollTop <= 0) {
+        // Lock the scroll container so iOS doesn't steal the gesture
+        if (!pulling) {
+          pulling = true;
+          el.style.overflowY = 'hidden';
+        }
+        e.preventDefault();
         const val = Math.min(diff * 0.4, 120);
         pullYRef.current = val;
         setPullY(val);
-        if (val > 10) e.preventDefault();
-      } else {
+      } else if (diff < 0 || el.scrollTop > 0) {
+        // User is scrolling up or container has scrolled — release
+        if (pulling) {
+          pulling = false;
+          el.style.overflowY = 'auto';
+        }
         pullYRef.current = 0;
         setPullY(0);
+        touchStart.current = 0;
       }
     };
 
     const handleEnd = () => {
+      // Always restore scroll
+      if (pulling) {
+        pulling = false;
+        el.style.overflowY = 'auto';
+      }
       if (pullYRef.current >= PULL_THRESHOLD) {
         setPullY(PULL_THRESHOLD);
         pullYRef.current = PULL_THRESHOLD;
@@ -123,6 +147,7 @@ export default function GolfLeagueApp() {
       el.removeEventListener('touchmove', handleMove);
       el.removeEventListener('touchend', handleEnd);
       el.removeEventListener('touchcancel', handleEnd);
+      el.style.overflowY = 'auto';
     };
   }, [refreshing]);
 
