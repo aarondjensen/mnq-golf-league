@@ -54,9 +54,11 @@ export default function GolfLeagueApp() {
   // Pull-to-refresh
   const [pullY, setPullY] = useState(0);
   const [refreshing, setRefreshing] = useState(false);
-  const touchStart = useRef(0);
+  const touchStartY = useRef(0);
   const pullYRef = useRef(0);
+  const pullingRef = useRef(false);
   const PULL_THRESHOLD = 80;
+  const appBodyRef = useRef(null);
 
   const toggleTheme = () => {
     const newMode = darkMode ? "light" : "dark";
@@ -65,64 +67,72 @@ export default function GolfLeagueApp() {
     setDarkMode(!darkMode);
   };
 
-  const getScrollTop = () => {
-    const el = document.querySelector('.app-body');
-    return el ? el.scrollTop : 0;
-  };
-
   const resetPull = useCallback(() => {
     setPullY(0);
     pullYRef.current = 0;
-    touchStart.current = 0;
+    touchStartY.current = 0;
+    pullingRef.current = false;
   }, []);
 
   // Pull-to-refresh — iOS-compatible approach
-  // On iOS, -webkit-overflow-scrolling:touch creates a compositor scroll layer that
-  // commits scroll before JS can preventDefault. We work around this by temporarily
-  // setting overflow:hidden on the scroll container during the pull gesture.
+  // Listen on document level so iOS compositor scroll can't steal the gesture.
+  // We check the .app-body scrollTop to know if the user is at the top.
   useEffect(() => {
-    const el = document.querySelector('.app-body');
-    if (!el) return;
-    let pulling = false;
+    if (refreshing) return; // don't rebind while refreshing
+
+    const getScrollEl = () => appBodyRef.current || document.querySelector('.app-body');
 
     const handleStart = (e) => {
-      if (el.scrollTop <= 0) {
-        touchStart.current = e.touches[0].clientY;
+      const el = getScrollEl();
+      // Only arm if scroll container is at the very top
+      if (el && el.scrollTop <= 0) {
+        touchStartY.current = e.touches[0].clientY;
       } else {
-        touchStart.current = 0;
+        touchStartY.current = 0;
       }
-      pulling = false;
+      pullingRef.current = false;
     };
 
     const handleMove = (e) => {
-      if (!touchStart.current) return;
-      const diff = e.touches[0].clientY - touchStart.current;
-      if (diff > 5 && el.scrollTop <= 0) {
-        // Lock the scroll container so iOS doesn't steal the gesture
-        if (!pulling) {
-          pulling = true;
+      if (!touchStartY.current) return;
+      const el = getScrollEl();
+      const diff = e.touches[0].clientY - touchStartY.current;
+
+      // Check if touch started inside a popup/modal — don't pull-to-refresh there
+      const target = e.target;
+      if (target && target.closest && target.closest('[data-popup]')) {
+        touchStartY.current = 0;
+        return;
+      }
+
+      if (diff > 10 && el && el.scrollTop <= 0) {
+        // We're pulling down from the top
+        if (!pullingRef.current) {
+          pullingRef.current = true;
+          // Prevent iOS native scroll bounce by locking the scroll container
           el.style.overflowY = 'hidden';
         }
         e.preventDefault();
         const val = Math.min(diff * 0.4, 120);
         pullYRef.current = val;
         setPullY(val);
-      } else if (diff < 0 || el.scrollTop > 0) {
-        // User is scrolling up or container has scrolled — release
-        if (pulling) {
-          pulling = false;
-          el.style.overflowY = 'auto';
+      } else if (diff <= 0 || (el && el.scrollTop > 0)) {
+        // User scrolled up or container not at top — cancel pull
+        if (pullingRef.current) {
+          pullingRef.current = false;
+          if (el) el.style.overflowY = 'auto';
         }
         pullYRef.current = 0;
         setPullY(0);
-        touchStart.current = 0;
+        touchStartY.current = 0;
       }
     };
 
     const handleEnd = () => {
+      const el = getScrollEl();
       // Always restore scroll
-      if (pulling) {
-        pulling = false;
+      if (pullingRef.current && el) {
+        pullingRef.current = false;
         el.style.overflowY = 'auto';
       }
       if (pullYRef.current >= PULL_THRESHOLD) {
@@ -133,21 +143,24 @@ export default function GolfLeagueApp() {
       } else {
         setPullY(0);
         pullYRef.current = 0;
-        touchStart.current = 0;
+        touchStartY.current = 0;
       }
     };
 
-    el.addEventListener('touchstart', handleStart, { passive: true });
-    el.addEventListener('touchmove', handleMove, { passive: false });
-    el.addEventListener('touchend', handleEnd, { passive: true });
-    el.addEventListener('touchcancel', handleEnd, { passive: true });
+    // Attach to document so we intercept before iOS compositor
+    document.addEventListener('touchstart', handleStart, { passive: true });
+    document.addEventListener('touchmove', handleMove, { passive: false });
+    document.addEventListener('touchend', handleEnd, { passive: true });
+    document.addEventListener('touchcancel', handleEnd, { passive: true });
 
     return () => {
-      el.removeEventListener('touchstart', handleStart);
-      el.removeEventListener('touchmove', handleMove);
-      el.removeEventListener('touchend', handleEnd);
-      el.removeEventListener('touchcancel', handleEnd);
-      el.style.overflowY = 'auto';
+      document.removeEventListener('touchstart', handleStart);
+      document.removeEventListener('touchmove', handleMove);
+      document.removeEventListener('touchend', handleEnd);
+      document.removeEventListener('touchcancel', handleEnd);
+      // Restore scroll on cleanup
+      const el = getScrollEl();
+      if (el) el.style.overflowY = 'auto';
     };
   }, [refreshing]);
 
@@ -414,7 +427,7 @@ export default function GolfLeagueApp() {
 
       {/* Upcoming match banner */}
 
-      <div className="app-body">
+      <div className="app-body" ref={appBodyRef}>
         <div style={{ maxWidth: 900, width: "100%", margin: "0 auto" }}>
           {upcomingBanner && tab !== "scoring" && (() => {
             const now = new Date();
@@ -430,31 +443,24 @@ export default function GolfLeagueApp() {
                 </div>
                 {/* Center: Date, vs, opponent */}
                 <div style={{ flex: 1, textAlign: "center", lineHeight: 1.3 }}>
-                  <div style={{ fontSize: 12, color: K.t2, fontWeight: 500 }}>{upcomingBanner.date ? `${upcomingBanner.date} — ` : ""}Week {upcomingBanner.week}</div>
-                  <div style={{ fontSize: 9, color: K.logoBright, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" }}>vs</div>
-                  <div style={{ color: K.t1, fontWeight: 700, fontSize: 15 }}>{lastNamesOnly(upcomingBanner.opp)}</div>
+                  <div style={{ fontSize: 12, color: K.t2, fontWeight: 500 }}>{upcomingBanner.date ? new Date(upcomingBanner.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : `Week ${upcomingBanner.week}`}</div>
+                  <div style={{ fontSize: 11, color: K.t3, fontWeight: 500 }}>vs</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: K.t1, letterSpacing: .5 }}>{lastNamesOnly(upcomingBanner.opp)}</div>
                 </div>
-                {/* Right: Live Scoring button */}
-                <div style={{ width: 90, flexShrink: 0, textAlign: "center" }}>
-                  <button onClick={() => setTab("scoring")} style={{
-                    background: isLive ? bannerGrn : "transparent",
-                    border: `1.5px solid ${isLive ? bannerGrn : bannerGrn + "50"}`,
-                    borderRadius: 8, padding: "8px 10px", cursor: "pointer",
-                    color: isLive ? "#fff" : bannerGrn, fontSize: 15, fontWeight: 800,
-                    textTransform: "uppercase", letterSpacing: .5, transition: "all .3s",
-                    lineHeight: 1.3,
-                  }}>
-                    {isLive && <span style={{ fontSize: 11 }}>● </span>}Live<br/>Scoring
-                  </button>
+                {/* Right: Week badge */}
+                <div style={{ width: 55, flexShrink: 0, textAlign: "center" }}>
+                  <div style={{ fontSize: 9, color: bannerGrn, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase" }}>WEEK</div>
+                  <div style={{ fontSize: 22, fontWeight: 800, color: bannerGrn, lineHeight: 1 }}>{upcomingBanner.week}</div>
                 </div>
               </div>
             );
           })()}
-          <div className="main-content fi" key={tab}>
-          {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} />}
+        </div>
+        <div className="main-content">
+          {tab === "standings" && <StandingsView teams={teams} players={activePlayers} schedule={schedule} matchResults={matchResults} scoringRules={scoringRules} fetchAllScores={fetchAllScores} courseData={courseData} leagueConfig={leagueConfig} />}
           {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} />}
-          {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} />}
-          {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} />}
+          {tab === "schedule" && <ScheduleView teams={teams} schedule={schedule} matchResults={matchResults} myPlayerId={leagueUser.playerId} fetchWeekScores={fetchWeekScores} players={activePlayers} course={courseData} scoringRules={scoringRules} leagueConfig={leagueConfig} />}
+          {tab === "players" && <PlayersView players={activePlayers} teams={teams} fetchAllScores={fetchAllScores} scoringRules={scoringRules} courseData={courseData} matchResults={matchResults} schedule={schedule} leagueConfig={leagueConfig} />}
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
           {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} />}
           {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} />}
