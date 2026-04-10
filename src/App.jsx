@@ -76,21 +76,12 @@ export default function GolfLeagueApp() {
     touchStart.current = 0;
   }, []);
 
-  // Native touch handlers on document for reliable pull-to-refresh (works through popups)
+  // Native touch handlers on document for reliable pull-to-refresh
   useEffect(() => {
     const el = document.querySelector('.app-body');
     if (!el) return;
 
-    const isInteractive = (target) => {
-      if (!target) return false;
-      const tag = target.tagName?.toLowerCase();
-      if (tag === 'button' || tag === 'input' || tag === 'select' || tag === 'textarea') return true;
-      if (target.closest('button')) return true;
-      return false;
-    };
-
     const handleStart = (e) => {
-      if (isInteractive(e.target)) { touchStart.current = 0; return; }
       if (el.scrollTop === 0) touchStart.current = e.touches[0].clientY;
       else touchStart.current = 0;
     };
