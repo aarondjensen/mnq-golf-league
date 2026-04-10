@@ -439,7 +439,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     let gt = 0;
                     return (
                       <div style={{ display: "flex", alignItems: "stretch", borderBottom: gridLine }}>
-                        <div style={{ width: 44, flexShrink: 0, borderRight: gridLine, paddingLeft: 4, display: "flex", alignItems: "center", gap: 1 }}>
+                        <div style={{ width: 44, flexShrink: 0, borderRight: gridLine, paddingLeft: 4, display: "flex", alignItems: "flex-end", paddingBottom: 8, gap: 1 }}>
                           <span style={{ fontSize: 13, color: K.t1, fontWeight: 800 }}>{getInitials(pid)}</span>
                           <span style={{ fontSize: 10, color: "#3b82f6", fontWeight: 700 }}>{amGetHcp(pid)}</span>
                         </div>
