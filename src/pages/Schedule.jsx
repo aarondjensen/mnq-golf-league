@@ -221,21 +221,22 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
     return (
       <div key={wk.week} style={{
-        display: "flex", alignItems: "center", padding: "8px 12px",
+        display: "flex", alignItems: "center", padding: "11px 14px",
         background: isCurrent && !isRainedOut ? K.matchGrn + "12" : K.card,
         borderRadius: CARD_RADIUS,
         border: `1px solid ${isCurrent && !isRainedOut ? K.matchGrn + "40" : K.bdr}`,
         opacity: isRainedOut ? 0.5 : 1,
+        gap: 10,
       }}>
-        <div style={{ width: 26, fontSize: 13, fontWeight: 700, color: K.t1 }}>{wk.week}</div>
-        <div style={{ width: 50, fontSize: 11, fontWeight: 600, color: K.t1 }}>{wk.date || "—"}</div>
-        <div style={{ width: 46, textAlign: "center", fontSize: 13, fontWeight: 700, color: isRainedOut ? K.warn : isComplete ? resultColor : isSeeded ? K.t3 : K.act }}>
+        <div style={{ width: 22, fontSize: 14, fontWeight: 700, color: K.t1, flexShrink: 0 }}>{wk.week}</div>
+        <div style={{ width: 52, fontSize: 12, fontWeight: 600, color: K.t1, flexShrink: 0 }}>{wk.date || "—"}</div>
+        <div style={{ width: 40, fontSize: 14, fontWeight: 700, flexShrink: 0, color: isRainedOut ? K.warn : isComplete ? resultColor : isSeeded ? K.t3 : K.act }}>
           {isRainedOut ? "—" : isComplete ? resultText : isSeeded ? "—" : teeTimeShort}
         </div>
-        <div style={{ width: 40, fontSize: 11, fontWeight: 600, color: K.t3 }}>
+        <div style={{ width: 38, fontSize: 11, fontWeight: 600, color: K.t3, flexShrink: 0 }}>
           {isRainedOut ? "" : side === 'front' ? 'Front' : 'Back'}
         </div>
-        <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
           {isRainedOut ? "RAIN" : isSeeded ? (() => {
             if (!isPlayoff) return "Seeded — TBD";
             const regWeeks = leagueConfig?.regularWeeks || REGULAR_WEEKS;
@@ -415,12 +416,12 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
       {/* My Schedule column header — upcoming */}
       {myOnly && weeksToShow.upcoming.length > 0 && (
-        <div style={{ display: "flex", alignItems: "center", padding: "0 12px 6px", fontSize: 9, color: K.t3, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8 }}>
-          <div style={{ width: 26 }}>Wk</div>
-          <div style={{ width: 50 }}>Date</div>
-          <div style={{ width: 46, textAlign: "center" }}>Time</div>
-          <div style={{ width: 40 }}>Side</div>
-          <div style={{ flex: 1, textAlign: "right" }}>Opponent</div>
+        <div style={{ display: "flex", alignItems: "center", padding: "0 14px 6px", fontSize: 9, color: K.t3, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8, gap: 10 }}>
+          <div style={{ width: 22 }}>Wk</div>
+          <div style={{ width: 52 }}>Date</div>
+          <div style={{ width: 40 }}>Time</div>
+          <div style={{ width: 38 }}>Side</div>
+          <div style={{ flex: 1 }}>Opponent</div>
         </div>
       )}
 
@@ -439,12 +440,12 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           )}
           {/* My Schedule column header — complete */}
           {myOnly && (
-            <div style={{ display: "flex", alignItems: "center", padding: "0 12px 6px", fontSize: 9, color: K.t3, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8 }}>
-              <div style={{ width: 26 }}>Wk</div>
-              <div style={{ width: 50 }}>Date</div>
-              <div style={{ width: 46, textAlign: "center" }}>Result</div>
-              <div style={{ width: 40 }}>Side</div>
-              <div style={{ flex: 1, textAlign: "right" }}>Opponent</div>
+            <div style={{ display: "flex", alignItems: "center", padding: "0 14px 6px", fontSize: 9, color: K.t3, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8, gap: 10 }}>
+              <div style={{ width: 22 }}>Wk</div>
+              <div style={{ width: 52 }}>Date</div>
+              <div style={{ width: 40 }}>Result</div>
+              <div style={{ width: 38 }}>Side</div>
+              <div style={{ flex: 1 }}>Opponent</div>
             </div>
           )}
           <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>

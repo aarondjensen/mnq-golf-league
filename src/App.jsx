@@ -416,9 +416,9 @@ export default function GolfLeagueApp() {
         <div style={{ maxWidth: 900, width: "100%", margin: "0 auto" }}>
           {upcomingBanner && tab !== "scoring" && (() => {
             return (
-              <div style={{ background: K.card, border: `1.5px solid ${bannerGrn}`, borderRadius: 10, margin: "6px 14px", padding: "8px 14px", display: "flex", alignItems: "center" }}>
+              <div style={{ background: K.card, border: `1.5px solid ${bannerGrn}`, borderRadius: 10, margin: "6px 14px", padding: "10px 16px", display: "flex", alignItems: "center" }}>
                 {/* Left: Tee time + Front/Back */}
-                <div style={{ width: 70, flexShrink: 0, textAlign: "center", lineHeight: 1.3, padding: "6px 0" }}>
+                <div style={{ width: 80, flexShrink: 0, textAlign: "left", lineHeight: 1.3, padding: "6px 0" }}>
                   <div style={{ fontSize: 17, fontWeight: 800, color: bannerGrn, letterSpacing: .5 }}>{upcomingBanner.teeTime}</div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: bannerGrn, letterSpacing: .5, textTransform: "uppercase" }}>{upcomingBanner.side === 'front' ? 'FRONT 9' : 'BACK 9'}</div>
                 </div>
@@ -428,7 +428,7 @@ export default function GolfLeagueApp() {
                   <div style={{ fontSize: 14, color: K.t1, fontWeight: 700 }}>Week {upcomingBanner.week}</div>
                 </div>
                 {/* Right: Opponent player names */}
-                <div style={{ width: 90, flexShrink: 0, textAlign: "right", lineHeight: 1.3 }}>
+                <div style={{ width: 80, flexShrink: 0, textAlign: "right", lineHeight: 1.3 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{upcomingBanner.oppName1}</div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{upcomingBanner.oppName2}</div>
                 </div>
