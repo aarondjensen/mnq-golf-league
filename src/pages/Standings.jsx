@@ -190,7 +190,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                     <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.l}</div>
                     <div style={{ ...wltDash, fontSize: NAME_SIZE, fontWeight: 800 }}>-</div>
                     <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.t}</div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: K.teal, minWidth: 26, textAlign: "right", marginLeft: 6 }}>{s.hw}</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#3b82f6", minWidth: 26, textAlign: "right", marginLeft: 6 }}>{s.hw}</div>
                   </>) : (<>
                     <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.w}</div>
                     <div style={{ ...wltDash, fontSize: 11, color: K.t3 }}>-</div>
@@ -220,7 +220,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                       <div style={{ width: 26, color: K.t3, fontSize: 11 }}>{r.week}</div>
                       <div style={{ flex: 1, color: K.t2, fontWeight: 500 }}>{r.oppName}</div>
                       <div style={{ width: 62, textAlign: "center", fontWeight: 700, fontSize: 11, color: r.result === "W" ? K.matchGrn : r.result === "L" ? K.red : K.t2 }}>{r.resultDisplay}</div>
-                      <div style={{ width: 30, textAlign: "center", color: K.teal, fontWeight: 700 }}>{r.holesWon}</div>
+                      <div style={{ width: 30, textAlign: "center", color: "#3b82f6", fontWeight: 700 }}>{r.holesWon}</div>
                     </div>
                   ))}
                 </div>
