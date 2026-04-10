@@ -228,14 +228,14 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         opacity: isRainedOut ? 0.5 : 1,
       }}>
         <div style={{ width: 26, fontSize: 13, fontWeight: 700, color: K.t1 }}>{wk.week}</div>
-        <div style={{ width: 50, fontSize: 11, color: K.t3 }}>{wk.date || "—"}</div>
+        <div style={{ width: 50, fontSize: 11, fontWeight: 600, color: K.t1 }}>{wk.date || "—"}</div>
         <div style={{ width: 46, textAlign: "center", fontSize: 13, fontWeight: 700, color: isRainedOut ? K.warn : isComplete ? resultColor : isSeeded ? K.t3 : K.act }}>
           {isRainedOut ? "—" : isComplete ? resultText : isSeeded ? "—" : teeTimeShort}
         </div>
         <div style={{ width: 40, fontSize: 11, fontWeight: 600, color: K.t3 }}>
           {isRainedOut ? "" : side === 'front' ? 'Front' : 'Back'}
         </div>
-        <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", textAlign: "right" }}>
+        <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
           {isRainedOut ? "RAIN" : isSeeded ? (() => {
             if (!isPlayoff) return "Seeded — TBD";
             const regWeeks = leagueConfig?.regularWeeks || REGULAR_WEEKS;
