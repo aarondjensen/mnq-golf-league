@@ -495,7 +495,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     const rem = 8 - h;
                     if (lead > rem) {
                       dispClinchHole = h;
-                      dispClinchText = rem > 0 ? lead + "&" + rem : lead + "UP";
+                      const updn = dispRunning[h] > 0 ? "UP" : "DN";
+                      dispClinchText = rem > 0 ? lead + "&" + rem : lead + updn;
                       break;
                     }
                   }
