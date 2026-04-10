@@ -521,9 +521,31 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
                 <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Playoff Weeks</div>
                 <input type="number" value={cfg.playoffWeeks} onChange={e => setCfg({ ...cfg, playoffWeeks: parseInt(e.target.value) || 2 })} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
               </div>
-              <div style={{ fontSize: 12, color: K.t2, padding: "8px 0", borderTop: `1px solid ${K.bdr}30` }}>
-                Total: <strong style={{ color: K.t1 }}>{totalWeeks} weeks</strong> ({cfg.regularWeeks} regular + {cfg.playoffWeeks} playoff)
-              </div>
+              {/* Season breakdown */}
+              {teams.length >= 2 && (() => {
+                const rrWeeks = teams.length - 1;
+                const seededReg = Math.max(0, cfg.regularWeeks - rrWeeks);
+                return (
+                  <div style={{ fontSize: 12, color: K.t2, padding: "8px 0", borderTop: `1px solid ${K.bdr}30`, lineHeight: 1.8 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Round-robin</span>
+                      <span style={{ color: K.t1, fontWeight: 600 }}>{rrWeeks} weeks</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Seeded regular season</span>
+                      <span style={{ color: K.t1, fontWeight: 600 }}>{seededReg} weeks</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Playoffs</span>
+                      <span style={{ color: K.warn, fontWeight: 600 }}>{cfg.playoffWeeks} weeks</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", borderTop: `1px solid ${K.bdr}30`, paddingTop: 6, marginTop: 4 }}>
+                      <span style={{ fontWeight: 600 }}>Total</span>
+                      <span style={{ color: K.t1, fontWeight: 700 }}>{totalWeeks} weeks</span>
+                    </div>
+                  </div>
+                );
+              })()}
               <div style={{ marginTop: 10 }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: K.t2, cursor: "pointer" }}>
                   <input type="checkbox" checked={cfg.alternateNines} onChange={e => setCfg({ ...cfg, alternateNines: e.target.checked })} style={{ accentColor: K.act }} />
@@ -532,13 +554,27 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
               </div>
             </Card>
           </div>
+
+          <div>
+            <SubLabel color={K.warn}>Playoff Format</SubLabel>
+            <Card style={{ padding: 14 }}>
+              <div style={{ fontSize: 12, color: K.t2, lineHeight: 1.7 }}>
+                {cfg.playoffWeeks >= 2 && teams.length >= 10 ? (<>
+                  <div style={{ fontWeight: 600, color: K.t1, marginBottom: 4 }}>Week {cfg.regularWeeks + 1} — Play-in</div>
+                  <div style={{ marginLeft: 8, marginBottom: 8 }}>#7 vs #10, #8 vs #9</div>
+                  <div style={{ fontWeight: 600, color: K.t1, marginBottom: 4 }}>Week {cfg.regularWeeks + 2} — Quarterfinals</div>
+                  <div style={{ marginLeft: 8 }}>#1 vs lowest winner, #2 vs next lowest<br/>#3 vs #6, #4 vs #5</div>
+                </>) : cfg.playoffWeeks === 1 ? (
+                  <div>Single elimination round based on standings seeding.</div>
+                ) : (
+                  <div style={{ color: K.t3 }}>Set 2+ playoff weeks for bracket format.</div>
+                )}
+              </div>
+            </Card>
+          </div>
         </div>
 
-        <div style={{ fontSize: 12, color: K.t3, margin: "16px 0 8px", lineHeight: 1.6 }}>
-          With {teams.length} teams, the round-robin takes {teams.length - 1} weeks. {cfg.regularWeeks > teams.length - 1 ? `The remaining ${cfg.regularWeeks - (teams.length - 1)} regular season weeks will be standings-based matchups (1st vs last, 2nd vs 2nd-to-last, etc).` : ""}
-        </div>
-
-        <button onClick={generate} disabled={generating || teams.length < 2} style={{ width: "100%", padding: 14, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: generating ? .6 : 1, marginTop: 8 }}>
+        <button onClick={generate} disabled={generating || teams.length < 2} style={{ width: "100%", padding: 14, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: generating ? .6 : 1, marginTop: 16 }}>
           {generating ? "Generating..." : "Generate Schedule"}
         </button>
 
@@ -557,22 +593,110 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
     if (!wk) { setEditWeek(null); return null; }
     const isFinalized = wk.locked || (matchResults || []).some(r => r.week === wk.week);
     const isRainedOut = wk.rainedOut === true;
+    const isSeeded = wk.seeded === true && (!wk.matches || wk.matches.length === 0);
+    const isPlayoff = wk.isPlayoff || wk.week > (leagueConfig.regularWeeks || 14);
+    const regWeeks = leagueConfig.regularWeeks || 14;
+    const playoffWeeks = leagueConfig.playoffWeeks || 2;
+    const playoffRound = isPlayoff ? wk.week - regWeeks : 0; // 1 = play-in, 2 = quarters, etc.
+
+    // Build current standings for seeding
+    const buildStandingsForSeed = () => {
+      const pts = {};
+      teams.forEach(t => { pts[t.id] = { teamId: t.id, points: 0, w: 0, l: 0, t: 0, hw: 0, gp: 0 }; });
+      (matchResults || []).forEach(r => {
+        if (!r) return;
+        // Only count locked weeks
+        const rWeek = schedule.find(s => s.week === r.week);
+        if (!rWeek || !rWeek.locked) return;
+        if (pts[r.team1Id]) { pts[r.team1Id].points += (r.team1Points || 0); if (r.t1HolesWon !== undefined) pts[r.team1Id].hw += r.t1HolesWon; }
+        if (pts[r.team2Id]) { pts[r.team2Id].points += (r.team2Points || 0); if (r.t2HolesWon !== undefined) pts[r.team2Id].hw += r.t2HolesWon; }
+        const d = (r.team1Points || 0) - (r.team2Points || 0);
+        if (d > 0) { if (pts[r.team1Id]) { pts[r.team1Id].w++; pts[r.team1Id].gp++; } if (pts[r.team2Id]) { pts[r.team2Id].l++; pts[r.team2Id].gp++; } }
+        else if (d < 0) { if (pts[r.team1Id]) { pts[r.team1Id].l++; pts[r.team1Id].gp++; } if (pts[r.team2Id]) { pts[r.team2Id].w++; pts[r.team2Id].gp++; } }
+        else { if (pts[r.team1Id]) { pts[r.team1Id].t++; pts[r.team1Id].gp++; } if (pts[r.team2Id]) { pts[r.team2Id].t++; pts[r.team2Id].gp++; } }
+      });
+      const isRecord = leagueConfig?.standingsMethod === "record";
+      const arr = Object.values(pts);
+      if (isRecord) {
+        arr.sort((a, b) => {
+          const aPct = a.gp ? (a.w + a.t * 0.5) / a.gp : 0;
+          const bPct = b.gp ? (b.w + b.t * 0.5) / b.gp : 0;
+          if (bPct !== aPct) return bPct - aPct;
+          if (b.w !== a.w) return b.w - a.w;
+          return a.l - b.l;
+        });
+      } else {
+        arr.sort((a, b) => b.points - a.points || b.hw - a.hw);
+      }
+      return arr;
+    };
+
+    const handleSeedWeek = async () => {
+      const standings = buildStandingsForSeed();
+      const seeds = standings.map(s => s.teamId); // seeds[0] = #1 seed, etc.
+      let matches = [];
+
+      if (isPlayoff && playoffRound === 1) {
+        // Play-in: #7 vs #10, #8 vs #9
+        if (seeds.length >= 10) {
+          matches = [
+            { team1: seeds[6], team2: seeds[9] }, // 7 vs 10
+            { team1: seeds[7], team2: seeds[8] }, // 8 vs 9
+          ];
+        }
+      } else if (isPlayoff && playoffRound === 2) {
+        // Quarterfinals: need results from play-in round
+        const playInWeek = schedule.find(s => s.week === regWeeks + 1);
+        const playInResults = (matchResults || []).filter(r => r.week === playInWeek?.week);
+
+        // Determine play-in winners (lower seeds that survived)
+        const playInWinners = [];
+        playInResults.forEach(r => {
+          const d = (r.team1Points || 0) - (r.team2Points || 0);
+          if (d > 0) playInWinners.push(r.team1Id);
+          else if (d < 0) playInWinners.push(r.team2Id);
+          else playInWinners.push(r.team1Id); // tie goes to higher seed (team1 is always higher seed from play-in)
+        });
+
+        if (playInWinners.length === 2 && seeds.length >= 6) {
+          // Sort play-in winners by their seed (lowest seed number = highest rank)
+          const winnerSeeds = playInWinners.map(id => ({ id, seed: seeds.indexOf(id) })).sort((a, b) => b.seed - a.seed);
+          // winnerSeeds[0] = lowest surviving seed, winnerSeeds[1] = next lowest
+          matches = [
+            { team1: seeds[0], team2: winnerSeeds[0].id }, // #1 vs lowest winner
+            { team1: seeds[1], team2: winnerSeeds[1].id }, // #2 vs next lowest
+            { team1: seeds[2], team2: seeds[5] },           // #3 vs #6
+            { team1: seeds[3], team2: seeds[4] },           // #4 vs #5
+          ];
+        } else {
+          alert("Play-in round (Week " + (regWeeks + 1) + ") must be finalized first.");
+          return;
+        }
+      } else {
+        // Seeded regular season: 1v10, 2v9, 3v8, etc.
+        for (let i = 0; i < Math.floor(seeds.length / 2); i++) {
+          matches.push({ team1: seeds[i], team2: seeds[seeds.length - 1 - i] });
+        }
+      }
+
+      if (!matches.length) { alert("Not enough data to seed this week."); return; }
+
+      const label = isPlayoff
+        ? (playoffRound === 1 ? "play-in matchups" : "quarterfinal matchups")
+        : "seeded matchups";
+      if (!window.confirm(`Seed Week ${wk.week} with ${label}?\n\n${matches.map((m, i) => `${gn(m.team1)} vs ${gn(m.team2)}`).join('\n')}`)) return;
+
+      await saveWeekSchedule({ ...wk, matches, seeded: false });
+    };
 
     const handleRainOut = async () => {
       if (!window.confirm(`Rain out Week ${wk.week}? This will:\n\n• Skip this week (no matches played)\n• Add a makeup week at the end with the same matchups\n• Push all future dates forward one week`)) return;
 
-      // 1. Mark this week as rained out
       await saveWeekSchedule({ ...wk, rainedOut: true });
 
-      // 2. Find the last week number in the schedule
       const maxWeek = Math.max(...schedule.map(s => s.week));
       const newWeekNum = maxWeek + 1;
-
-      // 3. Determine if the rained-out week was a playoff week
-      const regWeeks = leagueConfig.regularWeeks || 14;
       const wasPlayoff = wk.isPlayoff || wk.week > regWeeks;
-
-      // 4. Calculate the new date (one week after the current last week)
       const lastWeek = schedule.find(s => s.week === maxWeek);
       let newDate = "";
       if (lastWeek?.date) {
@@ -580,11 +704,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
         d.setDate(d.getDate() + 7);
         newDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
       }
-
-      // 5. Alternate side from whatever the last week uses
       const newSide = lastWeek?.side === 'front' ? 'back' : 'front';
 
-      // 6. Create the makeup week with same matchups
       await saveWeekSchedule({
         id: `${LEAGUE_ID}_w${newWeekNum}`,
         week: newWeekNum,
@@ -595,14 +716,12 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
         makeupFor: wk.week,
       });
 
-      // 7. Push dates forward by one week for all weeks AFTER the rained-out week (that aren't already rained out)
       const startDate = leagueConfig.startDate;
       if (startDate) {
         const futureWeeks = schedule.filter(s => s.week > wk.week && !s.rainedOut);
         for (const fw of futureWeeks) {
           if (fw.date) {
             const d = new Date(fw.date + "T12:00:00");
-            // Try parsing "Mon DD" format dates
             if (isNaN(d.getTime())) continue;
             d.setDate(d.getDate() + 7);
             const newFwDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -619,7 +738,10 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <BackBtn onClick={() => setEditWeek(null)} />
           <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Week {wk.week}{wk.date ? ` · ${wk.date}` : ""}</span>
-          <Pill color={wk.side === 'front' ? K.acc : K.t2}>{wk.side === 'front' ? 'FRONT 9' : 'BACK 9'}</Pill>
+          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+            <Pill color={wk.side === 'front' ? K.acc : K.t2}>{wk.side === 'front' ? 'FRONT 9' : 'BACK 9'}</Pill>
+            {isPlayoff && <Pill color={K.warn}>PLAYOFF</Pill>}
+          </div>
         </div>
 
         {isRainedOut && (
@@ -629,25 +751,49 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
           </div>
         )}
 
-        <div style={{ fontSize: 11, color: K.t3, marginBottom: 12 }}>Drag matches to reorder tee times</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-          {wk.matches.map((m, mi) => (
-            <div
-              key={mi}
-              draggable
-              onDragStart={() => setDragIdx(mi)}
-              onDragOver={(e) => e.preventDefault()}
-              onDrop={() => { if (dragIdx !== null) { moveMatch(wk, dragIdx, mi); setDragIdx(null); } }}
-              style={{ background: dragIdx === mi ? K.cardHi : K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "12px 14px", cursor: "grab", display: "flex", alignItems: "center", gap: 12, userSelect: "none" }}
-            >
-              <div style={{ color: K.t3, fontSize: 14, cursor: "grab" }}>⠿</div>
-              <div style={{ width: 70, fontSize: 12, color: K.acc, fontWeight: 600 }}>{formatTeeTime(cfg.startTime || "4:28 PM", mi)}</div>
-              <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: K.t1 }}>{gn(m.team1)}</div>
-              <div style={{ fontSize: 11, color: K.t3, fontWeight: 700 }}>vs</div>
-              <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: K.t1, textAlign: "right" }}>{gn(m.team2)}</div>
+        {/* Seeded week — show seed button */}
+        {isSeeded && !isRainedOut && (
+          <div style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: CARD_RADIUS, padding: "16px", textAlign: "center", marginBottom: 12 }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: K.t1, marginBottom: 4 }}>
+              {isPlayoff ? (playoffRound === 1 ? "Play-in Round" : "Quarterfinals") : "Seeded Matchups"}
             </div>
-          ))}
-        </div>
+            <div style={{ fontSize: 12, color: K.t3, marginBottom: 12, lineHeight: 1.5 }}>
+              {isPlayoff && playoffRound === 1
+                ? "#7 vs #10, #8 vs #9 — based on final regular season standings"
+                : isPlayoff && playoffRound === 2
+                ? "#1 vs lowest play-in winner, #2 vs next · #3 vs #6, #4 vs #5"
+                : "Matchups based on current standings: #1 vs #10, #2 vs #9, etc."
+              }
+            </div>
+            <button onClick={handleSeedWeek} style={{ width: "100%", padding: 14, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+              Seed Week {wk.week}
+            </button>
+          </div>
+        )}
+
+        {/* Normal week — show matches */}
+        {!isSeeded && !isRainedOut && (<>
+          <div style={{ fontSize: 11, color: K.t3, marginBottom: 12 }}>Drag matches to reorder tee times</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {wk.matches.map((m, mi) => (
+              <div
+                key={mi}
+                draggable
+                onDragStart={() => setDragIdx(mi)}
+                onDragOver={(e) => e.preventDefault()}
+                onDrop={() => { if (dragIdx !== null) { moveMatch(wk, dragIdx, mi); setDragIdx(null); } }}
+                style={{ background: dragIdx === mi ? K.cardHi : K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "12px 14px", cursor: "grab", display: "flex", alignItems: "center", gap: 12, userSelect: "none" }}
+              >
+                <div style={{ color: K.t3, fontSize: 14, cursor: "grab" }}>⠿</div>
+                <div style={{ width: 70, fontSize: 12, color: K.acc, fontWeight: 600 }}>{formatTeeTime(cfg.startTime || "4:28 PM", mi)}</div>
+                <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: K.t1 }}>{gn(m.team1)}</div>
+                <div style={{ fontSize: 11, color: K.t3, fontWeight: 700 }}>vs</div>
+                <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: K.t1, textAlign: "right" }}>{gn(m.team2)}</div>
+              </div>
+            ))}
+          </div>
+        </>)}
+
         <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
           <button onClick={() => {
             const newSide = wk.side === 'front' ? 'back' : 'front';
@@ -657,8 +803,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
           </button>
         </div>
 
-        {/* Rain Out button — only for non-finalized, non-rained-out weeks */}
-        {!isFinalized && !isRainedOut && (
+        {/* Rain Out button — only for non-finalized, non-rained-out, non-seeded weeks */}
+        {!isFinalized && !isRainedOut && !isSeeded && (
           <button onClick={handleRainOut} style={{ width: "100%", padding: 12, borderRadius: 10, marginTop: 12, cursor: "pointer", background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 14, fontWeight: 700 }}>
             Rain Out
           </button>
@@ -682,6 +828,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
           {schedule.map(wk => {
             const isPlayoff = wk.isPlayoff || wk.week >= (leagueConfig.regularWeeks || 14);
             const isRainedOut = wk.rainedOut === true;
+            const isSeeded = wk.seeded === true && (!wk.matches || wk.matches.length === 0);
             return (
               <button key={wk.week} onClick={() => setEditWeek(wk.week)} style={{ background: K.card, borderRadius: 10, padding: "10px 14px", border: `1px solid ${isRainedOut ? K.warn + "40" : K.bdr}`, cursor: "pointer", textAlign: "left", width: "100%", opacity: isRainedOut ? 0.6 : 1 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
@@ -692,11 +839,14 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
                     {isRainedOut && <Pill color={K.warn} style={{ fontSize: 8 }}>RAIN</Pill>}
                     {wk.makeupFor && <Pill color={K.teal} style={{ fontSize: 8 }}>MAKEUP</Pill>}
                     <Pill color={wk.side === 'front' ? K.acc : K.t3} style={{ fontSize: 8 }}>{wk.side === 'front' ? 'F9' : 'B9'}</Pill>
+                    {isSeeded && <Pill color={K.acc} style={{ fontSize: 8 }}>SEEDED</Pill>}
                     {isPlayoff && !isRainedOut && <Pill color={K.warn} style={{ fontSize: 8 }}>PLAYOFF</Pill>}
                   </div>
                 </div>
                 {isRainedOut ? (
                   <div style={{ fontSize: 11, color: K.warn, fontStyle: "italic", marginLeft: 4 }}>Rained out — rescheduled</div>
+                ) : isSeeded ? (
+                  <div style={{ fontSize: 11, color: K.t3, fontStyle: "italic", marginLeft: 4 }}>Matchups TBD — based on standings</div>
                 ) : (
                   wk.matches.map((m, mi) => (
                     <div key={mi} style={{ fontSize: 11, color: K.t3, marginLeft: 4 }}>
