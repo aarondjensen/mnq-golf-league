@@ -439,8 +439,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     let gt = 0;
                     return (
                       <div style={{ display: "flex", alignItems: "stretch", borderBottom: gridLine }}>
-                        <div style={{ width: 24, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, borderRight: gridLine, paddingLeft: 4, display: "flex", alignItems: "center" }}>{getInitials(pid)}</div>
-                        <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: "#3b82f6", fontWeight: 700, borderRight: gridLine, display: "flex", alignItems: "center", justifyContent: "center" }}>{amGetHcp(pid)}</div>
+                        <div style={{ width: 44, flexShrink: 0, borderRight: gridLine, paddingLeft: 4, display: "flex", alignItems: "center", gap: 1 }}>
+                          <span style={{ fontSize: 13, color: K.t1, fontWeight: 800 }}>{getInitials(pid)}</span>
+                          <span style={{ fontSize: 10, color: "#3b82f6", fontWeight: 700 }}>{amGetHcp(pid)}</span>
+                        </div>
                         {Array.from({ length: 9 }, (_, h) => {
                           const s = amGetScore(pid, h); const st = amGetStrokes(pid, h); if (s > 0) gt += s;
                           return <div key={h} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 36, borderRight: h < 8 ? gridLine : "none" }}>
