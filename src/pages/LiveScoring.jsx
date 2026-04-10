@@ -108,6 +108,176 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   if (!course?.name) return <EmptyState icon="flag" title="Course not configured" subtitle="Commissioner needs to set up the course." />;
   if (!matches.length) return <EmptyState icon="calendar" title="No matches this week" subtitle="Commissioner needs to set the schedule." />;
 
+  // ── Compute match data unconditionally (hooks must always run) ──
+  const matchToScore = activeMatch || myMatch;
+  const t1 = matchToScore ? teams.find(t => t.id === matchToScore.team1) : null;
+  const t2 = matchToScore ? teams.find(t => t.id === matchToScore.team2) : null;
+  const matchKey = matchToScore ? `${matchToScore.team1}_${matchToScore.team2}` : "_none_";
+
+  const prevMatchKey = useRef(matchKey);
+  useEffect(() => {
+    if (prevMatchKey.current !== matchKey) {
+      setCurHole(0);
+      initialJump.current = false;
+      setEditing(false);
+      setShowScorecard(false);
+      setShowFinalize(false);
+      prevMatchKey.current = matchKey;
+    }
+  }, [matchKey]);
+
+  const prevPlayerId = useRef(leagueUser.playerId);
+  useEffect(() => {
+    if (prevPlayerId.current !== leagueUser.playerId) {
+      setShowFinalize(false);
+      setShowEditConfirm(false);
+      prevPlayerId.current = leagueUser.playerId;
+    }
+  }, [leagueUser.playerId]);
+
+  const scoringFormat = leagueConfig?.scoringFormat || "lowHighBonus";
+  const isTeamNet = scoringFormat === "teamNetTotal";
+
+  const t1Players = t1 ? [t1.player1, t1.player2] : [];
+  const t2Players = t2 ? [t2.player1, t2.player2] : [];
+  const getHcp = (pid) => {
+    const p = players.find(pl => pl.id === pid);
+    return p ? Math.round(p.handicapIndex || 0) : 0;
+  };
+
+  // Absent player helpers
+  const getTeammate = (pid) => {
+    if (t1Players.includes(pid)) return t1Players.find(p => p !== pid);
+    if (t2Players.includes(pid)) return t2Players.find(p => p !== pid);
+    return null;
+  };
+  const isPlayerAbsent = (pid) => !!absentPlayers[pid];
+  const isBothAbsent = (pid) => {
+    const tm = getTeammate(pid);
+    return isPlayerAbsent(pid) && tm && isPlayerAbsent(tm);
+  };
+  const toggleAbsent = (pid) => {
+    const nowAbsent = !absentPlayers[pid];
+    setAbsentPlayers(prev => {
+      const next = { ...prev };
+      if (nowAbsent) next[pid] = true; else delete next[pid];
+      return next;
+    });
+    saveScore(week, pid, "absent", nowAbsent ? 1 : 0);
+  };
+
+  useEffect(() => {
+    if (!t1 || !t2) return;
+    const abs = {};
+    [...t1Players, ...t2Players].forEach(pid => {
+      if (holeScores[`w${week}_p${pid}_habsent`] === 1) abs[pid] = true;
+    });
+    setAbsentPlayers(abs);
+  }, [matchKey]);
+
+  const allP = (t1 && t2) ? (isTeamNet
+    ? [...t1Players, ...t2Players]
+    : (() => { const t1s = [...t1Players].sort((a, b) => getHcp(a) - getHcp(b)); const t2s = [...t2Players].sort((a, b) => getHcp(a) - getHcp(b)); return [t1s[0], t2s[0], t1s[1], t2s[1]]; })()
+  ) : [];
+
+  const par = pars[curHole] || 4;
+  const hcp = hcps[curHole] || 1;
+
+  const getRawScore = (pid, h) => holeScores[`w${week}_p${pid}_h${h}`] || 0;
+  const getS = (pid, h) => {
+    if (isPlayerAbsent(pid)) {
+      const tm = getTeammate(pid);
+      if (!tm || isPlayerAbsent(tm)) return (pars[h] || 4) + 1;
+      return getRawScore(tm, h);
+    }
+    return getRawScore(pid, h);
+  };
+  const getNineHcp = (pid) => {
+    if (isBothAbsent(pid)) {
+      const p = players.find(pl => pl.id === pid);
+      return p ? Math.round(p.handicapIndex || 0) : 0;
+    }
+    const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
+    const p = players.find(pl => pl.id === effectivePid);
+    return p ? Math.round(p.handicapIndex || 0) : 0;
+  };
+  const getStrokesMap = (nh) => {
+    const map = {}; const sorted = hcps.map((h, i) => ({ idx: i, hcp: h })).sort((a, b) => a.hcp - b.hcp);
+    let rem = Math.abs(nh);
+    for (const h of sorted) { if (rem <= 0) break; map[h.idx] = (map[h.idx] || 0) + 1; rem--; }
+    for (const h of sorted) { if (rem <= 0) break; map[h.idx] = (map[h.idx] || 0) + 1; rem--; }
+    return map;
+  };
+  const getStrokes = (pid, h) => getStrokesMap(getNineHcp(pid))[h] || 0;
+  const getRunning = (pid) => {
+    let gross = 0, net = 0, thru = 0, parTotal = 0;
+    for (let h = 0; h < 9; h++) { const s = getS(pid, h); if (s > 0) { gross += s; net += s - getStrokes(pid, h); parTotal += pars[h] || 4; thru++; } }
+    return { gross, net, netVsPar: net - parTotal, thru };
+  };
+  const allComplete = allP.length > 0 && allP.every(pid => { for (let h = 0; h < 9; h++) if (getS(pid, h) <= 0) return false; return true; });
+  const holeComplete = allP.length > 0 && allP.every(pid => getS(pid, curHole) > 0);
+
+  const existingResult = (t1 && t2) ? matchResults.find(r => r.week === week && r.team1Id === t1.id && r.team2Id === t2.id) : null;
+  const isAlreadyFinalized = !!existingResult;
+  const isAttested = existingResult?.attested === true;
+  const finalizedByTeamId = existingResult?.finalizedByTeamId || null;
+  const signedByPlayerId = existingResult?.signedByPlayerId || null;
+  const isTheSigner = leagueUser.playerId === signedByPlayerId;
+  const isOnFinalizingTeam = myTeam && (finalizedByTeamId === myTeam.id || isTheSigner);
+  const isOnOpposingTeam = myTeam && !isOnFinalizingTeam && (myTeam.id === (t1?.id) || myTeam.id === (t2?.id));
+  const needsAttestation = isAlreadyFinalized && !isAttested && isOnOpposingTeam;
+  const scoresLocked = (isWeekLocked && !isComm) || (isAttested && !isComm);
+
+  const guardedSaveScore = (w, pid, h, val) => {
+    if (scoresLocked) {
+      setToast(isWeekLocked ? "Week is locked — scores cannot be changed" : "Scorecard attested — only commissioner can edit");
+      setTimeout(() => setToast(null), 2500);
+      return;
+    }
+    saveScore(w, pid, h, val);
+  };
+
+  const currentHoleIdx = (() => {
+    for (let h = 0; h < 9; h++) { if (!allP.every(pid => getS(pid, h) > 0)) return h; }
+    return 8;
+  })();
+
+  const hasAnyScores = allP.some(pid => { for (let h = 0; h < 9; h++) if (getS(pid, h) > 0) return true; return false; });
+
+  useEffect(() => {
+    if (!initialJump.current && currentHoleIdx > 0 && hasAnyScores) {
+      setCurHole(currentHoleIdx);
+      initialJump.current = true;
+    }
+  }, [currentHoleIdx, hasAnyScores]);
+
+  useEffect(() => {
+    if (holeComplete && curHole < 8 && !editing && !allComplete) {
+      const holeNum = side === 'front' ? curHole + 1 : curHole + 10;
+      setToast(`✓ Hole ${holeNum} saved — advancing...`);
+      const timer = setTimeout(() => {
+        let next = curHole + 1;
+        while (next < 8 && allP.every(pid => getS(pid, next) > 0)) next++;
+        setCurHole(next);
+      }, 1800);
+      return () => clearTimeout(timer);
+    }
+  }, [holeComplete, curHole, editing, allComplete]);
+
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 400);
+      return () => clearTimeout(timer);
+    }
+  }, [curHole]);
+
+  useEffect(() => {
+    if (allComplete && !showFinalize && !isAlreadyFinalized) {
+      const timer = setTimeout(() => setShowFinalize(true), 600);
+      return () => clearTimeout(timer);
+    }
+  }, [allComplete, isAlreadyFinalized]);
+
   // ── All Matches view (Schedule "This Week" style) ──
   if (showAllMatches && !activeMatch) {
     const formatTeeTime = (idx) => {
@@ -211,7 +381,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   }
 
   // ── Default: auto-open user's match, or show prompt ──
-  const matchToScore = activeMatch || myMatch;
   if (!matchToScore) {
     return (
       <div>
@@ -223,189 +392,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     );
   }
 
-  // ── Hole scoring view ──
-  const t1 = teams.find(t => t.id === matchToScore.team1);
-  const t2 = teams.find(t => t.id === matchToScore.team2);
   if (!t1 || !t2) return null;
-
-  // Reset hole position when match changes (e.g. commissioner switches player)
-  const matchKey = `${matchToScore.team1}_${matchToScore.team2}`;
-  const prevMatchKey = useRef(matchKey);
-  useEffect(() => {
-    if (prevMatchKey.current !== matchKey) {
-      setCurHole(0);
-      initialJump.current = false;
-      setEditing(false);
-      setShowScorecard(false);
-      setShowFinalize(false);
-      prevMatchKey.current = matchKey;
-    }
-  }, [matchKey]);
-
-  // Reset popup state when effective user changes (commissioner switching impersonation)
-  const prevPlayerId = useRef(leagueUser.playerId);
-  useEffect(() => {
-    if (prevPlayerId.current !== leagueUser.playerId) {
-      setShowFinalize(false);
-      setShowEditConfirm(false);
-      prevPlayerId.current = leagueUser.playerId;
-    }
-  }, [leagueUser.playerId]);
-
-  const scoringFormat = leagueConfig?.scoringFormat || "lowHighBonus";
-  const isTeamNet = scoringFormat === "teamNetTotal";
-
-  const t1Players = [t1.player1, t1.player2];
-  const t2Players = [t2.player1, t2.player2];
-  const getHcp = (pid) => {
-    const p = players.find(pl => pl.id === pid);
-    return p ? Math.round(p.handicapIndex || 0) : 0;
-  };
-
-  // Absent player helpers
-  const getTeammate = (pid) => {
-    if (t1Players.includes(pid)) return t1Players.find(p => p !== pid);
-    if (t2Players.includes(pid)) return t2Players.find(p => p !== pid);
-    return null;
-  };
-  const isPlayerAbsent = (pid) => !!absentPlayers[pid];
-  const isBothAbsent = (pid) => {
-    const tm = getTeammate(pid);
-    return isPlayerAbsent(pid) && tm && isPlayerAbsent(tm);
-  };
-  const toggleAbsent = (pid) => {
-    const nowAbsent = !absentPlayers[pid];
-    setAbsentPlayers(prev => {
-      const next = { ...prev };
-      if (nowAbsent) next[pid] = true; else delete next[pid];
-      return next;
-    });
-    saveScore(week, pid, "absent", nowAbsent ? 1 : 0);
-  };
-
-  // Load absent status from holeScores on match change
-  useEffect(() => {
-    const abs = {};
-    [...t1Players, ...t2Players].forEach(pid => {
-      if (holeScores[`w${week}_p${pid}_habsent`] === 1) abs[pid] = true;
-    });
-    setAbsentPlayers(abs);
-  }, [matchKey]);
-
-  const allP = isTeamNet
-    ? [...t1Players, ...t2Players]
-    : (() => { const t1s = [...t1Players].sort((a, b) => getHcp(a) - getHcp(b)); const t2s = [...t2Players].sort((a, b) => getHcp(a) - getHcp(b)); return [t1s[0], t2s[0], t1s[1], t2s[1]]; })();
-
-  const par = pars[curHole] || 4;
-  const hcp = hcps[curHole] || 1;
-
-  // Raw score from Firestore
-  const getRawScore = (pid, h) => holeScores[`w${week}_p${pid}_h${h}`] || 0;
-  const getS = (pid, h) => {
-    if (isPlayerAbsent(pid)) {
-      const tm = getTeammate(pid);
-      if (!tm || isPlayerAbsent(tm)) return (pars[h] || 4) + 1;
-      return getRawScore(tm, h);
-    }
-    return getRawScore(pid, h);
-  };
-  const getNineHcp = (pid) => {
-    if (isBothAbsent(pid)) {
-      const p = players.find(pl => pl.id === pid);
-      return p ? Math.round(p.handicapIndex || 0) : 0;
-    }
-    const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
-    const p = players.find(pl => pl.id === effectivePid);
-    return p ? Math.round(p.handicapIndex || 0) : 0;
-  };
-  const getStrokesMap = (nh) => {
-    const map = {}; const sorted = hcps.map((h, i) => ({ idx: i, hcp: h })).sort((a, b) => a.hcp - b.hcp);
-    let rem = Math.abs(nh);
-    for (const h of sorted) { if (rem <= 0) break; map[h.idx] = (map[h.idx] || 0) + 1; rem--; }
-    for (const h of sorted) { if (rem <= 0) break; map[h.idx] = (map[h.idx] || 0) + 1; rem--; }
-    return map;
-  };
-  const getStrokes = (pid, h) => getStrokesMap(getNineHcp(pid))[h] || 0;
-  const getRunning = (pid) => {
-    let gross = 0, net = 0, thru = 0, parTotal = 0;
-    for (let h = 0; h < 9; h++) { const s = getS(pid, h); if (s > 0) { gross += s; net += s - getStrokes(pid, h); parTotal += pars[h] || 4; thru++; } }
-    return { gross, net, netVsPar: net - parTotal, thru };
-  };
-  const allComplete = allP.every(pid => { for (let h = 0; h < 9; h++) if (getS(pid, h) <= 0) return false; return true; });
-  const holeComplete = allP.every(pid => getS(pid, curHole) > 0);
-
-  // Check if this match is already finalized & attestation status
-  const existingResult = matchResults.find(r => r.week === week && r.team1Id === t1.id && r.team2Id === t2.id);
-  const isAlreadyFinalized = !!existingResult;
-  const isAttested = existingResult?.attested === true;
-  const finalizedByTeamId = existingResult?.finalizedByTeamId || null;
-
-  // Determine if current user is on the opposing team (needs to attest)
-  const signedByPlayerId = existingResult?.signedByPlayerId || null;
-  const isTheSigner = leagueUser.playerId === signedByPlayerId;
-  const isOnFinalizingTeam = myTeam && (finalizedByTeamId === myTeam.id || isTheSigner);
-  const isOnOpposingTeam = myTeam && !isOnFinalizingTeam && (myTeam.id === t1.id || myTeam.id === t2.id);
-  const needsAttestation = isAlreadyFinalized && !isAttested && isOnOpposingTeam;
-
-  // Scores are locked once attested (unless commissioner)
-  const scoresLocked = (isWeekLocked && !isComm) || (isAttested && !isComm);
-
-  // Wrapped saveScore — block when locked
-  const guardedSaveScore = (w, pid, h, val) => {
-    if (scoresLocked) {
-      setToast(isWeekLocked ? "Week is locked — scores cannot be changed" : "Scorecard attested — only commissioner can edit");
-      setTimeout(() => setToast(null), 2500);
-      return;
-    }
-    saveScore(w, pid, h, val);
-  };
-
-  // Find the "current" hole — first incomplete hole
-  const currentHoleIdx = (() => {
-    for (let h = 0; h < 9; h++) { if (!allP.every(pid => getS(pid, h) > 0)) return h; }
-    return 8;
-  })();
-
-  // Check if ANY scores exist for this match
-  const hasAnyScores = allP.some(pid => { for (let h = 0; h < 9; h++) if (getS(pid, h) > 0) return true; return false; });
-
-  // Jump to current hole on initial load (not hole 1), but only if scores exist
-  useEffect(() => {
-    if (!initialJump.current && currentHoleIdx > 0 && hasAnyScores) {
-      setCurHole(currentHoleIdx);
-      initialJump.current = true;
-    }
-  }, [currentHoleIdx, hasAnyScores]);
-
-  // Auto-advance when all 4 scores entered on current hole (only when not editing)
-  useEffect(() => {
-    if (holeComplete && curHole < 8 && !editing && !allComplete) {
-      const holeNum = side === 'front' ? curHole + 1 : curHole + 10;
-      setToast(`✓ Hole ${holeNum} saved — advancing...`);
-      const timer = setTimeout(() => {
-        let next = curHole + 1;
-        while (next < 8 && allP.every(pid => getS(pid, next) > 0)) next++;
-        setCurHole(next);
-      }, 1800);
-      return () => clearTimeout(timer);
-    }
-  }, [holeComplete, curHole, editing, allComplete]);
-
-  // Clear toast when hole changes
-  useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => setToast(null), 400);
-      return () => clearTimeout(timer);
-    }
-  }, [curHole]);
-
-  // Auto-show finalize popup when all holes complete (only if not already finalized)
-  useEffect(() => {
-    if (allComplete && !showFinalize && !isAlreadyFinalized) {
-      const timer = setTimeout(() => setShowFinalize(true), 600);
-      return () => clearTimeout(timer);
-    }
-  }, [allComplete, isAlreadyFinalized]);
 
   const finalizeMatch = async () => {
     const sr = week > REGULAR_WEEKS
