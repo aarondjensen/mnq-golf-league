@@ -200,9 +200,21 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       setEditing(false);
       setShowScorecard(false);
       setShowFinalize(false);
+      setShowAttest(false);
       prevMatchKey.current = matchKey;
     }
   }, [matchKey]);
+
+  // Reset popup state when effective user changes (commissioner switching impersonation)
+  const prevPlayerId = useRef(leagueUser.playerId);
+  useEffect(() => {
+    if (prevPlayerId.current !== leagueUser.playerId) {
+      setShowAttest(false);
+      setShowFinalize(false);
+      setShowEditConfirm(false);
+      prevPlayerId.current = leagueUser.playerId;
+    }
+  }, [leagueUser.playerId]);
 
   const scoringFormat = leagueConfig?.scoringFormat || "lowHighBonus";
   const isTeamNet = scoringFormat === "teamNetTotal";
@@ -1013,7 +1025,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       )}
 
       {/* ═══ Attestation Popup ═══ */}
-      {showAttest && (() => {
+      {showAttest && needsAttestation && (() => {
         const sc = buildScorecardData();
         const colBdr = `1px solid ${K.bdr}30`;
         const lw = 40;
@@ -1127,7 +1139,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         return (<>
           <div onClick={() => setShowAttest(false)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 500 }} />
           <div data-popup style={{ position: "fixed", inset: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: "60px 16px 16px", touchAction: "pan-y" }}>
-            <div style={{ background: K.bg, border: `1.5px solid ${K.warn}50`, borderRadius: 16, padding: "16px 12px 20px", width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto", overscrollBehavior: "none", WebkitOverflowScrolling: "touch" }}>
+            <div style={{ background: K.bg, border: `1.5px solid ${sc.resultColor}50`, borderRadius: 16, padding: "16px 12px 20px", width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto", overscrollBehavior: "none", WebkitOverflowScrolling: "touch" }}>
               {/* Header — Players vs Players with match score and winner arrow */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 14, padding: "0 4px" }}>
                 <div style={{ flex: 1, textAlign: "right" }}>
@@ -1177,7 +1189,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               </div>
 
               <div style={{ marginTop: 16 }}>
-                <button onClick={attestMatch} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.grn, border: "none", color: K.bg, fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
+                <button onClick={attestMatch} style={{ width: "100%", padding: "14px", borderRadius: 12, background: "#3b82f6", border: "none", color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
                   Attest Scorecard
                 </button>
                 <button onClick={() => setShowAttest(false)} style={{ width: "100%", padding: 10, background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 4 }}>
