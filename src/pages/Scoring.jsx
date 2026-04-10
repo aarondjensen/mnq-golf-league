@@ -355,11 +355,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             const mT2Pids = [rawT2.player1, rawT2.player2];
             const thru = getThru(mT1Pids, mT2Pids);
 
-            // Compute live match score for in-progress matches
-            let liveText = "";
-            let liveColor = K.t3;
-            if (!res && thru > 0) {
-              // Calculate running net match status from raw T1 perspective
+            // Compute live match score (from dispT1 perspective)
+            let dispCum = 0;
+            if (thru > 0) {
               let cum = 0;
               for (let h = 0; h < thru; h++) {
                 let n1 = 0, n2 = 0;
@@ -367,59 +365,67 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 mT2Pids.forEach(pid => { n2 += amGetScore(pid, h) - amGetStrokes(pid, h); });
                 if (n1 < n2) cum += 1; else if (n2 < n1) cum -= 1;
               }
-              // Swap perspective if user's match is swapped
-              const dispCum = swapped ? -cum : cum;
-              if (dispCum > 0) { liveText = dispCum + "UP"; liveColor = "#1a8c3f"; }
-              else if (dispCum < 0) { liveText = Math.abs(dispCum) + "DN"; liveColor = K.red; }
-              else { liveText = "AS"; liveColor = K.t2; }
+              dispCum = swapped ? -cum : cum;
             }
 
-            // Progress label
+            // Determine display state
+            const isFinalOrSigned = !!res;
+            const isTied = isFinalOrSigned ? (score1 === score2) : (thru > 0 && dispCum === 0);
+            const t1Leading = isFinalOrSigned ? (score1 > score2) : (dispCum > 0);
+            const t2Leading = isFinalOrSigned ? (score2 > score1) : (dispCum < 0);
+
+            // Center text and color
+            let centerText = "";
+            let centerColor = K.t1;
             let progressLabel = "";
             let progressColor = K.t3;
-            if (res?.attested) { progressLabel = "FINAL"; progressColor = K.grn; }
-            else if (res) { progressLabel = "SIGNED"; progressColor = K.warn; }
-            else if (thru > 0) { progressLabel = "Thru " + thru; progressColor = K.t3; }
 
-            // Determine winner/loser for arrows
-            const t1Won = res && score1 > score2;
-            const t2Won = res && score2 > score1;
+            if (isFinalOrSigned) {
+              centerText = res.matchResultText || `${score1}-${score2}`;
+              centerColor = isTied ? K.t3 : K.t1;
+              if (res.attested) { progressLabel = "FINAL"; progressColor = K.grn; }
+              else { progressLabel = "SIGNED"; progressColor = K.warn; }
+            } else if (thru > 0) {
+              if (dispCum > 0) { centerText = dispCum + "UP"; centerColor = "#1a8c3f"; }
+              else if (dispCum < 0) { centerText = Math.abs(dispCum) + "UP"; centerColor = "#1a8c3f"; }
+              else { centerText = "AS"; centerColor = K.t3; }
+              progressLabel = "Thru " + thru;
+            } else {
+              centerText = formatTeeTime(mi);
+              centerColor = K.act;
+            }
+
+            // Name colors: gray for tied, normal otherwise
+            const nameColor = isTied ? K.t3 : K.t1;
 
             return (
               <div key={mi} style={{ background: K.card, borderRadius: 10, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}40`, overflow: "hidden" }}>
-                {/* Tappable match card */}
                 <button onClick={() => setExpandedMatch(isExp ? null : mi)} style={{ width: "100%", padding: "8px 10px", cursor: "pointer", textAlign: "left", background: "transparent", border: "none" }}>
                   <div style={{ display: "flex", alignItems: "center" }}>
                     {/* Left team */}
-                    <div style={{ flex: 1, textAlign: "right", paddingRight: t1Won ? 8 : t2Won ? 18 : 14, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-                      <div style={{ fontSize: 15, fontWeight: t1Won ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT1?.player1)}</div>
-                      <div style={{ fontSize: 15, fontWeight: t1Won ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT1?.player2)}</div>
+                    <div style={{ flex: 1, textAlign: "right", paddingRight: t1Leading ? 8 : 14, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                      <div style={{ fontSize: 15, fontWeight: t1Leading ? 700 : 600, color: nameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT1?.player1)}</div>
+                      <div style={{ fontSize: 15, fontWeight: t1Leading ? 700 : 600, color: nameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT1?.player2)}</div>
                     </div>
-                    {/* Winner/loser arrow left */}
-                    {t1Won && <div style={{ color: "#1a8c3f", fontSize: 15, fontWeight: 800, marginRight: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>}
-                    {t2Won && <div style={{ color: K.red, fontSize: 15, fontWeight: 800, marginRight: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>}
-                    {/* Center — match result, live score, or tee time */}
+                    {/* Green arrow for winner/leader on left */}
+                    {t1Leading && <div style={{ color: "#1a8c3f", fontSize: 15, fontWeight: 800, marginRight: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>}
+                    {/* Red arrow for loser on left (final only) */}
+                    {isFinalOrSigned && t2Leading && <div style={{ color: K.red, fontSize: 15, fontWeight: 800, marginRight: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>}
+                    {/* Center */}
                     <div style={{ textAlign: "center", minWidth: 74, flexShrink: 0, padding: "0 2px" }}>
-                      {res ? (
-                        <div style={{ fontSize: 20, fontWeight: 800, color: K.t1, letterSpacing: .5 }}>
-                          {res.matchResultText || `${score1}-${score2}`}
-                        </div>
-                      ) : liveText ? (
-                        <div style={{ fontSize: 20, fontWeight: 800, color: liveColor, letterSpacing: .5 }}>{liveText}</div>
-                      ) : (
-                        <div style={{ fontSize: 18, fontWeight: 800, color: K.act, letterSpacing: .3 }}>{formatTeeTime(mi)}</div>
-                      )}
+                      <div style={{ fontSize: thru > 0 || isFinalOrSigned ? 20 : 18, fontWeight: 800, color: centerColor, letterSpacing: .5 }}>{centerText}</div>
                       {progressLabel && (
                         <div style={{ fontSize: 9, fontWeight: 700, color: progressColor, textTransform: "uppercase", letterSpacing: 1, marginTop: 2 }}>{progressLabel}</div>
                       )}
                     </div>
-                    {/* Winner/loser arrow right */}
-                    {t2Won && <div style={{ color: "#1a8c3f", fontSize: 15, fontWeight: 800, marginLeft: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>}
-                    {t1Won && <div style={{ color: K.red, fontSize: 15, fontWeight: 800, marginLeft: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>}
+                    {/* Green arrow for winner/leader on right */}
+                    {t2Leading && <div style={{ color: "#1a8c3f", fontSize: 15, fontWeight: 800, marginLeft: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>}
+                    {/* Red arrow for loser on right (final only) */}
+                    {isFinalOrSigned && t1Leading && <div style={{ color: K.red, fontSize: 15, fontWeight: 800, marginLeft: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>}
                     {/* Right team */}
-                    <div style={{ flex: 1, textAlign: "left", paddingLeft: t2Won ? 8 : t1Won ? 18 : 14, overflow: "hidden" }}>
-                      <div style={{ fontSize: 15, fontWeight: t2Won ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT2?.player1)}</div>
-                      <div style={{ fontSize: 15, fontWeight: t2Won ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT2?.player2)}</div>
+                    <div style={{ flex: 1, textAlign: "left", paddingLeft: t2Leading ? 8 : 14, overflow: "hidden" }}>
+                      <div style={{ fontSize: 15, fontWeight: t2Leading ? 700 : 600, color: nameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT2?.player1)}</div>
+                      <div style={{ fontSize: 15, fontWeight: t2Leading ? 700 : 600, color: nameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT2?.player2)}</div>
                     </div>
                     {/* Expand chevron */}
                     <div style={{ flexShrink: 0, marginLeft: 4, color: K.t3, fontSize: 12, transform: isExp ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</div>
