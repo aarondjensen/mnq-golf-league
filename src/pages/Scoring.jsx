@@ -1361,8 +1361,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         </button>
       )}
 
-      {/* ═══ Finalize Popup ═══ */}
-      {showFinalize && (() => {
+      {/* ═══ Finalize Popup — for initial signing or commish editing ═══ */}
+      {showFinalize && (!isAlreadyFinalized || isComm) && (() => {
         const sc = buildScorecardData();
         const colBdr = `1px solid ${K.bdr}30`;
         const lw = 40;
