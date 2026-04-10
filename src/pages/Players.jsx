@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { K, EmptyState } from "../theme";
+import { K, EmptyState, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, CHEVRON_SIZE } from "../theme";
 
 export default function PlayersView({ players, course, schedule, scoringRules, fetchAllScores, members }) {
   const recentN = scoringRules.hcpRecentCount || 8;
@@ -10,7 +10,6 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
 
   const commPlayerIds = (members || []).filter(m => m.isCommissioner).map(m => m.playerId);
 
-  // Approximate round dates from season year + week number
   const seasonStarts = { 2023: "2023-04-25", 2024: "2024-04-23", 2025: "2025-04-22", 2026: "2026-04-21" };
   const getRoundDate = (season, week) => {
     const start = seasonStarts[season];
@@ -41,7 +40,6 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
       const avg = best.length ? best.reduce((a, b) => a + b.gross, 0) / best.length : null;
       const calcHcp = avg !== null ? Math.round(avg - par) : null;
 
-      // Calculate previous handicap (without the most recent round)
       let prevHcp = null;
       if (allRounds.length >= 2) {
         const prevRounds = allRounds.slice(0, -1);
@@ -63,11 +61,11 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
 
   return (
     <div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
         {playerStats.map(p => (
           <div key={p.id}>
-            <div style={{ display: "flex", alignItems: "center", background: K.card, borderRadius: expanded === p.id ? "8px 8px 0 0" : 8, border: `1px solid ${K.bdr}`, borderBottom: expanded === p.id ? "none" : `1px solid ${K.bdr}`, padding: "10px 14px", gap: 8 }}>
-              <div style={{ flex: 1, fontSize: 16, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", background: K.card, borderRadius: expanded === p.id ? `${CARD_RADIUS}px ${CARD_RADIUS}px 0 0` : CARD_RADIUS, border: `1px solid ${K.bdr}`, borderBottom: expanded === p.id ? "none" : `1px solid ${K.bdr}`, padding: "10px 14px", gap: 8 }}>
+              <div style={{ flex: 1, fontSize: NAME_SIZE, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
                 {p.name}
                 {commPlayerIds.includes(p.id) && <span style={{ fontSize: 8, fontWeight: 700, color: K.warn, background: K.warn + "18", padding: "1px 5px", borderRadius: 3, textTransform: "uppercase", letterSpacing: .5 }}>Comm</span>}
               </div>
@@ -78,7 +76,7 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
                   fontSize: 16, fontWeight: 800, color: K.t1, padding: 0,
                 }}>{p.idx}</button>
                 {p.hcpChange !== null && p.hcpChange !== 0 ? (
-                  <div style={{ fontSize: 11, fontWeight: 700, color: p.hcpChange < 0 ? "#1a8c3f" : K.red, display: "flex", alignItems: "center", gap: 1, minWidth: 28 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: p.hcpChange < 0 ? K.matchGrn : K.red, display: "flex", alignItems: "center", gap: 1, minWidth: 28 }}>
                     <span style={{ fontSize: 9 }}>{p.hcpChange < 0 ? "▼" : "▲"}</span>
                     <span>{Math.abs(p.hcpChange)}</span>
                   </div>
@@ -88,7 +86,7 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
               </div>
             </div>
             {expanded === p.id && (
-              <div style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderTop: "none", borderRadius: "0 0 8px 8px", padding: "10px 10px", fontSize: 12 }}>
+              <div style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderTop: "none", borderRadius: `0 0 ${CARD_RADIUS}px ${CARD_RADIUS}px`, padding: "10px 10px", fontSize: 12 }}>
                 {p.recentRounds.length === 0 ? (
                   <div style={{ color: K.t3, fontStyle: "italic", padding: 4 }}>No completed rounds found</div>
                 ) : (

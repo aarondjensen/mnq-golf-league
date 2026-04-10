@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { K, FONTS, CSS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
-  SEASON_WEEKS, REGULAR_WEEKS, TEAMS_COUNT, getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap } from "../theme";
+  SEASON_WEEKS, REGULAR_WEEKS, TEAMS_COUNT, getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap,
+  lastNamesOnly, formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 
 // Golf scorecard cell — shows score with standard indicators:
@@ -67,7 +68,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const [showEditConfirm, setShowEditConfirm] = useState(false);
   const [absentPlayers, setAbsentPlayers] = useState({}); // { playerId: true }
   const initialJump = useRef(false);
-  const matchGrn = "#1a8c3f";
+  const matchGrn = K.matchGrn;
 
   // Find current week: first week where not all matches are finalized
   const currentWeek = useMemo(() => {
@@ -281,17 +282,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   // ── All Matches view (Schedule "This Week" style + expandable scorecards) ──
   if (showAllMatches && !activeMatch) {
-    const formatTeeTime = (idx) => {
-      const base = leagueConfig?.startTime || "4:28 PM";
-      const interval = leagueConfig?.teeInterval || 8;
-      const [timePart, ampm] = base.split(' ');
-      const [fh, fm] = timePart.split(':').map(Number);
-      let mins = (ampm === 'PM' && fh !== 12 ? fh + 12 : fh) * 60 + fm + idx * interval;
-      const hr = Math.floor(mins / 60) % 12 || 12;
-      const mn = mins % 60;
-      const ap = Math.floor(mins / 60) >= 12 ? 'PM' : 'AM';
-      return `${hr}:${String(mn).padStart(2, '0')} ${ap}`;
-    };
+    const formatTeeTime = (idx) => fmtTeeTimeUtil(leagueConfig?.startTime || "4:28 PM", idx, leagueConfig?.teeInterval || 8);
     const dn = (pid) => {
       const pl = players.find(p => p.id === pid);
       if (!pl) return "TBD";
@@ -336,7 +327,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           {weekSch?.date && <div style={{ fontSize: 9, color: K.t3 }}>{weekSch.date}</div>}
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
           {matches.map((m, mi) => {
             const rawT1 = teams.find(t => t.id === m.team1);
             const rawT2 = teams.find(t => t.id === m.team2);
@@ -386,8 +377,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               if (res.attested) { progressLabel = "FINAL"; progressColor = K.grn; }
               else { progressLabel = "SIGNED"; progressColor = K.warn; }
             } else if (thru > 0) {
-              if (dispCum > 0) { centerText = dispCum + "UP"; centerColor = "#1a8c3f"; }
-              else if (dispCum < 0) { centerText = Math.abs(dispCum) + "UP"; centerColor = "#1a8c3f"; }
+              if (dispCum > 0) { centerText = dispCum + "UP"; centerColor = K.matchGrn; }
+              else if (dispCum < 0) { centerText = Math.abs(dispCum) + "UP"; centerColor = K.matchGrn; }
               else { centerText = "AS"; centerColor = K.t3; }
               progressLabel = "Thru " + thru;
             } else {
@@ -422,8 +413,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       {t1Leading && (
                         <svg width="10" height="12" viewBox="0 0 10 12" style={{ transform: "rotate(-90deg)" }}>
                           {isFinalOrSigned
-                            ? <polygon points="5,0 10,12 0,12" fill="#1a8c3f" />
-                            : <polygon points="5,1 9,11 1,11" fill="none" stroke="#1a8c3f" strokeWidth="1.5" />
+                            ? <polygon points="5,0 10,12 0,12" fill=K.matchGrn />
+                            : <polygon points="5,1 9,11 1,11" fill="none" stroke=K.matchGrn strokeWidth="1.5" />
                           }
                         </svg>
                       )}
@@ -440,8 +431,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       {t2Leading && (
                         <svg width="10" height="12" viewBox="0 0 10 12" style={{ transform: "rotate(90deg)" }}>
                           {isFinalOrSigned
-                            ? <polygon points="5,0 10,12 0,12" fill="#1a8c3f" />
-                            : <polygon points="5,1 9,11 1,11" fill="none" stroke="#1a8c3f" strokeWidth="1.5" />
+                            ? <polygon points="5,0 10,12 0,12" fill=K.matchGrn />
+                            : <polygon points="5,1 9,11 1,11" fill="none" stroke=K.matchGrn strokeWidth="1.5" />
                           }
                         </svg>
                       )}
@@ -1145,7 +1136,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const MatchStatusRow = () => {
           return (
             <div style={{ display: "flex", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 8, padding: "4px 0", marginBottom: 4, marginTop: 4 }}>
-              <div style={{ ...lblStyle, height: 28, fontSize: 8, fontWeight: 800, color: K.t2 }}>MATCH</div>
+              <div style={{ ...lblStyle, height: 28, fontWeight: 800, color: K.t2 }}>MATCH</div>
               {scRunningStatus.map((rs, i) => {
                 const colBorderR = i < 8 ? { borderRight: colBdr } : {};
                 // After clinch — empty
@@ -1450,13 +1441,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   })}
                 </div>
                 {sc.matchResult !== "TIE" && (
-                  <div style={{ color: sc.matchResult === "WIN" ? "#1a8c3f" : K.red, fontSize: 15, fontWeight: 800, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>
+                  <div style={{ color: sc.matchResult === "WIN" ? K.matchGrn : K.red, fontSize: 15, fontWeight: 800, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>
                 )}
                 <div style={{ textAlign: "center", minWidth: 60 }}>
                   <div style={{ fontSize: 26, fontWeight: 800, color: sc.resultColor, lineHeight: 1 }}>{sc.matchResultText}</div>
                 </div>
                 {sc.matchResult !== "TIE" && (
-                  <div style={{ color: sc.matchResult === "LOSS" ? "#1a8c3f" : K.red, fontSize: 15, fontWeight: 800, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>
+                  <div style={{ color: sc.matchResult === "LOSS" ? K.matchGrn : K.red, fontSize: 15, fontWeight: 800, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>
                 )}
                 <div style={{ flex: 1, textAlign: "left" }}>
                   {sc.oppPidsSorted.map(pid => {

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { LEAGUE_ID } from "../firebase";
 import { K, FONTS, CSS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
-  SEASON_WEEKS, REGULAR_WEEKS, TEAMS_COUNT, getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap } from "../theme";
+  SEASON_WEEKS, REGULAR_WEEKS, TEAMS_COUNT, getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap,
+  formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS } from "../theme";
 
 
 export default function AdminView(props) {
@@ -415,15 +416,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
     return matches;
   };
 
-  const formatTeeTime = (baseTime, idx) => {
-    const [timePart, ampm] = baseTime.split(' ');
-    const [h, m] = timePart.split(':').map(Number);
-    let mins = (ampm === 'PM' && h !== 12 ? h + 12 : h) * 60 + m + idx * cfg.teeInterval;
-    const hr = Math.floor(mins / 60) % 12 || 12;
-    const mn = mins % 60;
-    const ap = Math.floor(mins / 60) >= 12 ? 'PM' : 'AM';
-    return `${hr}:${String(mn).padStart(2, '0')} ${ap}`;
-  };
+  const formatTeeTime = (baseTime, idx) => fmtTeeTimeUtil(baseTime, idx, cfg.teeInterval);
 
   const getWeekDate = (weekIdx) => {
     if (!cfg.startDate) return "";

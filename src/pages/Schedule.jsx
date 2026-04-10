@@ -1,13 +1,5 @@
 import { useState, useMemo } from "react";
-import { K, SectionTitle, SubLabel, Card, Pill, EmptyState, getTeeTime, getWeekSide, REGULAR_WEEKS } from "../theme";
-
-function lastNamesOnly(teamName) {
-  if (!teamName) return "";
-  return teamName.split(/\s*\/\s*/).map(part => {
-    const words = part.trim().split(/\s+/);
-    return words.length > 1 ? words[words.length - 1] : words[0];
-  }).join(" / ");
-}
+import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, REGULAR_WEEKS, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE } from "../theme";
 
 export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig }) {
   const [showAll, setShowAll] = useState(false);
@@ -62,16 +54,10 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     );
   };
 
-  const formatTeeTime = (idx) => {
+  const fmtTeeTime = (idx) => {
     const base = leagueConfig?.startTime || "4:28 PM";
     const interval = leagueConfig?.teeInterval || 8;
-    const [timePart, ampm] = base.split(' ');
-    const [h, m] = timePart.split(':').map(Number);
-    let mins = (ampm === 'PM' && h !== 12 ? h + 12 : h) * 60 + m + idx * interval;
-    const hr = Math.floor(mins / 60) % 12 || 12;
-    const mn = mins % 60;
-    const ap = Math.floor(mins / 60) >= 12 ? 'PM' : 'AM';
-    return `${hr}:${String(mn).padStart(2, '0')} ${ap}`;
+    return formatTeeTime(base, idx, interval);
   };
 
   // Team records: { teamId: { w, l, t } }
@@ -142,10 +128,9 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
     const events = [];
     schedule.forEach(wk => {
-      if (wk.rainedOut) return; // skip rained-out weeks
+      if (wk.rainedOut) return;
       const myMatch = wk.matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id);
       if (!myMatch) return;
-      // Skip already-completed matches
       const res = matchResults.find(r => r.week === wk.week && r.team1Id === myMatch.team1 && r.team2Id === myMatch.team2);
       if (res) return;
 
@@ -158,155 +143,98 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       const totalMins = (ampm === 'PM' && bh !== 12 ? bh + 12 : bh) * 60 + bm + origIdx * interval;
       const teeHr = Math.floor(totalMins / 60);
       const teeMin = totalMins % 60;
-      const teeTimeStr = formatTeeTime(origIdx);
+      const teeTimeStr = fmtTeeTime(origIdx);
 
       let startDate;
       if (wk.date) {
         const [mon, day] = wk.date.split('/').map(Number);
-        startDate = new Date(year, mon - 1, day, teeHr, teeMin);
-      } else {
-        const seasonStart = new Date(year, 3, 21);
-        startDate = new Date(seasonStart.getTime() + (wk.week - 1) * 7 * 86400000);
-        startDate.setHours(teeHr, teeMin);
+        if (mon && day) {
+          startDate = new Date(year, mon - 1, day, teeHr, teeMin);
+        }
       }
-      const endDate = new Date(startDate.getTime() + 3 * 60 * 60 * 1000);
+      if (!startDate) {
+        const months = { 'Jan':0,'Feb':1,'Mar':2,'Apr':3,'May':4,'Jun':5,'Jul':6,'Aug':7,'Sep':8,'Oct':9,'Nov':10,'Dec':11 };
+        const parts = (wk.date || "").split(' ');
+        if (parts.length === 2) {
+          const m = months[parts[0]];
+          const d = parseInt(parts[1]);
+          if (m !== undefined && d) startDate = new Date(year, m, d, teeHr, teeMin);
+        }
+      }
+      if (!startDate) return;
 
-      events.push([
-        'BEGIN:VEVENT',
-        `DTSTART:${fmtDt(startDate)}`,
-        `DTEND:${fmtDt(endDate)}`,
-        `SUMMARY:MnQ Golf - ${teeTimeStr} - ${sideLabel}`,
-        `DESCRIPTION:Week ${wk.week} vs ${lastNamesOnly(oppTeam?.name || "TBD")}\\n${sideLabel}\\nMnQ Golf League`,
-        `LOCATION:3110 W Ellsworth Rd\\, Ann Arbor\\, MI 48103`,
-        'STATUS:CONFIRMED',
-        `UID:mnq-wk${wk.week}-${year}@mnqgolf.com`,
-        'END:VEVENT',
-      ].join('\r\n'));
+      const endDate = new Date(startDate.getTime() + 3 * 60 * 60 * 1000);
+      events.push(
+        `BEGIN:VEVENT\r\n` +
+        `DTSTART:${fmtDt(startDate)}\r\n` +
+        `DTEND:${fmtDt(endDate)}\r\n` +
+        `SUMMARY:MnQ Golf - Week ${wk.week} vs ${lastNamesOnly(oppTeam?.name || 'TBD')}\r\n` +
+        `DESCRIPTION:${sideLabel} | Tee Time: ${teeTimeStr}\\nVs: ${oppTeam?.name || 'TBD'}\r\n` +
+        `END:VEVENT\r\n`
+      );
     });
 
     if (!events.length) return;
-
-    const ics = [
-      'BEGIN:VCALENDAR',
-      'VERSION:2.0',
-      'PRODID:-//MnQ Golf//League//EN',
-      ...events,
-      'END:VCALENDAR',
-    ].join('\r\n');
-
-    // POST to API route — returns file with proper Content-Type headers
-    // This is the only approach that works reliably on iOS Safari
-    try {
-      const resp = await fetch('/api/calendar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ics, filename: `mnq-golf-${year}-schedule.ics` }),
-      });
-      const blob = await resp.blob();
-      const url = URL.createObjectURL(blob);
-      window.location.href = url;
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-    } catch (e) {
-      console.error('Calendar download failed:', e);
-    }
+    const cal = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//MnQ Golf//EN\r\n${events.join('')}END:VCALENDAR`;
+    const blob = new Blob([cal], { type: 'text/calendar' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `mnq-golf-schedule.ics`;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
-  // ── My Schedule row ──
-  const renderMyWeek = (wk, dimmed) => {
-    const side = wk.side || getWeekSide(wk.week);
-    const weekComplete = isWeekComplete(wk);
-    const myMatch = myTeam ? wk.matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id) : null;
+  // ── My Schedule compact row ──
+  const renderMyWeek = (wk) => {
+    const myMatch = wk.matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id);
     if (!myMatch) return null;
-
     const origIdx = wk.matches.indexOf(myMatch);
-    const oppId = myMatch.team1 === myTeam.id ? myMatch.team2 : myMatch.team1;
-    const oppTeam = teams.find(t => t.id === oppId);
+    const side = wk.side || getWeekSide(wk.week);
+    const isRainedOut = wk.rainedOut === true;
     const res = matchResults.find(r => r.week === wk.week && r.team1Id === myMatch.team1 && r.team2Id === myMatch.team2);
-    const isExp = getExpanded(wk.week);
-    const isCurrent = wk.week === schedule[currentWeekIdx]?.week;
 
     return (
-      <div key={wk.week}>
-        <button onClick={() => toggleWeek(wk.week)} style={{
-          display: "flex", alignItems: "center", width: "100%",
-          background: K.card, borderRadius: isExp ? "10px 10px 0 0" : 10,
-          border: `1px solid ${isCurrent ? K.act + "40" : K.bdr + (weekComplete ? "60" : "")}`,
-          borderBottom: isExp ? "none" : undefined,
-          padding: "10px 12px", cursor: "pointer",
-          opacity: dimmed ? 0.7 : 1, gap: 0,
-        }}>
-          <div style={{ width: 62, flexShrink: 0, fontSize: 13, fontWeight: 700, color: K.t1 }}>Week {wk.week}</div>
-          <div style={{ width: 56, flexShrink: 0, fontSize: 12, color: K.t3 }}>{wk.date || "—"}</div>
-          <div style={{ flex: 1, fontSize: 13, fontWeight: 700, color: K.act, textAlign: "center" }}>{formatTeeTime(origIdx)}</div>
-          <div style={{ width: 58, flexShrink: 0, textAlign: "right" }}>
-            <Pill color={K.logoBright} style={{ fontSize: 9 }}>{side === 'front' ? 'FRONT 9' : 'BACK 9'}</Pill>
-          </div>
-          <div style={{ width: 18, flexShrink: 0, textAlign: "right", color: K.t3, fontSize: 13 }}>{isExp ? "▾" : "›"}</div>
-        </button>
-
-        {isExp && (
-          <div style={{
-            background: K.inp, borderRadius: "0 0 10px 10px",
-            border: `1px solid ${isCurrent ? K.act + "40" : K.bdr + (weekComplete ? "60" : "")}`,
-            borderTop: "none", padding: "10px 14px",
-          }}>
-            {res ? (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: K.t1 }}>{lastNamesOnly(myTeam.name)}</div>
-                  <div style={{ fontSize: 12, color: K.t2, fontWeight: 600 }}>{fmtRecord(myTeam.id)}</div>
-                </div>
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 18, fontWeight: 800, color: K.t1 }}>
-                    {myMatch.team1 === myTeam.id ? res.team1Points : res.team2Points}–{myMatch.team1 === myTeam.id ? res.team2Points : res.team1Points}
-                  </div>
-                  {res.matchResultText && <div style={{ fontSize: 10, color: K.t3, fontWeight: 600 }}>{res.matchResultText}</div>}
-                </div>
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: K.t1 }}>{lastNamesOnly(oppTeam?.name || "TBD")}</div>
-                  <div style={{ fontSize: 12, color: K.t2, fontWeight: 600 }}>{fmtRecord(oppId)}</div>
-                </div>
-              </div>
-            ) : (
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12 }}>
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: K.t1 }}>{lastNamesOnly(myTeam.name)}</div>
-                  <div style={{ fontSize: 12, color: K.t2, fontWeight: 600 }}>{fmtRecord(myTeam.id)}</div>
-                </div>
-                <div style={{ fontSize: 11, fontWeight: 800, color: K.t3, padding: "0 6px", letterSpacing: 1.5 }}>VS</div>
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: K.t1 }}>{lastNamesOnly(oppTeam?.name || "TBD")}</div>
-                  <div style={{ fontSize: 12, color: K.t2, fontWeight: 600 }}>{fmtRecord(oppId)}</div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
+      <div key={wk.week} style={{
+        display: "flex", alignItems: "center", padding: "8px 12px",
+        background: K.card, borderRadius: CARD_RADIUS, border: `1px solid ${K.bdr}`,
+        opacity: isRainedOut ? 0.5 : 1,
+      }}>
+        <div style={{ width: 62, fontSize: 12, fontWeight: 700, color: K.t1 }}>Week {wk.week}</div>
+        <div style={{ width: 56, fontSize: 11, color: K.t3 }}>{wk.date || "—"}</div>
+        <div style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 700, color: isRainedOut ? K.warn : res ? K.t1 : K.act }}>
+          {isRainedOut ? "RAIN" : res ? (res.matchResultText || "FINAL") : fmtTeeTime(origIdx)}
+        </div>
+        <div style={{ width: 58, textAlign: "right", fontSize: 11, fontWeight: 600, color: K.t3 }}>
+          {isRainedOut ? "" : side === 'front' ? 'Front 9' : 'Back 9'}
+        </div>
       </div>
     );
   };
 
-  // ── Standard week render (This Week / All Weeks) ──
-  const renderWeek = (wk, dimmed) => {
+  // ── Full week view ──
+  const renderWeek = (wk, isDone) => {
     const isPlayoff = wk.isPlayoff || wk.week > (leagueConfig?.regularWeeks || REGULAR_WEEKS);
+    const weekComplete = isWeekComplete(wk);
     const isRainedOut = wk.rainedOut === true;
     const side = wk.side || getWeekSide(wk.week);
-    const weekComplete = isWeekComplete(wk);
-    const matches = wk.matches;
     const isExp = getExpanded(wk.week);
+
+    const matches = myOnly
+      ? wk.matches.filter(m => myTeam && (m.team1 === myTeam.id || m.team2 === myTeam.id))
+      : wk.matches;
 
     return (
       <div key={wk.week}>
         <button onClick={() => toggleWeek(wk.week)} style={{
           display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%",
-          background: K.card, borderRadius: isExp ? "10px 10px 0 0" : 10,
-          border: `1px solid ${isRainedOut ? K.warn + "40" : weekComplete ? K.bdr + "60" : wk.week === schedule[currentWeekIdx]?.week ? K.act + "40" : K.bdr}`,
+          background: K.card, padding: "10px 14px", cursor: "pointer", textAlign: "left",
+          borderRadius: isExp ? `${CARD_RADIUS}px ${CARD_RADIUS}px 0 0` : CARD_RADIUS,
+          border: `1px solid ${isRainedOut ? K.warn + "40" : weekComplete ? K.bdr : wk.week === schedule[currentWeekIdx]?.week ? K.act + "40" : K.bdr}`,
           borderBottom: isExp ? "none" : undefined,
-          padding: "10px 12px", cursor: "pointer",
-          opacity: isRainedOut ? 0.5 : dimmed ? 0.7 : 1,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: isRainedOut ? K.warn : isPlayoff ? K.warn : K.t1 }}>
+            <span style={{ fontSize: NAME_SIZE, fontWeight: 700, color: K.t1 }}>
               Week {wk.week}
             </span>
             {wk.date && <span style={{ fontSize: 12, color: K.t3 }}>{wk.date}</span>}
@@ -317,13 +245,13 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
             {!isRainedOut && <Pill color={K.logoBright} style={{ fontSize: 9 }}>{side === 'front' ? 'FRONT 9' : 'BACK 9'}</Pill>}
             {isPlayoff && !isRainedOut && <Pill color={K.warn} style={{ fontSize: 9 }}>PLAYOFF</Pill>}
             {weekComplete && !isRainedOut && <Pill color={K.grn} style={{ fontSize: 9 }}>FINAL</Pill>}
-            <span style={{ color: K.t3, fontSize: 13, marginLeft: 2 }}>{isExp ? "▾" : "›"}</span>
+            <span style={{ color: K.t3, fontSize: CHEVRON_SIZE, marginLeft: 2 }}>{isExp ? "▾" : "›"}</span>
           </div>
         </button>
 
         {isExp && isRainedOut && (
           <div style={{
-            background: K.inp, borderRadius: "0 0 10px 10px",
+            background: K.inp, borderRadius: `0 0 ${CARD_RADIUS}px ${CARD_RADIUS}px`,
             border: `1px solid ${K.warn}40`, borderTop: "none", padding: "12px",
             textAlign: "center",
           }}>
@@ -334,8 +262,8 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
         {isExp && !isRainedOut && (
           <div style={{
-            background: K.inp, borderRadius: "0 0 10px 10px",
-            border: `1px solid ${weekComplete ? K.bdr + "60" : wk.week === schedule[currentWeekIdx]?.week ? K.act + "40" : K.bdr}`,
+            background: K.inp, borderRadius: `0 0 ${CARD_RADIUS}px ${CARD_RADIUS}px`,
+            border: `1px solid ${weekComplete ? K.bdr : wk.week === schedule[currentWeekIdx]?.week ? K.act + "40" : K.bdr}`,
             borderTop: "none", padding: "6px 8px",
           }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
@@ -353,35 +281,35 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 const score2 = res ? (swapped ? res.team1Points : res.team2Points) : null;
 
                 return (
-                  <div key={mi} style={{ background: K.card, borderRadius: 8, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}40`, padding: "8px 10px", display: "flex", alignItems: "center" }}>
+                  <div key={mi} style={{ background: K.card, borderRadius: 8, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}`, padding: "8px 10px", display: "flex", alignItems: "center" }}>
                     {/* Left team */}
                     <div style={{ flex: 1, textAlign: "right", paddingRight: res && score1 > score2 ? 8 : 18, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-                      <div style={{ fontSize: 15, fontWeight: res && score1 > score2 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player1)}</div>
-                      <div style={{ fontSize: 15, fontWeight: res && score1 > score2 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player2)}</div>
+                      <div style={{ fontSize: NAME_SIZE, fontWeight: res && score1 > score2 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player1)}</div>
+                      <div style={{ fontSize: NAME_SIZE, fontWeight: res && score1 > score2 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player2)}</div>
                       {res && <div style={{ fontSize: 10, color: K.t3, fontWeight: 500, marginTop: 2 }}>{fmtRecord(t1?.id)}</div>}
                     </div>
                     {/* Winner triangle left */}
                     {res && score1 > score2 && (
-                      <div style={{ color: "#1a8c3f", fontSize: 15, fontWeight: 800, marginRight: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>
+                      <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, marginRight: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>
                     )}
                     {/* Center — match result or tee time */}
                     <div style={{ textAlign: "center", minWidth: 74, flexShrink: 0, padding: "0 2px" }}>
                       {res ? (
-                        <div style={{ fontSize: 20, fontWeight: 800, color: K.t1, letterSpacing: .5 }}>
+                        <div style={{ fontSize: HERO_NUM_SIZE, fontWeight: 800, color: K.t1, letterSpacing: .5 }}>
                           {res.matchResultText || `${score1}–${score2}`}
                         </div>
                       ) : (
-                        <div style={{ fontSize: 18, fontWeight: 800, color: K.act, letterSpacing: .3 }}>{formatTeeTime(origIdx)}</div>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: K.act, letterSpacing: .3 }}>{fmtTeeTime(origIdx)}</div>
                       )}
                     </div>
                     {/* Winner triangle right */}
                     {res && score2 > score1 && (
-                      <div style={{ color: "#1a8c3f", fontSize: 15, fontWeight: 800, marginLeft: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>
+                      <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, marginLeft: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>
                     )}
                     {/* Right team */}
                     <div style={{ flex: 1, textAlign: "left", paddingLeft: res && score2 > score1 ? 8 : 18, overflow: "hidden" }}>
-                      <div style={{ fontSize: 15, fontWeight: res && score2 > score1 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player1)}</div>
-                      <div style={{ fontSize: 15, fontWeight: res && score2 > score1 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player2)}</div>
+                      <div style={{ fontSize: NAME_SIZE, fontWeight: res && score2 > score1 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player1)}</div>
+                      <div style={{ fontSize: NAME_SIZE, fontWeight: res && score2 > score1 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player2)}</div>
                       {res && <div style={{ fontSize: 10, color: K.t3, fontWeight: 500, marginTop: 2 }}>{fmtRecord(t2?.id)}</div>}
                     </div>
                   </div>
@@ -448,7 +376,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
       {/* Upcoming weeks */}
       {weeksToShow.upcoming.length > 0 && (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
           {weeksToShow.upcoming.map(wk => renderer(wk, false))}
         </div>
       )}
@@ -459,7 +387,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           {(showAll || myOnly) && weeksToShow.upcoming.length > 0 && (
             <SubLabel color={K.t3} style={{ marginBottom: 8 }}>Complete</SubLabel>
           )}
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
             {weeksToShow.complete.map(wk => renderer(wk, true))}
           </div>
         </div>

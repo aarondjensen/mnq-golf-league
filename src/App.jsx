@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "./firebase";
-import { K, FONTS, CSS, I, DEFAULT_SCORING, SEASON_WEEKS, applyTheme, getCSS } from "./theme";
+import { K, FONTS, CSS, I, DEFAULT_SCORING, SEASON_WEEKS, applyTheme, getCSS, lastNamesOnly } from "./theme";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
 import StandingsView from "./pages/Standings";
 import LiveScoringView from "./pages/Scoring";
@@ -10,13 +10,6 @@ import StatsView from "./pages/Stats";
 import CTPView from "./pages/CTP";
 import AdminView from "./pages/Admin";
 
-function lastNamesOnly(teamName) {
-  if (!teamName) return "";
-  return teamName.split(/\s*\/\s*/).map(part => {
-    const words = part.trim().split(/\s+/);
-    return words.length > 1 ? words[words.length - 1] : words[0];
-  }).join(" / ");
-}
 
 export default function GolfLeagueApp() {
   const [authUser, setAuthUser] = useState(undefined);
@@ -321,8 +314,8 @@ export default function GolfLeagueApp() {
     return null;
   })();
 
-  // Banner green color — a traditional, noticeable green
-  const bannerGrn = "#1a8c3f";
+  // Banner green color — theme-aware
+  const bannerGrn = K.matchGrn;
 
   return (
     <div className="app-shell">

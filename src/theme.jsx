@@ -36,6 +36,26 @@ export function calcLeagueHandicap(grossScores, par, recentCount, bestCount) {
   return Math.round(avg - par);
 }
 
+// ── Shared utility: extract last names from team name ──
+export function lastNamesOnly(teamName) {
+  if (!teamName) return "";
+  return teamName.split(/\s*\/\s*/).map(part => {
+    const words = part.trim().split(/\s+/);
+    return words.length > 1 ? words[words.length - 1] : words[0];
+  }).join(" / ");
+}
+
+// ── Shared utility: format tee time from base time string + index ──
+export function formatTeeTime(baseTime, idx, interval = 8) {
+  const [timePart, ampm] = (baseTime || "4:28 PM").split(' ');
+  const [h, m] = timePart.split(':').map(Number);
+  let mins = (ampm === 'PM' && h !== 12 ? h + 12 : h) * 60 + m + idx * interval;
+  const hr = Math.floor(mins / 60) % 12 || 12;
+  const mn = mins % 60;
+  const ap = Math.floor(mins / 60) >= 12 ? 'PM' : 'AM';
+  return `${hr}:${String(mn).padStart(2, '0')} ${ap}`;
+}
+
 // ══════════════════════════════════════════════════════════════
 //  THEME
 // ══════════════════════════════════════════════════════════════
@@ -47,6 +67,7 @@ export const getTheme = (mode = "dark") => {
     grn: "#059669", grnDim: "#047857", red: "#dc2626", teal: "#0d9488", logoBlue: "#153453", logoBright: "#10387d",
     warn: "#d97706", t1: "#111827", t2: "#4b5563", t3: "#9ca3af",
     gold: "#d97706", silver: "#6b7280", bronze: "#b45309",
+    matchGrn: "#157a34",
   };
   return {
     bg: "#0b1829", card: "#111f36", cardHi: "#182d4a", inp: "#0d1e35",
@@ -55,6 +76,7 @@ export const getTheme = (mode = "dark") => {
     grn: "#34d399", grnDim: "#059669", red: "#ef4444", teal: "#2dd4bf", logoBlue: "#153453", logoBright: "#10387d",
     warn: "#fbbf24", t1: "#f1f5f9", t2: "#94a3b8", t3: "#475569",
     gold: "#fbbf24", silver: "#94a3b8", bronze: "#d97706",
+    matchGrn: "#1a8c3f",
   };
 };
 
@@ -85,13 +107,13 @@ export const getCSS = (k) => `
   .bottom-nav { background: ${k.card}f0; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid ${k.bdr}; display: flex; justify-content: space-around; padding: 10px 0 26px; padding-bottom: calc(26px + env(safe-area-inset-bottom, 0px)); z-index: 200; max-width: 900px; width: 100%; flex-shrink: 0; }
   .admin-grid { display: flex; flex-direction: column; gap: 6px; }
   .admin-sections-grid { display: flex; flex-direction: column; gap: 6px; }
-  .players-grid { display: flex; flex-direction: column; gap: 4px; }
+  .players-grid { display: flex; flex-direction: column; gap: 6px; }
   .scoring-grid { display: flex; flex-direction: column; gap: 10px; }
   .schedule-weeks { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
-  .standings-grid { display: flex; flex-direction: column; gap: 4px; }
+  .standings-grid { display: flex; flex-direction: column; gap: 6px; }
   @media (min-width: 768px) {
     .main-content { padding: 24px 32px; padding-bottom: 20px; margin: 0 auto; }
-    .standings-grid { gap: 5px; }
+    .standings-grid { gap: 6px; }
     .admin-sections-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .players-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
     .scoring-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
@@ -147,3 +169,15 @@ export const EmptyState = ({ icon, title, subtitle }) => (
     {subtitle && <div style={{ color: K.t3, fontSize: 13, marginTop: 4, letterSpacing: .7 }}>{subtitle}</div>}
   </div>
 );
+
+// ── Shared style constants for consistency ──
+export const LIST_GAP = 6;        // gap between list cards
+export const CARD_RADIUS = 10;    // border-radius for all list cards
+export const NAME_SIZE = 15;      // font-size for player/team names in lists
+export const NAME_WEIGHT = 700;   // font-weight for names
+export const HERO_NUM_SIZE = 20;  // font-size for large stat numbers (points, CTP count, etc.)
+export const HERO_NUM_WEIGHT = 800;
+export const RANK_BADGE_SIZE = 28; // width/height for rank badges
+export const RANK_BADGE_RADIUS = 7;
+export const RANK_BADGE_FONT = 13;
+export const CHEVRON_SIZE = 14;   // font-size for expand/collapse chevron

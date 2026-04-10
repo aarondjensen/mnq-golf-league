@@ -1,15 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { K, EmptyState } from "../theme";
-
-// Extract last name from "First Last" or "F. Last" patterns
-// Handles team names like "A. Jensen / B. Smith" → "Jensen / Smith"
-function lastNamesOnly(teamName) {
-  if (!teamName) return "";
-  return teamName.split(/\s*\/\s*/).map(part => {
-    const words = part.trim().split(/\s+/);
-    return words.length > 1 ? words[words.length - 1] : words[0];
-  }).join(" / ");
-}
+import { K, EmptyState, lastNamesOnly, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, CHEVRON_SIZE } from "../theme";
 
 // Build standings from a set of match results
 function buildStandings(teams, results, isRecord) {
@@ -95,7 +85,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   const prevStandings = useMemo(() => {
     if (latestLockedWeek === 0) return null;
     const prevResults = lockedResults.filter(r => r.week !== latestLockedWeek);
-    if (prevResults.length === 0 && lockedResults.length > 0) return null; // first week, no previous
+    if (prevResults.length === 0 && lockedResults.length > 0) return null;
     return buildStandings(teams, prevResults, isRecord);
   }, [teams, lockedResults, latestLockedWeek, isRecord]);
 
@@ -121,12 +111,10 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
         const wResult = myPts > oppPts ? "W" : myPts < oppPts ? "L" : "T";
         const wk = schedule.find(s => s.week === r.week);
 
-        // Get holes won from saved data
         const holesWon = (r.t1HolesWon !== undefined && r.t2HolesWon !== undefined)
           ? (isTeam1 ? r.t1HolesWon : r.t2HolesWon)
           : 0;
 
-        // Build result display text: "W 3&1" or "L 3&1" or "T"
         let resultDisplay = wResult;
         if (r.matchResultText) {
           if (r.matchResultText === "ALL SQUARE") {
@@ -145,13 +133,12 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   const gt = (id) => teams.find(t => t.id === id);
   if (!teams.length) return <EmptyState icon="trophy" title="No teams yet" subtitle="Commissioner needs to set up teams." />;
 
-  // Column style for W-L-T alignment
   const wltCol = { width: 22, textAlign: "center", fontFamily: "'League Spartan', sans-serif" };
   const wltDash = { width: 8, textAlign: "center", color: K.t3 };
 
   return (
     <div style={{ padding: "0 2px" }}>
-      <div className="standings-grid" style={{ gap: 6 }}>
+      <div className="standings-grid" style={{ gap: LIST_GAP }}>
         {standings.map((s, i) => {
           const team = gt(s.teamId); if (!team) return null;
           const mc = i === 0 ? K.gold : i === 1 ? K.silver : i === 2 ? K.bronze : K.logoBright;
@@ -165,21 +152,21 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
             <div key={s.teamId}>
               <button onClick={() => handleExpand(s.teamId)} style={{
                 display: "flex", alignItems: "center", width: "100%", color: K.t1,
-                background: K.card, borderRadius: isExp ? "10px 10px 0 0" : 10,
-                border: `1px solid ${i === 0 ? K.act + '30' : K.bdr + '60'}`,
-                borderBottom: isExp ? "none" : `1px solid ${i === 0 ? K.act + '30' : K.bdr + '60'}`,
+                background: K.card, borderRadius: isExp ? `${CARD_RADIUS}px ${CARD_RADIUS}px 0 0` : CARD_RADIUS,
+                border: `1px solid ${i === 0 ? K.act + '30' : K.bdr}`,
+                borderBottom: isExp ? "none" : `1px solid ${i === 0 ? K.act + '30' : K.bdr}`,
                 padding: "10px 14px", cursor: "pointer",
               }}>
                 <div style={{ width: 40, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
                   <div style={{
-                    width: 28, height: 28, borderRadius: 7,
+                    width: RANK_BADGE_SIZE, height: RANK_BADGE_SIZE, borderRadius: RANK_BADGE_RADIUS,
                     background: i < 3 ? mc + "20" : K.logoBright + "20",
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 13, fontWeight: 800, color: mc,
+                    fontSize: RANK_BADGE_FONT, fontWeight: 800, color: mc,
                     border: i < 3 ? `1.5px solid ${mc}40` : `1.5px solid ${K.logoBright}30`,
                   }}>{curPos}</div>
                   {posChange !== null && posChange !== 0 ? (
-                    <div style={{ fontSize: 10, fontWeight: 700, color: posChange > 0 ? "#1a8c3f" : K.red, display: "flex", alignItems: "center", gap: 0, marginLeft: 3, minWidth: 16 }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: posChange > 0 ? K.matchGrn : K.red, display: "flex", alignItems: "center", gap: 0, marginLeft: 3, minWidth: 16 }}>
                       <span style={{ fontSize: 8 }}>{posChange > 0 ? "▲" : "▼"}</span>
                       <span>{Math.abs(posChange)}</span>
                     </div>
@@ -187,14 +174,14 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                     <div style={{ minWidth: 16, marginLeft: 3 }} />
                   )}
                 </div>
-                <div style={{ flex: 1, fontSize: 15, fontWeight: 700, letterSpacing: .5, textAlign: "left" }}>{lastNamesOnly(team.name)}</div>
+                <div style={{ flex: 1, fontSize: NAME_SIZE, fontWeight: NAME_WEIGHT, letterSpacing: .5, textAlign: "left" }}>{lastNamesOnly(team.name)}</div>
                 <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 0 }}>
                   {isRecord ? (<>
-                    <div style={{ ...wltCol, fontSize: 15, fontWeight: 800, color: K.t1 }}>{s.w}</div>
-                    <div style={{ ...wltDash, fontSize: 15, fontWeight: 800 }}>-</div>
-                    <div style={{ ...wltCol, fontSize: 15, fontWeight: 800, color: K.t1 }}>{s.l}</div>
-                    <div style={{ ...wltDash, fontSize: 15, fontWeight: 800 }}>-</div>
-                    <div style={{ ...wltCol, fontSize: 15, fontWeight: 800, color: K.t1 }}>{s.t}</div>
+                    <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.w}</div>
+                    <div style={{ ...wltDash, fontSize: NAME_SIZE, fontWeight: 800 }}>-</div>
+                    <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.l}</div>
+                    <div style={{ ...wltDash, fontSize: NAME_SIZE, fontWeight: 800 }}>-</div>
+                    <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.t}</div>
                     <div style={{ fontSize: 12, fontWeight: 700, color: K.teal, minWidth: 26, textAlign: "right", marginLeft: 6 }}>{s.hw}</div>
                   </>) : (<>
                     <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.w}</div>
@@ -202,14 +189,14 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                     <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.l}</div>
                     <div style={{ ...wltDash, fontSize: 11, color: K.t3 }}>-</div>
                     <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.t}</div>
-                    <div style={{ fontSize: 21, fontWeight: 800, color: K.t1, fontFamily: "'League Spartan', sans-serif", minWidth: 30, textAlign: "right", marginLeft: 6 }}>{s.points}</div>
+                    <div style={{ fontSize: HERO_NUM_SIZE, fontWeight: HERO_NUM_WEIGHT, color: K.t1, fontFamily: "'League Spartan', sans-serif", minWidth: 30, textAlign: "right", marginLeft: 6 }}>{s.points}</div>
                   </>)}
                 </div>
-                <div style={{ width: 20, flexShrink: 0, textAlign: "right", color: K.t3, fontSize: 14, marginLeft: 6 }}>{isExp ? "▾" : "›"}</div>
+                <div style={{ width: 20, flexShrink: 0, textAlign: "right", color: K.t3, fontSize: CHEVRON_SIZE, marginLeft: 6 }}>{isExp ? "▾" : "›"}</div>
               </button>
 
               {isExp && (
-                <div ref={expandedRef} style={{ background: K.inp, border: `1px solid ${i === 0 ? K.act + '30' : K.bdr + '60'}`, borderTop: "none", borderRadius: "0 0 10px 10px", padding: "8px 10px" }}>
+                <div ref={expandedRef} style={{ background: K.inp, border: `1px solid ${i === 0 ? K.act + '30' : K.bdr}`, borderTop: "none", borderRadius: `0 0 ${CARD_RADIUS}px ${CARD_RADIUS}px`, padding: "8px 10px" }}>
                   <div style={{ display: "flex", padding: "5px 8px", fontSize: 9, color: K.logoBright, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8 }}>
                     <div style={{ width: 50 }}>Date</div>
                     <div style={{ width: 26 }}>Wk</div>
@@ -224,7 +211,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                       <div style={{ width: 50, color: K.t3, fontSize: 11 }}>{r.date || "—"}</div>
                       <div style={{ width: 26, color: K.t3, fontSize: 11 }}>{r.week}</div>
                       <div style={{ flex: 1, color: K.t2, fontWeight: 500 }}>{r.oppName}</div>
-                      <div style={{ width: 62, textAlign: "center", fontWeight: 700, fontSize: 11, color: r.result === "W" ? K.grn : r.result === "L" ? K.red : K.t2 }}>{r.resultDisplay}</div>
+                      <div style={{ width: 62, textAlign: "center", fontWeight: 700, fontSize: 11, color: r.result === "W" ? K.matchGrn : r.result === "L" ? K.red : K.t2 }}>{r.resultDisplay}</div>
                       <div style={{ width: 30, textAlign: "center", color: K.teal, fontWeight: 700 }}>{r.holesWon}</div>
                     </div>
                   ))}
