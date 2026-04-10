@@ -55,9 +55,10 @@ function ScoreCell({ score, par, strokes, size = 13 }) {
   );
 }
 
-export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule, showAllMatches, setShowAllMatches }) {
+export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
+  const [showAllMatches, setShowAllMatches] = useState(false);
   const [toast, setToast] = useState(null);
   const [editing, setEditing] = useState(false);
   const [showScorecard, setShowScorecard] = useState(false);
@@ -109,7 +110,72 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   // ── All Matches view ──
   if (showAllMatches && !activeMatch) {
-    return <div style={{ padding: 20, color: K.t1, fontSize: 16 }}>All Matches View - Week {String(week)}</div>;
+    const gn = (id) => teams.find(t => t.id === id)?.name || "TBD";
+    const getProgress = (match) => {
+      const ids = []; const _t1 = teams.find(t => t.id === match.team1); const _t2 = teams.find(t => t.id === match.team2);
+      if (_t1) ids.push(_t1.player1, _t1.player2); if (_t2) ids.push(_t2.player1, _t2.player2);
+      let sc = 0; ids.forEach(pid => { for (let h = 0; h < 9; h++) if (holeScores[`w${week}_p${pid}_h${h}`]) sc++; });
+      return ids.length ? sc / (ids.length * 9) : 0;
+    };
+    return (
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+          <button onClick={() => setShowAllMatches(false)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t2, fontSize: 13, padding: "7px 14px", cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}>{I.arrowLeft(13, K.t2)} My Match</button>
+          <div style={{ fontSize: 18, fontWeight: 700, color: K.t1 }}>Week {week}</div>
+          <div style={{ width: 90 }} />
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {matches.map((m, mi) => {
+            const _t1 = teams.find(t => t.id === m.team1);
+            const _t2 = teams.find(t => t.id === m.team2);
+            if (!_t1 || !_t2) return null;
+            const prog = getProgress(m);
+            const mr = matchResults.find(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2);
+            const statusStr = mr ? (mr.matchResultText || "Final") : prog === 0 ? "—" : "In Progress";
+            const statusColor = mr ? (mr.matchWinnerId ? matchGrn : K.t3) : K.t2;
+            return (
+              <div key={mi} style={{ background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 10, padding: "10px 14px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1 }}>Match {mi + 1} · {getTeeTime(mi)}</span>
+                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                    {mr?.attested && <Pill color={K.grn}>FINAL</Pill>}
+                    {mr && !mr.attested && <Pill color={K.warn}>SIGNED</Pill>}
+                    {!mr && prog > 0 && <Pill color={K.acc}>{`${Math.round(prog * 100)}%`}</Pill>}
+                  </div>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{_t1.name}</div></div>
+                  <div style={{ textAlign: "center", minWidth: 60 }}><span style={{ fontSize: 14, fontWeight: 800, color: statusColor }}>{statusStr}</span></div>
+                  <div style={{ flex: 1, textAlign: "right" }}><div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{_t2.name}</div></div>
+                </div>
+                {!mr && prog > 0 && prog < 1 && <div style={{ marginTop: 6, height: 3, background: K.inp, borderRadius: 2, overflow: "hidden" }}><div style={{ height: "100%", width: `${prog * 100}%`, background: K.acc, borderRadius: 2 }} /></div>}
+                {isComm && !mr && (
+                  <button onClick={() => { setActiveMatch(m); setCurHole(0); setShowAllMatches(false); }} style={{ width: "100%", padding: 8, borderRadius: 6, marginTop: 8, cursor: "pointer", background: K.act, border: "none", color: K.bg, fontSize: 12, fontWeight: 700 }}>
+                    Enter Scores
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {allMatchesAttested && isComm && !isWeekLocked && saveWeekSchedule && (
+          <button onClick={async () => {
+            await saveWeekSchedule({ ...weekSch, locked: true });
+            setToast("Week " + week + " finalized");
+            setTimeout(() => setToast(null), 2000);
+          }} style={{ width: "100%", padding: 14, borderRadius: 12, marginTop: 16, cursor: "pointer", background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: 800 }}>
+            Finalize Week {week}
+          </button>
+        )}
+
+        {toast && (
+          <div style={{ position: "fixed", top: 80, left: "50%", transform: "translateX(-50%)", background: K.act, color: K.bg, padding: "12px 48px", borderRadius: 12, fontSize: 13, fontWeight: 700, zIndex: 1000, whiteSpace: "nowrap", minWidth: 240, textAlign: "center", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
+            {toast}
+          </div>
+        )}
+      </div>
+    );
   }
 
   // ── Default: auto-open user's match, or show prompt ──
@@ -118,6 +184,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     return (
       <div>
         <EmptyState icon="flag" title="No match found" subtitle="You don't have a match scheduled this week." />
+        <div style={{ textAlign: "center", marginTop: 16 }}>
+          <button onClick={() => setShowAllMatches(true)} style={{ padding: "10px 20px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>See All Matches</button>
+        </div>
       </div>
     );
   }
@@ -200,7 +269,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   // Raw score from Firestore
   const getRawScore = (pid, h) => holeScores[`w${week}_p${pid}_h${h}`] || 0;
-  // getS returns effective score: both absent = par+1, one absent = teammate's score
   const getS = (pid, h) => {
     if (isPlayerAbsent(pid)) {
       const tm = getTeammate(pid);
@@ -465,6 +533,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       {activeMatch && (
         <div style={{ marginBottom: 8 }}>
           <BackBtn onClick={() => { setActiveMatch(null); }} />
+        </div>
+      )}
+      {/* See All Matches link */}
+      {!activeMatch && (
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
+          <button onClick={() => setShowAllMatches(true)} style={{ background: "none", border: "none", color: K.acc, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: "4px 0", letterSpacing: 0.5 }}>
+            All Matches ›
+          </button>
         </div>
       )}
       {/* Status banners */}
@@ -1265,299 +1341,5 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
         <button onClick={() => handleScore((score || par) + 1)} style={{ width: 28, height: 42, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>+</button>
       </div>
     </Card>
-  );
-}
-
-
-// ═══════════════════════════════════════════════════════════════
-//  All Matches View — standalone component to avoid closure issues
-// ═══════════════════════════════════════════════════════════════
-function AllMatchesView({ week, weekSch, matches, teams, players, holeScores, hcps, pars, side, matchResults, isComm, allMatchesAttested, isWeekLocked, saveWeekSchedule, setActiveMatch, setCurHole, setShowAllMatches }) {
-  const [expanded, setExpanded] = useState(null);
-  const [toast, setToast] = useState(null);
-  const matchGrn = "#1a8c3f";
-
-  const getProgress = (match) => {
-    const ids = [];
-    const mt1 = teams.find(t => t.id === match.team1);
-    const mt2 = teams.find(t => t.id === match.team2);
-    if (mt1) { ids.push(mt1.player1, mt1.player2); }
-    if (mt2) { ids.push(mt2.player1, mt2.player2); }
-    let sc = 0;
-    ids.forEach(pid => { for (let h = 0; h < 9; h++) { if (holeScores[String("w" + week + "_p" + pid + "_h" + h)]) sc++; } });
-    return ids.length ? sc / (ids.length * 9) : 0;
-  };
-
-  const getHcp = (pid) => {
-    const p = players.find(pl => pl.id === pid);
-    return p ? Math.round(p.handicapIndex || 0) : 0;
-  };
-
-  const getStrokesForHole = (pid, h) => {
-    const nh = getHcp(pid);
-    const map = {};
-    const sorted = hcps.map((hc, i) => ({ idx: i, hcp: hc })).sort((a, b) => a.hcp - b.hcp);
-    let rem = Math.abs(nh);
-    for (const item of sorted) { if (rem <= 0) break; map[item.idx] = (map[item.idx] || 0) + 1; rem--; }
-    for (const item of sorted) { if (rem <= 0) break; map[item.idx] = (map[item.idx] || 0) + 1; rem--; }
-    return map[h] || 0;
-  };
-
-  const getScore = (pid, h) => {
-    return holeScores[String("w" + week + "_p" + pid + "_h" + h)] || 0;
-  };
-
-  const getInitials = (pid) => {
-    const pl = players.find(p => p.id === pid);
-    return pl ? pl.name.split(" ").map(n => n[0]).join("") : "?";
-  };
-
-  return (
-    <div>
-      <div style={{ marginBottom: 10 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1.8, marginBottom: 2 }}>{"Week " + week}</div>
-        <div style={{ fontSize: 20, fontWeight: 700, color: K.t1, letterSpacing: 0.5 }}>All Matches</div>
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {matches.map((m, mi) => {
-          const mt1 = teams.find(t => t.id === m.team1);
-          const mt2 = teams.find(t => t.id === m.team2);
-          if (!mt1 || !mt2) return null;
-
-          const mr = matchResults.find(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2);
-          const prog = getProgress(m);
-          const t1Pids = [mt1.player1, mt1.player2];
-          const t2Pids = [mt2.player1, mt2.player2];
-
-          // Calculate match status
-          var holeResults = [];
-          var thru = 0;
-          for (var h = 0; h < 9; h++) {
-            var t1N = 0, t2N = 0, t1Ok = true, t2Ok = true;
-            t1Pids.forEach(function(pid) { var s = getScore(pid, h); if (s <= 0) t1Ok = false; else t1N += s - getStrokesForHole(pid, h); });
-            t2Pids.forEach(function(pid) { var s = getScore(pid, h); if (s <= 0) t2Ok = false; else t2N += s - getStrokesForHole(pid, h); });
-            if (t1Ok && t2Ok) { holeResults.push(t1N < t2N ? 1 : t2N < t1N ? -1 : 0); thru = h + 1; }
-            else { holeResults.push(null); }
-          }
-
-          var runningStatus = [];
-          var cum = 0;
-          for (var ri = 0; ri < holeResults.length; ri++) {
-            if (holeResults[ri] !== null) { cum += holeResults[ri]; runningStatus.push(cum); }
-            else { runningStatus.push(null); }
-          }
-
-          var clinchHole = null, clinchText = null;
-          for (var ch = 0; ch < 9; ch++) {
-            if (runningStatus[ch] === null) break;
-            var lead = Math.abs(runningStatus[ch]);
-            var remaining = 8 - ch;
-            if (lead > remaining) { clinchHole = ch; clinchText = String(lead) + "&" + String(remaining); break; }
-          }
-
-          var finalArr = runningStatus.filter(function(s) { return s !== null; });
-          var finalStatus = finalArr.length ? finalArr[finalArr.length - 1] : 0;
-
-          var statusText = "Not Started";
-          var statusColor = K.t3;
-          if (mr) {
-            statusText = mr.matchResultText || "Final";
-            statusColor = mr.matchWinnerId ? matchGrn : K.t3;
-          } else if (clinchText) {
-            statusText = clinchText;
-            statusColor = finalStatus > 0 ? matchGrn : K.red;
-          } else if (thru > 0) {
-            if (finalStatus > 0) { statusText = String(finalStatus) + "UP"; statusColor = matchGrn; }
-            else if (finalStatus < 0) { statusText = String(Math.abs(finalStatus)) + "DN"; statusColor = K.red; }
-            else { statusText = "ALL SQUARE"; statusColor = K.t2; }
-          }
-
-          var isExp = expanded === mi;
-          var isFinalized = !!mr;
-
-          return (
-            <div key={mi} style={{ background: K.card, border: "1px solid " + K.bdr, borderRadius: 10, overflow: "hidden" }}>
-              <button onClick={function() { setExpanded(isExp ? null : mi); }} style={{ width: "100%", padding: "10px 14px", cursor: "pointer", textAlign: "left", background: "transparent", border: "none", display: "flex", flexDirection: "column", gap: 4 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1 }}>{"Match " + (mi + 1) + " \u00B7 " + getTeeTime(mi)}</span>
-                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                    {mr && mr.attested ? <Pill color={K.grn}>FINAL</Pill> : null}
-                    {mr && !mr.attested ? <Pill color={K.warn}>SIGNED</Pill> : null}
-                    {!mr && prog > 0 ? <Pill color={K.acc}>{thru > 0 ? "Thru " + thru : Math.round(prog * 100) + "%"}</Pill> : null}
-                    {!mr && prog === 0 ? <Pill color={K.t3}>{"\u2014"}</Pill> : null}
-                    <span style={{ fontSize: 14, color: K.t3, fontWeight: 600, marginLeft: 2, transform: isExp ? "rotate(180deg)" : "none", transition: "transform .2s", display: "inline-block" }}>{"\u25BE"}</span>
-                  </div>
-                </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
-                  <div style={{ flex: 1 }}><span style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{mt1.name}</span></div>
-                  <div style={{ textAlign: "center", minWidth: 60 }}><span style={{ fontSize: 14, fontWeight: 800, color: statusColor }}>{statusText}</span></div>
-                  <div style={{ flex: 1, textAlign: "right" }}><span style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{mt2.name}</span></div>
-                </div>
-                {!mr && prog > 0 && prog < 1 ? (
-                  <div style={{ height: 3, background: K.inp, borderRadius: 2, overflow: "hidden", width: "100%" }}>
-                    <div style={{ height: "100%", width: Math.round(prog * 100) + "%", background: K.acc, borderRadius: 2 }} />
-                  </div>
-                ) : null}
-              </button>
-
-              {isExp ? (
-                <ExpandedScorecard
-                  t1Pids={t1Pids} t2Pids={t2Pids} mt1={mt1} mt2={mt2}
-                  pars={pars} hcps={hcps} side={side} holeResults={holeResults}
-                  runningStatus={runningStatus} clinchHole={clinchHole} clinchText={clinchText}
-                  getScore={getScore} getStrokesForHole={getStrokesForHole} getHcp={getHcp} getInitials={getInitials}
-                  isComm={isComm} isFinalized={isFinalized} m={m}
-                  setActiveMatch={setActiveMatch} setCurHole={setCurHole} setShowAllMatches={setShowAllMatches}
-                />
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
-
-      {allMatchesAttested && isComm && !isWeekLocked && saveWeekSchedule ? (
-        <button onClick={function() {
-          saveWeekSchedule(Object.assign({}, weekSch, { locked: true }));
-          setToast("Week " + week + " finalized");
-          setTimeout(function() { setToast(null); }, 2000);
-        }} style={{ width: "100%", padding: 14, borderRadius: 12, marginTop: 16, cursor: "pointer", background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: 800 }}>
-          {"Finalize Week " + week}
-        </button>
-      ) : null}
-
-      {isWeekLocked ? (
-        <div style={{ textAlign: "center", marginTop: 12, fontSize: 12, color: K.t3, fontWeight: 600 }}>{"Week " + week + " is locked"}</div>
-      ) : null}
-
-      {toast ? (
-        <div style={{ position: "fixed", top: 80, left: "50%", transform: "translateX(-50%)", background: K.act, color: K.bg, padding: "12px 48px", borderRadius: 12, fontSize: 13, fontWeight: 700, zIndex: 1000, whiteSpace: "nowrap", minWidth: 240, textAlign: "center", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
-          {toast}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-
-// ── Expanded scorecard inside All Matches ──
-function ExpandedScorecard({ t1Pids, t2Pids, mt1, mt2, pars, hcps, side, holeResults, runningStatus, clinchHole, clinchText, getScore, getStrokesForHole, getHcp, getInitials, isComm, isFinalized, m, setActiveMatch, setCurHole, setShowAllMatches }) {
-  var matchGrn = "#1a8c3f";
-  var colBdr = "1px solid " + K.bdr + "30";
-  var lw = 40;
-  var tw = 30;
-  var lblStyle = { width: lw, flexShrink: 0, fontSize: 9, fontWeight: 700, color: K.t3, display: "flex", alignItems: "center", paddingLeft: 3, borderRight: colBdr, textTransform: "uppercase", letterSpacing: 0.3 };
-  var totStyle = { width: tw, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", borderLeft: colBdr };
-
-  var HRow = function() {
-    return (
-      <div style={{ display: "flex", background: K.inp, borderBottom: colBdr }}>
-        <div style={Object.assign({}, lblStyle, { height: 24 })}>HOLE</div>
-        {Array.from({ length: 9 }, function(_, i) {
-          return <div key={i} style={{ flex: 1, height: 24, display: "flex", alignItems: "center", justifyContent: "center", borderRight: i < 8 ? colBdr : "none" }}><span style={{ fontSize: 12, fontWeight: 700, color: K.t3 }}>{side === "front" ? i + 1 : i + 10}</span></div>;
-        })}
-        <div style={Object.assign({}, totStyle, { height: 24 })}><span style={{ fontSize: 10, fontWeight: 700, color: K.t3 }}>TOT</span></div>
-      </div>
-    );
-  };
-
-  var PRow = function() {
-    return (
-      <div style={{ display: "flex", borderBottom: colBdr }}>
-        <div style={Object.assign({}, lblStyle, { height: 22 })}>PAR</div>
-        {pars.map(function(p, i) {
-          return <div key={i} style={{ flex: 1, height: 22, display: "flex", alignItems: "center", justifyContent: "center", borderRight: i < 8 ? colBdr : "none" }}><span style={{ fontSize: 11, fontWeight: 600, color: K.t3 }}>{p}</span></div>;
-        })}
-        <div style={Object.assign({}, totStyle, { height: 22 })}><span style={{ fontSize: 11, fontWeight: 700, color: K.t3 }}>{pars.reduce(function(a, b) { return a + b; }, 0)}</span></div>
-      </div>
-    );
-  };
-
-  var SRow = function(props) {
-    var pid = props.pid;
-    var gt = 0;
-    return (
-      <div style={{ display: "flex", alignItems: "center", borderBottom: colBdr }}>
-        <div style={Object.assign({}, lblStyle, { height: 34, paddingTop: 8 })}>
-          <span style={{ fontSize: 14, fontWeight: 800, color: K.t1, width: 22, flexShrink: 0 }}>{getInitials(pid)}</span>
-          <span style={{ fontSize: 10, color: "#3b82f6", fontWeight: 700 }}>{getHcp(pid)}</span>
-        </div>
-        {Array.from({ length: 9 }, function(_, h) {
-          var s = getScore(pid, h);
-          var st = getStrokesForHole(pid, h);
-          if (s > 0) gt += s;
-          return <div key={h} style={{ flex: 1, height: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? colBdr : "none" }}>
-            <ScoreCell score={s} par={pars[h]} strokes={st} size={13} />
-          </div>;
-        })}
-        <div style={Object.assign({}, totStyle, { height: 34, paddingTop: 8 })}><span style={{ fontSize: 13, fontWeight: 800, color: K.t1 }}>{gt || ""}</span></div>
-      </div>
-    );
-  };
-
-  var TRow = function(props) {
-    var pids = props.pids;
-    var isT1 = props.isT1;
-    var nt = 0;
-    return (
-      <div style={{ display: "flex" }}>
-        <div style={Object.assign({}, lblStyle, { height: 30, fontSize: 9, fontWeight: 800 })}>NET</div>
-        {Array.from({ length: 9 }, function(_, h) {
-          var tN = 0;
-          pids.forEach(function(pid) { tN += getScore(pid, h) - getStrokesForHole(pid, h); });
-          nt += tN;
-          var won = holeResults[h] === (isT1 ? 1 : -1);
-          var hasData = getScore(pids[0], h) > 0 || getScore(pids[1], h) > 0;
-          return <div key={h} style={{ flex: 1, height: 30, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? colBdr : "none", background: won ? K.act + "18" : "transparent" }}>
-            <span style={{ fontSize: 13, fontWeight: 800, color: K.t2 }}>{hasData ? String(tN) : ""}</span>
-          </div>;
-        })}
-        <div style={Object.assign({}, totStyle, { height: 30 })}><span style={{ fontSize: 13, fontWeight: 800, color: K.t1 }}>{nt || ""}</span></div>
-      </div>
-    );
-  };
-
-  var MRow = function() {
-    return (
-      <div style={{ display: "flex", background: K.card, border: "1px solid " + K.bdr + "40", borderRadius: 6, padding: "2px 0", margin: "4px 0" }}>
-        <div style={Object.assign({}, lblStyle, { height: 24, fontSize: 8, fontWeight: 800, color: K.t2 })}>MATCH</div>
-        {runningStatus.map(function(rs, i) {
-          var colBorderR = i < 8 ? { borderRight: colBdr } : {};
-          if (rs === null) return <div key={i} style={Object.assign({ flex: 1, height: 24 }, colBorderR)} />;
-          if (clinchHole !== null && i > clinchHole) return <div key={i} style={Object.assign({ flex: 1, height: 24 }, colBorderR)} />;
-          if (clinchHole !== null && i === clinchHole) {
-            var color = rs > 0 ? matchGrn : rs < 0 ? K.red : K.t3;
-            return <div key={i} style={Object.assign({ flex: 1, textAlign: "center", fontSize: 12, fontWeight: 800, color: color, lineHeight: "24px" }, colBorderR)}>{clinchText}</div>;
-          }
-          var color2 = rs > 0 ? matchGrn : rs < 0 ? K.red : K.t3;
-          return <div key={i} style={Object.assign({ flex: 1, textAlign: "center", fontSize: 12, fontWeight: 800, color: color2, lineHeight: "24px" }, colBorderR)}>
-            {rs > 0 ? "\u25B2" + rs : rs < 0 ? "\u25BC" + Math.abs(rs) : "\u2014"}
-          </div>;
-        })}
-        <div style={{ width: tw, flexShrink: 0, height: 24 }} />
-      </div>
-    );
-  };
-
-  return (
-    <div style={{ padding: "0 10px 10px", borderTop: "1px solid " + K.bdr + "30" }}>
-      <div style={{ fontSize: 11, fontWeight: 700, color: K.acc, textTransform: "uppercase", letterSpacing: 1, margin: "8px 0 4px 2px" }}>{mt1.name}</div>
-      <div style={{ background: K.card, border: "1px solid " + K.bdr + "40", borderRadius: 8, overflow: "hidden" }}>
-        <HRow /><PRow />
-        {t1Pids.map(function(pid) { return <SRow key={pid} pid={pid} />; })}
-        <TRow pids={t1Pids} isT1={true} />
-      </div>
-      <MRow />
-      <div style={{ fontSize: 11, fontWeight: 700, color: K.acc, textTransform: "uppercase", letterSpacing: 1, margin: "4px 0 4px 2px" }}>{mt2.name}</div>
-      <div style={{ background: K.card, border: "1px solid " + K.bdr + "40", borderRadius: 8, overflow: "hidden" }}>
-        <HRow /><PRow />
-        {t2Pids.map(function(pid) { return <SRow key={pid} pid={pid} />; })}
-        <TRow pids={t2Pids} isT1={false} />
-      </div>
-      {isComm && !isFinalized ? (
-        <button onClick={function() { setActiveMatch(m); setCurHole(0); setShowAllMatches(false); }} style={{ width: "100%", padding: 10, borderRadius: 8, marginTop: 8, cursor: "pointer", background: K.act, border: "none", color: K.bg, fontSize: 13, fontWeight: 700 }}>
-          Enter Scores
-        </button>
-      ) : null}
-    </div>
   );
 }
