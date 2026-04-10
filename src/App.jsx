@@ -53,6 +53,7 @@ export default function GolfLeagueApp() {
   const [showMore, setShowMore] = useState(false);
   const [impersonating, setImpersonating] = useState(null);
   const [showPlayerPicker, setShowPlayerPicker] = useState(false);
+  const [openAllMatches, setOpenAllMatches] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
     try { return localStorage.getItem("mnq_theme") !== "light"; } catch { return true; }
   });
@@ -286,6 +287,19 @@ export default function GolfLeagueApp() {
     { id: "signout", label: "Sign Out", icon: "key" },
   ];
 
+  // Check if there's a week ready to finalize (commish only)
+  const weekToFinalize = isComm ? (() => {
+    for (const wk of schedule) {
+      if (wk.rainedOut || wk.locked) continue;
+      if (!wk.matches || wk.matches.length === 0) continue;
+      const allAttested = wk.matches.every(m =>
+        matchResults.some(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true)
+      );
+      if (allAttested) return wk.week;
+    }
+    return null;
+  })() : null;
+
   // Find upcoming match info for banner
   const myTeam = teams.find(t => t.player1 === leagueUser.playerId || t.player2 === leagueUser.playerId);
   const upcomingBanner = (() => {
@@ -380,6 +394,21 @@ export default function GolfLeagueApp() {
         </div>
       </div>
 
+      {/* Finalize week banner — commish only */}
+      {weekToFinalize && (
+        <button onClick={() => { setOpenAllMatches(true); setTab("scoring"); }} style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+          width: "100%", maxWidth: 900, margin: "0 auto",
+          padding: "8px 14px", background: K.warn + "18", border: "none",
+          borderBottom: `1px solid ${K.warn}40`, cursor: "pointer", flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: K.warn }}>
+            Week {weekToFinalize} ready to finalize
+          </span>
+          <span style={{ fontSize: 11, color: K.warn, opacity: .7 }}>→</span>
+        </button>
+      )}
+
       {/* Upcoming match banner */}
 
       <div className="app-body" ref={appBodyRef}>
@@ -420,7 +449,7 @@ export default function GolfLeagueApp() {
           })()}
           <div className="main-content fi" key={tab}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} />}
-          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} />}
+          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} />}
           {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} />}
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}

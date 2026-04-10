@@ -57,12 +57,21 @@ function ScoreCell({ score, par, strokes, size = 13, color: colorOverride }) {
   );
 }
 
-export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule }) {
+export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule, openAllMatches, onAllMatchesOpened }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
   const [showAllMatches, setShowAllMatches] = useState(false);
   const [expandedMatch, setExpandedMatch] = useState(null);
   const [toast, setToast] = useState(null);
+
+  // If App signals to open All Matches (e.g. from finalize banner), do it
+  useEffect(() => {
+    if (openAllMatches) {
+      setShowAllMatches(true);
+      setActiveMatch(null);
+      if (onAllMatchesOpened) onAllMatchesOpened();
+    }
+  }, [openAllMatches]);
   const [editing, setEditing] = useState(false);
   const [showScorecard, setShowScorecard] = useState(false);
   const [showFinalize, setShowFinalize] = useState(false);
