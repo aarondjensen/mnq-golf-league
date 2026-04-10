@@ -1643,7 +1643,7 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
           {strokes > 0 && <span style={{ color: "#3b82f6", fontSize: 16, letterSpacing: 1, display: "inline-flex", alignItems: "center", height: 16 }}>{"●".repeat(strokes)}</span>}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          {run.thru > 0 && <span style={{ fontSize: 11, color: K.t3 }}>Net: <strong style={{ color: run.netVsPar < 0 ? K.red : K.t1 }}>{run.netVsPar > 0 ? "+" : ""}{run.netVsPar}</strong> thru {run.thru}</span>}
+          {run.thru > 0 && <span style={{ fontSize: 11, color: K.t3 }}>Net: <strong style={{ color: run.netVsPar < 0 ? K.red : run.netVsPar === 0 ? K.t3 : K.t1 }}>{run.netVsPar > 0 ? "+" + run.netVsPar : run.netVsPar === 0 ? "E" : run.netVsPar}</strong> thru {run.thru}</span>}
           {absentBtn}
         </div>
       </div>
