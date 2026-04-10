@@ -75,28 +75,15 @@ export default function GolfLeagueApp() {
   }, []);
 
   // Pull-to-refresh — iOS-compatible approach
-  // Listen on document level so iOS compositor scroll can't steal the gesture.
-  // We check the .app-body scrollTop to know if the user is at the top.
+  // Listen on document level. Since we removed -webkit-overflow-scrolling:touch
+  // from .app-body (in theme.jsx), e.preventDefault() in touchmove is sufficient
+  // to block scrolling during the pull. No overflowY manipulation needed.
   useEffect(() => {
     if (refreshing) return; // don't rebind while refreshing
 
     const getScrollEl = () => appBodyRef.current || document.querySelector('.app-body');
 
-    // Elements that should NOT trigger pull-to-refresh
-    const isInteractive = (el) => {
-      if (!el) return false;
-      const tag = el.tagName;
-      if (tag === 'BUTTON' || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return true;
-      if (el.closest && (el.closest('button') || el.closest('input') || el.closest('[data-popup]') || el.closest('[data-no-pull]'))) return true;
-      return false;
-    };
-
     const handleStart = (e) => {
-      // Don't arm pull gesture on interactive elements (score buttons, inputs, etc.)
-      if (isInteractive(e.target)) {
-        touchStartY.current = 0;
-        return;
-      }
       const el = getScrollEl();
       // Only arm if scroll container is at the very top
       if (el && el.scrollTop <= 0) {
@@ -113,22 +100,15 @@ export default function GolfLeagueApp() {
       const diff = e.touches[0].clientY - touchStartY.current;
 
       if (diff > 10 && el && el.scrollTop <= 0) {
-        // We're pulling down from the top
-        if (!pullingRef.current) {
-          pullingRef.current = true;
-          // Prevent iOS native scroll bounce by locking the scroll container
-          el.style.overflowY = 'hidden';
-        }
+        // We're pulling down from the top — prevent scroll and show indicator
+        pullingRef.current = true;
         e.preventDefault();
         const val = Math.min(diff * 0.4, 120);
         pullYRef.current = val;
         setPullY(val);
-      } else if (diff <= 0 || (el && el.scrollTop > 0)) {
-        // User scrolled up or container not at top — cancel pull
-        if (pullingRef.current) {
-          pullingRef.current = false;
-          if (el) el.style.overflowY = '';
-        }
+      } else if (pullingRef.current && diff <= 5) {
+        // Was pulling but finger moved back up — cancel
+        pullingRef.current = false;
         pullYRef.current = 0;
         setPullY(0);
         touchStartY.current = 0;
@@ -136,9 +116,6 @@ export default function GolfLeagueApp() {
     };
 
     const handleEnd = () => {
-      const el = getScrollEl();
-      // ALWAYS restore scroll overflow, whether we were pulling or not
-      if (el) el.style.overflowY = '';
       pullingRef.current = false;
 
       if (pullYRef.current >= PULL_THRESHOLD) {
@@ -164,21 +141,13 @@ export default function GolfLeagueApp() {
       document.removeEventListener('touchmove', handleMove);
       document.removeEventListener('touchend', handleEnd);
       document.removeEventListener('touchcancel', handleEnd);
-      // Restore scroll on cleanup
-      const el = getScrollEl();
-      if (el) el.style.overflowY = '';
     };
   }, [refreshing]);
 
   // Safety: if pull indicator stuck, reset after 2s
   useEffect(() => {
     if (pullY > 0 && !refreshing) {
-      const safety = setTimeout(() => {
-        resetPull();
-        // Also restore scroll in case overflow got stuck
-        const el = appBodyRef.current || document.querySelector('.app-body');
-        if (el) el.style.overflowY = '';
-      }, 2000);
+      const safety = setTimeout(resetPull, 2000);
       return () => clearTimeout(safety);
     }
   }, [pullY, refreshing, resetPull]);
