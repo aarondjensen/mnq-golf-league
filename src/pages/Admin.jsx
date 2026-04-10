@@ -559,6 +559,65 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
   if (editWeek !== null) {
     const wk = schedule.find(s => s.week === editWeek);
     if (!wk) { setEditWeek(null); return null; }
+    const isFinalized = wk.locked || (matchResults || []).some(r => r.week === wk.week);
+    const isRainedOut = wk.rainedOut === true;
+
+    const handleRainOut = async () => {
+      if (!window.confirm(`Rain out Week ${wk.week}? This will:\n\n• Skip this week (no matches played)\n• Add a makeup week at the end with the same matchups\n• Push all future dates forward one week`)) return;
+
+      // 1. Mark this week as rained out
+      await saveWeekSchedule({ ...wk, rainedOut: true });
+
+      // 2. Find the last week number in the schedule
+      const maxWeek = Math.max(...schedule.map(s => s.week));
+      const newWeekNum = maxWeek + 1;
+
+      // 3. Determine if the rained-out week was a playoff week
+      const regWeeks = leagueConfig.regularWeeks || 14;
+      const wasPlayoff = wk.isPlayoff || wk.week > regWeeks;
+
+      // 4. Calculate the new date (one week after the current last week)
+      const lastWeek = schedule.find(s => s.week === maxWeek);
+      let newDate = "";
+      if (lastWeek?.date) {
+        const d = new Date(lastWeek.date + "T12:00:00");
+        d.setDate(d.getDate() + 7);
+        newDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      }
+
+      // 5. Alternate side from whatever the last week uses
+      const newSide = lastWeek?.side === 'front' ? 'back' : 'front';
+
+      // 6. Create the makeup week with same matchups
+      await saveWeekSchedule({
+        id: `${LEAGUE_ID}_w${newWeekNum}`,
+        week: newWeekNum,
+        matches: [...wk.matches],
+        side: wk.side || newSide,
+        date: newDate,
+        isPlayoff: wasPlayoff,
+        makeupFor: wk.week,
+      });
+
+      // 7. Push dates forward by one week for all weeks AFTER the rained-out week (that aren't already rained out)
+      const startDate = leagueConfig.startDate;
+      if (startDate) {
+        const futureWeeks = schedule.filter(s => s.week > wk.week && !s.rainedOut);
+        for (const fw of futureWeeks) {
+          if (fw.date) {
+            const d = new Date(fw.date + "T12:00:00");
+            // Try parsing "Mon DD" format dates
+            if (isNaN(d.getTime())) continue;
+            d.setDate(d.getDate() + 7);
+            const newFwDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            await saveWeekSchedule({ ...fw, date: newFwDate });
+          }
+        }
+      }
+
+      setEditWeek(null);
+    };
+
     return (
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
@@ -566,6 +625,14 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
           <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Week {wk.week}{wk.date ? ` · ${wk.date}` : ""}</span>
           <Pill color={wk.side === 'front' ? K.acc : K.t2}>{wk.side === 'front' ? 'FRONT 9' : 'BACK 9'}</Pill>
         </div>
+
+        {isRainedOut && (
+          <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "8px 12px", marginBottom: 10, textAlign: "center" }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: K.warn }}>Rained Out</span>
+            {wk.makeupFor && <span style={{ fontSize: 11, color: K.t3, marginLeft: 6 }}>(Makeup for Week {wk.makeupFor})</span>}
+          </div>
+        )}
+
         <div style={{ fontSize: 11, color: K.t3, marginBottom: 12 }}>Drag matches to reorder tee times</div>
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {wk.matches.map((m, mi) => (
@@ -593,6 +660,13 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
             Flip to {wk.side === 'front' ? 'Back' : 'Front'} 9
           </button>
         </div>
+
+        {/* Rain Out button — only for non-finalized, non-rained-out weeks */}
+        {!isFinalized && !isRainedOut && (
+          <button onClick={handleRainOut} style={{ width: "100%", padding: 12, borderRadius: 10, marginTop: 12, cursor: "pointer", background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 14, fontWeight: 700 }}>
+            Rain Out
+          </button>
+        )}
       </div>
     );
   }
@@ -611,22 +685,29 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
         <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {schedule.map(wk => {
             const isPlayoff = wk.isPlayoff || wk.week >= (leagueConfig.regularWeeks || 14);
+            const isRainedOut = wk.rainedOut === true;
             return (
-              <button key={wk.week} onClick={() => setEditWeek(wk.week)} style={{ background: K.card, borderRadius: 10, padding: "10px 14px", border: `1px solid ${K.bdr}`, cursor: "pointer", textAlign: "left", width: "100%" }}>
+              <button key={wk.week} onClick={() => setEditWeek(wk.week)} style={{ background: K.card, borderRadius: 10, padding: "10px 14px", border: `1px solid ${isRainedOut ? K.warn + "40" : K.bdr}`, cursor: "pointer", textAlign: "left", width: "100%", opacity: isRainedOut ? 0.6 : 1 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                  <span style={{ fontWeight: 700, fontSize: 12, color: isPlayoff ? K.warn : K.t1 }}>
+                  <span style={{ fontWeight: 700, fontSize: 12, color: isRainedOut ? K.warn : isPlayoff ? K.warn : K.t1 }}>
                     Week {wk.week}{wk.date ? ` · ${wk.date}` : ""}
                   </span>
                   <div style={{ display: "flex", gap: 4 }}>
+                    {isRainedOut && <Pill color={K.warn} style={{ fontSize: 8 }}>RAIN</Pill>}
+                    {wk.makeupFor && <Pill color={K.teal} style={{ fontSize: 8 }}>MAKEUP</Pill>}
                     <Pill color={wk.side === 'front' ? K.acc : K.t3} style={{ fontSize: 8 }}>{wk.side === 'front' ? 'F9' : 'B9'}</Pill>
-                    {isPlayoff && <Pill color={K.warn} style={{ fontSize: 8 }}>PLAYOFF</Pill>}
+                    {isPlayoff && !isRainedOut && <Pill color={K.warn} style={{ fontSize: 8 }}>PLAYOFF</Pill>}
                   </div>
                 </div>
-                {wk.matches.map((m, mi) => (
-                  <div key={mi} style={{ fontSize: 11, color: K.t3, marginLeft: 4 }}>
-                    {formatTeeTime(leagueConfig.startTime || cfg.startTime || "4:28 PM", mi)} — {gn(m.team1)} vs {gn(m.team2)}
-                  </div>
-                ))}
+                {isRainedOut ? (
+                  <div style={{ fontSize: 11, color: K.warn, fontStyle: "italic", marginLeft: 4 }}>Rained out — rescheduled</div>
+                ) : (
+                  wk.matches.map((m, mi) => (
+                    <div key={mi} style={{ fontSize: 11, color: K.t3, marginLeft: 4 }}>
+                      {formatTeeTime(leagueConfig.startTime || cfg.startTime || "4:28 PM", mi)} — {gn(m.team1)} vs {gn(m.team2)}
+                    </div>
+                  ))
+                )}
               </button>
             );
           })}

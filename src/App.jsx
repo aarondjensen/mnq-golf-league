@@ -40,8 +40,9 @@ export default function GolfLeagueApp() {
     try { return sessionStorage.getItem("mnq_tab") || "standings"; } catch { return "standings"; }
   });
   const [showMore, setShowMore] = useState(false);
-  const [impersonating, setImpersonating] = useState(null); // { playerId, name } when comm is acting as another player
+  const [impersonating, setImpersonating] = useState(null);
   const [showPlayerPicker, setShowPlayerPicker] = useState(false);
+  const [showAllMatches, setShowAllMatches] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
     try { return localStorage.getItem("mnq_theme") !== "light"; } catch { return true; }
   });
@@ -49,6 +50,11 @@ export default function GolfLeagueApp() {
   // Persist tab so pull-to-refresh stays on current tab
   useEffect(() => {
     try { sessionStorage.setItem("mnq_tab", tab); } catch {}
+  }, [tab]);
+
+  // Reset showAllMatches when leaving scoring tab
+  useEffect(() => {
+    if (tab !== "scoring") setShowAllMatches(false);
   }, [tab]);
 
   // Pull-to-refresh
@@ -74,68 +80,44 @@ export default function GolfLeagueApp() {
     pullingRef.current = false;
   }, []);
 
-  // Pull-to-refresh — iOS-compatible approach
-  // Listen on document level. Since we removed -webkit-overflow-scrolling:touch
-  // from .app-body (in theme.jsx), e.preventDefault() in touchmove is sufficient
-  // to block scrolling during the pull. No overflowY manipulation needed.
   useEffect(() => {
-    if (refreshing) return; // don't rebind while refreshing
-
+    if (refreshing) return;
     const getScrollEl = () => appBodyRef.current || document.querySelector('.app-body');
-
     const handleStart = (e) => {
       const el = getScrollEl();
-      // Only arm if scroll container is at the very top
-      if (el && el.scrollTop <= 0) {
-        touchStartY.current = e.touches[0].clientY;
-      } else {
-        touchStartY.current = 0;
-      }
+      if (el && el.scrollTop <= 0) { touchStartY.current = e.touches[0].clientY; }
+      else { touchStartY.current = 0; }
       pullingRef.current = false;
     };
-
     const handleMove = (e) => {
       if (!touchStartY.current) return;
       const el = getScrollEl();
       const diff = e.touches[0].clientY - touchStartY.current;
-
       if (diff > 10 && el && el.scrollTop <= 0) {
-        // We're pulling down from the top — prevent scroll and show indicator
         pullingRef.current = true;
         e.preventDefault();
         const val = Math.min(diff * 0.4, 120);
         pullYRef.current = val;
         setPullY(val);
       } else if (pullingRef.current && diff <= 5) {
-        // Was pulling but finger moved back up — cancel
         pullingRef.current = false;
         pullYRef.current = 0;
         setPullY(0);
         touchStartY.current = 0;
       }
     };
-
     const handleEnd = () => {
       pullingRef.current = false;
-
       if (pullYRef.current >= PULL_THRESHOLD) {
-        setPullY(PULL_THRESHOLD);
-        pullYRef.current = PULL_THRESHOLD;
+        setPullY(PULL_THRESHOLD); pullYRef.current = PULL_THRESHOLD;
         setRefreshing(true);
         setTimeout(() => window.location.reload(), 600);
-      } else {
-        setPullY(0);
-        pullYRef.current = 0;
-        touchStartY.current = 0;
-      }
+      } else { setPullY(0); pullYRef.current = 0; touchStartY.current = 0; }
     };
-
-    // Attach to document so we intercept before iOS compositor
     document.addEventListener('touchstart', handleStart, { passive: true });
     document.addEventListener('touchmove', handleMove, { passive: false });
     document.addEventListener('touchend', handleEnd, { passive: true });
     document.addEventListener('touchcancel', handleEnd, { passive: true });
-
     return () => {
       document.removeEventListener('touchstart', handleStart);
       document.removeEventListener('touchmove', handleMove);
@@ -144,7 +126,6 @@ export default function GolfLeagueApp() {
     };
   }, [refreshing]);
 
-  // Safety: if pull indicator stuck, reset after 2s
   useEffect(() => {
     if (pullY > 0 && !refreshing) {
       const safety = setTimeout(resetPull, 2000);
@@ -152,42 +133,31 @@ export default function GolfLeagueApp() {
     }
   }, [pullY, refreshing, resetPull]);
 
-  // Firebase Auth listener
   useEffect(() => {
-    const unsub = onAuthStateChanged(_auth, (user) => {
-      setAuthUser(user || null);
-      setAuthLoading(false);
-    });
+    const unsub = onAuthStateChanged(_auth, (user) => { setAuthUser(user || null); setAuthLoading(false); });
     return unsub;
   }, []);
 
-  // Real-time subscriptions
   useEffect(() => {
     if (!authUser) { setLeagueUser(null); setMembersLoaded(false); return; }
     const unsubs = [];
-
     unsubs.push(db.subscribe("league_members", LF, (docs) => {
-      setMembers(docs);
-      setMembersLoaded(true);
+      setMembers(docs); setMembersLoaded(true);
       const me = docs.find(d => d.uid === authUser.uid);
       if (me) setLeagueUser({ playerId: me.playerId, isCommissioner: me.isCommissioner, name: me.name || authUser.displayName, email: authUser.email });
       else setLeagueUser(null);
     }));
-
     unsubs.push(db.subscribe("league_players", LF, (docs) => setPlayers(docs)));
     unsubs.push(db.subscribe("league_teams", LF, (docs) => setTeams(docs)));
     unsubs.push(db.subscribe("league_schedule", LF, (docs) => setSchedule(docs.filter(d => d.week > 0).sort((a, b) => a.week - b.week))));
     unsubs.push(db.subscribe("league_course", LF, (docs) => { if (docs.length) setCourseData(docs[0]); }));
     unsubs.push(db.subscribe("league_scoring", LF, (docs) => { if (docs.length) setScoringRules(docs[0]); }));
-
     unsubs.push(db.subscribe("league_ctp", LF, (docs) => setCtpData(docs)));
     unsubs.push(db.subscribe("league_match_results", LF, (docs) => setMatchResults(docs)));
     unsubs.push(db.subscribe("league_config", LF, (docs) => { if (docs.length) setLeagueConfig(docs[0]); }));
-
     return () => unsubs.forEach(u => u && u());
   }, [authUser?.uid]);
 
-  // Subscribe to hole scores for a specific week (real-time for live scoring)
   useEffect(() => {
     if (liveWeek === null || !authUser) return;
     const weekFilters = [...LF, { field: "season", op: "==", value: 2026 }, { field: "week", op: "==", value: liveWeek }];
@@ -198,8 +168,7 @@ export default function GolfLeagueApp() {
         (changes || []).forEach(ch => {
           const r = ch.doc.data();
           const key = `w${r.week}_p${r.player_id}_h${r.hole}`;
-          if (ch.type === "removed") delete next[key];
-          else next[key] = r.score;
+          if (ch.type === "removed") delete next[key]; else next[key] = r.score;
         });
         return next;
       });
@@ -208,7 +177,6 @@ export default function GolfLeagueApp() {
     return () => unsub();
   }, [liveWeek, authUser?.uid]);
 
-  // Auth actions
   const doGoogleSignIn = async () => { try { await signInWithPopup(_auth, _googleProvider); } catch (e) { console.error(e); throw e; } };
   const doEmailSignIn = async (email, pw) => {
     try { await signInWithEmailAndPassword(_auth, email, pw); }
@@ -220,48 +188,38 @@ export default function GolfLeagueApp() {
   const doSignOut = async () => { await signOut(_auth); setLeagueUser(null); setTab("standings"); };
 
   const CURRENT_SEASON = 2026;
-
-  // Data write helpers
   const saveScore = async (week, playerId, hole, score) => {
     const id = `${LEAGUE_ID}_s${CURRENT_SEASON}_w${week}_p${playerId}_h${hole}`;
     setHoleScores(prev => ({ ...prev, [`w${week}_p${playerId}_h${hole}`]: score }));
     await db.upsert("league_hole_scores", { id, league_id: LEAGUE_ID, season: CURRENT_SEASON, week, player_id: playerId, hole, score, ts: Date.now() });
   };
-  // Fetch scores for a specific week on-demand (non-realtime, one-time read)
   const fetchWeekScores = async (weekNum) => {
     const docs = await db.get("league_hole_scores", [...LF, { field: "season", op: "==", value: CURRENT_SEASON }, { field: "week", op: "==", value: weekNum }]);
-    const scores = {};
-    docs.forEach(r => { scores[`w${r.week}_p${r.player_id}_h${r.hole}`] = r.score; });
-    return scores;
+    const scores = {}; docs.forEach(r => { scores[`w${r.week}_p${r.player_id}_h${r.hole}`] = r.score; }); return scores;
   };
-  // Fetch scores for current season (for stats/handicap calc)
   const fetchSeasonScores = async () => {
     const docs = await db.get("league_hole_scores", [...LF, { field: "season", op: "==", value: CURRENT_SEASON }]);
-    const scores = {};
-    docs.forEach(r => { scores[`w${r.week}_p${r.player_id}_h${r.hole}`] = r.score; });
-    return scores;
+    const scores = {}; docs.forEach(r => { scores[`w${r.week}_p${r.player_id}_h${r.hole}`] = r.score; }); return scores;
   };
-  // Fetch ALL scores across all seasons (for handicap calc that carries over)
   const fetchAllScores = async () => {
     const docs = await db.get("league_hole_scores", LF);
-    // Return grouped by player: { playerId: [{ season, week, gross }] }
-    const byPlayer = {};
-    const roundMap = {};
+    const byPlayer = {}; const roundMap = {}; const absentMap = {};
     docs.forEach(r => {
+      // Track absent markers (hole === "absent" with score 1)
+      if (r.hole === "absent" && r.score === 1) {
+        absentMap[`${r.season}_${r.week}_${r.player_id}`] = true;
+        return;
+      }
       const key = `${r.season}_${r.week}_${r.player_id}`;
       if (!roundMap[key]) roundMap[key] = { season: r.season, week: r.week, playerId: r.player_id, holes: 0, gross: 0 };
       if (r.score > 0) { roundMap[key].holes++; roundMap[key].gross += r.score; }
     });
     Object.values(roundMap).forEach(rd => {
-      if (rd.holes === 9) {
-        if (!byPlayer[rd.playerId]) byPlayer[rd.playerId] = [];
-        byPlayer[rd.playerId].push({ season: rd.season, week: rd.week, gross: rd.gross });
-      }
+      // Only count rounds with 9 holes where player was NOT absent (ghost scores don't count for handicap/stats)
+      const wasAbsent = absentMap[`${rd.season}_${rd.week}_${rd.playerId}`];
+      if (rd.holes === 9 && !wasAbsent) { if (!byPlayer[rd.playerId]) byPlayer[rd.playerId] = []; byPlayer[rd.playerId].push({ season: rd.season, week: rd.week, gross: rd.gross }); }
     });
-    // Sort each player's rounds chronologically (by season then week)
-    for (const pid in byPlayer) {
-      byPlayer[pid].sort((a, b) => a.season !== b.season ? a.season - b.season : a.week - b.week);
-    }
+    for (const pid in byPlayer) { byPlayer[pid].sort((a, b) => a.season !== b.season ? a.season - b.season : a.week - b.week); }
     return byPlayer;
   };
   const saveCtp = async (data) => await db.upsert("league_ctp", { ...data, league_id: LEAGUE_ID });
@@ -279,11 +237,7 @@ export default function GolfLeagueApp() {
 
   const isComm = leagueUser?.isCommissioner === true;
   const activePlayers = players.filter(p => p.status !== "inactive");
-
-  // When commissioner impersonates a player, effectiveUser overrides leagueUser for scoring/schedule
-  const effectiveUser = impersonating
-    ? { ...leagueUser, playerId: impersonating.playerId, name: impersonating.name }
-    : leagueUser;
+  const effectiveUser = impersonating ? { ...leagueUser, playerId: impersonating.playerId, name: impersonating.name } : leagueUser;
 
   if (authLoading) return <LoadingScreen />;
   if (!authUser) return <AuthScreen onGoogle={doGoogleSignIn} onEmail={doEmailSignIn} />;
@@ -295,7 +249,6 @@ export default function GolfLeagueApp() {
     { id: "scoring", label: "Scoring", icon: "flag" },
     { id: "schedule", label: "Schedule", icon: "calendar" },
   ];
-
   const moreItems = [
     { id: "players", label: "Players", icon: "users" },
     { id: "stats", label: "Stats", icon: "barChart" },
@@ -304,11 +257,9 @@ export default function GolfLeagueApp() {
     { id: "signout", label: "Sign Out", icon: "key" },
   ];
 
-  // Find upcoming match info for banner
   const myTeam = teams.find(t => t.player1 === leagueUser.playerId || t.player2 === leagueUser.playerId);
   const upcomingBanner = (() => {
     if (!myTeam || !schedule.length) return null;
-    // Find current week (first week without all matches finalized)
     for (const wk of schedule) {
       const allDone = wk.matches.every(m => matchResults.some(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2));
       if (!allDone) {
@@ -332,33 +283,18 @@ export default function GolfLeagueApp() {
     return null;
   })();
 
-  // Banner green color — a traditional, noticeable green
   const bannerGrn = "#1a8c3f";
 
   return (
     <div className="app-shell">
-      {/* Pull-to-refresh indicator */}
       {pullY > 0 && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 999, display: "flex", justifyContent: "center", paddingTop: Math.min(pullY, 100) - 20, transition: refreshing ? "all .3s" : "none" }}>
           <style>{`
             @keyframes mnqSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
             @keyframes mnqPulseGlow { 0%,100% { box-shadow: 0 0 8px ${K.act}40; } 50% { box-shadow: 0 0 18px ${K.act}80; } }
           `}</style>
-          <div style={{
-            width: 44, height: 44, borderRadius: "50%", background: K.card,
-            border: `2.5px solid ${pullY >= PULL_THRESHOLD ? K.act : K.bdr}`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: pullY >= PULL_THRESHOLD ? `0 0 12px ${K.act}50` : "0 2px 12px rgba(0,0,0,.3)",
-            transition: "border-color .2s, box-shadow .3s", overflow: "hidden",
-            animation: refreshing ? "mnqPulseGlow 1s ease-in-out infinite" : "none",
-          }}>
-            <img src="/favicon/favicon-96x96.png" alt="" style={{
-              width: 28, height: 28, objectFit: "contain",
-              opacity: pullY >= PULL_THRESHOLD ? 1 : 0.3 + (pullY / PULL_THRESHOLD) * 0.7,
-              transform: refreshing ? "none" : `rotate(${pullY * 3}deg)`,
-              animation: refreshing ? "mnqSpin .8s linear infinite" : "none",
-              transition: refreshing ? "none" : "opacity .2s",
-            }} />
+          <div style={{ width: 44, height: 44, borderRadius: "50%", background: K.card, border: `2.5px solid ${pullY >= PULL_THRESHOLD ? K.act : K.bdr}`, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: pullY >= PULL_THRESHOLD ? `0 0 12px ${K.act}50` : "0 2px 12px rgba(0,0,0,.3)", transition: "border-color .2s, box-shadow .3s", overflow: "hidden", animation: refreshing ? "mnqPulseGlow 1s ease-in-out infinite" : "none" }}>
+            <img src="/favicon/favicon-96x96.png" alt="" style={{ width: 28, height: 28, objectFit: "contain", opacity: pullY >= PULL_THRESHOLD ? 1 : 0.3 + (pullY / PULL_THRESHOLD) * 0.7, transform: refreshing ? "none" : `rotate(${pullY * 3}deg)`, animation: refreshing ? "mnqSpin .8s linear infinite" : "none", transition: refreshing ? "none" : "opacity .2s" }} />
           </div>
         </div>
       )}
@@ -367,26 +303,28 @@ export default function GolfLeagueApp() {
       {/* Header */}
       <div className="app-header">
         <div style={{ maxWidth: 900, width: "100%", margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: "0 14px" }}>
-          <div style={{ position: "absolute", left: 14, display: "flex", alignItems: "center", gap: 8 }}>
+          {/* Left: LIVE dot + Commissioner Switch Player */}
+          <div style={{ position: "absolute", left: 14, display: "flex", alignItems: "center", gap: 6 }}>
             {syncing && <span className="pu" style={{ fontSize: 8, color: K.grn }}>● LIVE</span>}
-          </div>
-          <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
-          <div style={{ position: "absolute", right: 14, display: "flex", alignItems: "center" }}>
-            {isComm ? (
+            {isComm && (
               <button onClick={() => setShowPlayerPicker(true)} style={{ background: impersonating ? K.teal + "15" : "none", border: `1px solid ${impersonating ? K.teal + "40" : K.bdr}`, borderRadius: 6, padding: "3px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}>
-                <div style={{ textAlign: "right", lineHeight: 1.15 }}>
-                  {(() => {
-                    const name = impersonating ? impersonating.name : leagueUser.name;
-                    const parts = name.split(' ');
-                    const first = parts[0] || '';
-                    const last = parts.slice(1).join(' ') || '';
-                    return (<>
-                      <div style={{ fontSize: 10, color: impersonating ? K.teal : K.t3, fontWeight: 600 }}>{first}</div>
-                      {last && <div style={{ fontSize: 10, color: impersonating ? K.teal : K.t3, fontWeight: 700 }}>{last}</div>}
-                    </>);
-                  })()}
+                <div style={{ textAlign: "left", lineHeight: 1.15 }}>
+                  <div style={{ fontSize: 9, color: impersonating ? K.teal : K.t3, fontWeight: 600 }}>Switch</div>
+                  <div style={{ fontSize: 9, color: impersonating ? K.teal : K.t3, fontWeight: 700 }}>Player</div>
                 </div>
                 <span style={{ fontSize: 8, color: K.t3 }}>▾</span>
+              </button>
+            )}
+          </div>
+          <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
+          {/* Right: All Matches (scoring tab) or user name */}
+          <div style={{ position: "absolute", right: 14, display: "flex", alignItems: "center" }}>
+            {tab === "scoring" ? (
+              <button onClick={() => setShowAllMatches(!showAllMatches)} style={{ background: showAllMatches ? K.acc + "15" : "none", border: `1px solid ${showAllMatches ? K.acc + "40" : K.bdr}`, borderRadius: 6, padding: "3px 8px", cursor: "pointer" }}>
+                <div style={{ textAlign: "right", lineHeight: 1.15 }}>
+                  <div style={{ fontSize: 9, color: showAllMatches ? K.acc : K.t3, fontWeight: 600 }}>All</div>
+                  <div style={{ fontSize: 9, color: showAllMatches ? K.acc : K.t3, fontWeight: 700 }}>Matches</div>
+                </div>
               </button>
             ) : (
               <div style={{ textAlign: "right", lineHeight: 1.15 }}>
@@ -405,8 +343,6 @@ export default function GolfLeagueApp() {
         </div>
       </div>
 
-      {/* Upcoming match banner */}
-
       <div className="app-body" ref={appBodyRef}>
         <div style={{ maxWidth: 900, width: "100%", margin: "0 auto" }}>
           {upcomingBanner && tab !== "scoring" && (() => {
@@ -416,18 +352,15 @@ export default function GolfLeagueApp() {
             const isLive = isLeagueDay && nowMins >= upcomingBanner.teeMinutes - 30;
             return (
               <div style={{ background: K.card, border: `1.5px solid ${bannerGrn}`, borderRadius: 10, margin: "6px 14px", padding: "8px 14px", display: "flex", alignItems: "center" }}>
-                {/* Left: Tee time + Front/Back */}
                 <div style={{ width: 90, flexShrink: 0, textAlign: "center", lineHeight: 1.3, padding: "8px 0" }}>
                   <div style={{ fontSize: 15, fontWeight: 800, color: bannerGrn, letterSpacing: .5, textTransform: "uppercase" }}>{upcomingBanner.teeTime}</div>
                   <div style={{ fontSize: 15, fontWeight: 800, color: bannerGrn, letterSpacing: .5, textTransform: "uppercase" }}>{upcomingBanner.side === 'front' ? 'FRONT 9' : 'BACK 9'}</div>
                 </div>
-                {/* Center: Date, vs, opponent */}
                 <div style={{ flex: 1, textAlign: "center", lineHeight: 1.3 }}>
                   <div style={{ fontSize: 12, color: K.t2, fontWeight: 500 }}>{upcomingBanner.date ? new Date(upcomingBanner.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : `Week ${upcomingBanner.week}`}</div>
                   <div style={{ fontSize: 11, color: K.t3, fontWeight: 500 }}>vs</div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: K.t1, letterSpacing: .5 }}>{lastNamesOnly(upcomingBanner.opp)}</div>
                 </div>
-                {/* Right: Week badge */}
                 <div style={{ width: 55, flexShrink: 0, textAlign: "center" }}>
                   <div style={{ fontSize: 9, color: bannerGrn, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase" }}>WEEK</div>
                   <div style={{ fontSize: 22, fontWeight: 800, color: bannerGrn, lineHeight: 1 }}>{upcomingBanner.week}</div>
@@ -438,7 +371,7 @@ export default function GolfLeagueApp() {
         </div>
         <div className="main-content">
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} schedule={schedule} matchResults={matchResults} scoringRules={scoringRules} fetchAllScores={fetchAllScores} courseData={courseData} leagueConfig={leagueConfig} />}
-          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} />}
+          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} showAllMatches={showAllMatches} setShowAllMatches={setShowAllMatches} />}
           {tab === "schedule" && <ScheduleView teams={teams} schedule={schedule} matchResults={matchResults} myPlayerId={leagueUser.playerId} fetchWeekScores={fetchWeekScores} players={activePlayers} course={courseData} scoringRules={scoringRules} leagueConfig={leagueConfig} />}
           {tab === "players" && <PlayersView players={activePlayers} teams={teams} fetchAllScores={fetchAllScores} scoringRules={scoringRules} courseData={courseData} matchResults={matchResults} schedule={schedule} leagueConfig={leagueConfig} />}
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
@@ -447,38 +380,23 @@ export default function GolfLeagueApp() {
         </div>
       </div>
 
-      {/* More popup menu */}
-      {showMore && (
-        <div onClick={() => setShowMore(false)} style={{ position: "fixed", inset: 0, zIndex: 150 }} />
-      )}
+      {showMore && <div onClick={() => setShowMore(false)} style={{ position: "fixed", inset: 0, zIndex: 150 }} />}
 
-      {/* Player picker popup (commissioner) */}
       {showPlayerPicker && (
         <>
           <div onClick={() => setShowPlayerPicker(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 400 }} />
           <div onClick={() => setShowPlayerPicker(false)} style={{ position: "fixed", inset: 0, zIndex: 450, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
             <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "16px", width: "100%", maxWidth: 340, maxHeight: "70vh", overflowY: "auto" }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 12, textAlign: "center" }}>Login as Player</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 12, textAlign: "center" }}>Switch Player</div>
               {impersonating && (
-                <button onClick={() => { setImpersonating(null); setShowPlayerPicker(false); }} style={{ width: "100%", padding: "10px 14px", marginBottom: 8, borderRadius: 8, background: K.teal + "15", border: `1px solid ${K.teal}40`, color: K.teal, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                  Back to My Account
-                </button>
+                <button onClick={() => { setImpersonating(null); setShowPlayerPicker(false); }} style={{ width: "100%", padding: "10px 14px", marginBottom: 8, borderRadius: 8, background: K.teal + "15", border: `1px solid ${K.teal}40`, color: K.teal, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>Back to My Account</button>
               )}
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {activePlayers.map(p => {
                   const isSelf = p.id === leagueUser.playerId;
                   const isActive = impersonating?.playerId === p.id;
                   return (
-                    <button key={p.id} onClick={() => {
-                      if (isSelf) { setImpersonating(null); }
-                      else { setImpersonating({ playerId: p.id, name: p.name }); }
-                      setShowPlayerPicker(false);
-                    }} style={{
-                      padding: "10px 14px", borderRadius: 8, cursor: "pointer", textAlign: "left",
-                      background: isActive ? K.teal + "15" : isSelf ? K.acc + "10" : K.card,
-                      border: `1px solid ${isActive ? K.teal + "40" : isSelf ? K.acc + "30" : K.bdr}`,
-                      color: K.t1, fontSize: 14, fontWeight: 600, display: "flex", justifyContent: "space-between", alignItems: "center",
-                    }}>
+                    <button key={p.id} onClick={() => { if (isSelf) setImpersonating(null); else setImpersonating({ playerId: p.id, name: p.name }); setShowPlayerPicker(false); }} style={{ padding: "10px 14px", borderRadius: 8, cursor: "pointer", textAlign: "left", background: isActive ? K.teal + "15" : isSelf ? K.acc + "10" : K.card, border: `1px solid ${isActive ? K.teal + "40" : isSelf ? K.acc + "30" : K.bdr}`, color: K.t1, fontSize: 14, fontWeight: 600, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                       <span>{p.name}</span>
                       {isSelf && <span style={{ fontSize: 10, color: K.t3, fontWeight: 500 }}>(you)</span>}
                       {isActive && <span style={{ fontSize: 10, color: K.teal, fontWeight: 500 }}>active</span>}
@@ -486,15 +404,12 @@ export default function GolfLeagueApp() {
                   );
                 })}
               </div>
-              <button onClick={() => setShowPlayerPicker(false)} style={{ display: "block", width: "100%", margin: "12px 0 0", padding: "9px", background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.t2, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                Cancel
-              </button>
+              <button onClick={() => setShowPlayerPicker(false)} style={{ display: "block", width: "100%", margin: "12px 0 0", padding: "9px", background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.t2, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>Cancel</button>
             </div>
           </div>
         </>
       )}
 
-      {/* Impersonation banner */}
       {impersonating && (
         <div style={{ background: K.teal + "20", borderTop: `1px solid ${K.teal}40`, padding: "6px 14px", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, flexShrink: 0 }}>
           <span style={{ fontSize: 11, color: K.teal, fontWeight: 600 }}>Playing as {impersonating.name}</span>
@@ -502,7 +417,6 @@ export default function GolfLeagueApp() {
         </div>
       )}
 
-      {/* Bottom Nav */}
       <div className="bottom-nav" style={{ margin: "0 auto" }}>
         {tabs.map(t => {
           const active = tab === t.id;
@@ -526,32 +440,16 @@ export default function GolfLeagueApp() {
                 return (
                   <div key={item.id}>
                     {isSignOut && (<>
-                      {/* Dark mode toggle */}
                       <div style={{ borderTop: `1px solid ${K.bdr}`, margin: "4px 0" }} />
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px" }}>
                         <span style={{ fontSize: 14, fontWeight: 400, color: K.t1 }}>Dark Mode</span>
-                        <button onClick={(e) => { e.stopPropagation(); toggleTheme(); }} style={{
-                          width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
-                          background: darkMode ? K.act : K.bdr,
-                          position: "relative", transition: "background .2s",
-                        }}>
-                          <div style={{
-                            width: 20, height: 20, borderRadius: 10,
-                            background: "#fff",
-                            position: "absolute", top: 2,
-                            left: darkMode ? 22 : 2,
-                            transition: "left .2s",
-                            boxShadow: "0 1px 3px rgba(0,0,0,.3)",
-                          }} />
+                        <button onClick={(e) => { e.stopPropagation(); toggleTheme(); }} style={{ width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer", background: darkMode ? K.act : K.bdr, position: "relative", transition: "background .2s" }}>
+                          <div style={{ width: 20, height: 20, borderRadius: 10, background: "#fff", position: "absolute", top: 2, left: darkMode ? 22 : 2, transition: "left .2s", boxShadow: "0 1px 3px rgba(0,0,0,.3)" }} />
                         </button>
                       </div>
                       <div style={{ borderTop: `1px solid ${K.bdr}`, margin: "4px 0" }} />
                     </>)}
-                    <button onClick={() => {
-                      if (isSignOut) { doSignOut(); }
-                      else { setTab(item.id); }
-                      setShowMore(false);
-                    }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 16px", background: active && !isSignOut ? K.acc + "12" : "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
+                    <button onClick={() => { if (isSignOut) doSignOut(); else setTab(item.id); setShowMore(false); }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 16px", background: active && !isSignOut ? K.acc + "12" : "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
                       <span style={{ display: "flex" }}>{I[item.icon](16, isSignOut ? K.red : active ? K.acc : K.t3)}</span>
                       <span style={{ fontSize: 14, fontWeight: active && !isSignOut ? 600 : 400, color: isSignOut ? K.red : active ? K.acc : K.t1 }}>{item.label}</span>
                     </button>

@@ -43,10 +43,11 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     return teams.find(t => t.player1 === leagueUser.playerId || t.player2 === leagueUser.playerId);
   }, [teams, leagueUser]);
 
-  // Find current week
+  // Find current week (skip rained-out weeks)
   const currentWeekIdx = useMemo(() => {
     for (let i = 0; i < schedule.length; i++) {
       const wk = schedule[i];
+      if (wk.rainedOut) continue;
       const allFinalized = wk.matches.every(m =>
         matchResults.some(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2)
       );
@@ -104,7 +105,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const up = [];
     const done = [];
     schedule.forEach(wk => {
-      if (isWeekComplete(wk)) done.push(wk);
+      if (wk.rainedOut || isWeekComplete(wk)) done.push(wk);
       else up.push(wk);
     });
     return { upcoming: up, complete: done };
@@ -141,6 +142,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
     const events = [];
     schedule.forEach(wk => {
+      if (wk.rainedOut) return; // skip rained-out weeks
       const myMatch = wk.matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id);
       if (!myMatch) return;
       // Skip already-completed matches
@@ -287,6 +289,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   // ── Standard week render (This Week / All Weeks) ──
   const renderWeek = (wk, dimmed) => {
     const isPlayoff = wk.isPlayoff || wk.week > (leagueConfig?.regularWeeks || REGULAR_WEEKS);
+    const isRainedOut = wk.rainedOut === true;
     const side = wk.side || getWeekSide(wk.week);
     const weekComplete = isWeekComplete(wk);
     const matches = wk.matches;
@@ -297,26 +300,39 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         <button onClick={() => toggleWeek(wk.week)} style={{
           display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%",
           background: K.card, borderRadius: isExp ? "10px 10px 0 0" : 10,
-          border: `1px solid ${weekComplete ? K.bdr + "60" : wk.week === schedule[currentWeekIdx]?.week ? K.act + "40" : K.bdr}`,
+          border: `1px solid ${isRainedOut ? K.warn + "40" : weekComplete ? K.bdr + "60" : wk.week === schedule[currentWeekIdx]?.week ? K.act + "40" : K.bdr}`,
           borderBottom: isExp ? "none" : undefined,
           padding: "10px 12px", cursor: "pointer",
-          opacity: dimmed ? 0.7 : 1,
+          opacity: isRainedOut ? 0.5 : dimmed ? 0.7 : 1,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: 14, fontWeight: 700, color: isPlayoff ? K.warn : K.t1 }}>
+            <span style={{ fontSize: 14, fontWeight: 700, color: isRainedOut ? K.warn : isPlayoff ? K.warn : K.t1 }}>
               Week {wk.week}
             </span>
             {wk.date && <span style={{ fontSize: 12, color: K.t3 }}>{wk.date}</span>}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <Pill color={K.logoBright} style={{ fontSize: 9 }}>{side === 'front' ? 'FRONT 9' : 'BACK 9'}</Pill>
-            {isPlayoff && <Pill color={K.warn} style={{ fontSize: 9 }}>PLAYOFF</Pill>}
-            {weekComplete && <Pill color={K.grn} style={{ fontSize: 9 }}>FINAL</Pill>}
+            {isRainedOut && <Pill color={K.warn} style={{ fontSize: 9 }}>RAIN OUT</Pill>}
+            {wk.makeupFor && <Pill color={K.teal} style={{ fontSize: 9 }}>MAKEUP</Pill>}
+            {!isRainedOut && <Pill color={K.logoBright} style={{ fontSize: 9 }}>{side === 'front' ? 'FRONT 9' : 'BACK 9'}</Pill>}
+            {isPlayoff && !isRainedOut && <Pill color={K.warn} style={{ fontSize: 9 }}>PLAYOFF</Pill>}
+            {weekComplete && !isRainedOut && <Pill color={K.grn} style={{ fontSize: 9 }}>FINAL</Pill>}
             <span style={{ color: K.t3, fontSize: 13, marginLeft: 2 }}>{isExp ? "▾" : "›"}</span>
           </div>
         </button>
 
-        {isExp && (
+        {isExp && isRainedOut && (
+          <div style={{
+            background: K.inp, borderRadius: "0 0 10px 10px",
+            border: `1px solid ${K.warn}40`, borderTop: "none", padding: "12px",
+            textAlign: "center",
+          }}>
+            <div style={{ fontSize: 13, color: K.warn, fontWeight: 600 }}>Rained Out</div>
+            <div style={{ fontSize: 11, color: K.t3, marginTop: 2 }}>Matchups rescheduled to makeup week</div>
+          </div>
+        )}
+
+        {isExp && !isRainedOut && (
           <div style={{
             background: K.inp, borderRadius: "0 0 10px 10px",
             border: `1px solid ${weekComplete ? K.bdr + "60" : wk.week === schedule[currentWeekIdx]?.week ? K.act + "40" : K.bdr}`,
