@@ -15,8 +15,6 @@ function ScoreCell({ score, par, strokes, size = 13 }) {
   const sh = s + 8;
   const bc = K.t2;
   const dotH = 10;
-  const scoreAreaH = sh + 2;
-  const totalH = dotH + scoreAreaH;
 
   // Border shape — centered absolutely in the score area
   let border = null;
@@ -45,13 +43,13 @@ function ScoreCell({ score, par, strokes, size = 13 }) {
   }
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", height: totalH, justifyContent: "flex-end" }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", height: dotH + sh, justifyContent: "flex-end" }}>
       <div style={{ height: dotH, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
         {strokes > 0 && <span style={{ color: "#3b82f6", fontSize: 10, fontWeight: 900, letterSpacing: 1, lineHeight: 1 }}>{"•".repeat(strokes)}</span>}
       </div>
-      <div style={{ position: "relative", width: sh, height: scoreAreaH, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ position: "relative", width: sh, height: sh, display: "flex", alignItems: "center", justifyContent: "center" }}>
         {border}
-        <span style={{ position: "relative", zIndex: 1, fontSize: s, fontWeight: 700 }}>{score}</span>
+        <span style={{ position: "relative", zIndex: 1, fontSize: s, fontWeight: 700, lineHeight: 1 }}>{score}</span>
       </div>
     </div>
   );
@@ -1017,116 +1015,166 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       {/* ═══ Attestation Popup ═══ */}
       {showAttest && (() => {
         const sc = buildScorecardData();
-        const gridLine = `1px solid ${K.bdr}25`;
+        const colBdr = `1px solid ${K.bdr}30`;
+        const lw = 40;
+        const tw = 30;
+        const lblStyle = { width: lw, flexShrink: 0, fontSize: 9, fontWeight: 700, color: K.t3, display: "flex", alignItems: "center", paddingLeft: 3, borderRight: colBdr, textTransform: "uppercase", letterSpacing: .3 };
+        const totStyle = { width: tw, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", borderLeft: colBdr };
 
-        const AttestPlayerRow = ({ pid }) => {
-          const pl = players.find(p => p.id === pid); if (!pl) return null;
-          const nh = getNineHcp(pid);
+        const getInitials = (pid) => {
+          const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
+          const pl = players.find(p => p.id === effectivePid);
+          return pl ? pl.name.split(' ').map(n => n[0]).join('') : "?";
+        };
+
+        const AHoleRow = () => (
+          <div style={{ display: "flex", background: K.inp, borderBottom: colBdr }}>
+            <div style={{ ...lblStyle, height: 24 }}>HOLE</div>
+            {Array.from({ length: 9 }, (_, i) => (
+              <div key={i} style={{ flex: 1, height: 24, display: "flex", alignItems: "center", justifyContent: "center", borderRight: i < 8 ? colBdr : "none" }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: K.t3 }}>{side === 'front' ? i + 1 : i + 10}</span>
+              </div>
+            ))}
+            <div style={{ ...totStyle, height: 24 }}><span style={{ fontSize: 10, fontWeight: 700, color: K.t3 }}>TOT</span></div>
+          </div>
+        );
+
+        const AParRow = () => (
+          <div style={{ display: "flex", borderBottom: colBdr }}>
+            <div style={{ ...lblStyle, height: 22 }}>PAR</div>
+            {pars.map((p, i) => (
+              <div key={i} style={{ flex: 1, height: 22, display: "flex", alignItems: "center", justifyContent: "center", borderRight: i < 8 ? colBdr : "none" }}>
+                <span style={{ fontSize: 11, fontWeight: 600, color: K.t3 }}>{p}</span>
+              </div>
+            ))}
+            <div style={{ ...totStyle, height: 22 }}><span style={{ fontSize: 11, fontWeight: 700, color: K.t3 }}>{pars.reduce((a, b) => a + b, 0)}</span></div>
+          </div>
+        );
+
+        const APlayerRow = ({ pid }) => {
           let grossTotal = 0;
           const cells = Array.from({ length: 9 }, (_, h) => {
             const s = getS(pid, h); const st = getStrokes(pid, h);
-            grossTotal += s;
+            if (s > 0) grossTotal += s;
             return { s, st };
           });
-          const initials = pl.name.split(' ').map(n => n[0]).join('');
           return (
-            <div style={{ display: "flex", alignItems: "stretch", borderBottom: gridLine }}>
-              <div style={{ width: 24, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, borderRight: gridLine, paddingLeft: 2, display: "flex", alignItems: "center" }}>{initials}</div>
-              <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.t1, fontWeight: 700, borderRight: gridLine, display: "flex", alignItems: "center", justifyContent: "center" }}>{nh}</div>
+            <div style={{ display: "flex", alignItems: "center", borderBottom: colBdr }}>
+              <div style={{ ...lblStyle, height: 38, paddingTop: 10 }}>
+                <span style={{ fontSize: 15, fontWeight: 800, color: K.t1, width: 24, flexShrink: 0 }}>{getInitials(pid)}</span>
+                <span style={{ fontSize: 11, color: "#3b82f6", fontWeight: 700 }}>{getNineHcp(pid)}</span>
+              </div>
               {cells.map((c, h) => (
-                <div key={h} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 38, borderRight: gridLine }}>
-                  <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={13} />
+                <div key={h} style={{ flex: 1, height: 38, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? colBdr : "none" }}>
+                  <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} />
                 </div>
               ))}
-              <div style={{ width: 28, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, color: K.t1 }}>{grossTotal}</div>
+              <div style={{ ...totStyle, height: 38, paddingTop: 10 }}><span style={{ fontSize: 14, fontWeight: 800, color: K.t1 }}>{grossTotal || ""}</span></div>
             </div>
           );
         };
 
-        const AttestTeamRow = ({ pids, isMyTeam }) => {
-          let total = 0;
-          const hw = isMyTeam ? sc.myHW : sc.oppHW;
+        const ATeamRow = ({ pids, isMyTeam }) => {
+          let netTotal = 0;
           return (
-            <div style={{ display: "flex", alignItems: "center", position: "relative" }}>
-              <div style={{ width: 44, flexShrink: 0, padding: "4px 0", borderRight: gridLine }} />
+            <div style={{ display: "flex" }}>
+              <div style={{ ...lblStyle, height: 34, fontSize: 9, fontWeight: 800 }}>TEAM</div>
               {Array.from({ length: 9 }, (_, h) => {
                 let tNet = 0;
                 pids.forEach(pid => { tNet += getS(pid, h) - getStrokes(pid, h); });
-                total += tNet;
+                netTotal += tNet;
                 const won = sc.holeResults[h] === (isMyTeam ? 1 : -1);
                 return <div key={h} style={{
-                  flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t2, lineHeight: "22px",
-                  padding: "3px 0", borderRight: won ? "none" : gridLine,
-                  ...(won ? { background: K.bg, border: `1.5px solid ${K.act}`, borderRadius: 3, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
-                }}>{tNet}</div>;
+                  flex: 1, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
+                  borderRight: h < 8 ? colBdr : "none",
+                  background: won ? K.act + "18" : "transparent",
+                }}>
+                  <div style={{
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    width: 26, height: 26, borderRadius: 3,
+                    border: won ? `1.5px solid ${K.act}` : "none",
+                  }}>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: K.t2 }}>{tNet}</span>
+                  </div>
+                </div>;
               })}
-              <div style={{ width: 28, textAlign: "center", fontSize: 13, fontWeight: 800, color: K.t1, padding: "4px 0" }}>{hw}</div>
+              <div style={{ ...totStyle, height: 34 }}><span style={{ fontSize: 14, fontWeight: 800, color: K.t1 }}>{netTotal}</span></div>
             </div>
           );
         };
+
+        const AMatchRow = () => (
+          <div style={{ display: "flex", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 8, padding: "4px 0", marginBottom: 4, marginTop: 4 }}>
+            <div style={{ ...lblStyle, height: 28, fontSize: 8, fontWeight: 800, color: K.t2 }}>MATCH</div>
+            {sc.runningStatus.map((st, i) => {
+              const colBorderR = i < 8 ? { borderRight: colBdr } : {};
+              if (i === sc.matchEndHole) {
+                const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
+                return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>{sc.matchResultText}</div>;
+              }
+              if (i > sc.matchEndHole) {
+                return <div key={i} style={{ flex: 1, height: 28, ...colBorderR }} />;
+              }
+              const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
+              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>
+                {st > 0 ? <><span style={{ fontSize: 14 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 14 }}>▼</span>{Math.abs(st)}</> : "—"}
+              </div>;
+            })}
+            <div style={{ ...totStyle, height: 28 }} />
+          </div>
+        );
 
         return (<>
           <div onClick={() => setShowAttest(false)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 500 }} />
           <div data-popup style={{ position: "fixed", inset: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: "60px 16px 16px" }}>
             <div style={{ background: K.bg, border: `1.5px solid ${K.warn}50`, borderRadius: 16, padding: "16px 12px 20px", width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto" }}>
-              {/* Header — Players vs Players with match score */}
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 14, padding: "0 4px" }}>
+              {/* Header — Players vs Players with match score and winner arrow */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 14, padding: "0 4px" }}>
                 <div style={{ flex: 1, textAlign: "right" }}>
                   {sc.myPidsSorted.map(pid => {
-                    const pl = players.find(p => p.id === pid);
+                    const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
+                    const pl = players.find(p => p.id === effectivePid);
                     const last = pl?.name?.split(' ').slice(1).join(' ') || pl?.name || "?";
                     return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "WIN" ? K.grn : K.t1, lineHeight: 1.3 }}>{last}</div>;
                   })}
                 </div>
-                <div style={{ textAlign: "center", minWidth: 70 }}>
+                {sc.matchResult !== "TIE" && (
+                  <div style={{ color: sc.matchResult === "WIN" ? "#1a8c3f" : K.red, fontSize: 15, fontWeight: 800, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>
+                )}
+                <div style={{ textAlign: "center", minWidth: 60 }}>
                   <div style={{ fontSize: 26, fontWeight: 800, color: sc.resultColor, lineHeight: 1 }}>{sc.matchResultText}</div>
                 </div>
+                {sc.matchResult !== "TIE" && (
+                  <div style={{ color: sc.matchResult === "LOSS" ? "#1a8c3f" : K.red, fontSize: 15, fontWeight: 800, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>
+                )}
                 <div style={{ flex: 1, textAlign: "left" }}>
                   {sc.oppPidsSorted.map(pid => {
-                    const pl = players.find(p => p.id === pid);
+                    const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
+                    const pl = players.find(p => p.id === effectivePid);
                     const last = pl?.name?.split(' ').slice(1).join(' ') || pl?.name || "?";
                     return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "LOSS" ? K.grn : K.t1, lineHeight: 1.3 }}>{last}</div>;
                   })}
                 </div>
               </div>
 
-              {/* Scorecard */}
-              <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine, background: K.inp, borderRadius: "4px 4px 0 0" }}>
-                <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.t2, fontWeight: 800, padding: "6px 0", borderRight: gridLine, paddingLeft: 2, letterSpacing: .3 }}>HOLE</div>
-                {Array.from({ length: 9 }, (_, i) => (
-                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t1, fontWeight: 700, lineHeight: "22px", padding: "4px 0", borderRight: gridLine }}>{side === 'front' ? i + 1 : i + 10}</div>
-                ))}
-                <div style={{ width: 28, textAlign: "center", fontSize: 10, color: K.t1, fontWeight: 700, padding: "4px 0" }}>TOT</div>
-              </div>
-              <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
-                <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 600, padding: "4px 0", borderRight: gridLine, paddingLeft: 2 }}>PAR</div>
-                {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t3, fontWeight: 600, lineHeight: "22px", padding: "4px 0", borderRight: gridLine }}>{p}</div>)}
-                <div style={{ width: 28, textAlign: "center", fontSize: 13, color: K.t3, fontWeight: 600, padding: "4px 0" }}>{pars.reduce((a, b) => a + b, 0)}</div>
+              {/* My team card */}
+              <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, overflow: "hidden", marginBottom: 4 }}>
+                <AHoleRow />
+                <AParRow />
+                {sc.myPids.map(pid => <APlayerRow key={pid} pid={pid} />)}
+                <ATeamRow pids={sc.myPids} isMyTeam={true} />
               </div>
 
-              {sc.myPids.map(pid => <AttestPlayerRow key={pid} pid={pid} />)}
-              <AttestTeamRow pids={sc.myPids} isMyTeam={true} />
-              <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "2px 0" }} />
+              {/* Match status */}
+              <AMatchRow />
 
-              {/* Match status — clinch aware, show actual score */}
-              <div style={{ display: "flex", alignItems: "center", borderBottom: `2px solid ${K.bdr}40` }}>
-                <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.t3, fontWeight: 700, padding: "5px 0", borderRight: gridLine, paddingLeft: 2 }}>MATCH</div>
-                {sc.runningStatus.map((st, i) => {
-                  if (i === sc.matchEndHole) {
-                    const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-                    return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color, fontWeight: 800, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }}>{sc.matchResultText}</div>;
-                  }
-                  if (i > sc.matchEndHole) {
-                    return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }} />;
-                  }
-                  const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-                  return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: gridLine }}>{st > 0 ? <><span style={{ fontSize: 15 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 15 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
-                })}
-                <div style={{ width: 28, padding: "5px 0" }} />
+              {/* Opp team card */}
+              <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, overflow: "hidden" }}>
+                <AHoleRow />
+                <AParRow />
+                {sc.oppPids.map(pid => <APlayerRow key={pid} pid={pid} />)}
+                <ATeamRow pids={sc.oppPids} isMyTeam={false} />
               </div>
-
-              {sc.oppPids.map(pid => <AttestPlayerRow key={pid} pid={pid} />)}
-              <AttestTeamRow pids={sc.oppPids} isMyTeam={false} />
 
               <div style={{ marginTop: 16 }}>
                 <button onClick={attestMatch} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.grn, border: "none", color: K.bg, fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
