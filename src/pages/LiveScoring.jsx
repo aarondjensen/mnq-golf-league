@@ -118,33 +118,31 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       return ids.length ? sc / (ids.length * 9) : 0;
     };
 
-    const getMatchStatus = (match, mi) => {
+    const getMatchStatus = (match) => {
       const mt1 = teams.find(t => t.id === match.team1);
       const mt2 = teams.find(t => t.id === match.team2);
       if (!mt1 || !mt2) return null;
       const mr = matchResults.find(r => r.week === week && r.team1Id === match.team1 && r.team2Id === match.team2);
       const prog = getProgress(match);
 
-      // Calculate live match status from hole scores
       const t1Pids = [mt1.player1, mt1.player2];
       const t2Pids = [mt2.player1, mt2.player2];
-      const getHcp = (pid) => { const p = players.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
-      const getStrokesMap = (nh) => {
+      const localGetHcp = (pid) => { const p = players.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
+      const localGetStrokesMap = (nh) => {
         const map = {}; const sorted = hcps.map((h, i) => ({ idx: i, hcp: h })).sort((a, b) => a.hcp - b.hcp);
         let rem = Math.abs(nh); for (const h of sorted) { if (rem <= 0) break; map[h.idx] = (map[h.idx] || 0) + 1; rem--; }
         for (const h of sorted) { if (rem <= 0) break; map[h.idx] = (map[h.idx] || 0) + 1; rem--; }
         return map;
       };
-      const getStrokes = (pid, h) => getStrokesMap(getHcp(pid))[h] || 0;
-      const getS = (pid, h) => holeScores[`w${week}_p${pid}_h${h}`] || 0;
+      const localGetStrokes = (pid, h) => localGetStrokesMap(localGetHcp(pid))[h] || 0;
+      const localGetS = (pid, h) => holeScores[`w${week}_p${pid}_h${h}`] || 0;
 
-      // Per-hole net comparison
       const holeResults = [];
       let thru = 0;
       for (let h = 0; h < 9; h++) {
         let t1N = 0, t2N = 0, t1Ok = true, t2Ok = true;
-        t1Pids.forEach(pid => { const s = getS(pid, h); if (s <= 0) t1Ok = false; else t1N += s - getStrokes(pid, h); });
-        t2Pids.forEach(pid => { const s = getS(pid, h); if (s <= 0) t2Ok = false; else t2N += s - getStrokes(pid, h); });
+        t1Pids.forEach(pid => { const s = localGetS(pid, h); if (s <= 0) t1Ok = false; else t1N += s - localGetStrokes(pid, h); });
+        t2Pids.forEach(pid => { const s = localGetS(pid, h); if (s <= 0) t2Ok = false; else t2N += s - localGetStrokes(pid, h); });
         if (t1Ok && t2Ok) { holeResults.push(t1N < t2N ? 1 : t2N < t1N ? -1 : 0); thru = h + 1; }
         else holeResults.push(null);
       }
@@ -153,7 +151,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       let cum = 0;
       holeResults.forEach(r => { if (r !== null) { cum += r; } runningStatus.push(r !== null ? cum : null); });
 
-      // Calculate clinch
       let clinchHole = null, clinchText = null;
       for (let h = 0; h < 9; h++) {
         if (runningStatus[h] === null) break;
@@ -170,7 +167,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       if (mr) {
         statusText = mr.matchResultText || "Final";
         const winner = mr.matchWinnerId;
-        statusColor = winner === mt1.id ? matchGrn : winner === mt2.id ? matchGrn : K.t3;
+        statusColor = winner ? matchGrn : K.t3;
       } else if (clinchText) {
         statusText = clinchText;
         statusColor = finalStatus > 0 ? matchGrn : K.red;
@@ -180,7 +177,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         else { statusText = "ALL SQUARE"; statusColor = K.t2; }
       }
 
-      return { mt1, mt2, mr, prog, thru, statusText, statusColor, holeResults, runningStatus, t1Pids, t2Pids, getS, getStrokes, clinchHole, clinchText };
+      return { mt1, mt2, mr, prog, thru, statusText, statusColor, holeResults, runningStatus, t1Pids, t2Pids, localGetS, localGetStrokes, localGetHcp, clinchHole, clinchText };
     };
 
     return (
@@ -191,7 +188,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {matches.map((m, mi) => {
-            const ms = getMatchStatus(m, mi);
+            const ms = getMatchStatus(m);
             if (!ms) return null;
             const { mt1, mt2, mr, prog, thru, statusText, statusColor } = ms;
             const isExpanded = expandedMatch === mi;
@@ -199,14 +196,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
             return (
               <div key={mi} style={{ background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 10, overflow: "hidden" }}>
-                {/* Collapsed row — always visible */}
                 <button onClick={() => setExpandedMatch(isExpanded ? null : mi)} style={{ width: "100%", padding: "10px 14px", cursor: "pointer", textAlign: "left", background: "transparent", border: "none", display: "flex", flexDirection: "column", gap: 4 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%" }}>
                     <span style={{ fontSize: 10, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1 }}>Match {mi + 1} · {getTeeTime(mi)}</span>
                     <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
                       {mr?.attested && <Pill color={K.grn}>FINAL</Pill>}
                       {mr && !mr.attested && <Pill color={K.warn}>SIGNED</Pill>}
-                      {!mr && prog > 0 && prog < 1 && <Pill color={K.acc}>{thru > 0 ? `Thru ${thru}` : `${Math.round(prog * 100)}%`}</Pill>}
+                      {!mr && prog > 0 && <Pill color={K.acc}>{thru > 0 ? `Thru ${thru}` : `${Math.round(prog * 100)}%`}</Pill>}
                       {!mr && prog === 0 && <Pill color={K.t3}>—</Pill>}
                       <span style={{ fontSize: 14, color: K.t3, fontWeight: 600, marginLeft: 2, transform: isExpanded ? "rotate(180deg)" : "none", transition: "transform .2s", display: "inline-block" }}>▾</span>
                     </div>
@@ -225,16 +221,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   )}
                 </button>
 
-                {/* Expanded — full match scorecard */}
                 {isExpanded && (() => {
-                  const { t1Pids, t2Pids, getS, getStrokes, holeResults, runningStatus, clinchHole, clinchText } = ms;
+                  const { t1Pids, t2Pids, localGetS, localGetStrokes, localGetHcp, holeResults, runningStatus, clinchHole, clinchText } = ms;
                   const colBdr = `1px solid ${K.bdr}30`;
                   const lw = 40;
                   const tw = 30;
                   const lblStyle = { width: lw, flexShrink: 0, fontSize: 9, fontWeight: 700, color: K.t3, display: "flex", alignItems: "center", paddingLeft: 3, borderRight: colBdr, textTransform: "uppercase", letterSpacing: .3 };
                   const totStyle = { width: tw, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", borderLeft: colBdr };
                   const getInitials = (pid) => { const pl = players.find(p => p.id === pid); return pl ? pl.name.split(' ').map(n => n[0]).join('') : "?"; };
-                  const getHcp = (pid) => { const p = players.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
 
                   const HRow = () => (
                     <div style={{ display: "flex", background: K.inp, borderBottom: colBdr }}>
@@ -256,10 +250,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       <div style={{ display: "flex", alignItems: "center", borderBottom: colBdr }}>
                         <div style={{ ...lblStyle, height: 34, paddingTop: 8 }}>
                           <span style={{ fontSize: 14, fontWeight: 800, color: K.t1, width: 22, flexShrink: 0 }}>{getInitials(pid)}</span>
-                          <span style={{ fontSize: 10, color: "#3b82f6", fontWeight: 700 }}>{getHcp(pid)}</span>
+                          <span style={{ fontSize: 10, color: "#3b82f6", fontWeight: 700 }}>{localGetHcp(pid)}</span>
                         </div>
                         {Array.from({ length: 9 }, (_, h) => {
-                          const s = getS(pid, h); const st = getStrokes(pid, h); if (s > 0) gt += s;
+                          const s = localGetS(pid, h); const st = localGetStrokes(pid, h); if (s > 0) gt += s;
                           return <div key={h} style={{ flex: 1, height: 34, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? colBdr : "none" }}>
                             <ScoreCell score={s} par={pars[h]} strokes={st} size={13} />
                           </div>;
@@ -274,10 +268,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       <div style={{ display: "flex" }}>
                         <div style={{ ...lblStyle, height: 30, fontSize: 9, fontWeight: 800 }}>NET</div>
                         {Array.from({ length: 9 }, (_, h) => {
-                          let tN = 0; pids.forEach(pid => { tN += getS(pid, h) - getStrokes(pid, h); }); nt += tN;
+                          let tN = 0; pids.forEach(pid => { tN += localGetS(pid, h) - localGetStrokes(pid, h); }); nt += tN;
                           const won = holeResults[h] === (isT1 ? 1 : -1);
                           return <div key={h} style={{ flex: 1, height: 30, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? colBdr : "none", background: won ? K.act + "18" : "transparent" }}>
-                            <span style={{ fontSize: 13, fontWeight: 800, color: K.t2 }}>{getS(pids[0], h) > 0 || getS(pids[1], h) > 0 ? tN : ""}</span>
+                            <span style={{ fontSize: 13, fontWeight: 800, color: K.t2 }}>{localGetS(pids[0], h) > 0 || localGetS(pids[1], h) > 0 ? tN : ""}</span>
                           </div>;
                         })}
                         <div style={{ ...totStyle, height: 30 }}><span style={{ fontSize: 13, fontWeight: 800, color: K.t1 }}>{nt || ""}</span></div>
@@ -306,25 +300,19 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
                   return (
                     <div style={{ padding: "0 10px 10px", borderTop: `1px solid ${K.bdr}30` }}>
-                      {/* Team 1 scorecard */}
                       <div style={{ fontSize: 11, fontWeight: 700, color: K.acc, textTransform: "uppercase", letterSpacing: 1, margin: "8px 0 4px 2px" }}>{mt1.name}</div>
                       <div style={{ background: K.card, border: `1px solid ${K.bdr}40`, borderRadius: 8, overflow: "hidden" }}>
                         <HRow /><PRow />
                         {t1Pids.map(pid => <SRow key={pid} pid={pid} />)}
                         <TRow pids={t1Pids} isT1={true} />
                       </div>
-
                       <MRow />
-
-                      {/* Team 2 scorecard */}
                       <div style={{ fontSize: 11, fontWeight: 700, color: K.acc, textTransform: "uppercase", letterSpacing: 1, margin: "4px 0 4px 2px" }}>{mt2.name}</div>
                       <div style={{ background: K.card, border: `1px solid ${K.bdr}40`, borderRadius: 8, overflow: "hidden" }}>
                         <HRow /><PRow />
                         {t2Pids.map(pid => <SRow key={pid} pid={pid} />)}
                         <TRow pids={t2Pids} isT1={false} />
                       </div>
-
-                      {/* Commissioner: Enter Scores button */}
                       {isComm && !isFinalized && (
                         <button onClick={() => { setActiveMatch(m); setCurHole(0); setShowAllMatches(false); }} style={{ width: "100%", padding: 10, borderRadius: 8, marginTop: 8, cursor: "pointer", background: K.act, border: "none", color: K.bg, fontSize: 13, fontWeight: 700 }}>
                           Enter Scores
@@ -338,7 +326,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           })}
         </div>
 
-        {/* Finalize Week button — commissioner only */}
         {allMatchesAttested && isComm && !isWeekLocked && saveWeekSchedule && (
           <button onClick={async () => {
             await saveWeekSchedule({ ...weekSch, locked: true });
