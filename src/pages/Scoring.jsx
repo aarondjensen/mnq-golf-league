@@ -501,7 +501,29 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     }
                   }
 
+                  // Absent detection for all-matches view
+                  const amIsAbsent = (pid) => holeScores[`w${week}_p${pid}_habsent`] === 1;
+                  const amGetTeammate = (pid) => {
+                    if (mT1Pids.includes(pid)) return mT1Pids.find(p => p !== pid);
+                    if (mT2Pids.includes(pid)) return mT2Pids.find(p => p !== pid);
+                    return null;
+                  };
+                  const amGetEffectiveScore = (pid, h) => {
+                    if (amIsAbsent(pid)) {
+                      const tm = amGetTeammate(pid);
+                      if (!tm || amIsAbsent(tm)) {
+                        // Both absent — net bogey
+                        const nh = amGetHcp(pid);
+                        const strokesOnHole = amGetStrokesMap(nh)[h] || 0;
+                        return (pars[h] || 4) + 1 + strokesOnHole;
+                      }
+                      return amGetScore(tm, h); // teammate's score doubled
+                    }
+                    return amGetScore(pid, h);
+                  };
+
                   const PlayerRow = ({ pid }) => {
+                    const absent = amIsAbsent(pid);
                     let gt = 0;
                     return (
                       <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
@@ -512,9 +534,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                           <span style={{ fontSize: 10, color: "#3b82f6", fontWeight: 700 }}>{amGetHcp(pid)}</span>
                         </div>
                         {Array.from({ length: 9 }, (_, h) => {
-                          const s = amGetScore(pid, h); const st = amGetStrokes(pid, h); if (s > 0) gt += s;
+                          const s = amGetEffectiveScore(pid, h); const st = amGetStrokes(pid, h); if (s > 0) gt += s;
                           return <div key={h} style={{ flex: 1, height: 38, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? gridLine : "none" }}>
-                            <ScoreCell score={s} par={pars[h]} strokes={st} size={13} />
+                            <ScoreCell score={s} par={pars[h]} strokes={st} size={13} color={absent ? K.red : undefined} />
                           </div>;
                         })}
                       </div>
@@ -527,7 +549,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                         <div style={{ width: 44, flexShrink: 0, fontSize: 9, color: K.act, fontWeight: 800, borderRight: gridLine, paddingLeft: 4, display: "flex", alignItems: "center", height: 28 }}>NET</div>
                         {Array.from({ length: 9 }, (_, h) => {
                           let tNet = 0; let ok = true;
-                          pids.forEach(pid => { const s = amGetScore(pid, h); if (s <= 0) ok = false; else tNet += s - amGetStrokes(pid, h); });
+                          pids.forEach(pid => { const s = amGetEffectiveScore(pid, h); if (s <= 0) ok = false; else tNet += s - amGetStrokes(pid, h); });
                           const won = dispHoleResults[h] === (isDispT1 ? 1 : -1);
                           return <div key={h} style={{
                             flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color: !ok ? K.t3 + "30" : K.t1, lineHeight: "22px",
@@ -894,7 +916,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   <div style={{ width: 16, flexShrink: 0, fontSize: 10, color: "#3b82f6", fontWeight: 700, borderRight: gridLine, display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: 3 }}>{nh}</div>
                   {cells.map((c, h) => (
                     <div key={h} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 38, borderRight: h < 8 ? gridLine : "none" }}>
-                      <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={13} />
+                      <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={13} color={isPlayerAbsent(pid) ? K.red : undefined} />
                     </div>
                   ))}
                 </div>
@@ -1025,7 +1047,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             <div style={{ display: "flex" }}>
               {cells.map((c, h) => (
                 <div key={h} style={{ flex: 1, minHeight: 38, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? colBdr : "none" }}>
-                  <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} color={isBothAbsent(pid) ? K.red : undefined} />
+                  <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} color={isPlayerAbsent(pid) ? K.red : undefined} />
                 </div>
               ))}
             </div>
@@ -1114,10 +1136,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               </div>
               {cells.map((c, h) => (
                 <div key={h} style={{ flex: 1, height: 38, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? colBdr : "none" }}>
-                  <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} color={isBothAbsent(pid) ? K.red : undefined} />
+                  <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} color={isPlayerAbsent(pid) ? K.red : undefined} />
                 </div>
               ))}
-              <div style={{ ...totStyle, height: 38, paddingTop: 10 }}><span style={{ fontSize: 14, fontWeight: 800, color: isBothAbsent(pid) ? K.red : K.t1 }}>{grossTotal || ""}</span></div>
+              <div style={{ ...totStyle, height: 38, paddingTop: 10 }}><span style={{ fontSize: 14, fontWeight: 800, color: isPlayerAbsent(pid) ? K.red : K.t1 }}>{grossTotal || ""}</span></div>
             </div>
           );
         };
@@ -1370,10 +1392,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               </div>
               {cells.map((c, h) => (
                 <div key={h} style={{ flex: 1, height: 38, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? colBdr : "none" }}>
-                  <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} color={isBothAbsent(pid) ? K.red : undefined} />
+                  <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} color={isPlayerAbsent(pid) ? K.red : undefined} />
                 </div>
               ))}
-              <div style={{ ...totStyle, height: 38, paddingTop: 10 }}><span style={{ fontSize: 14, fontWeight: 800, color: isBothAbsent(pid) ? K.red : K.t1 }}>{grossTotal || ""}</span></div>
+              <div style={{ ...totStyle, height: 38, paddingTop: 10 }}><span style={{ fontSize: 14, fontWeight: 800, color: isPlayerAbsent(pid) ? K.red : K.t1 }}>{grossTotal || ""}</span></div>
             </div>
           );
         };
