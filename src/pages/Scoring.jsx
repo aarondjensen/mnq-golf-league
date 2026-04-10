@@ -438,14 +438,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   const PlayerRow = ({ pid }) => {
                     let gt = 0;
                     return (
-                      <div style={{ display: "flex", alignItems: "stretch", borderBottom: gridLine }}>
-                        <div style={{ width: 44, flexShrink: 0, borderRight: gridLine, paddingLeft: 4, display: "flex", alignItems: "flex-end", paddingBottom: 8, gap: 1 }}>
+                      <div style={{ display: "flex", borderBottom: gridLine }}>
+                        <div style={{ width: 44, flexShrink: 0, borderRight: gridLine, paddingLeft: 4, display: "flex", alignItems: "center", height: 36, gap: 1 }}>
                           <span style={{ fontSize: 13, color: K.t1, fontWeight: 800 }}>{getInitials(pid)}</span>
                           <span style={{ fontSize: 10, color: "#3b82f6", fontWeight: 700 }}>{amGetHcp(pid)}</span>
                         </div>
                         {Array.from({ length: 9 }, (_, h) => {
                           const s = amGetScore(pid, h); const st = amGetStrokes(pid, h); if (s > 0) gt += s;
-                          return <div key={h} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 36, borderRight: h < 8 ? gridLine : "none" }}>
+                          return <div key={h} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", height: 36, borderRight: h < 8 ? gridLine : "none" }}>
                             <ScoreCell score={s} par={pars[h]} strokes={st} size={13} />
                           </div>;
                         })}
