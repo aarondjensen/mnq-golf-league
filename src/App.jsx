@@ -347,12 +347,12 @@ export default function GolfLeagueApp() {
           <div style={{ position: "absolute", left: 14, display: "flex", alignItems: "center", gap: 6 }}>
             {syncing && <span className="pu" style={{ fontSize: 8, color: K.grn }}>● LIVE</span>}
             {isComm && (
-              <button onClick={() => setShowPlayerPicker(true)} style={{ background: impersonating ? K.teal + "15" : "none", border: `1px solid ${impersonating ? K.teal + "40" : K.bdr}`, borderRadius: 6, padding: "3px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: 3 }}>
-                <div style={{ textAlign: "left", lineHeight: 1.15 }}>
-                  <div style={{ fontSize: 9, color: impersonating ? K.teal : K.t3, fontWeight: 600 }}>Switch</div>
-                  <div style={{ fontSize: 9, color: impersonating ? K.teal : K.t3, fontWeight: 700 }}>Player</div>
+              <button onClick={() => setShowPlayerPicker(true)} style={{ background: impersonating ? K.teal + "15" : "none", border: `1px solid ${impersonating ? K.teal + "40" : K.bdr}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                <div style={{ textAlign: "left", lineHeight: 1.2 }}>
+                  <div style={{ fontSize: 11, color: impersonating ? K.teal : K.t3, fontWeight: 600 }}>Switch</div>
+                  <div style={{ fontSize: 11, color: impersonating ? K.teal : K.t3, fontWeight: 700 }}>Player</div>
                 </div>
-                <span style={{ fontSize: 8, color: K.t3 }}>▾</span>
+                <span style={{ fontSize: 10, color: K.t3 }}>▾</span>
               </button>
             )}
           </div>
