@@ -108,65 +108,97 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   if (!course?.name) return <EmptyState icon="flag" title="Course not configured" subtitle="Commissioner needs to set up the course." />;
   if (!matches.length) return <EmptyState icon="calendar" title="No matches this week" subtitle="Commissioner needs to set the schedule." />;
 
-  // ── All Matches view ──
+  // ── All Matches view (Schedule "This Week" style) ──
   if (showAllMatches && !activeMatch) {
-    const gn = (id) => teams.find(t => t.id === id)?.name || "TBD";
-    const getProgress = (match) => {
-      const ids = []; const _t1 = teams.find(t => t.id === match.team1); const _t2 = teams.find(t => t.id === match.team2);
-      if (_t1) ids.push(_t1.player1, _t1.player2); if (_t2) ids.push(_t2.player1, _t2.player2);
-      let sc = 0; ids.forEach(pid => { for (let h = 0; h < 9; h++) if (holeScores[`w${week}_p${pid}_h${h}`]) sc++; });
-      return ids.length ? sc / (ids.length * 9) : 0;
+    const formatTeeTime = (idx) => {
+      const base = leagueConfig?.startTime || "4:28 PM";
+      const interval = leagueConfig?.teeInterval || 8;
+      const [timePart, ampm] = base.split(' ');
+      const [fh, fm] = timePart.split(':').map(Number);
+      let mins = (ampm === 'PM' && fh !== 12 ? fh + 12 : fh) * 60 + fm + idx * interval;
+      const hr = Math.floor(mins / 60) % 12 || 12;
+      const mn = mins % 60;
+      const ap = Math.floor(mins / 60) >= 12 ? 'PM' : 'AM';
+      return `${hr}:${String(mn).padStart(2, '0')} ${ap}`;
     };
+    const dn = (pid) => {
+      const pl = players.find(p => p.id === pid);
+      if (!pl) return "TBD";
+      const parts = pl.name.split(' ');
+      return parts.length > 1 ? parts[parts.length - 1] : parts[0];
+    };
+
     return (
       <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
           <button onClick={() => setShowAllMatches(false)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t2, fontSize: 13, padding: "7px 14px", cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: 5 }}>{I.arrowLeft(13, K.t2)} My Match</button>
-          <div style={{ fontSize: 18, fontWeight: 700, color: K.t1 }}>Week {week}</div>
-          <div style={{ width: 90 }} />
+          <div style={{ textAlign: "right" }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1.5 }}>Week {week}</div>
+            <div style={{ fontSize: 9, color: K.t3 }}>{weekSch?.date || ""}</div>
+          </div>
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
           {matches.map((m, mi) => {
-            const _t1 = teams.find(t => t.id === m.team1);
-            const _t2 = teams.find(t => t.id === m.team2);
-            if (!_t1 || !_t2) return null;
-            const prog = getProgress(m);
-            const mr = matchResults.find(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2);
-            const statusStr = mr ? (mr.matchResultText || "Final") : prog === 0 ? "—" : "In Progress";
-            const statusColor = mr ? (mr.matchWinnerId ? matchGrn : K.t3) : K.t2;
+            const rawT1 = teams.find(t => t.id === m.team1);
+            const rawT2 = teams.find(t => t.id === m.team2);
+            if (!rawT1 || !rawT2) return null;
+            const res = matchResults.find(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2);
+            const isMyMatch = myTeam && (m.team1 === myTeam.id || m.team2 === myTeam.id);
+
+            const swapped = isMyMatch && m.team2 === myTeam.id;
+            const dispT1 = swapped ? rawT2 : rawT1;
+            const dispT2 = swapped ? rawT1 : rawT2;
+            const score1 = res ? (swapped ? res.team2Points : res.team1Points) : null;
+            const score2 = res ? (swapped ? res.team1Points : res.team2Points) : null;
+
             return (
-              <div key={mi} style={{ background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 10, padding: "10px 14px" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1 }}>Match {mi + 1} · {getTeeTime(mi)}</span>
-                  <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                    {mr?.attested && <Pill color={K.grn}>FINAL</Pill>}
-                    {mr && !mr.attested && <Pill color={K.warn}>SIGNED</Pill>}
-                    {!mr && prog > 0 && <Pill color={K.acc}>{`${Math.round(prog * 100)}%`}</Pill>}
-                  </div>
+              <div key={mi} style={{ background: K.card, borderRadius: 8, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}40`, padding: "8px 10px", display: "flex", alignItems: "center" }}>
+                {/* Left team */}
+                <div style={{ flex: 1, textAlign: "right", paddingRight: res && score1 > score2 ? 8 : 18, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                  <div style={{ fontSize: 15, fontWeight: res && score1 > score2 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT1?.player1)}</div>
+                  <div style={{ fontSize: 15, fontWeight: res && score1 > score2 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT1?.player2)}</div>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{_t1.name}</div></div>
-                  <div style={{ textAlign: "center", minWidth: 60 }}><span style={{ fontSize: 14, fontWeight: 800, color: statusColor }}>{statusStr}</span></div>
-                  <div style={{ flex: 1, textAlign: "right" }}><div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{_t2.name}</div></div>
-                </div>
-                {!mr && prog > 0 && prog < 1 && <div style={{ marginTop: 6, height: 3, background: K.inp, borderRadius: 2, overflow: "hidden" }}><div style={{ height: "100%", width: `${prog * 100}%`, background: K.acc, borderRadius: 2 }} /></div>}
-                {isComm && !mr && (
-                  <button onClick={() => { setActiveMatch(m); setCurHole(0); setShowAllMatches(false); }} style={{ width: "100%", padding: 8, borderRadius: 6, marginTop: 8, cursor: "pointer", background: K.act, border: "none", color: K.bg, fontSize: 12, fontWeight: 700 }}>
-                    Enter Scores
-                  </button>
+                {/* Winner arrow left */}
+                {res && score1 > score2 && (
+                  <div style={{ color: "#1a8c3f", fontSize: 15, fontWeight: 800, marginRight: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>
                 )}
+                {/* Center — match result or tee time */}
+                <div style={{ textAlign: "center", minWidth: 74, flexShrink: 0, padding: "0 2px" }}>
+                  {res ? (
+                    <div style={{ fontSize: 20, fontWeight: 800, color: K.t1, letterSpacing: .5 }}>
+                      {res.matchResultText || `${score1}-${score2}`}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 18, fontWeight: 800, color: K.act, letterSpacing: .3 }}>{formatTeeTime(mi)}</div>
+                  )}
+                </div>
+                {/* Winner arrow right */}
+                {res && score2 > score1 && (
+                  <div style={{ color: "#1a8c3f", fontSize: 15, fontWeight: 800, marginLeft: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>
+                )}
+                {/* Right team */}
+                <div style={{ flex: 1, textAlign: "left", paddingLeft: res && score2 > score1 ? 8 : 18, overflow: "hidden" }}>
+                  <div style={{ fontSize: 15, fontWeight: res && score2 > score1 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT2?.player1)}</div>
+                  <div style={{ fontSize: 15, fontWeight: res && score2 > score1 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT2?.player2)}</div>
+                </div>
               </div>
             );
           })}
         </div>
 
-        {allMatchesAttested && isComm && !isWeekLocked && saveWeekSchedule && (
-          <button onClick={async () => {
-            await saveWeekSchedule({ ...weekSch, locked: true });
-            setToast("Week " + week + " finalized");
-            setTimeout(() => setToast(null), 2000);
-          }} style={{ width: "100%", padding: 14, borderRadius: 12, marginTop: 16, cursor: "pointer", background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: 800 }}>
-            Finalize Week {week}
-          </button>
+        {isComm && (
+          <div style={{ marginTop: 12 }}>
+            {allMatchesAttested && !isWeekLocked && saveWeekSchedule && (
+              <button onClick={async () => {
+                await saveWeekSchedule({ ...weekSch, locked: true });
+                setToast("Week " + week + " finalized");
+                setTimeout(() => setToast(null), 2000);
+              }} style={{ width: "100%", padding: 14, borderRadius: 12, cursor: "pointer", background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: 800 }}>
+                Finalize Week {week}
+              </button>
+            )}
+          </div>
         )}
 
         {toast && (
@@ -535,11 +567,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           <BackBtn onClick={() => { setActiveMatch(null); }} />
         </div>
       )}
-      {/* See All Matches link */}
+      {/* See All Matches */}
       {!activeMatch && (
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
-          <button onClick={() => setShowAllMatches(true)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.acc, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: "6px 12px", letterSpacing: 0.5 }}>
-            All Matches ›
+        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+          <button onClick={() => setShowAllMatches(true)} style={{ background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.acc, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: "8px 14px", display: "flex", alignItems: "center", gap: 6 }}>
+            All Matches {I.arrowLeft(11, K.acc)}
           </button>
         </div>
       )}
