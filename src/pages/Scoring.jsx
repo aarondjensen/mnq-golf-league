@@ -399,15 +399,21 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div key={mi} style={{ background: K.card, borderRadius: 10, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}40`, overflow: "hidden" }}>
                 <button onClick={() => setExpandedMatch(isExp ? null : mi)} style={{ width: "100%", padding: "8px 10px", cursor: "pointer", textAlign: "left", background: "transparent", border: "none" }}>
                   <div style={{ display: "flex", alignItems: "center" }}>
-                    {/* Left team — fixed width */}
-                    <div style={{ flex: 1, textAlign: "right", paddingRight: 4, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                    {/* Left team */}
+                    <div style={{ flex: 1, textAlign: "right", paddingRight: 4, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
                       <div style={{ fontSize: 14, fontWeight: t1Leading ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT1?.player1)}</div>
                       <div style={{ fontSize: 14, fontWeight: t1Leading ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT1?.player2)}</div>
                     </div>
                     {/* Left arrow — fixed 16px column */}
                     <div style={{ width: 16, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      {t1Leading && <div style={{ color: "#1a8c3f", fontSize: 14, fontWeight: 800, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>}
-                      {isFinalOrSigned && t2Leading && <div style={{ color: K.red, fontSize: 14, fontWeight: 800, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>}
+                      {t1Leading && (
+                        <svg width="10" height="12" viewBox="0 0 10 12" style={{ transform: "rotate(-90deg)" }}>
+                          {isFinalOrSigned
+                            ? <polygon points="5,0 10,12 0,12" fill="#1a8c3f" />
+                            : <polygon points="5,1 9,11 1,11" fill="none" stroke="#1a8c3f" strokeWidth="1.5" />
+                          }
+                        </svg>
+                      )}
                     </div>
                     {/* Center — fixed width */}
                     <div style={{ textAlign: "center", width: 80, flexShrink: 0 }}>
@@ -418,11 +424,17 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     </div>
                     {/* Right arrow — fixed 16px column */}
                     <div style={{ width: 16, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      {t2Leading && <div style={{ color: "#1a8c3f", fontSize: 14, fontWeight: 800, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>}
-                      {isFinalOrSigned && t1Leading && <div style={{ color: K.red, fontSize: 14, fontWeight: 800, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>}
+                      {t2Leading && (
+                        <svg width="10" height="12" viewBox="0 0 10 12" style={{ transform: "rotate(90deg)" }}>
+                          {isFinalOrSigned
+                            ? <polygon points="5,0 10,12 0,12" fill="#1a8c3f" />
+                            : <polygon points="5,1 9,11 1,11" fill="none" stroke="#1a8c3f" strokeWidth="1.5" />
+                          }
+                        </svg>
+                      )}
                     </div>
-                    {/* Right team — fixed width */}
-                    <div style={{ flex: 1, textAlign: "left", paddingLeft: 4, overflow: "hidden" }}>
+                    {/* Right team */}
+                    <div style={{ flex: 1, textAlign: "left", paddingLeft: 4, overflow: "hidden", display: "flex", flexDirection: "column", gap: 3 }}>
                       <div style={{ fontSize: 14, fontWeight: t2Leading ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT2?.player1)}</div>
                       <div style={{ fontSize: 14, fontWeight: t2Leading ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT2?.player2)}</div>
                     </div>
