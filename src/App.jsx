@@ -351,7 +351,6 @@ export default function GolfLeagueApp() {
         <div style={{ maxWidth: 900, width: "100%", margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: "0 14px" }}>
           {/* Left: LIVE dot + Commissioner Switch Player */}
           <div style={{ position: "absolute", left: 14, display: "flex", alignItems: "center", gap: 6 }}>
-            {syncing && <span className="pu" style={{ fontSize: 8, color: K.grn }}>● LIVE</span>}
             {isComm && (
               <button onClick={() => setShowPlayerPicker(true)} style={{ background: impersonating ? K.teal + "15" : "none", border: `1px solid ${impersonating ? K.teal + "40" : K.bdr}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
                 <div style={{ textAlign: "left", lineHeight: 1.2 }}>
