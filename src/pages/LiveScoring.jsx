@@ -109,35 +109,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   // ── All Matches view ──
   if (showAllMatches && !activeMatch) {
-    return (
-      <div>
-        <div style={{ fontSize: 20, fontWeight: 700, color: K.t1, marginBottom: 10 }}>{"All Matches - Week " + week}</div>
-        {matches.map(function(m, mi) {
-          var t1Name = "";
-          var t2Name = "";
-          var teamObj1 = teams.find(function(t) { return t.id === m.team1; });
-          var teamObj2 = teams.find(function(t) { return t.id === m.team2; });
-          if (teamObj1) t1Name = teamObj1.name;
-          if (teamObj2) t2Name = teamObj2.name;
-          var mr = null;
-          for (var ri = 0; ri < matchResults.length; ri++) {
-            var r = matchResults[ri];
-            if (r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2) { mr = r; break; }
-          }
-          var statusStr = mr ? (mr.matchResultText || "Final") : "In Progress";
-          return (
-            <div key={mi} style={{ background: K.card, border: "1px solid " + K.bdr, borderRadius: 10, padding: "12px 14px", marginBottom: 6 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>{"Match " + (mi + 1)}</div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <span style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{t1Name}</span>
-                <span style={{ fontSize: 14, fontWeight: 800, color: K.t2 }}>{statusStr}</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{t2Name}</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    );
+    return <div style={{ padding: 20, color: K.t1, fontSize: 16 }}>All Matches View - Week {String(week)}</div>;
   }
 
   // ── Default: auto-open user's match, or show prompt ──
