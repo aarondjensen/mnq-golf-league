@@ -373,6 +373,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
     playoffWeeks: leagueConfig.playoffWeeks || 2,
     startDate: leagueConfig.startDate || "",
     alternateNines: leagueConfig.alternateNines !== false,
+    playoffRounds: leagueConfig.playoffRounds || [],
   });
   const [editWeek, setEditWeek] = useState(null);
   const [dragIdx, setDragIdx] = useState(null);
@@ -519,7 +520,20 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
               </div>
               <div style={{ marginBottom: 10 }}>
                 <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Playoff Weeks</div>
-                <input type="number" value={cfg.playoffWeeks} onChange={e => setCfg({ ...cfg, playoffWeeks: parseInt(e.target.value) || 2 })} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
+                <input type="number" value={cfg.playoffWeeks} onChange={e => {
+                  const pw = parseInt(e.target.value) || 0;
+                  // Adjust playoffRounds array to match
+                  const rounds = [...(cfg.playoffRounds || [])];
+                  while (rounds.length < pw) rounds.push({ name: `Round ${rounds.length + 1}`, matchups: [] });
+                  while (rounds.length > pw) rounds.pop();
+                  setCfg({ ...cfg, playoffWeeks: pw, playoffRounds: rounds });
+                }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Seeded Regular Season Format</div>
+                <div style={{ fontSize: 12, color: K.t2, padding: "8px 0", lineHeight: 1.6 }}>
+                  Matchups by standings: #1 vs #{teams.length}, #2 vs #{teams.length - 1}, etc.
+                </div>
               </div>
               {/* Season breakdown */}
               {teams.length >= 2 && (() => {
@@ -555,23 +569,96 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
             </Card>
           </div>
 
+          {cfg.playoffWeeks > 0 && (
           <div>
-            <SubLabel color={K.warn}>Playoff Format</SubLabel>
-            <Card style={{ padding: 14 }}>
-              <div style={{ fontSize: 12, color: K.t2, lineHeight: 1.7 }}>
-                {cfg.playoffWeeks >= 2 && teams.length >= 10 ? (<>
-                  <div style={{ fontWeight: 600, color: K.t1, marginBottom: 4 }}>Week {cfg.regularWeeks + 1} — Play-in</div>
-                  <div style={{ marginLeft: 8, marginBottom: 8 }}>#7 vs #10, #8 vs #9</div>
-                  <div style={{ fontWeight: 600, color: K.t1, marginBottom: 4 }}>Week {cfg.regularWeeks + 2} — Quarterfinals</div>
-                  <div style={{ marginLeft: 8 }}>#1 vs lowest winner, #2 vs next lowest<br/>#3 vs #6, #4 vs #5</div>
-                </>) : cfg.playoffWeeks === 1 ? (
-                  <div>Single elimination round based on standings seeding.</div>
-                ) : (
-                  <div style={{ color: K.t3 }}>Set 2+ playoff weeks for bracket format.</div>
-                )}
-              </div>
-            </Card>
+            <SubLabel color={K.warn}>Playoff Bracket</SubLabel>
+            {(cfg.playoffRounds || []).map((round, ri) => {
+              const roundWeekNum = cfg.regularWeeks + ri + 1;
+              const prevRound = ri > 0 ? (cfg.playoffRounds || [])[ri - 1] : null;
+              const prevWinnerCount = prevRound ? prevRound.matchups.length : 0;
+              const seedOptions = Array.from({ length: teams.length }, (_, i) => i + 1);
+
+              const updateRound = (field, val) => {
+                const rounds = [...(cfg.playoffRounds || [])];
+                rounds[ri] = { ...rounds[ri], [field]: val };
+                setCfg({ ...cfg, playoffRounds: rounds });
+              };
+              const addMatchup = () => {
+                const m = [...round.matchups, { s1: "", s2: "", s1type: "seed", s2type: "seed" }];
+                updateRound("matchups", m);
+              };
+              const removeMatchup = (mi) => {
+                const m = [...round.matchups]; m.splice(mi, 1);
+                updateRound("matchups", m);
+              };
+              const updateMatchup = (mi, field, val) => {
+                const m = [...round.matchups];
+                m[mi] = { ...m[mi], [field]: val };
+                updateRound("matchups", m);
+              };
+
+              const selectStyle = { padding: "6px 4px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 12, flex: 1 };
+
+              return (
+                <Card key={ri} style={{ padding: 12, marginBottom: 8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <input value={round.name} onChange={e => updateRound("name", e.target.value)} style={{ padding: "4px 8px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.warn, fontSize: 13, fontWeight: 700, flex: 1, maxWidth: 200 }} />
+                    <span style={{ fontSize: 10, color: K.t3 }}>Week {roundWeekNum}</span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {round.matchups.map((mu, mi) => (
+                      <div key={mi} style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                        {/* Seed 1 */}
+                        <select value={mu.s1type} onChange={e => updateMatchup(mi, "s1type", e.target.value)} style={{ ...selectStyle, flex: "none", width: 55 }}>
+                          <option value="seed">Seed</option>
+                          {ri > 0 && <option value="winner">Winner</option>}
+                        </select>
+                        {mu.s1type === "seed" ? (
+                          <select value={mu.s1} onChange={e => updateMatchup(mi, "s1", parseInt(e.target.value) || "")} style={selectStyle}>
+                            <option value="">—</option>
+                            {seedOptions.map(s => <option key={s} value={s}>#{s}</option>)}
+                          </select>
+                        ) : (
+                          <select value={mu.s1} onChange={e => updateMatchup(mi, "s1", e.target.value)} style={selectStyle}>
+                            <option value="">—</option>
+                            <option value="lowestWinner">Lowest winner</option>
+                            <option value="nextLowestWinner">Next lowest</option>
+                            {prevWinnerCount > 0 && Array.from({ length: prevWinnerCount }, (_, i) => (
+                              <option key={i} value={`winner_${i}`}>Winner match {i + 1}</option>
+                            ))}
+                          </select>
+                        )}
+                        <span style={{ fontSize: 11, color: K.t3, fontWeight: 700, flexShrink: 0 }}>vs</span>
+                        {/* Seed 2 */}
+                        <select value={mu.s2type} onChange={e => updateMatchup(mi, "s2type", e.target.value)} style={{ ...selectStyle, flex: "none", width: 55 }}>
+                          <option value="seed">Seed</option>
+                          {ri > 0 && <option value="winner">Winner</option>}
+                        </select>
+                        {mu.s2type === "seed" ? (
+                          <select value={mu.s2} onChange={e => updateMatchup(mi, "s2", parseInt(e.target.value) || "")} style={selectStyle}>
+                            <option value="">—</option>
+                            {seedOptions.map(s => <option key={s} value={s}>#{s}</option>)}
+                          </select>
+                        ) : (
+                          <select value={mu.s2} onChange={e => updateMatchup(mi, "s2", e.target.value)} style={selectStyle}>
+                            <option value="">—</option>
+                            <option value="lowestWinner">Lowest winner</option>
+                            <option value="nextLowestWinner">Next lowest</option>
+                            {prevWinnerCount > 0 && Array.from({ length: prevWinnerCount }, (_, i) => (
+                              <option key={i} value={`winner_${i}`}>Winner match {i + 1}</option>
+                            ))}
+                          </select>
+                        )}
+                        <button onClick={() => removeMatchup(mi)} style={{ background: "none", border: "none", color: K.t3, fontSize: 14, cursor: "pointer", padding: "0 4px", flexShrink: 0 }}>✕</button>
+                      </div>
+                    ))}
+                  </div>
+                  <button onClick={addMatchup} style={{ width: "100%", padding: 8, borderRadius: 6, background: K.inp, border: `1px dashed ${K.bdr}`, color: K.t3, fontSize: 11, cursor: "pointer", marginTop: 8, fontWeight: 600 }}>+ Add Match</button>
+                </Card>
+              );
+            })}
           </div>
+          )}
         </div>
 
         <button onClick={generate} disabled={generating || teams.length < 2} style={{ width: "100%", padding: 14, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: generating ? .6 : 1, marginTop: 16 }}>
@@ -636,44 +723,73 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
       const seeds = standings.map(s => s.teamId); // seeds[0] = #1 seed, etc.
       let matches = [];
 
-      if (isPlayoff && playoffRound === 1) {
-        // Play-in: #7 vs #10, #8 vs #9
-        if (seeds.length >= 10) {
-          matches = [
-            { team1: seeds[6], team2: seeds[9] }, // 7 vs 10
-            { team1: seeds[7], team2: seeds[8] }, // 8 vs 9
-          ];
+      if (isPlayoff) {
+        const playoffRounds = leagueConfig.playoffRounds || [];
+        const roundDef = playoffRounds[playoffRound - 1];
+        if (!roundDef || !roundDef.matchups || !roundDef.matchups.length) {
+          alert("No playoff matchups configured for this round. Go to Schedule → Edit Setup to configure the playoff bracket.");
+          return;
         }
-      } else if (isPlayoff && playoffRound === 2) {
-        // Quarterfinals: need results from play-in round
-        const playInWeek = schedule.find(s => s.week === regWeeks + 1);
-        const playInResults = (matchResults || []).filter(r => r.week === playInWeek?.week);
 
-        // Determine play-in winners (lower seeds that survived)
-        const playInWinners = [];
-        playInResults.forEach(r => {
-          const d = (r.team1Points || 0) - (r.team2Points || 0);
-          if (d > 0) playInWinners.push(r.team1Id);
-          else if (d < 0) playInWinners.push(r.team2Id);
-          else playInWinners.push(r.team1Id); // tie goes to higher seed (team1 is always higher seed from play-in)
-        });
+        // Collect winners from previous playoff round if needed
+        let prevWinners = [];
+        if (playoffRound > 1) {
+          const prevPlayoffWeek = schedule.find(s => s.week === regWeeks + playoffRound - 1);
+          if (!prevPlayoffWeek || !prevPlayoffWeek.matches || prevPlayoffWeek.matches.length === 0) {
+            alert(`Previous playoff round (Week ${regWeeks + playoffRound - 1}) has no matches yet. Seed that week first.`);
+            return;
+          }
+          const prevResults = (matchResults || []).filter(r => r.week === prevPlayoffWeek.week);
+          if (prevResults.length < prevPlayoffWeek.matches.length) {
+            alert(`Previous playoff round (Week ${regWeeks + playoffRound - 1}) must be finalized first.`);
+            return;
+          }
+          // Get winners in match order
+          prevPlayoffWeek.matches.forEach((m, mi) => {
+            const r = prevResults.find(pr => pr.team1Id === m.team1 && pr.team2Id === m.team2);
+            if (r) {
+              const d = (r.team1Points || 0) - (r.team2Points || 0);
+              // Tie goes to higher seed (team1 is always higher seed)
+              prevWinners.push(d >= 0 ? r.team1Id : r.team2Id);
+            }
+          });
+        }
 
-        if (playInWinners.length === 2 && seeds.length >= 6) {
-          // Sort play-in winners by their seed (lowest seed number = highest rank)
-          const winnerSeeds = playInWinners.map(id => ({ id, seed: seeds.indexOf(id) })).sort((a, b) => b.seed - a.seed);
-          // winnerSeeds[0] = lowest surviving seed, winnerSeeds[1] = next lowest
-          matches = [
-            { team1: seeds[0], team2: winnerSeeds[0].id }, // #1 vs lowest winner
-            { team1: seeds[1], team2: winnerSeeds[1].id }, // #2 vs next lowest
-            { team1: seeds[2], team2: seeds[5] },           // #3 vs #6
-            { team1: seeds[3], team2: seeds[4] },           // #4 vs #5
-          ];
-        } else {
-          alert("Play-in round (Week " + (regWeeks + 1) + ") must be finalized first.");
+        // Resolve "winner" references
+        const resolveSlot = (mu, side) => {
+          const type = mu[side + "type"];
+          const val = mu[side];
+          if (type === "seed") {
+            const seedIdx = parseInt(val) - 1;
+            return seedIdx >= 0 && seedIdx < seeds.length ? seeds[seedIdx] : null;
+          } else if (type === "winner") {
+            if (val === "lowestWinner") {
+              // Among prevWinners, find the one with the lowest ranking (highest seed index)
+              const sorted = prevWinners.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => b.rank - a.rank);
+              return sorted[0]?.id || null;
+            } else if (val === "nextLowestWinner") {
+              const sorted = prevWinners.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => b.rank - a.rank);
+              return sorted[1]?.id || null;
+            } else if (val?.startsWith("winner_")) {
+              const idx = parseInt(val.split("_")[1]);
+              return prevWinners[idx] || null;
+            }
+          }
+          return null;
+        };
+
+        for (const mu of roundDef.matchups) {
+          const t1 = resolveSlot(mu, "s1");
+          const t2 = resolveSlot(mu, "s2");
+          if (t1 && t2) matches.push({ team1: t1, team2: t2 });
+        }
+
+        if (matches.length !== roundDef.matchups.length) {
+          alert("Could not resolve all matchups. Make sure previous rounds are finalized and bracket is configured correctly.");
           return;
         }
       } else {
-        // Seeded regular season: 1v10, 2v9, 3v8, etc.
+        // Seeded regular season: 1vLast, 2v(Last-1), etc.
         for (let i = 0; i < Math.floor(seeds.length / 2); i++) {
           matches.push({ team1: seeds[i], team2: seeds[seeds.length - 1 - i] });
         }
@@ -681,10 +797,10 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
 
       if (!matches.length) { alert("Not enough data to seed this week."); return; }
 
-      const label = isPlayoff
-        ? (playoffRound === 1 ? "play-in matchups" : "quarterfinal matchups")
+      const roundName = isPlayoff
+        ? ((leagueConfig.playoffRounds || [])[playoffRound - 1]?.name || `Playoff Round ${playoffRound}`)
         : "seeded matchups";
-      if (!window.confirm(`Seed Week ${wk.week} with ${label}?\n\n${matches.map((m, i) => `${gn(m.team1)} vs ${gn(m.team2)}`).join('\n')}`)) return;
+      if (!window.confirm(`Seed Week ${wk.week} (${roundName})?\n\n${matches.map(m => `${gn(m.team1)} vs ${gn(m.team2)}`).join('\n')}`)) return;
 
       await saveWeekSchedule({ ...wk, matches, seeded: false });
     };
@@ -752,24 +868,35 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
         )}
 
         {/* Seeded week — show seed button */}
-        {isSeeded && !isRainedOut && (
-          <div style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: CARD_RADIUS, padding: "16px", textAlign: "center", marginBottom: 12 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: K.t1, marginBottom: 4 }}>
-              {isPlayoff ? (playoffRound === 1 ? "Play-in Round" : "Quarterfinals") : "Seeded Matchups"}
+        {isSeeded && !isRainedOut && (() => {
+          const roundDef = isPlayoff ? (leagueConfig.playoffRounds || [])[playoffRound - 1] : null;
+          const roundName = isPlayoff ? (roundDef?.name || `Playoff Round ${playoffRound}`) : "Seeded Matchups";
+          const descParts = [];
+          if (isPlayoff && roundDef?.matchups?.length) {
+            roundDef.matchups.forEach(mu => {
+              const s1Label = mu.s1type === "seed" ? `#${mu.s1}` : (mu.s1 === "lowestWinner" ? "Lowest winner" : mu.s1 === "nextLowestWinner" ? "Next lowest" : mu.s1?.startsWith("winner_") ? `Winner M${parseInt(mu.s1.split("_")[1]) + 1}` : "?");
+              const s2Label = mu.s2type === "seed" ? `#${mu.s2}` : (mu.s2 === "lowestWinner" ? "Lowest winner" : mu.s2 === "nextLowestWinner" ? "Next lowest" : mu.s2?.startsWith("winner_") ? `Winner M${parseInt(mu.s2.split("_")[1]) + 1}` : "?");
+              descParts.push(`${s1Label} vs ${s2Label}`);
+            });
+          }
+
+          return (
+            <div style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: CARD_RADIUS, padding: "16px", textAlign: "center", marginBottom: 12 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: K.t1, marginBottom: 4 }}>{roundName}</div>
+              <div style={{ fontSize: 12, color: K.t3, marginBottom: 12, lineHeight: 1.5 }}>
+                {isPlayoff && descParts.length > 0
+                  ? descParts.join("  ·  ")
+                  : isPlayoff
+                  ? "No matchups configured — go to Edit Setup to build the bracket"
+                  : `Matchups by standings: #1 vs #${teams.length}, #2 vs #${teams.length - 1}, etc.`
+                }
+              </div>
+              <button onClick={handleSeedWeek} style={{ width: "100%", padding: 14, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+                Seed Week {wk.week}
+              </button>
             </div>
-            <div style={{ fontSize: 12, color: K.t3, marginBottom: 12, lineHeight: 1.5 }}>
-              {isPlayoff && playoffRound === 1
-                ? "#7 vs #10, #8 vs #9 — based on final regular season standings"
-                : isPlayoff && playoffRound === 2
-                ? "#1 vs lowest play-in winner, #2 vs next · #3 vs #6, #4 vs #5"
-                : "Matchups based on current standings: #1 vs #10, #2 vs #9, etc."
-              }
-            </div>
-            <button onClick={handleSeedWeek} style={{ width: "100%", padding: 14, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
-              Seed Week {wk.week}
-            </button>
-          </div>
-        )}
+          );
+        })()}
 
         {/* Normal week — show matches */}
         {!isSeeded && !isRainedOut && (<>

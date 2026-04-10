@@ -233,7 +233,13 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           {isRainedOut ? "" : side === 'front' ? 'Front' : 'Back'}
         </div>
         <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", textAlign: "right" }}>
-          {isRainedOut ? "RAIN" : isSeeded ? (isPlayoff ? "Playoff — TBD" : "Seeded — TBD") : oppName}
+          {isRainedOut ? "RAIN" : isSeeded ? (() => {
+            if (!isPlayoff) return "Seeded — TBD";
+            const regWeeks = leagueConfig?.regularWeeks || REGULAR_WEEKS;
+            const pRound = wk.week - regWeeks;
+            const roundName = (leagueConfig?.playoffRounds || [])[pRound - 1]?.name;
+            return roundName ? `${roundName} — TBD` : "Playoff — TBD";
+          })() : oppName}
         </div>
       </div>
     );
@@ -289,16 +295,25 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           </div>
         )}
 
-        {isExp && !isRainedOut && isSeeded && (
+        {isExp && !isRainedOut && isSeeded && (() => {
+          let roundTitle = "Seeded Matchups";
+          if (isPlayoff) {
+            const regWeeks = leagueConfig?.regularWeeks || REGULAR_WEEKS;
+            const pRound = wk.week - regWeeks;
+            const roundName = (leagueConfig?.playoffRounds || [])[pRound - 1]?.name;
+            roundTitle = roundName || "Playoff Matchups";
+          }
+          return (
           <div style={{
             background: K.inp, borderRadius: `0 0 ${CARD_RADIUS}px ${CARD_RADIUS}px`,
             border: `1px solid ${K.bdr}`, borderTop: "none", padding: "12px",
             textAlign: "center",
           }}>
-            <div style={{ fontSize: 13, color: K.t2, fontWeight: 600 }}>{isPlayoff ? "Playoff Matchups" : "Seeded Matchups"}</div>
+            <div style={{ fontSize: 13, color: K.t2, fontWeight: 600 }}>{roundTitle}</div>
             <div style={{ fontSize: 11, color: K.t3, marginTop: 2 }}>Matchups determined by standings — TBD</div>
           </div>
-        )}
+          );
+        })()}
 
         {isExp && !isRainedOut && !isSeeded && (
           <div style={{
