@@ -3,7 +3,7 @@ import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWi
 import { K, FONTS, CSS, I, DEFAULT_SCORING, SEASON_WEEKS, applyTheme, getCSS } from "./theme";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
 import StandingsView from "./pages/Standings";
-import LiveScoringView from "./pages/LiveScoring";
+import LiveScoringView from "./pages/Scoring";
 import ScheduleView from "./pages/Schedule";
 import PlayersView from "./pages/Players";
 import StatsView from "./pages/Stats";
