@@ -538,7 +538,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       {/* See All Matches link */}
       {!activeMatch && (
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 6 }}>
-          <button onClick={() => setShowAllMatches(true)} style={{ background: "none", border: "none", color: K.acc, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: "4px 0", letterSpacing: 0.5 }}>
+          <button onClick={() => setShowAllMatches(true)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.acc, fontSize: 12, fontWeight: 600, cursor: "pointer", padding: "6px 12px", letterSpacing: 0.5 }}>
             All Matches ›
           </button>
         </div>
