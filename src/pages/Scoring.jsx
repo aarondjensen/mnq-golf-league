@@ -382,7 +382,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
             if (isFinalOrSigned) {
               centerText = res.matchResultText || `${score1}-${score2}`;
-              centerColor = isTied ? K.t3 : K.t1;
+              centerColor = K.t1;
               if (res.attested) { progressLabel = "FINAL"; progressColor = K.grn; }
               else { progressLabel = "SIGNED"; progressColor = K.warn; }
             } else if (thru > 0) {
@@ -395,37 +395,36 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               centerColor = K.act;
             }
 
-            // Name colors: gray for tied, normal otherwise
-            const nameColor = isTied ? K.t3 : K.t1;
-
             return (
               <div key={mi} style={{ background: K.card, borderRadius: 10, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}40`, overflow: "hidden" }}>
                 <button onClick={() => setExpandedMatch(isExp ? null : mi)} style={{ width: "100%", padding: "8px 10px", cursor: "pointer", textAlign: "left", background: "transparent", border: "none" }}>
                   <div style={{ display: "flex", alignItems: "center" }}>
-                    {/* Left team */}
-                    <div style={{ flex: 1, textAlign: "right", paddingRight: t1Leading ? 8 : 14, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-                      <div style={{ fontSize: 15, fontWeight: t1Leading ? 700 : 600, color: nameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT1?.player1)}</div>
-                      <div style={{ fontSize: 15, fontWeight: t1Leading ? 700 : 600, color: nameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT1?.player2)}</div>
+                    {/* Left team — fixed width */}
+                    <div style={{ flex: 1, textAlign: "right", paddingRight: 4, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                      <div style={{ fontSize: 14, fontWeight: t1Leading ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT1?.player1)}</div>
+                      <div style={{ fontSize: 14, fontWeight: t1Leading ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT1?.player2)}</div>
                     </div>
-                    {/* Green arrow for winner/leader on left */}
-                    {t1Leading && <div style={{ color: "#1a8c3f", fontSize: 15, fontWeight: 800, marginRight: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>}
-                    {/* Red arrow for loser on left (final only) */}
-                    {isFinalOrSigned && t2Leading && <div style={{ color: K.red, fontSize: 15, fontWeight: 800, marginRight: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>}
-                    {/* Center */}
-                    <div style={{ textAlign: "center", minWidth: 74, flexShrink: 0, padding: "0 2px" }}>
+                    {/* Left arrow — fixed 16px column */}
+                    <div style={{ width: 16, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {t1Leading && <div style={{ color: "#1a8c3f", fontSize: 14, fontWeight: 800, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>}
+                      {isFinalOrSigned && t2Leading && <div style={{ color: K.red, fontSize: 14, fontWeight: 800, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>}
+                    </div>
+                    {/* Center — fixed width */}
+                    <div style={{ textAlign: "center", width: 80, flexShrink: 0 }}>
                       <div style={{ fontSize: thru > 0 || isFinalOrSigned ? 20 : 18, fontWeight: 800, color: centerColor, letterSpacing: .5 }}>{centerText}</div>
                       {progressLabel && (
-                        <div style={{ fontSize: 9, fontWeight: 700, color: progressColor, textTransform: "uppercase", letterSpacing: 1, marginTop: 2 }}>{progressLabel}</div>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: progressColor, textTransform: "uppercase", letterSpacing: 1, marginTop: 1 }}>{progressLabel}</div>
                       )}
                     </div>
-                    {/* Green arrow for winner/leader on right */}
-                    {t2Leading && <div style={{ color: "#1a8c3f", fontSize: 15, fontWeight: 800, marginLeft: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>}
-                    {/* Red arrow for loser on right (final only) */}
-                    {isFinalOrSigned && t1Leading && <div style={{ color: K.red, fontSize: 15, fontWeight: 800, marginLeft: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>}
-                    {/* Right team */}
-                    <div style={{ flex: 1, textAlign: "left", paddingLeft: t2Leading ? 8 : 14, overflow: "hidden" }}>
-                      <div style={{ fontSize: 15, fontWeight: t2Leading ? 700 : 600, color: nameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT2?.player1)}</div>
-                      <div style={{ fontSize: 15, fontWeight: t2Leading ? 700 : 600, color: nameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT2?.player2)}</div>
+                    {/* Right arrow — fixed 16px column */}
+                    <div style={{ width: 16, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      {t2Leading && <div style={{ color: "#1a8c3f", fontSize: 14, fontWeight: 800, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>}
+                      {isFinalOrSigned && t1Leading && <div style={{ color: K.red, fontSize: 14, fontWeight: 800, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>}
+                    </div>
+                    {/* Right team — fixed width */}
+                    <div style={{ flex: 1, textAlign: "left", paddingLeft: 4, overflow: "hidden" }}>
+                      <div style={{ fontSize: 14, fontWeight: t2Leading ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT2?.player1)}</div>
+                      <div style={{ fontSize: 14, fontWeight: t2Leading ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT2?.player2)}</div>
                     </div>
                     {/* Expand chevron */}
                     <div style={{ flexShrink: 0, marginLeft: 4, color: K.t3, fontSize: 12, transform: isExp ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</div>
