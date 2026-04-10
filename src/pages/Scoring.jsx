@@ -382,7 +382,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
             if (isFinalOrSigned) {
               centerText = res.matchResultText || `${score1}-${score2}`;
-              centerColor = K.t1;
+              centerColor = isTied ? K.t3 : K.t1;
               if (res.attested) { progressLabel = "FINAL"; progressColor = K.grn; }
               else { progressLabel = "SIGNED"; progressColor = K.warn; }
             } else if (thru > 0) {
