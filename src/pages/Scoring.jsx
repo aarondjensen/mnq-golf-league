@@ -487,6 +487,19 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   const dispRunning = []; let dCum = 0;
                   dispHoleResults.forEach(r => { if (r !== null) dCum += r; dispRunning.push(r !== null ? dCum : null); });
 
+                  // Compute clinch from display perspective (top team)
+                  let dispClinchHole = null, dispClinchText = null;
+                  for (let h = 0; h < 9; h++) {
+                    if (dispRunning[h] === null) break;
+                    const lead = Math.abs(dispRunning[h]);
+                    const rem = 8 - h;
+                    if (lead > rem) {
+                      dispClinchHole = h;
+                      dispClinchText = rem > 0 ? lead + "&" + rem : lead + "UP";
+                      break;
+                    }
+                  }
+
                   const PlayerRow = ({ pid }) => {
                     let gt = 0;
                     return (
@@ -531,10 +544,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       {dispRunning.map((rs, i) => {
                         const bdr = i < 8 ? { borderRight: gridLine } : {};
                         if (rs === null) return <div key={i} style={{ flex: 1, height: 22, ...bdr }} />;
-                        if (mClinchHole !== null && i > mClinchHole) return <div key={i} style={{ flex: 1, height: 22, ...bdr }} />;
-                        if (mClinchHole !== null && i === mClinchHole) {
+                        if (dispClinchHole !== null && i > dispClinchHole) return <div key={i} style={{ flex: 1, height: 22, ...bdr }} />;
+                        if (dispClinchHole !== null && i === dispClinchHole) {
                           const c = rs > 0 ? matchGrn : rs < 0 ? K.red : K.t3;
-                          return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 12, fontWeight: 800, color: c, lineHeight: "22px", ...bdr }}>{mClinchText}</div>;
+                          return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 12, fontWeight: 800, color: c, lineHeight: "22px", ...bdr }}>{dispClinchText}</div>;
                         }
                         const c = rs > 0 ? matchGrn : rs < 0 ? K.red : K.t3;
                         return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 12, fontWeight: 800, color: c, lineHeight: "22px", ...bdr }}>
