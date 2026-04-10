@@ -398,7 +398,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           padding: "7px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600,
           background: !myOnly ? K.acc : K.card, color: !myOnly ? K.bg : K.t2,
           border: `1px solid ${!myOnly ? K.acc : K.bdr}`, whiteSpace: "nowrap",
-        }}>All Weeks</button>
+        }}>Full League</button>
 
         {myOnly && (
           <button onClick={addAllToCalendar} style={{
