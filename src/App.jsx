@@ -304,26 +304,30 @@ export default function GolfLeagueApp() {
   const myTeam = teams.find(t => t.player1 === leagueUser.playerId || t.player2 === leagueUser.playerId);
   const upcomingBanner = (() => {
     if (!myTeam || !schedule.length) return null;
-    // Find current week (first week without all matches finalized)
     for (const wk of schedule) {
-      const allDone = wk.matches.every(m => matchResults.some(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2));
-      if (!allDone) {
-        const myMatch = wk.matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id);
-        if (!myMatch) return null;
-        const oppId = myMatch.team1 === myTeam.id ? myMatch.team2 : myMatch.team1;
-        const opp = teams.find(t => t.id === oppId);
-        const matchIdx = wk.matches.indexOf(myMatch);
-        const base = leagueConfig?.startTime || "4:28 PM";
-        const interval = leagueConfig?.teeInterval || 8;
-        const [timePart, ampm] = base.split(' ');
-        const [h, m] = timePart.split(':').map(Number);
-        let mins = (ampm === 'PM' && h !== 12 ? h + 12 : h) * 60 + m + matchIdx * interval;
-        const hr = Math.floor(mins / 60) % 12 || 12;
-        const mn = mins % 60;
-        const ap = Math.floor(mins / 60) >= 12 ? 'PM' : 'AM';
-        const teeTime = `${hr}:${String(mn).padStart(2, '0')} ${ap}`;
-        return { week: wk.week, date: wk.date, teeTime, teeMinutes: mins, opp: opp?.name || "TBD", side: wk.side };
-      }
+      if (wk.rainedOut) continue;
+      if (!wk.matches || wk.matches.length === 0) continue;
+      if (wk.locked) continue;
+      const myMatch = wk.matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id);
+      if (!myMatch) return null;
+      const oppId = myMatch.team1 === myTeam.id ? myMatch.team2 : myMatch.team1;
+      const opp = teams.find(t => t.id === oppId);
+      const matchIdx = wk.matches.indexOf(myMatch);
+      const base = leagueConfig?.startTime || "4:28 PM";
+      const interval = leagueConfig?.teeInterval || 8;
+      const [timePart, ampm] = base.split(' ');
+      const [h, m] = timePart.split(':').map(Number);
+      let mins = (ampm === 'PM' && h !== 12 ? h + 12 : h) * 60 + m + matchIdx * interval;
+      const hr = Math.floor(mins / 60) % 12 || 12;
+      const mn = mins % 60;
+      const ap = Math.floor(mins / 60) >= 12 ? 'PM' : 'AM';
+      const teeTime = `${hr}:${String(mn).padStart(2, '0')}`;
+      // Get opponent player names
+      const oppP1 = opp ? activePlayers.find(p => p.id === opp.player1) : null;
+      const oppP2 = opp ? activePlayers.find(p => p.id === opp.player2) : null;
+      const oppName1 = oppP1 ? oppP1.name.split(' ').pop() : "TBD";
+      const oppName2 = oppP2 ? oppP2.name.split(' ').pop() : "TBD";
+      return { week: wk.week, date: wk.date, teeTime, teeMinutes: mins, opp: opp?.name || "TBD", oppName1, oppName2, side: wk.side };
     }
     return null;
   })();
@@ -376,20 +380,17 @@ export default function GolfLeagueApp() {
             )}
           </div>
           <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
-          {/* Right: User name */}
+          {/* Right: Live Scoring button */}
           <div style={{ position: "absolute", right: 14, display: "flex", alignItems: "center" }}>
-            <div style={{ textAlign: "right", lineHeight: 1.15 }}>
-              {(() => {
-                const name = impersonating ? impersonating.name : leagueUser.name;
-                const parts = name.split(' ');
-                const first = parts[0] || '';
-                const last = parts.slice(1).join(' ') || '';
-                return (<>
-                  <div style={{ fontSize: 10, color: impersonating ? K.teal : K.t3, fontWeight: 500 }}>{first}</div>
-                  {last && <div style={{ fontSize: 10, color: impersonating ? K.teal : K.t3, fontWeight: 600 }}>{last}</div>}
-                </>);
-              })()}
-            </div>
+            <button onClick={() => setTab("scoring")} style={{
+              background: tab === "scoring" ? bannerGrn : "transparent",
+              border: `1.5px solid ${tab === "scoring" ? bannerGrn : bannerGrn + "50"}`,
+              borderRadius: 8, padding: "6px 10px", cursor: "pointer",
+              color: tab === "scoring" ? "#fff" : bannerGrn, fontSize: 13, fontWeight: 800,
+              textTransform: "uppercase", letterSpacing: .5, lineHeight: 1.3,
+            }}>
+              Live<br/>Scoring
+            </button>
           </div>
         </div>
       </div>
@@ -414,35 +415,22 @@ export default function GolfLeagueApp() {
       <div className="app-body" ref={appBodyRef}>
         <div style={{ maxWidth: 900, width: "100%", margin: "0 auto" }}>
           {upcomingBanner && tab !== "scoring" && (() => {
-            const now = new Date();
-            const nowMins = now.getHours() * 60 + now.getMinutes();
-            const isLeagueDay = leagueConfig?.dayOfWeek && now.toLocaleDateString('en-US', { weekday: 'long' }) === leagueConfig.dayOfWeek;
-            const isLive = isLeagueDay && nowMins >= upcomingBanner.teeMinutes - 30;
             return (
               <div style={{ background: K.card, border: `1.5px solid ${bannerGrn}`, borderRadius: 10, margin: "6px 14px", padding: "8px 14px", display: "flex", alignItems: "center" }}>
                 {/* Left: Tee time + Front/Back */}
-                <div style={{ width: 90, flexShrink: 0, textAlign: "center", lineHeight: 1.3, padding: "8px 0" }}>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: bannerGrn, letterSpacing: .5, textTransform: "uppercase" }}>{upcomingBanner.teeTime}</div>
-                  <div style={{ fontSize: 15, fontWeight: 800, color: bannerGrn, letterSpacing: .5, textTransform: "uppercase" }}>{upcomingBanner.side === 'front' ? 'FRONT 9' : 'BACK 9'}</div>
+                <div style={{ width: 70, flexShrink: 0, textAlign: "center", lineHeight: 1.3, padding: "6px 0" }}>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: bannerGrn, letterSpacing: .5 }}>{upcomingBanner.teeTime}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: bannerGrn, letterSpacing: .5, textTransform: "uppercase" }}>{upcomingBanner.side === 'front' ? 'FRONT 9' : 'BACK 9'}</div>
                 </div>
-                {/* Center: Date, vs, opponent */}
+                {/* Center: Date + Week */}
                 <div style={{ flex: 1, textAlign: "center", lineHeight: 1.3 }}>
-                  <div style={{ fontSize: 12, color: K.t2, fontWeight: 500 }}>{upcomingBanner.date ? `${upcomingBanner.date} — ` : ""}Week {upcomingBanner.week}</div>
-                  <div style={{ fontSize: 9, color: K.logoBright, fontWeight: 700, letterSpacing: 2, textTransform: "uppercase" }}>vs</div>
-                  <div style={{ color: K.t1, fontWeight: 700, fontSize: 15 }}>{lastNamesOnly(upcomingBanner.opp)}</div>
+                  <div style={{ fontSize: 12, color: K.t2, fontWeight: 500 }}>{upcomingBanner.date || ""}</div>
+                  <div style={{ fontSize: 14, color: K.t1, fontWeight: 700 }}>Week {upcomingBanner.week}</div>
                 </div>
-                {/* Right: Live Scoring button */}
-                <div style={{ width: 90, flexShrink: 0, textAlign: "center" }}>
-                  <button onClick={() => setTab("scoring")} style={{
-                    background: isLive ? bannerGrn : "transparent",
-                    border: `1.5px solid ${isLive ? bannerGrn : bannerGrn + "50"}`,
-                    borderRadius: 8, padding: "8px 10px", cursor: "pointer",
-                    color: isLive ? "#fff" : bannerGrn, fontSize: 15, fontWeight: 800,
-                    textTransform: "uppercase", letterSpacing: .5, transition: "all .3s",
-                    lineHeight: 1.3,
-                  }}>
-                    {isLive && <span style={{ fontSize: 11 }}>● </span>}Live<br/>Scoring
-                  </button>
+                {/* Right: Opponent player names */}
+                <div style={{ width: 90, flexShrink: 0, textAlign: "right", lineHeight: 1.3 }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{upcomingBanner.oppName1}</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{upcomingBanner.oppName2}</div>
                 </div>
               </div>
             );
