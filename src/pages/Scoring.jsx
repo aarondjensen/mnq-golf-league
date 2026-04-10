@@ -783,11 +783,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           Week {week} is locked — scores are read-only
         </div>
       )}
-      {isAlreadyFinalized && !isAttested && !isWeekLocked && (
-        <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 6, fontSize: 13, color: K.warn, fontWeight: 700, textAlign: "center" }}>
-          {needsAttestation ? "Scorecard signed — awaiting your attestation" : "Scorecard signed — awaiting opponent attestation"}
-        </div>
-      )}
       {!isAlreadyFinalized && (
       <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
         {Array.from({ length: 9 }, (_, i) => {
