@@ -81,15 +81,27 @@ export default function GolfLeagueApp() {
     const el = document.querySelector('.app-body');
     if (!el) return;
 
+    // Check if content is at scroll top — accounts for popup overlays
+    const isAtScrollTop = () => {
+      // If a popup is open, check the popup's scrollable container
+      const popup = document.querySelector('[data-popup]');
+      if (popup) {
+        // Find the scrollable child inside the popup
+        const scrollable = popup.querySelector('[style*="overflowY"]') || popup;
+        return !scrollable.scrollTop || scrollable.scrollTop === 0;
+      }
+      return el.scrollTop === 0;
+    };
+
     const handleStart = (e) => {
-      if (el.scrollTop === 0) touchStart.current = e.touches[0].clientY;
+      if (isAtScrollTop()) touchStart.current = e.touches[0].clientY;
       else touchStart.current = 0;
     };
 
     const handleMove = (e) => {
       if (!touchStart.current) return;
       const diff = e.touches[0].clientY - touchStart.current;
-      if (diff > 0 && el.scrollTop === 0) {
+      if (diff > 0 && isAtScrollTop()) {
         const val = Math.min(diff * 0.4, 120);
         pullYRef.current = val;
         setPullY(val);
