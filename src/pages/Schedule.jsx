@@ -217,10 +217,14 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
     const resultColor = resultText.startsWith("W") ? K.matchGrn : resultText.startsWith("L") ? K.red : K.t2;
 
+    const isCurrent = wk.week === schedule[currentWeekIdx]?.week;
+
     return (
       <div key={wk.week} style={{
         display: "flex", alignItems: "center", padding: "8px 12px",
-        background: K.card, borderRadius: CARD_RADIUS, border: `1px solid ${K.bdr}`,
+        background: isCurrent && !isRainedOut ? K.matchGrn + "12" : K.card,
+        borderRadius: CARD_RADIUS,
+        border: `1px solid ${isCurrent && !isRainedOut ? K.matchGrn + "40" : K.bdr}`,
         opacity: isRainedOut ? 0.5 : 1,
       }}>
         <div style={{ width: 26, fontSize: 13, fontWeight: 700, color: K.t1 }}>{wk.week}</div>
