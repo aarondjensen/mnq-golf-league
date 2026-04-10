@@ -9,12 +9,13 @@ import { LEAGUE_ID } from "../firebase";
 // Par (0): plain  |  Bogey (+1): square
 // Double bogey (+2): double square  |  Triple+ (+3): double square
 // All borders use same muted color for clean look
-function ScoreCell({ score, par, strokes, size = 13 }) {
+function ScoreCell({ score, par, strokes, size = 13, color: colorOverride }) {
   if (!score || score <= 0) return <span style={{ color: K.t3 + "30", fontSize: size }}>·</span>;
   const diff = score - par;
   const s = size;
   const sh = s + 8;
-  const bc = K.t2;
+  const bc = colorOverride || K.t2;
+  const textColor = colorOverride || undefined;
   const dotH = 10;
 
   // Border shape — centered absolutely in the score area
@@ -46,11 +47,11 @@ function ScoreCell({ score, par, strokes, size = 13 }) {
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", height: dotH + sh, justifyContent: "flex-end" }}>
       <div style={{ height: dotH, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-        {strokes > 0 && <span style={{ color: "#3b82f6", fontSize: 10, fontWeight: 900, letterSpacing: 1, lineHeight: 1 }}>{"•".repeat(strokes)}</span>}
+        {strokes > 0 && <span style={{ color: colorOverride || "#3b82f6", fontSize: 10, fontWeight: 900, letterSpacing: 1, lineHeight: 1 }}>{"•".repeat(strokes)}</span>}
       </div>
       <div style={{ position: "relative", width: sh, height: sh, display: "flex", alignItems: "center", justifyContent: "center" }}>
         {border}
-        <span style={{ position: "relative", zIndex: 1, fontSize: s, fontWeight: 700, lineHeight: 1, transform: "translateY(0.5px)" }}>{score}</span>
+        <span style={{ position: "relative", zIndex: 1, fontSize: s, fontWeight: 700, lineHeight: 1, transform: "translateY(0.5px)", ...(textColor ? { color: textColor } : {}) }}>{score}</span>
       </div>
     </div>
   );
@@ -191,7 +192,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const getS = (pid, h) => {
     if (isPlayerAbsent(pid)) {
       const tm = getTeammate(pid);
-      if (!tm || isPlayerAbsent(tm)) return (pars[h] || 4) + 1;
+      if (!tm || isPlayerAbsent(tm)) {
+        // Net bogey: gross score = par + 1 + strokes so that net = par + 1
+        const strokes = getStrokesMap((() => {
+          const p = players.find(pl => pl.id === pid);
+          return p ? Math.round(p.handicapIndex || 0) : 0;
+        })())[h] || 0;
+        return (pars[h] || 4) + 1 + strokes;
+      }
       return getRawScore(tm, h);
     }
     return getRawScore(pid, h);
@@ -1004,7 +1012,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             <div style={{ display: "flex" }}>
               {cells.map((c, h) => (
                 <div key={h} style={{ flex: 1, minHeight: 38, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? colBdr : "none" }}>
-                  <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} />
+                  <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} color={isBothAbsent(pid) ? K.red : undefined} />
                 </div>
               ))}
             </div>
@@ -1093,10 +1101,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               </div>
               {cells.map((c, h) => (
                 <div key={h} style={{ flex: 1, height: 38, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? colBdr : "none" }}>
-                  <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} />
+                  <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} color={isBothAbsent(pid) ? K.red : undefined} />
                 </div>
               ))}
-              <div style={{ ...totStyle, height: 38, paddingTop: 10 }}><span style={{ fontSize: 14, fontWeight: 800, color: K.t1 }}>{grossTotal || ""}</span></div>
+              <div style={{ ...totStyle, height: 38, paddingTop: 10 }}><span style={{ fontSize: 14, fontWeight: 800, color: isBothAbsent(pid) ? K.red : K.t1 }}>{grossTotal || ""}</span></div>
             </div>
           );
         };
@@ -1349,10 +1357,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               </div>
               {cells.map((c, h) => (
                 <div key={h} style={{ flex: 1, height: 38, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? colBdr : "none" }}>
-                  <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} />
+                  <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} color={isBothAbsent(pid) ? K.red : undefined} />
                 </div>
               ))}
-              <div style={{ ...totStyle, height: 38, paddingTop: 10 }}><span style={{ fontSize: 14, fontWeight: 800, color: K.t1 }}>{grossTotal || ""}</span></div>
+              <div style={{ ...totStyle, height: 38, paddingTop: 10 }}><span style={{ fontSize: 14, fontWeight: 800, color: isBothAbsent(pid) ? K.red : K.t1 }}>{grossTotal || ""}</span></div>
             </div>
           );
         };
@@ -1448,24 +1456,24 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
                     const pl = players.find(p => p.id === effectivePid);
                     const last = pl?.name?.split(' ').slice(1).join(' ') || pl?.name || "?";
-                    return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "WIN" ? K.grn : K.t1, lineHeight: 1.3 }}>{last}</div>;
+                    return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "WIN" ? K.matchGrn : K.t1, lineHeight: 1.3 }}>{last}</div>;
                   })}
                 </div>
-                {sc.matchResult !== "TIE" && (
-                  <div style={{ color: sc.matchResult === "WIN" ? K.matchGrn : K.red, fontSize: 15, fontWeight: 800, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>
+                {sc.matchResult === "WIN" && (
+                  <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>
                 )}
                 <div style={{ textAlign: "center", minWidth: 60 }}>
-                  <div style={{ fontSize: 26, fontWeight: 800, color: sc.resultColor, lineHeight: 1 }}>{sc.matchResultText}</div>
+                  <div style={{ fontSize: 26, fontWeight: 800, color: sc.matchResult === "TIE" ? K.t2 : K.matchGrn, lineHeight: 1 }}>{sc.matchResultText}</div>
                 </div>
-                {sc.matchResult !== "TIE" && (
-                  <div style={{ color: sc.matchResult === "LOSS" ? K.matchGrn : K.red, fontSize: 15, fontWeight: 800, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>
+                {sc.matchResult === "LOSS" && (
+                  <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>
                 )}
                 <div style={{ flex: 1, textAlign: "left" }}>
                   {sc.oppPidsSorted.map(pid => {
                     const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
                     const pl = players.find(p => p.id === effectivePid);
                     const last = pl?.name?.split(' ').slice(1).join(' ') || pl?.name || "?";
-                    return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "LOSS" ? K.grn : K.t1, lineHeight: 1.3 }}>{last}</div>;
+                    return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "LOSS" ? K.matchGrn : K.t1, lineHeight: 1.3 }}>{last}</div>;
                   })}
                 </div>
               </div>
