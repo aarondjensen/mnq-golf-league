@@ -36,20 +36,33 @@ export default function GolfLeagueApp() {
   const [membersLoaded, setMembersLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [liveWeek, setLiveWeek] = useState(null);
-  const [tab, setTab] = useState(() => {
-    try { return sessionStorage.getItem("mnq_tab") || "standings"; } catch { return "standings"; }
-  });
+  const validTabs = ["standings", "scoring", "schedule", "players", "stats", "ctp", "admin"];
+  const getTabFromHash = () => {
+    const hash = window.location.hash.replace("#", "").toLowerCase();
+    return validTabs.includes(hash) ? hash : "standings";
+  };
+
+  const [tab, setTabState] = useState(getTabFromHash);
+  const setTab = (newTab) => {
+    setTabState(newTab);
+    window.location.hash = newTab;
+  };
+
+  // Listen for browser back/forward
+  useEffect(() => {
+    const onHashChange = () => setTabState(getTabFromHash());
+    window.addEventListener("hashchange", onHashChange);
+    // Set initial hash if none
+    if (!window.location.hash) window.location.hash = "standings";
+    return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
   const [showMore, setShowMore] = useState(false);
-  const [impersonating, setImpersonating] = useState(null); // { playerId, name } when comm is acting as another player
+  const [impersonating, setImpersonating] = useState(null);
   const [showPlayerPicker, setShowPlayerPicker] = useState(false);
   const [darkMode, setDarkMode] = useState(() => {
     try { return localStorage.getItem("mnq_theme") !== "light"; } catch { return true; }
   });
-
-  // Persist tab so pull-to-refresh stays on current tab
-  useEffect(() => {
-    try { sessionStorage.setItem("mnq_tab", tab); } catch {}
-  }, [tab]);
 
   // Pull-to-refresh
   const [pullY, setPullY] = useState(0);
