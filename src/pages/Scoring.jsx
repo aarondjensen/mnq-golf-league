@@ -877,8 +877,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               const initials = pl.name.split(' ').map(n => n[0]).join('');
               return (
                 <div style={{ display: "flex", alignItems: "stretch", borderBottom: gridLine }}>
-                  <div style={{ width: 24, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, borderRight: gridLine, paddingLeft: 4, display: "flex", alignItems: "center" }}>{initials}</div>
-                  <div style={{ width: 20, flexShrink: 0, fontSize: 11, color: K.t1, fontWeight: 700, borderRight: gridLine, display: "flex", alignItems: "center", justifyContent: "center" }}>{nh}</div>
+                  <div style={{ width: 28, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, paddingLeft: 4, display: "flex", alignItems: "center" }}>{initials}</div>
+                  <div style={{ width: 16, flexShrink: 0, fontSize: 10, color: "#3b82f6", fontWeight: 700, borderRight: gridLine, display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: 3 }}>{nh}</div>
                   {cells.map((c, h) => (
                     <div key={h} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 38, borderRight: h < 8 ? gridLine : "none" }}>
                       <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={13} />
