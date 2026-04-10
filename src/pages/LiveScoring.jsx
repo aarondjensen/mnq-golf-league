@@ -49,7 +49,7 @@ function ScoreCell({ score, par, strokes, size = 13 }) {
       </div>
       <div style={{ position: "relative", width: sh, height: sh, display: "flex", alignItems: "center", justifyContent: "center" }}>
         {border}
-        <span style={{ position: "relative", zIndex: 1, fontSize: s, fontWeight: 700, lineHeight: 1 }}>{score}</span>
+        <span style={{ position: "relative", zIndex: 1, fontSize: s, fontWeight: 700, lineHeight: 1, transform: "translateY(0.5px)" }}>{score}</span>
       </div>
     </div>
   );
