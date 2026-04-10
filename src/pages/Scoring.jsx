@@ -398,11 +398,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             // Shrink font for longer result text like "TIED"
             const centerFontSize = !isFinalOrSigned && thru === 0 ? 18 : centerText.length > 3 ? 17 : 20;
 
-            // Name styling: bold winners, gray losers on final matches
-            const t1NameWeight = isFinalOrSigned && t1Leading ? 700 : isFinalOrSigned && t2Leading ? 500 : 600;
-            const t2NameWeight = isFinalOrSigned && t2Leading ? 700 : isFinalOrSigned && t1Leading ? 500 : 600;
-            const t1NameColor = isFinalOrSigned && t2Leading ? K.t3 : K.t1;
-            const t2NameColor = isFinalOrSigned && t1Leading ? K.t3 : K.t1;
+            // Slightly darker gray for All Matches names
+            const dimColor = K.t2;
+
+            // Name styling: final winners = bold + full color, final losers = lighter gray,
+            // non-final = all gray
+            const t1NameWeight = isFinalOrSigned && t1Leading ? 700 : 600;
+            const t2NameWeight = isFinalOrSigned && t2Leading ? 700 : 600;
+            const t1NameColor = !isFinalOrSigned ? dimColor : t1Leading ? K.t1 : dimColor;
+            const t2NameColor = !isFinalOrSigned ? dimColor : t2Leading ? K.t1 : dimColor;
 
             return (
               <div key={mi} style={{ background: K.card, borderRadius: 10, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}40`, overflow: "hidden" }}>
