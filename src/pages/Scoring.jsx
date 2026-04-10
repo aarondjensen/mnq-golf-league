@@ -327,7 +327,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       <div>
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
           <button onClick={() => setShowAllMatches(false)} style={{ background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.acc, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: "8px 14px", display: "flex", alignItems: "center", gap: 6 }}>
-            {I.arrowLeft(11, K.acc)} My Match
+            My Match <span style={{ display: "inline-flex", transform: "rotate(180deg)" }}>{I.arrowLeft(11, K.acc)}</span>
           </button>
         </div>
 
@@ -355,13 +355,35 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             const mT2Pids = [rawT2.player1, rawT2.player2];
             const thru = getThru(mT1Pids, mT2Pids);
 
+            // Compute live match score for in-progress matches
+            let liveText = "";
+            let liveColor = K.t3;
+            if (!res && thru > 0) {
+              // Calculate running net match status from raw T1 perspective
+              let cum = 0;
+              for (let h = 0; h < thru; h++) {
+                let n1 = 0, n2 = 0;
+                mT1Pids.forEach(pid => { n1 += amGetScore(pid, h) - amGetStrokes(pid, h); });
+                mT2Pids.forEach(pid => { n2 += amGetScore(pid, h) - amGetStrokes(pid, h); });
+                if (n1 < n2) cum += 1; else if (n2 < n1) cum -= 1;
+              }
+              // Swap perspective if user's match is swapped
+              const dispCum = swapped ? -cum : cum;
+              if (dispCum > 0) { liveText = dispCum + "UP"; liveColor = "#1a8c3f"; }
+              else if (dispCum < 0) { liveText = Math.abs(dispCum) + "DN"; liveColor = K.red; }
+              else { liveText = "AS"; liveColor = K.t2; }
+            }
+
             // Progress label
             let progressLabel = "";
             let progressColor = K.t3;
             if (res?.attested) { progressLabel = "FINAL"; progressColor = K.grn; }
             else if (res) { progressLabel = "SIGNED"; progressColor = K.warn; }
-            else if (thru === 9) { progressLabel = "Thru 9"; progressColor = K.acc; }
             else if (thru > 0) { progressLabel = "Thru " + thru; progressColor = K.t3; }
+
+            // Determine winner/loser for arrows
+            const t1Won = res && score1 > score2;
+            const t2Won = res && score2 > score1;
 
             return (
               <div key={mi} style={{ background: K.card, borderRadius: 10, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}40`, overflow: "hidden" }}>
@@ -369,20 +391,21 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 <button onClick={() => setExpandedMatch(isExp ? null : mi)} style={{ width: "100%", padding: "8px 10px", cursor: "pointer", textAlign: "left", background: "transparent", border: "none" }}>
                   <div style={{ display: "flex", alignItems: "center" }}>
                     {/* Left team */}
-                    <div style={{ flex: 1, textAlign: "right", paddingRight: res && score1 > score2 ? 8 : 18, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-                      <div style={{ fontSize: 15, fontWeight: res && score1 > score2 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT1?.player1)}</div>
-                      <div style={{ fontSize: 15, fontWeight: res && score1 > score2 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT1?.player2)}</div>
+                    <div style={{ flex: 1, textAlign: "right", paddingRight: t1Won ? 8 : t2Won ? 18 : 14, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                      <div style={{ fontSize: 15, fontWeight: t1Won ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT1?.player1)}</div>
+                      <div style={{ fontSize: 15, fontWeight: t1Won ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT1?.player2)}</div>
                     </div>
-                    {/* Winner arrow left */}
-                    {res && score1 > score2 && (
-                      <div style={{ color: "#1a8c3f", fontSize: 15, fontWeight: 800, marginRight: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>
-                    )}
-                    {/* Center — match result or tee time + progress */}
+                    {/* Winner/loser arrow left */}
+                    {t1Won && <div style={{ color: "#1a8c3f", fontSize: 15, fontWeight: 800, marginRight: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>}
+                    {t2Won && <div style={{ color: K.red, fontSize: 15, fontWeight: 800, marginRight: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>}
+                    {/* Center — match result, live score, or tee time */}
                     <div style={{ textAlign: "center", minWidth: 74, flexShrink: 0, padding: "0 2px" }}>
                       {res ? (
                         <div style={{ fontSize: 20, fontWeight: 800, color: K.t1, letterSpacing: .5 }}>
                           {res.matchResultText || `${score1}-${score2}`}
                         </div>
+                      ) : liveText ? (
+                        <div style={{ fontSize: 20, fontWeight: 800, color: liveColor, letterSpacing: .5 }}>{liveText}</div>
                       ) : (
                         <div style={{ fontSize: 18, fontWeight: 800, color: K.act, letterSpacing: .3 }}>{formatTeeTime(mi)}</div>
                       )}
@@ -390,14 +413,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                         <div style={{ fontSize: 9, fontWeight: 700, color: progressColor, textTransform: "uppercase", letterSpacing: 1, marginTop: 2 }}>{progressLabel}</div>
                       )}
                     </div>
-                    {/* Winner arrow right */}
-                    {res && score2 > score1 && (
-                      <div style={{ color: "#1a8c3f", fontSize: 15, fontWeight: 800, marginLeft: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>
-                    )}
+                    {/* Winner/loser arrow right */}
+                    {t2Won && <div style={{ color: "#1a8c3f", fontSize: 15, fontWeight: 800, marginLeft: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>}
+                    {t1Won && <div style={{ color: K.red, fontSize: 15, fontWeight: 800, marginLeft: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>}
                     {/* Right team */}
-                    <div style={{ flex: 1, textAlign: "left", paddingLeft: res && score2 > score1 ? 8 : 18, overflow: "hidden" }}>
-                      <div style={{ fontSize: 15, fontWeight: res && score2 > score1 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT2?.player1)}</div>
-                      <div style={{ fontSize: 15, fontWeight: res && score2 > score1 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT2?.player2)}</div>
+                    <div style={{ flex: 1, textAlign: "left", paddingLeft: t2Won ? 8 : t1Won ? 18 : 14, overflow: "hidden" }}>
+                      <div style={{ fontSize: 15, fontWeight: t2Won ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT2?.player1)}</div>
+                      <div style={{ fontSize: 15, fontWeight: t2Won ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(dispT2?.player2)}</div>
                     </div>
                     {/* Expand chevron */}
                     <div style={{ flexShrink: 0, marginLeft: 4, color: K.t3, fontSize: 12, transform: isExp ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</div>
@@ -439,8 +461,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     let gt = 0;
                     return (
                       <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
-                        <div style={{ width: 44, flexShrink: 0, borderRight: gridLine, paddingLeft: 4, display: "flex", alignItems: "center", height: 38, paddingTop: 10, gap: 1 }}>
+                        <div style={{ width: 28, flexShrink: 0, borderRight: "none", paddingLeft: 4, display: "flex", alignItems: "center", height: 38, paddingTop: 10 }}>
                           <span style={{ fontSize: 13, color: K.t1, fontWeight: 800 }}>{getInitials(pid)}</span>
+                        </div>
+                        <div style={{ width: 16, flexShrink: 0, borderRight: gridLine, display: "flex", alignItems: "center", height: 38, paddingTop: 10 }}>
                           <span style={{ fontSize: 10, color: "#3b82f6", fontWeight: 700 }}>{amGetHcp(pid)}</span>
                         </div>
                         {Array.from({ length: 9 }, (_, h) => {
@@ -727,7 +751,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       {!activeMatch && (
         <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
           <button onClick={() => setShowAllMatches(true)} style={{ background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.acc, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: "8px 14px", display: "flex", alignItems: "center", gap: 6 }}>
-            All Matches {I.arrowLeft(11, K.acc)}
+            All Matches <span style={{ display: "inline-flex", transform: "rotate(180deg)" }}>{I.arrowLeft(11, K.acc)}</span>
           </button>
         </div>
       )}
