@@ -233,7 +233,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         <div style={{ width: 40, fontSize: 14, fontWeight: 700, flexShrink: 0, color: isRainedOut ? K.warn : isComplete ? resultColor : isSeeded ? K.t3 : K.act }}>
           {isRainedOut ? "—" : isComplete ? resultText : isSeeded ? "—" : teeTimeShort}
         </div>
-        <div style={{ width: 38, fontSize: 11, fontWeight: 600, color: K.t3, flexShrink: 0 }}>
+        <div style={{ width: 38, fontSize: 11, fontWeight: 600, color: "#3b82f6", flexShrink: 0 }}>
           {isRainedOut ? "" : side === 'front' ? 'Front' : 'Back'}
         </div>
         <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
