@@ -435,23 +435,26 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
     const rrWeeks = Math.min(rrRounds.length, cfg.regularWeeks);
 
     for (let w = 0; w < totalWeeks; w++) {
-      let matches;
-      if (w < rrWeeks) {
-        matches = rrRounds[w];
-      } else if (w < cfg.regularWeeks) {
-        // After round-robin: standings-based
-        matches = generateStandingsMatchups();
-      } else {
-        // Playoffs: standings-based
-        matches = generateStandingsMatchups();
-      }
       const weekNum = w + 1;
       const side = cfg.alternateNines ? (w % 2 === 0 ? 'front' : 'back') : 'front';
-      await saveWeekSchedule({
-        id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum, matches, side,
-        date: getWeekDate(w),
-        isPlayoff: w >= cfg.regularWeeks,
-      });
+      const isPlayoff = w >= cfg.regularWeeks;
+
+      if (w < rrWeeks) {
+        // Round-robin weeks — fixed matchups
+        await saveWeekSchedule({
+          id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum, matches: rrRounds[w], side,
+          date: getWeekDate(w),
+          isPlayoff: false,
+        });
+      } else {
+        // Post-round-robin regular season or playoffs — seeded, TBD matchups
+        await saveWeekSchedule({
+          id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum, matches: [], side,
+          date: getWeekDate(w),
+          isPlayoff,
+          seeded: true,
+        });
+      }
     }
 
     // Save season config

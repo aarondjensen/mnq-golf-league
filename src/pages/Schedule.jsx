@@ -187,18 +187,23 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
   // ── My Schedule compact row ──
   const renderMyWeek = (wk, isDone) => {
-    const myMatch = wk.matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id);
-    if (!myMatch) return null;
-    const origIdx = wk.matches.indexOf(myMatch);
+    const isSeeded = wk.seeded === true && (!wk.matches || wk.matches.length === 0);
+    const isPlayoff = wk.isPlayoff || wk.week > (leagueConfig?.regularWeeks || REGULAR_WEEKS);
+    const myMatch = !isSeeded ? wk.matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id) : null;
+    const origIdx = myMatch ? wk.matches.indexOf(myMatch) : 0;
     const side = wk.side || getWeekSide(wk.week);
     const isRainedOut = wk.rainedOut === true;
-    const res = matchResults.find(r => r.week === wk.week && r.team1Id === myMatch.team1 && r.team2Id === myMatch.team2);
-    const oppId = myMatch.team1 === myTeam.id ? myMatch.team2 : myMatch.team1;
-    const oppTeam = teams.find(t => t.id === oppId);
-    const oppName = lastNamesOnly(oppTeam?.name || "TBD");
+    const res = myMatch ? matchResults.find(r => r.week === wk.week && r.team1Id === myMatch.team1 && r.team2Id === myMatch.team2) : null;
     const isComplete = isWeekComplete(wk);
 
-    const teeTimeShort = fmtTeeTime(origIdx).replace(/\s*(AM|PM)$/i, '');
+    let oppName = "TBD";
+    if (myMatch) {
+      const oppId = myMatch.team1 === myTeam.id ? myMatch.team2 : myMatch.team1;
+      const oppTeam = teams.find(t => t.id === oppId);
+      oppName = lastNamesOnly(oppTeam?.name || "TBD");
+    }
+
+    const teeTimeShort = myMatch ? fmtTeeTime(origIdx).replace(/\s*(AM|PM)$/i, '') : "—";
 
     // Determine result display for my team
     let resultText = "";
@@ -221,14 +226,14 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       }}>
         <div style={{ width: 26, fontSize: 13, fontWeight: 700, color: K.t1 }}>{wk.week}</div>
         <div style={{ width: 50, fontSize: 11, color: K.t3 }}>{wk.date || "—"}</div>
-        <div style={{ width: 46, textAlign: "center", fontSize: 13, fontWeight: 700, color: isRainedOut ? K.warn : isComplete ? resultColor : K.act }}>
-          {isRainedOut ? "—" : isComplete ? resultText : teeTimeShort}
+        <div style={{ width: 46, textAlign: "center", fontSize: 13, fontWeight: 700, color: isRainedOut ? K.warn : isComplete ? resultColor : isSeeded ? K.t3 : K.act }}>
+          {isRainedOut ? "—" : isComplete ? resultText : isSeeded ? "—" : teeTimeShort}
         </div>
-        <div style={{ width: 40, textAlign: "center", fontSize: 11, fontWeight: 600, color: K.t3 }}>
+        <div style={{ width: 40, fontSize: 11, fontWeight: 600, color: K.t3 }}>
           {isRainedOut ? "" : side === 'front' ? 'Front' : 'Back'}
         </div>
-        <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: isRainedOut ? K.warn : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", textAlign: "right" }}>
-          {isRainedOut ? "RAIN" : oppName}
+        <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", textAlign: "right" }}>
+          {isRainedOut ? "RAIN" : isSeeded ? (isPlayoff ? "Playoff — TBD" : "Seeded — TBD") : oppName}
         </div>
       </div>
     );
@@ -239,6 +244,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const isPlayoff = wk.isPlayoff || wk.week > (leagueConfig?.regularWeeks || REGULAR_WEEKS);
     const weekComplete = isWeekComplete(wk);
     const isRainedOut = wk.rainedOut === true;
+    const isSeeded = wk.seeded === true && (!wk.matches || wk.matches.length === 0);
     const side = wk.side || getWeekSide(wk.week);
     const isExp = getExpanded(wk.week);
 
@@ -265,6 +271,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
             {isRainedOut && <Pill color={K.warn} style={{ fontSize: 9 }}>RAIN OUT</Pill>}
             {wk.makeupFor && <Pill color={K.teal} style={{ fontSize: 9 }}>MAKEUP</Pill>}
             {!isRainedOut && <Pill color={K.logoBright} style={{ fontSize: 9 }}>{side === 'front' ? 'FRONT 9' : 'BACK 9'}</Pill>}
+            {isSeeded && !isRainedOut && <Pill color={K.acc} style={{ fontSize: 9 }}>SEEDED</Pill>}
             {isPlayoff && !isRainedOut && <Pill color={K.warn} style={{ fontSize: 9 }}>PLAYOFF</Pill>}
             {weekComplete && !isRainedOut && <Pill color={K.grn} style={{ fontSize: 9 }}>FINAL</Pill>}
             <span style={{ color: K.t3, fontSize: CHEVRON_SIZE, marginLeft: 2 }}>{isExp ? "▾" : "›"}</span>
@@ -282,7 +289,18 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           </div>
         )}
 
-        {isExp && !isRainedOut && (
+        {isExp && !isRainedOut && isSeeded && (
+          <div style={{
+            background: K.inp, borderRadius: `0 0 ${CARD_RADIUS}px ${CARD_RADIUS}px`,
+            border: `1px solid ${K.bdr}`, borderTop: "none", padding: "12px",
+            textAlign: "center",
+          }}>
+            <div style={{ fontSize: 13, color: K.t2, fontWeight: 600 }}>{isPlayoff ? "Playoff Matchups" : "Seeded Matchups"}</div>
+            <div style={{ fontSize: 11, color: K.t3, marginTop: 2 }}>Matchups determined by standings — TBD</div>
+          </div>
+        )}
+
+        {isExp && !isRainedOut && !isSeeded && (
           <div style={{
             background: K.inp, borderRadius: `0 0 ${CARD_RADIUS}px ${CARD_RADIUS}px`,
             border: `1px solid ${weekComplete ? K.bdr : wk.week === schedule[currentWeekIdx]?.week ? K.act + "40" : K.bdr}`,
@@ -391,7 +409,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           <div style={{ width: 26 }}>Wk</div>
           <div style={{ width: 50 }}>Date</div>
           <div style={{ width: 46, textAlign: "center" }}>Time</div>
-          <div style={{ width: 40, textAlign: "center" }}>Side</div>
+          <div style={{ width: 40 }}>Side</div>
           <div style={{ flex: 1, textAlign: "right" }}>Opponent</div>
         </div>
       )}
@@ -415,7 +433,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
               <div style={{ width: 26 }}>Wk</div>
               <div style={{ width: 50 }}>Date</div>
               <div style={{ width: 46, textAlign: "center" }}>Result</div>
-              <div style={{ width: 40, textAlign: "center" }}>Side</div>
+              <div style={{ width: 40 }}>Side</div>
               <div style={{ flex: 1, textAlign: "right" }}>Opponent</div>
             </div>
           )}
