@@ -67,6 +67,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const [showFinalize, setShowFinalize] = useState(false);
   const [showEditConfirm, setShowEditConfirm] = useState(false);
   const [absentPlayers, setAbsentPlayers] = useState({}); // { playerId: true }
+  const [confirmModal, setConfirmModal] = useState(null); // { title, message, onConfirm }
   const initialJump = useRef(false);
   const matchGrn = K.matchGrn;
 
@@ -1237,12 +1238,19 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const absentBtn = !isAlreadyFinalized ? (
           <button
             onClick={() => {
+              if (absentLocked) return;
               const tm = getTeammate(pid);
+              const tmPlayer = tm ? players.find(p => p.id === tm) : null;
               const tmAbsent = tm && isPlayerAbsent(tm);
-              const msg = tmAbsent
-                ? `Mark ${pl.name} as absent? Both teammates will be absent — net bogey scores will be used.`
-                : `Mark ${pl.name} as absent? Their teammate's scores will count double.`;
-              if (!absentLocked && window.confirm(msg)) toggleAbsent(pid);
+              const tmName = tmPlayer?.name || "teammate";
+              const message = tmAbsent
+                ? `Both teammates will be absent — net bogey scores will be used for ${pl.name} and ${tmName}.`
+                : `${tmName}'s scores will count double for match calculations.`;
+              setConfirmModal({
+                title: `Mark ${pl.name} as absent?`,
+                message,
+                onConfirm: () => { toggleAbsent(pid); setConfirmModal(null); },
+              });
             }}
             style={{
               fontSize: 11, fontWeight: 600, color: absentLocked ? K.t3 + "50" : K.t3, background: "none",
@@ -1263,7 +1271,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   <span style={{ fontSize: 10, color: K.red, fontWeight: 700, background: K.red + "15", padding: "2px 6px", borderRadius: 4 }}>ABSENT</span>
                 </div>
                 {!isAlreadyFinalized && (
-                  <button onClick={() => { if (window.confirm(`Mark ${pl.name} as present?`)) toggleAbsent(pid); }} style={{ fontSize: 11, fontWeight: 700, color: "#3b82f6", background: "none", border: `1px solid #3b82f640`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>
+                  <button onClick={() => { setConfirmModal({ title: `Mark ${pl.name} as present?`, message: `${pl.name} will play their own scores.`, onConfirm: () => { toggleAbsent(pid); setConfirmModal(null); } }); }} style={{ fontSize: 11, fontWeight: 700, color: "#3b82f6", background: "none", border: `1px solid #3b82f640`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>
                     Undo
                   </button>
                 )}
@@ -1524,6 +1532,25 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           </div>
         </>);
       })()}
+      {/* Custom confirm modal */}
+      {confirmModal && (<>
+        <div onClick={() => setConfirmModal(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 900 }} />
+        <div style={{ position: "fixed", inset: 0, zIndex: 950, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "20px", width: "100%", maxWidth: 320 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>MnQ Golf League</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 6 }}>{confirmModal.title}</div>
+            <div style={{ fontSize: 13, color: K.t2, lineHeight: 1.5, marginBottom: 16 }}>{confirmModal.message}</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button onClick={confirmModal.onConfirm} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                Confirm
+              </button>
+              <button onClick={() => setConfirmModal(null)} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      </>)}
       {/* Toast */}
       {toast && (<>
         <style>{`@keyframes toastDown { 0% { transform: translateX(-50%) translateY(-20px); opacity: 0; } 100% { transform: translateX(-50%) translateY(0); opacity: 1; } }`}</style>
