@@ -631,7 +631,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <button onClick={async () => {
                 await saveWeekSchedule({ ...weekSch, locked: true });
                 setToast("Week " + week + " finalized");
-                setTimeout(() => setToast(null), 2000);
+                setTimeout(() => {
+                  setToast(null);
+                  setShowAllMatches(false);
+                  setActiveMatch(null);
+                  setExpandedMatch(null);
+                }, 2000);
               }} style={{ width: "100%", padding: 14, borderRadius: 12, cursor: "pointer", background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: 800 }}>
                 Finalize Week {week}
               </button>
