@@ -40,10 +40,8 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     for (let i = 0; i < schedule.length; i++) {
       const wk = schedule[i];
       if (wk.rainedOut) continue;
-      const allFinalized = wk.matches.every(m =>
-        matchResults.some(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2)
-      );
-      if (!allFinalized) return i;
+      if (!wk.matches || wk.matches.length === 0) continue; // skip seeded/TBD
+      if (!wk.locked) return i; // stay on this week until commish locks it
     }
     return schedule.length - 1;
   }, [schedule, matchResults]);

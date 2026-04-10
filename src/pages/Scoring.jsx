@@ -72,16 +72,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const initialJump = useRef(false);
   const matchGrn = K.matchGrn;
 
-  // Find current week: first week where not all matches are finalized
+  // Find current week: first non-locked week with matches
+  // Only advances when the commish locks/finalizes the week
   const currentWeek = useMemo(() => {
     for (const wk of schedule) {
       if (wk.rainedOut) continue;
       if (!wk.matches || wk.matches.length === 0) continue; // skip seeded/TBD weeks
-      const allDone = wk.matches.every(m =>
-        matchResults.some(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2)
-      );
-      if (!allDone) return wk.week;
+      if (!wk.locked) return wk.week; // stay on this week until commish locks it
     }
+    // All weeks locked — show the last playable week
     const playable = schedule.filter(wk => !wk.rainedOut && wk.matches && wk.matches.length > 0);
     return playable.length ? playable[playable.length - 1].week : 0;
   }, [schedule, matchResults]);
