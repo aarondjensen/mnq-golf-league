@@ -413,8 +413,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       {t1Leading && (
                         <svg width="10" height="12" viewBox="0 0 10 12" style={{ transform: "rotate(-90deg)" }}>
                           {isFinalOrSigned
-                            ? <polygon points="5,0 10,12 0,12" fill=K.matchGrn />
-                            : <polygon points="5,1 9,11 1,11" fill="none" stroke=K.matchGrn strokeWidth="1.5" />
+                            ? <polygon points="5,0 10,12 0,12" fill={K.matchGrn} />
+                            : <polygon points="5,1 9,11 1,11" fill="none" stroke={K.matchGrn} strokeWidth="1.5" />
                           }
                         </svg>
                       )}
@@ -431,8 +431,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       {t2Leading && (
                         <svg width="10" height="12" viewBox="0 0 10 12" style={{ transform: "rotate(90deg)" }}>
                           {isFinalOrSigned
-                            ? <polygon points="5,0 10,12 0,12" fill=K.matchGrn />
-                            : <polygon points="5,1 9,11 1,11" fill="none" stroke=K.matchGrn strokeWidth="1.5" />
+                            ? <polygon points="5,0 10,12 0,12" fill={K.matchGrn} />
+                            : <polygon points="5,1 9,11 1,11" fill="none" stroke={K.matchGrn} strokeWidth="1.5" />
                           }
                         </svg>
                       )}
