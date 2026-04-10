@@ -193,6 +193,9 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const side = wk.side || getWeekSide(wk.week);
     const isRainedOut = wk.rainedOut === true;
     const res = matchResults.find(r => r.week === wk.week && r.team1Id === myMatch.team1 && r.team2Id === myMatch.team2);
+    const oppId = myMatch.team1 === myTeam.id ? myMatch.team2 : myMatch.team1;
+    const oppTeam = teams.find(t => t.id === oppId);
+    const oppName = lastNamesOnly(oppTeam?.name || "TBD");
 
     return (
       <div key={wk.week} style={{
@@ -200,13 +203,16 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         background: K.card, borderRadius: CARD_RADIUS, border: `1px solid ${K.bdr}`,
         opacity: isRainedOut ? 0.5 : 1,
       }}>
-        <div style={{ width: 62, fontSize: 12, fontWeight: 700, color: K.t1 }}>Week {wk.week}</div>
-        <div style={{ width: 56, fontSize: 11, color: K.t3 }}>{wk.date || "—"}</div>
-        <div style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 700, color: isRainedOut ? K.warn : res ? K.t1 : K.act }}>
-          {isRainedOut ? "RAIN" : res ? (res.matchResultText || "FINAL") : fmtTeeTime(origIdx)}
+        <div style={{ width: 54, fontSize: 12, fontWeight: 700, color: K.t1 }}>Wk {wk.week}</div>
+        <div style={{ width: 50, fontSize: 11, color: K.t3 }}>{wk.date || "—"}</div>
+        <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: isRainedOut ? K.warn : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+          {isRainedOut ? "RAIN" : oppName}
         </div>
-        <div style={{ width: 58, textAlign: "right", fontSize: 11, fontWeight: 600, color: K.t3 }}>
-          {isRainedOut ? "" : side === 'front' ? 'Front 9' : 'Back 9'}
+        <div style={{ width: 52, textAlign: "center", fontSize: 13, fontWeight: 700, color: isRainedOut ? K.warn : res ? K.t1 : K.act }}>
+          {isRainedOut ? "" : res ? (res.matchResultText || "—") : fmtTeeTime(origIdx)}
+        </div>
+        <div style={{ width: 42, textAlign: "right", fontSize: 11, fontWeight: 600, color: K.t3 }}>
+          {isRainedOut ? "" : side === 'front' ? 'Front' : 'Back'}
         </div>
       </div>
     );
@@ -234,7 +240,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           borderBottom: isExp ? "none" : undefined,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: NAME_SIZE, fontWeight: 700, color: K.t1 }}>
+            <span style={{ fontSize: NAME_SIZE, fontWeight: 700, color: K.t1, minWidth: 90 }}>
               Week {wk.week}
             </span>
             {wk.date && <span style={{ fontSize: 12, color: K.t3 }}>{wk.date}</span>}
@@ -366,11 +372,11 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       {/* My Schedule column header */}
       {myOnly && (
         <div style={{ display: "flex", alignItems: "center", padding: "0 12px 6px", fontSize: 9, color: K.t3, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8 }}>
-          <div style={{ width: 62 }}>Week</div>
-          <div style={{ width: 56 }}>Date</div>
-          <div style={{ flex: 1, textAlign: "center" }}>Tee Time</div>
-          <div style={{ width: 58, textAlign: "right" }}>Side</div>
-          <div style={{ width: 18 }} />
+          <div style={{ width: 54 }}>Week</div>
+          <div style={{ width: 50 }}>Date</div>
+          <div style={{ flex: 1 }}>Opponent</div>
+          <div style={{ width: 52, textAlign: "center" }}>Tee</div>
+          <div style={{ width: 42, textAlign: "right" }}>Side</div>
         </div>
       )}
 
