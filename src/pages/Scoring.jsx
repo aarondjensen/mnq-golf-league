@@ -144,6 +144,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     if (prevPlayerId.current !== leagueUser.playerId) {
       setShowFinalize(false);
       setShowEditConfirm(false);
+      setShowAllMatches(false);
+      setActiveMatch(null);
+      setExpandedMatch(null);
+      setShowScorecard(false);
       prevPlayerId.current = leagueUser.playerId;
     }
   }, [leagueUser.playerId]);
@@ -276,6 +280,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       const holeNum = side === 'front' ? curHole + 1 : curHole + 10;
       setToast(`✓ Hole ${holeNum} saved — advancing...`);
       const timer = setTimeout(() => {
+        setToast(null);
         let next = curHole + 1;
         while (next < 8 && allP.every(pid => getS(pid, next) > 0)) next++;
         setCurHole(next);
@@ -283,13 +288,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       return () => clearTimeout(timer);
     }
   }, [holeComplete, curHole, editing, allComplete]);
-
-  useEffect(() => {
-    if (toast) {
-      const timer = setTimeout(() => setToast(null), 400);
-      return () => clearTimeout(timer);
-    }
-  }, [curHole]);
 
   useEffect(() => {
     if (allComplete && !showFinalize && !isAlreadyFinalized) {
@@ -764,6 +762,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       attestedByTeamId: myTeam?.id || null,
       attestedByPlayerId: leagueUser.playerId || null,
     });
+    setShowFinalize(false);
+    setShowEditConfirm(false);
     setToast("Scorecard attested ✓");
     setTimeout(() => setToast(null), 2000);
   };
