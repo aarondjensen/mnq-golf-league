@@ -967,10 +967,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 pointerEvents: "none", zIndex: 2, overflow: "hidden",
               }}>
                 <div style={{
-                  fontSize: "18vw", fontWeight: 900, color: K.t3 + "10",
-                  letterSpacing: "3vw", textTransform: "uppercase",
+                  fontSize: 48, fontWeight: 900, color: K.t3 + "20",
+                  letterSpacing: 12, textTransform: "uppercase",
                   userSelect: "none", whiteSpace: "nowrap",
-                  transform: "rotate(-20deg)",
+                  transform: "rotate(-18deg)",
                 }}>FINAL</div>
               </div>
             )}
