@@ -471,7 +471,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     if (mRunning[h] === null) break;
                     const lead = Math.abs(mRunning[h]);
                     const rem = 8 - h;
-                    if (lead > rem) { mClinchHole = h; mClinchText = lead + "&" + rem; break; }
+                    if (lead > rem) { mClinchHole = h; mClinchText = rem > 0 ? lead + "&" + rem : lead + "UP"; break; }
                   }
 
                   // Swap holeResults to be from dispT1 perspective if swapped
@@ -824,7 +824,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           const remaining = 8 - h;
           if (lead > remaining) {
             matchClinchHole = h;
-            clinchScoreText = `${lead}&${remaining}`;
+            clinchScoreText = remaining > 0 ? `${lead}&${remaining}` : `${lead}UP`;
             break;
           }
         }
@@ -983,7 +983,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           const remaining = 8 - h;
           if (lead > remaining && lead > 0) {
             scClinchHole = h;
-            scClinchText = `${lead}&${remaining}`;
+            scClinchText = remaining > 0 ? `${lead}&${remaining}` : `${lead}UP`;
             break;
           }
         }
