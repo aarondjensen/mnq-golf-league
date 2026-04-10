@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { K, EmptyState, lastNamesOnly, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, CHEVRON_SIZE } from "../theme";
 
 // Build standings from a set of match results
-function buildStandings(teams, results, isRecord) {
+function buildStandings(teams, results, isRecord, tiebreaker) {
   const pts = {};
   teams.forEach(t => { pts[t.id] = { teamId: t.id, points: 0, w: 0, l: 0, t: 0, gamesPlayed: 0, hw: 0 }; });
   results.forEach(r => {
@@ -26,22 +26,30 @@ function buildStandings(teams, results, isRecord) {
     }
   });
   const arr = Object.values(pts);
+  const hwTiebreak = tiebreaker === "holesWon" || !tiebreaker;
   if (isRecord) {
     arr.sort((a, b) => {
       const aPct = a.gamesPlayed ? (a.w + a.t * 0.5) / a.gamesPlayed : 0;
       const bPct = b.gamesPlayed ? (b.w + b.t * 0.5) / b.gamesPlayed : 0;
       if (bPct !== aPct) return bPct - aPct;
       if (b.w !== a.w) return b.w - a.w;
-      return a.l - b.l;
+      if (a.l !== b.l) return a.l - b.l;
+      if (hwTiebreak) return b.hw - a.hw;
+      return 0;
     });
   } else {
-    arr.sort((a, b) => b.points - a.points);
+    arr.sort((a, b) => {
+      if (b.points !== a.points) return b.points - a.points;
+      if (hwTiebreak) return b.hw - a.hw;
+      return 0;
+    });
   }
   return arr;
 }
 
 export default function StandingsView({ teams, players, matchResults, leagueConfig, schedule, fetchSeasonScores }) {
   const isRecord = leagueConfig?.standingsMethod === "record";
+  const tiebreaker = leagueConfig?.tiebreaker || "holesWon";
   const [expanded, setExpanded] = useState(null);
   const expandedRef = useRef(null);
 
@@ -78,7 +86,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
 
   // Current standings (all locked weeks)
   const standings = useMemo(() => {
-    return buildStandings(teams, lockedResults, isRecord);
+    return buildStandings(teams, lockedResults, isRecord, tiebreaker);
   }, [teams, lockedResults, isRecord]);
 
   // Previous standings (all locked weeks except the latest)
@@ -86,7 +94,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     if (latestLockedWeek === 0) return null;
     const prevResults = lockedResults.filter(r => r.week !== latestLockedWeek);
     if (prevResults.length === 0 && lockedResults.length > 0) return null;
-    return buildStandings(teams, prevResults, isRecord);
+    return buildStandings(teams, prevResults, isRecord, tiebreaker);
   }, [teams, lockedResults, latestLockedWeek, isRecord]);
 
   // Build position map: teamId → rank for previous week
