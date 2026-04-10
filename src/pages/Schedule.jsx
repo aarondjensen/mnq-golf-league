@@ -286,7 +286,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                     <div style={{ flex: 1, textAlign: "right", paddingRight: res && score1 > score2 ? 8 : 18, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
                       <div style={{ fontSize: NAME_SIZE, fontWeight: res && score1 > score2 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player1)}</div>
                       <div style={{ fontSize: NAME_SIZE, fontWeight: res && score1 > score2 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player2)}</div>
-                      {res && <div style={{ fontSize: 10, color: K.t3, fontWeight: 500, marginTop: 2 }}>{fmtRecord(t1?.id)}</div>}
+                      {res && <div style={{ fontSize: 12, color: K.t3, fontWeight: 600, marginTop: 2 }}>{fmtRecord(t1?.id)}</div>}
                     </div>
                     {/* Winner triangle left */}
                     {res && score1 > score2 && (
@@ -310,7 +310,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                     <div style={{ flex: 1, textAlign: "left", paddingLeft: res && score2 > score1 ? 8 : 18, overflow: "hidden" }}>
                       <div style={{ fontSize: NAME_SIZE, fontWeight: res && score2 > score1 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player1)}</div>
                       <div style={{ fontSize: NAME_SIZE, fontWeight: res && score2 > score1 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player2)}</div>
-                      {res && <div style={{ fontSize: 10, color: K.t3, fontWeight: 500, marginTop: 2 }}>{fmtRecord(t2?.id)}</div>}
+                      {res && <div style={{ fontSize: 12, color: K.t3, fontWeight: 600, marginTop: 2 }}>{fmtRecord(t2?.id)}</div>}
                     </div>
                   </div>
                 );
