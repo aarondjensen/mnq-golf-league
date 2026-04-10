@@ -419,8 +419,8 @@ export default function GolfLeagueApp() {
               <div style={{ background: K.card, border: `1.5px solid ${bannerGrn}`, borderRadius: 10, margin: "6px 14px", padding: "10px 16px", display: "flex", alignItems: "center" }}>
                 {/* Left: Tee time + Front/Back */}
                 <div style={{ width: 80, flexShrink: 0, textAlign: "left", lineHeight: 1.3, padding: "6px 0" }}>
-                  <div style={{ fontSize: 17, fontWeight: 800, color: bannerGrn, letterSpacing: .5 }}>{upcomingBanner.teeTime}</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: bannerGrn, letterSpacing: .5, textTransform: "uppercase" }}>{upcomingBanner.side === 'front' ? 'FRONT 9' : 'BACK 9'}</div>
+                  <div style={{ fontSize: 17, fontWeight: 800, color: K.act, letterSpacing: .5 }}>{upcomingBanner.teeTime}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#3b82f6", letterSpacing: .5, textTransform: "uppercase" }}>{upcomingBanner.side === 'front' ? 'FRONT 9' : 'BACK 9'}</div>
                 </div>
                 {/* Center: Date + Week */}
                 <div style={{ flex: 1, textAlign: "center", lineHeight: 1.3 }}>
