@@ -456,7 +456,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   const TeamNetRow = ({ pids, isDispT1 }) => {
                     return (
                       <div style={{ display: "flex", alignItems: "center", background: K.act + "0c" }}>
-                        <div style={{ width: 44, flexShrink: 0, fontSize: 9, color: K.act, fontWeight: 800, padding: "4px 0", borderRight: gridLine, paddingLeft: 4 }}>NET</div>
+                        <div style={{ width: 44, flexShrink: 0, fontSize: 9, color: K.act, fontWeight: 800, borderRight: gridLine, paddingLeft: 4, display: "flex", alignItems: "center", height: 28 }}>NET</div>
                         {Array.from({ length: 9 }, (_, h) => {
                           let tNet = 0; let ok = true;
                           pids.forEach(pid => { const s = amGetScore(pid, h); if (s <= 0) ok = false; else tNet += s - amGetStrokes(pid, h); });
@@ -497,14 +497,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     <div style={{ padding: "6px 8px 10px", borderTop: `1px solid ${K.bdr}30` }}>
                       {/* Header row + Par row */}
                       <div style={{ display: "flex", background: K.acc, borderRadius: "6px 6px 0 0" }}>
-                        <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.bg, fontWeight: 800, padding: "5px 0", paddingLeft: 4, opacity: .8 }}>HOLE</div>
+                        <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.bg, fontWeight: 800, paddingLeft: 4, opacity: .8, display: "flex", alignItems: "center", height: 30 }}>HOLE</div>
                         {Array.from({ length: 9 }, (_, i) => (
-                          <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 12, color: K.bg, fontWeight: 800, lineHeight: "20px", padding: "5px 0" }}>{side === 'front' ? i + 1 : i + 10}</div>
+                          <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 12, color: K.bg, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", height: 30 }}>{side === 'front' ? i + 1 : i + 10}</div>
                         ))}
                       </div>
                       <div style={{ display: "flex", borderBottom: gridLine, background: K.acc + "18" }}>
-                        <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700, padding: "3px 0", borderRight: gridLine, paddingLeft: 4 }}>PAR</div>
-                        {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 11, color: K.t2, fontWeight: 600, lineHeight: "20px", padding: "3px 0", borderRight: i < 8 ? gridLine : "none" }}>{p}</div>)}
+                        <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700, borderRight: gridLine, paddingLeft: 4, display: "flex", alignItems: "center", height: 26 }}>PAR</div>
+                        {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 11, color: K.t2, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", height: 26, borderRight: i < 8 ? gridLine : "none" }}>{p}</div>)}
                       </div>
 
                       {/* Team 1 (display perspective) */}
