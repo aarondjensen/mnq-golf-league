@@ -1191,6 +1191,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <TeamNetRow pids={scOppPids} isMyTeam={false} />
             </div>
 
+            {/* Awaiting opponent attestation banner — shown to the team that signed */}
+            {isAlreadyFinalized && !isAttested && !isWeekLocked && !needsAttestation && (
+              <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginTop: 8, fontSize: 13, color: K.warn, fontWeight: 700, textAlign: "center" }}>
+                Scorecard signed — awaiting opponent attestation
+              </div>
+            )}
+
             {/* Attest button — only for opposing team */}
             {needsAttestation && (
               <div style={{ marginTop: 12 }}>
