@@ -82,7 +82,21 @@ export default function GolfLeagueApp() {
 
     const getScrollEl = () => appBodyRef.current || document.querySelector('.app-body');
 
+    // Elements that should NOT trigger pull-to-refresh
+    const isInteractive = (el) => {
+      if (!el) return false;
+      const tag = el.tagName;
+      if (tag === 'BUTTON' || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return true;
+      if (el.closest && (el.closest('button') || el.closest('input') || el.closest('[data-popup]') || el.closest('[data-no-pull]'))) return true;
+      return false;
+    };
+
     const handleStart = (e) => {
+      // Don't arm pull gesture on interactive elements (score buttons, inputs, etc.)
+      if (isInteractive(e.target)) {
+        touchStartY.current = 0;
+        return;
+      }
       const el = getScrollEl();
       // Only arm if scroll container is at the very top
       if (el && el.scrollTop <= 0) {
@@ -97,13 +111,6 @@ export default function GolfLeagueApp() {
       if (!touchStartY.current) return;
       const el = getScrollEl();
       const diff = e.touches[0].clientY - touchStartY.current;
-
-      // Check if touch started inside a popup/modal — don't pull-to-refresh there
-      const target = e.target;
-      if (target && target.closest && target.closest('[data-popup]')) {
-        touchStartY.current = 0;
-        return;
-      }
 
       if (diff > 10 && el && el.scrollTop <= 0) {
         // We're pulling down from the top
@@ -120,7 +127,7 @@ export default function GolfLeagueApp() {
         // User scrolled up or container not at top — cancel pull
         if (pullingRef.current) {
           pullingRef.current = false;
-          if (el) el.style.overflowY = 'auto';
+          if (el) el.style.overflowY = '';
         }
         pullYRef.current = 0;
         setPullY(0);
@@ -130,11 +137,10 @@ export default function GolfLeagueApp() {
 
     const handleEnd = () => {
       const el = getScrollEl();
-      // Always restore scroll
-      if (pullingRef.current && el) {
-        pullingRef.current = false;
-        el.style.overflowY = 'auto';
-      }
+      // ALWAYS restore scroll overflow, whether we were pulling or not
+      if (el) el.style.overflowY = '';
+      pullingRef.current = false;
+
       if (pullYRef.current >= PULL_THRESHOLD) {
         setPullY(PULL_THRESHOLD);
         pullYRef.current = PULL_THRESHOLD;
@@ -160,14 +166,19 @@ export default function GolfLeagueApp() {
       document.removeEventListener('touchcancel', handleEnd);
       // Restore scroll on cleanup
       const el = getScrollEl();
-      if (el) el.style.overflowY = 'auto';
+      if (el) el.style.overflowY = '';
     };
   }, [refreshing]);
 
   // Safety: if pull indicator stuck, reset after 2s
   useEffect(() => {
     if (pullY > 0 && !refreshing) {
-      const safety = setTimeout(resetPull, 2000);
+      const safety = setTimeout(() => {
+        resetPull();
+        // Also restore scroll in case overflow got stuck
+        const el = appBodyRef.current || document.querySelector('.app-body');
+        if (el) el.style.overflowY = '';
+      }, 2000);
       return () => clearTimeout(safety);
     }
   }, [pullY, refreshing, resetPull]);
