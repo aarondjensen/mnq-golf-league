@@ -11,6 +11,45 @@ function lastNamesOnly(teamName) {
   }).join(" / ");
 }
 
+// Build standings from a set of match results
+function buildStandings(teams, results, isRecord) {
+  const pts = {};
+  teams.forEach(t => { pts[t.id] = { teamId: t.id, points: 0, w: 0, l: 0, t: 0, gamesPlayed: 0, hw: 0 }; });
+  results.forEach(r => {
+    if (!r) return;
+    if (pts[r.team1Id]) pts[r.team1Id].points += (r.team1Points || 0);
+    if (pts[r.team2Id]) pts[r.team2Id].points += (r.team2Points || 0);
+    if (r.t1HolesWon !== undefined && r.t2HolesWon !== undefined) {
+      if (pts[r.team1Id]) pts[r.team1Id].hw += r.t1HolesWon;
+      if (pts[r.team2Id]) pts[r.team2Id].hw += r.t2HolesWon;
+    }
+    const d = (r.team1Points || 0) - (r.team2Points || 0);
+    if (d > 0) {
+      if (pts[r.team1Id]) { pts[r.team1Id].w++; pts[r.team1Id].gamesPlayed++; }
+      if (pts[r.team2Id]) { pts[r.team2Id].l++; pts[r.team2Id].gamesPlayed++; }
+    } else if (d < 0) {
+      if (pts[r.team1Id]) { pts[r.team1Id].l++; pts[r.team1Id].gamesPlayed++; }
+      if (pts[r.team2Id]) { pts[r.team2Id].w++; pts[r.team2Id].gamesPlayed++; }
+    } else {
+      if (pts[r.team1Id]) { pts[r.team1Id].t++; pts[r.team1Id].gamesPlayed++; }
+      if (pts[r.team2Id]) { pts[r.team2Id].t++; pts[r.team2Id].gamesPlayed++; }
+    }
+  });
+  const arr = Object.values(pts);
+  if (isRecord) {
+    arr.sort((a, b) => {
+      const aPct = a.gamesPlayed ? (a.w + a.t * 0.5) / a.gamesPlayed : 0;
+      const bPct = b.gamesPlayed ? (b.w + b.t * 0.5) / b.gamesPlayed : 0;
+      if (bPct !== aPct) return bPct - aPct;
+      if (b.w !== a.w) return b.w - a.w;
+      return a.l - b.l;
+    });
+  } else {
+    arr.sort((a, b) => b.points - a.points);
+  }
+  return arr;
+}
+
 export default function StandingsView({ teams, players, matchResults, leagueConfig, schedule, fetchSeasonScores }) {
   const isRecord = leagueConfig?.standingsMethod === "record";
   const [expanded, setExpanded] = useState(null);
@@ -26,58 +65,51 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     }
   };
 
-  // Calculate holes won per team from saved match result data
-  const teamHolesWon = useMemo(() => {
-    const hw = {};
-    teams.forEach(t => { hw[t.id] = 0; });
-
-    matchResults.forEach(r => {
-      if (!r) return;
-      if (r.t1HolesWon !== undefined && r.t2HolesWon !== undefined) {
-        if (hw[r.team1Id] !== undefined) hw[r.team1Id] += r.t1HolesWon;
-        if (hw[r.team2Id] !== undefined) hw[r.team2Id] += r.t2HolesWon;
-      }
+  // Get set of locked weeks from schedule
+  const lockedWeeks = useMemo(() => {
+    const set = new Set();
+    (schedule || []).forEach(wk => {
+      if (wk.locked) set.add(wk.week);
     });
-    return hw;
-  }, [matchResults, teams]);
+    return set;
+  }, [schedule]);
 
+  // Only count match results from locked/finalized weeks for standings
+  const lockedResults = useMemo(() => {
+    return matchResults.filter(r => r && lockedWeeks.has(r.week));
+  }, [matchResults, lockedWeeks]);
+
+  // Find the most recently locked week number
+  const latestLockedWeek = useMemo(() => {
+    let max = 0;
+    lockedWeeks.forEach(w => { if (w > max) max = w; });
+    return max;
+  }, [lockedWeeks]);
+
+  // Current standings (all locked weeks)
   const standings = useMemo(() => {
-    const pts = {};
-    teams.forEach(t => { pts[t.id] = { teamId: t.id, points: 0, w: 0, l: 0, t: 0, gamesPlayed: 0, hw: teamHolesWon[t.id] || 0 }; });
-    matchResults.forEach(r => {
-      if (!r) return;
-      if (pts[r.team1Id]) pts[r.team1Id].points += (r.team1Points || 0);
-      if (pts[r.team2Id]) pts[r.team2Id].points += (r.team2Points || 0);
-      const d = (r.team1Points || 0) - (r.team2Points || 0);
-      if (d > 0) {
-        if (pts[r.team1Id]) { pts[r.team1Id].w++; pts[r.team1Id].gamesPlayed++; }
-        if (pts[r.team2Id]) { pts[r.team2Id].l++; pts[r.team2Id].gamesPlayed++; }
-      } else if (d < 0) {
-        if (pts[r.team1Id]) { pts[r.team1Id].l++; pts[r.team1Id].gamesPlayed++; }
-        if (pts[r.team2Id]) { pts[r.team2Id].w++; pts[r.team2Id].gamesPlayed++; }
-      } else {
-        if (pts[r.team1Id]) { pts[r.team1Id].t++; pts[r.team1Id].gamesPlayed++; }
-        if (pts[r.team2Id]) { pts[r.team2Id].t++; pts[r.team2Id].gamesPlayed++; }
-      }
-    });
-    const arr = Object.values(pts);
-    if (isRecord) {
-      arr.sort((a, b) => {
-        const aPct = a.gamesPlayed ? (a.w + a.t * 0.5) / a.gamesPlayed : 0;
-        const bPct = b.gamesPlayed ? (b.w + b.t * 0.5) / b.gamesPlayed : 0;
-        if (bPct !== aPct) return bPct - aPct;
-        if (b.w !== a.w) return b.w - a.w;
-        return a.l - b.l;
-      });
-    } else {
-      arr.sort((a, b) => b.points - a.points);
-    }
-    return arr;
-  }, [teams, matchResults, isRecord, teamHolesWon]);
+    return buildStandings(teams, lockedResults, isRecord);
+  }, [teams, lockedResults, isRecord]);
 
-  // Get weekly results for expanded team
+  // Previous standings (all locked weeks except the latest)
+  const prevStandings = useMemo(() => {
+    if (latestLockedWeek === 0) return null;
+    const prevResults = lockedResults.filter(r => r.week !== latestLockedWeek);
+    if (prevResults.length === 0 && lockedResults.length > 0) return null; // first week, no previous
+    return buildStandings(teams, prevResults, isRecord);
+  }, [teams, lockedResults, latestLockedWeek, isRecord]);
+
+  // Build position map: teamId → rank for previous week
+  const prevPositionMap = useMemo(() => {
+    if (!prevStandings) return {};
+    const map = {};
+    prevStandings.forEach((s, i) => { map[s.teamId] = i + 1; });
+    return map;
+  }, [prevStandings]);
+
+  // Get weekly results for expanded team (only locked weeks)
   const getTeamResults = (teamId) => {
-    return matchResults
+    return lockedResults
       .filter(r => r.team1Id === teamId || r.team2Id === teamId)
       .sort((a, b) => a.week - b.week)
       .map(r => {
@@ -125,6 +157,9 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
           const mc = i === 0 ? K.gold : i === 1 ? K.silver : i === 2 ? K.bronze : K.logoBright;
           const isExp = expanded === s.teamId;
           const results = isExp ? getTeamResults(s.teamId) : [];
+          const curPos = i + 1;
+          const prevPos = prevPositionMap[s.teamId];
+          const posChange = (prevPos && latestLockedWeek > 0) ? prevPos - curPos : null;
 
           return (
             <div key={s.teamId}>
@@ -142,7 +177,15 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: 13, fontWeight: 800, color: mc,
                     border: i < 3 ? `1.5px solid ${mc}40` : `1.5px solid ${K.logoBright}30`,
-                  }}>{i + 1}</div>
+                  }}>{curPos}</div>
+                  {posChange !== null && posChange !== 0 ? (
+                    <div style={{ fontSize: 10, fontWeight: 700, color: posChange > 0 ? "#1a8c3f" : K.red, display: "flex", alignItems: "center", gap: 0, marginLeft: 3, minWidth: 16 }}>
+                      <span style={{ fontSize: 8 }}>{posChange > 0 ? "▲" : "▼"}</span>
+                      <span>{Math.abs(posChange)}</span>
+                    </div>
+                  ) : (
+                    <div style={{ minWidth: 16, marginLeft: 3 }} />
+                  )}
                 </div>
                 <div style={{ flex: 1, fontSize: 15, fontWeight: 700, letterSpacing: .5, textAlign: "left" }}>{lastNamesOnly(team.name)}</div>
                 <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 0 }}>

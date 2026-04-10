@@ -99,6 +99,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const allMatchesFinalized = matches.every(m =>
     matchResults.some(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2)
   );
+  const allMatchesAttested = matches.every(m =>
+    matchResults.some(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true)
+  );
 
   if (!course?.name) return <EmptyState icon="flag" title="Course not configured" subtitle="Commissioner needs to set up the course." />;
   if (!matches.length) return <EmptyState icon="calendar" title="No matches this week" subtitle="Commissioner needs to set the schedule." />;
@@ -146,15 +149,20 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           })}
         </div>
 
-        {/* Finalize Week button — commissioner only, after all matches finalized */}
-        {allMatchesFinalized && isComm && !isWeekLocked && saveWeekSchedule && (
+        {/* Finalize Week button — commissioner only, after all matches signed & attested */}
+        {allMatchesAttested && isComm && !isWeekLocked && saveWeekSchedule && (
           <button onClick={async () => {
             await saveWeekSchedule({ ...weekSch, locked: true });
-            setToast("Week " + week + " locked");
+            setToast("Week " + week + " finalized ✓");
             setTimeout(() => setToast(null), 2000);
           }} style={{ width: "100%", padding: 14, borderRadius: 12, marginTop: 16, cursor: "pointer", background: K.navy || K.act, border: "none", color: "#fff", fontSize: 14, fontWeight: 800, letterSpacing: .3 }}>
-            Finalize Week — Lock All Scores
+            Finalize Week {week}
           </button>
+        )}
+        {allMatchesFinalized && !allMatchesAttested && isComm && !isWeekLocked && (
+          <div style={{ textAlign: "center", marginTop: 12, fontSize: 12, color: K.warn, fontWeight: 600 }}>
+            Waiting for all scorecards to be attested
+          </div>
         )}
         {isWeekLocked && (
           <div style={{ textAlign: "center", marginTop: 12, fontSize: 12, color: K.t3, fontWeight: 600 }}>

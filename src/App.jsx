@@ -81,27 +81,15 @@ export default function GolfLeagueApp() {
     const el = document.querySelector('.app-body');
     if (!el) return;
 
-    // Check if content is at scroll top — accounts for popup overlays
-    const isAtScrollTop = () => {
-      // If a popup is open, check the popup's scrollable container
-      const popup = document.querySelector('[data-popup]');
-      if (popup) {
-        // Find the scrollable child inside the popup
-        const scrollable = popup.querySelector('[style*="overflowY"]') || popup;
-        return !scrollable.scrollTop || scrollable.scrollTop === 0;
-      }
-      return el.scrollTop === 0;
-    };
-
     const handleStart = (e) => {
-      if (isAtScrollTop()) touchStart.current = e.touches[0].clientY;
+      if (el.scrollTop === 0) touchStart.current = e.touches[0].clientY;
       else touchStart.current = 0;
     };
 
     const handleMove = (e) => {
       if (!touchStart.current) return;
       const diff = e.touches[0].clientY - touchStart.current;
-      if (diff > 0 && isAtScrollTop()) {
+      if (diff > 0 && el.scrollTop === 0) {
         const val = Math.min(diff * 0.4, 120);
         pullYRef.current = val;
         setPullY(val);
@@ -439,7 +427,7 @@ export default function GolfLeagueApp() {
           })()}
           <div className="main-content fi" key={tab}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} />}
-          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} />}
+          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} />}
           {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} />}
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
