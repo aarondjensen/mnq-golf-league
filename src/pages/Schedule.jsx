@@ -197,19 +197,21 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const oppTeam = teams.find(t => t.id === oppId);
     const oppName = lastNamesOnly(oppTeam?.name || "TBD");
 
+    const teeTimeShort = fmtTeeTime(origIdx).replace(/\s*(AM|PM)$/i, '');
+
     return (
       <div key={wk.week} style={{
         display: "flex", alignItems: "center", padding: "8px 12px",
         background: K.card, borderRadius: CARD_RADIUS, border: `1px solid ${K.bdr}`,
         opacity: isRainedOut ? 0.5 : 1,
       }}>
-        <div style={{ width: 54, fontSize: 12, fontWeight: 700, color: K.t1 }}>Wk {wk.week}</div>
+        <div style={{ width: 28, fontSize: 13, fontWeight: 700, color: K.t1 }}>{wk.week}</div>
         <div style={{ width: 50, fontSize: 11, color: K.t3 }}>{wk.date || "—"}</div>
         <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: isRainedOut ? K.warn : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
           {isRainedOut ? "RAIN" : oppName}
         </div>
-        <div style={{ width: 52, textAlign: "center", fontSize: 13, fontWeight: 700, color: isRainedOut ? K.warn : res ? K.t1 : K.act }}>
-          {isRainedOut ? "" : res ? (res.matchResultText || "—") : fmtTeeTime(origIdx)}
+        <div style={{ width: 46, textAlign: "center", fontSize: 13, fontWeight: 700, color: isRainedOut ? K.warn : res ? K.t1 : K.act }}>
+          {isRainedOut ? "" : res ? (res.matchResultText || "—") : teeTimeShort}
         </div>
         <div style={{ width: 42, textAlign: "right", fontSize: 11, fontWeight: 600, color: K.t3 }}>
           {isRainedOut ? "" : side === 'front' ? 'Front' : 'Back'}
@@ -372,10 +374,10 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       {/* My Schedule column header */}
       {myOnly && (
         <div style={{ display: "flex", alignItems: "center", padding: "0 12px 6px", fontSize: 9, color: K.t3, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8 }}>
-          <div style={{ width: 54 }}>Week</div>
+          <div style={{ width: 28 }}>Wk</div>
           <div style={{ width: 50 }}>Date</div>
           <div style={{ flex: 1 }}>Opponent</div>
-          <div style={{ width: 52, textAlign: "center" }}>Tee</div>
+          <div style={{ width: 46, textAlign: "center" }}>Tee</div>
           <div style={{ width: 42, textAlign: "right" }}>Side</div>
         </div>
       )}
