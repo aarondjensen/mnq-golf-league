@@ -395,14 +395,23 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               centerColor = K.act;
             }
 
+            // Shrink font for longer result text like "TIED"
+            const centerFontSize = !isFinalOrSigned && thru === 0 ? 18 : centerText.length > 3 ? 17 : 20;
+
+            // Name styling: bold winners, gray losers on final matches
+            const t1NameWeight = isFinalOrSigned && t1Leading ? 700 : isFinalOrSigned && t2Leading ? 500 : 600;
+            const t2NameWeight = isFinalOrSigned && t2Leading ? 700 : isFinalOrSigned && t1Leading ? 500 : 600;
+            const t1NameColor = isFinalOrSigned && t2Leading ? K.t3 : K.t1;
+            const t2NameColor = isFinalOrSigned && t1Leading ? K.t3 : K.t1;
+
             return (
               <div key={mi} style={{ background: K.card, borderRadius: 10, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}40`, overflow: "hidden" }}>
                 <button onClick={() => setExpandedMatch(isExp ? null : mi)} style={{ width: "100%", padding: "8px 10px", cursor: "pointer", textAlign: "left", background: "transparent", border: "none" }}>
                   <div style={{ display: "flex", alignItems: "center" }}>
                     {/* Left team */}
                     <div style={{ flex: 1, textAlign: "right", paddingRight: 4, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
-                      <div style={{ fontSize: 14, fontWeight: t1Leading ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT1?.player1)}</div>
-                      <div style={{ fontSize: 14, fontWeight: t1Leading ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT1?.player2)}</div>
+                      <div style={{ fontSize: 14, fontWeight: t1NameWeight, color: t1NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT1?.player1)}</div>
+                      <div style={{ fontSize: 14, fontWeight: t1NameWeight, color: t1NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT1?.player2)}</div>
                     </div>
                     {/* Left arrow — fixed 16px column */}
                     <div style={{ width: 16, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -417,7 +426,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     </div>
                     {/* Center — fixed width */}
                     <div style={{ textAlign: "center", width: 80, flexShrink: 0 }}>
-                      <div style={{ fontSize: thru > 0 || isFinalOrSigned ? 20 : 18, fontWeight: 800, color: centerColor, letterSpacing: .5 }}>{centerText}</div>
+                      <div style={{ fontSize: centerFontSize, fontWeight: 800, color: centerColor, letterSpacing: .5 }}>{centerText}</div>
                       {progressLabel && (
                         <div style={{ fontSize: 9, fontWeight: 700, color: progressColor, textTransform: "uppercase", letterSpacing: 1, marginTop: 1 }}>{progressLabel}</div>
                       )}
@@ -435,8 +444,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     </div>
                     {/* Right team */}
                     <div style={{ flex: 1, textAlign: "left", paddingLeft: 4, overflow: "hidden", display: "flex", flexDirection: "column", gap: 3 }}>
-                      <div style={{ fontSize: 14, fontWeight: t2Leading ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT2?.player1)}</div>
-                      <div style={{ fontSize: 14, fontWeight: t2Leading ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT2?.player2)}</div>
+                      <div style={{ fontSize: 14, fontWeight: t2NameWeight, color: t2NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT2?.player1)}</div>
+                      <div style={{ fontSize: 14, fontWeight: t2NameWeight, color: t2NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT2?.player2)}</div>
                     </div>
                     {/* Expand chevron */}
                     <div style={{ flexShrink: 0, marginLeft: 4, color: K.t3, fontSize: 12, transform: isExp ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</div>
@@ -1054,19 +1063,19 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
         // Row builders
         const HoleRow = () => (
-          <div style={{ display: "flex", background: K.inp, borderBottom: colBdr }}>
-            <div style={{ ...lblStyle, height: 24 }}>HOLE</div>
+          <div style={{ display: "flex", background: K.acc, borderRadius: "10px 10px 0 0" }}>
+            <div style={{ ...lblStyle, height: 28, color: K.bg, opacity: .8, borderRight: "none" }}>HOLE</div>
             {Array.from({ length: 9 }, (_, i) => (
-              <div key={i} style={{ flex: 1, height: 24, display: "flex", alignItems: "center", justifyContent: "center", borderRight: i < 8 ? colBdr : "none" }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: K.t3 }}>{side === 'front' ? i + 1 : i + 10}</span>
+              <div key={i} style={{ flex: 1, height: 28, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: K.bg }}>{side === 'front' ? i + 1 : i + 10}</span>
               </div>
             ))}
-            <div style={{ ...totStyle, height: 24 }}><span style={{ fontSize: 10, fontWeight: 700, color: K.t3 }}>TOT</span></div>
+            <div style={{ ...totStyle, height: 28, borderLeft: "none" }}><span style={{ fontSize: 10, fontWeight: 700, color: K.bg }}>TOT</span></div>
           </div>
         );
 
         const ParRow = () => (
-          <div style={{ display: "flex", borderBottom: colBdr }}>
+          <div style={{ display: "flex", borderBottom: colBdr, background: K.acc + "18" }}>
             <div style={{ ...lblStyle, height: 22 }}>PAR</div>
             {pars.map((p, i) => (
               <div key={i} style={{ flex: 1, height: 22, display: "flex", alignItems: "center", justifyContent: "center", borderRight: i < 8 ? colBdr : "none" }}>
