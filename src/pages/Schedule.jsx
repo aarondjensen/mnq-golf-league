@@ -3,7 +3,7 @@ import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSid
 
 export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig }) {
   const [showAll, setShowAll] = useState(false);
-  const [myOnly, setMyOnly] = useState(false);
+  const [myOnly, setMyOnly] = useState(true);
   const [expandedWeeks, setExpandedWeeks] = useState({});
 
   const toggleWeek = (weekNum) => {
@@ -387,37 +387,29 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
       {/* Filter bar — single row */}
       <div style={{ display: "flex", gap: 5, marginBottom: 14, alignItems: "center" }}>
-        <button onClick={() => { setShowAll(false); setMyOnly(false); }} style={{
-          padding: "7px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600,
-          background: !showAll && !myOnly ? K.acc : K.card, color: !showAll && !myOnly ? K.bg : K.t2,
-          border: `1px solid ${!showAll && !myOnly ? K.acc : K.bdr}`, whiteSpace: "nowrap",
-        }}>This Week</button>
+        {myTeam && (
+          <button onClick={() => { setMyOnly(true); setShowAll(true); }} style={{
+            padding: "7px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600,
+            background: myOnly ? K.acc : K.card, color: myOnly ? K.bg : K.t2,
+            border: `1px solid ${myOnly ? K.acc : K.bdr}`, whiteSpace: "nowrap",
+          }}>My Schedule</button>
+        )}
         <button onClick={() => { setShowAll(true); setMyOnly(false); }} style={{
           padding: "7px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600,
-          background: showAll && !myOnly ? K.acc : K.card, color: showAll && !myOnly ? K.bg : K.t2,
-          border: `1px solid ${showAll && !myOnly ? K.acc : K.bdr}`, whiteSpace: "nowrap",
+          background: !myOnly ? K.acc : K.card, color: !myOnly ? K.bg : K.t2,
+          border: `1px solid ${!myOnly ? K.acc : K.bdr}`, whiteSpace: "nowrap",
         }}>All Weeks</button>
 
-        {myTeam && (
-          <>
-            <div style={{ width: 1, height: 20, background: K.bdr, flexShrink: 0 }} />
-            <button onClick={() => { setMyOnly(true); setShowAll(true); }} style={{
-              padding: "7px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600,
-              background: myOnly ? K.act : K.card, color: myOnly ? K.bg : K.t2,
-              border: `1px solid ${myOnly ? K.act : K.bdr}`, whiteSpace: "nowrap",
-            }}>My Schedule</button>
-            {myOnly && (
-              <button onClick={addAllToCalendar} style={{
-                display: "flex", alignItems: "center", gap: 3,
-                padding: "6px 8px", borderRadius: 6, cursor: "pointer",
-                background: K.act + "12", border: `1px solid ${K.act}30`, color: K.act,
-                fontSize: 10, fontWeight: 600, whiteSpace: "nowrap",
-              }}>
-                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                Add All
-              </button>
-            )}
-          </>
+        {myOnly && (
+          <button onClick={addAllToCalendar} style={{
+            display: "flex", alignItems: "center", gap: 3,
+            padding: "6px 8px", borderRadius: 6, cursor: "pointer",
+            background: K.act + "12", border: `1px solid ${K.act}30`, color: K.act,
+            fontSize: 10, fontWeight: 600, whiteSpace: "nowrap", marginLeft: "auto",
+          }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            Add All
+          </button>
         )}
       </div>
 
