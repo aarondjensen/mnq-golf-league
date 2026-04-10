@@ -825,11 +825,12 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
       await saveWeekSchedule({
         id: `${LEAGUE_ID}_w${newWeekNum}`,
         week: newWeekNum,
-        matches: [...wk.matches],
+        matches: [...(wk.matches || [])],
         side: wk.side || newSide,
         date: newDate,
         isPlayoff: wasPlayoff,
         makeupFor: wk.week,
+        ...(wk.seeded ? { seeded: true } : {}),
       });
 
       const startDate = leagueConfig.startDate;
@@ -930,8 +931,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
           </button>
         </div>
 
-        {/* Rain Out button — only for non-finalized, non-rained-out, non-seeded weeks */}
-        {!isFinalized && !isRainedOut && !isSeeded && (
+        {/* Rain Out button — any non-finalized, non-rained-out week */}
+        {!isFinalized && !isRainedOut && (
           <button onClick={handleRainOut} style={{ width: "100%", padding: 12, borderRadius: 10, marginTop: 12, cursor: "pointer", background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 14, fontWeight: 700 }}>
             Rain Out
           </button>

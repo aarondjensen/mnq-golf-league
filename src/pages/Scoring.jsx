@@ -74,12 +74,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const currentWeek = useMemo(() => {
     for (const wk of schedule) {
       if (wk.rainedOut) continue;
+      if (!wk.matches || wk.matches.length === 0) continue; // skip seeded/TBD weeks
       const allDone = wk.matches.every(m =>
         matchResults.some(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2)
       );
       if (!allDone) return wk.week;
     }
-    const playable = schedule.filter(wk => !wk.rainedOut);
+    const playable = schedule.filter(wk => !wk.rainedOut && wk.matches && wk.matches.length > 0);
     return playable.length ? playable[playable.length - 1].week : 0;
   }, [schedule, matchResults]);
 

@@ -49,6 +49,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   }, [schedule, matchResults]);
 
   const isWeekComplete = (wk) => {
+    if (!wk.matches || wk.matches.length === 0) return false;
     return wk.matches.every(m =>
       matchResults.some(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2)
     );
