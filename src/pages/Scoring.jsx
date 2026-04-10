@@ -279,6 +279,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     if (holeComplete && curHole < 8 && !editing && !allComplete) {
       const holeNum = side === 'front' ? curHole + 1 : curHole + 10;
       setToast(`✓ Hole ${holeNum} saved — advancing...`);
+      initialJump.current = true; // prevent initialJump from competing
       const timer = setTimeout(() => {
         setToast(null);
         let next = curHole + 1;
@@ -288,6 +289,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       return () => clearTimeout(timer);
     }
   }, [holeComplete, curHole, editing, allComplete]);
+
+  // Safety: clear any stuck toast after 3s
+  useEffect(() => {
+    if (toast) {
+      const safety = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(safety);
+    }
+  }, [toast]);
 
   useEffect(() => {
     if (allComplete && !showFinalize && !isAlreadyFinalized) {
