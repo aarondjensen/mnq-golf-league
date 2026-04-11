@@ -998,12 +998,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
             {dragTeam && dragTeam.ghostPos && (
               <div style={{
                 position: "fixed",
-                left: dragTeam.ghostPos.x, top: dragTeam.ghostPos.y,
-                transform: "translate(-50%, -120%)",
+                left: dragTeam.ghostPos.x - 75, top: dragTeam.ghostPos.y - 55,
                 zIndex: 999, pointerEvents: "none",
                 background: K.cardHi, border: `1.5px solid ${K.act}`, borderRadius: 8,
                 padding: "6px 10px", display: "flex", alignItems: "center", gap: 6,
-                boxShadow: "0 8px 24px rgba(0,0,0,.4)", maxWidth: 150,
+                boxShadow: "0 8px 24px rgba(0,0,0,.4)", width: 150,
               }}>
                 <div style={{
                   width: 20, height: 20, borderRadius: 5, flexShrink: 0,
