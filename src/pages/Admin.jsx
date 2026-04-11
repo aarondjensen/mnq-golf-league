@@ -989,42 +989,90 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
 
         {/* Normal week — show matches */}
         {!isSeeded && !isRainedOut && (<>
-          <div style={{ fontSize: 11, color: K.t3, marginBottom: 12 }}>Drag team cards to swap opponents · Drag match rows to reorder tee times</div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          <div style={{ fontSize: 11, color: K.t3, marginBottom: 12 }}>Long press a team card to drag and swap</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6, position: "relative" }}>
+            {/* Floating ghost card while dragging */}
+            {dragTeam && dragTeam.ghostPos && (
+              <div style={{
+                position: "fixed", left: dragTeam.ghostPos.x - 80, top: dragTeam.ghostPos.y - 20,
+                zIndex: 999, pointerEvents: "none",
+                background: K.cardHi, border: `1.5px solid ${K.act}`, borderRadius: 8,
+                padding: "8px 10px", display: "flex", alignItems: "center", gap: 8,
+                boxShadow: "0 8px 24px rgba(0,0,0,.3)", opacity: 0.9, maxWidth: 160,
+              }}>
+                <div style={{
+                  width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+                  background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 11, fontWeight: 800, color: K.logoBright,
+                }}>{seedMap[dragTeam.teamId] || "—"}</div>
+                <div style={{ fontSize: 12, fontWeight: 600, color: K.t1, lineHeight: 1.3 }}>{lastNamesOnly(gn(dragTeam.teamId))}</div>
+              </div>
+            )}
             {wk.matches.map((m, mi) => {
               const seed1 = seedMap[m.team1] || "—";
               const seed2 = seedMap[m.team2] || "—";
-              const isDraggingRow = dragIdx === mi;
 
               const TeamCard = ({ teamId, seed, slot }) => {
                 const isDragSrc = dragTeam && dragTeam.matchIdx === mi && dragTeam.slot === slot;
                 const isDropTarget = dragTeam && !isDragSrc;
                 return (
                   <div
-                    data-team-drag="true"
-                    draggable
-                    onDragStart={(e) => { e.stopPropagation(); setDragTeam({ matchIdx: mi, slot, teamId }); setDragIdx(null); }}
-                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-                    onDrop={(e) => {
-                      e.stopPropagation();
-                      if (!dragTeam) return;
-                      const newMatches = wk.matches.map(mm => ({ ...mm }));
-                      const srcMatch = newMatches[dragTeam.matchIdx];
-                      const dstMatch = newMatches[mi];
-                      const srcTeamId = dragTeam.teamId;
-                      const dstTeamId = dstMatch[slot];
-                      if (dragTeam.slot === "team1") srcMatch.team1 = dstTeamId;
-                      else srcMatch.team2 = dstTeamId;
-                      dstMatch[slot] = srcTeamId;
-                      saveWeekSchedule({ ...wk, matches: newMatches });
-                      setDragTeam(null);
+                    data-team-card={JSON.stringify({ matchIdx: mi, slot, teamId })}
+                    onTouchStart={(e) => {
+                      const touch = e.touches[0];
+                      const el = e.currentTarget;
+                      el._lpStart = { x: touch.clientX, y: touch.clientY };
+                      el._lpTimer = setTimeout(() => {
+                        setDragTeam({ matchIdx: mi, slot, teamId, ghostPos: { x: touch.clientX, y: touch.clientY } });
+                        if (navigator.vibrate) navigator.vibrate(30);
+                      }, 400);
                     }}
+                    onTouchMove={(e) => {
+                      const touch = e.touches[0];
+                      const el = e.currentTarget;
+                      if (el._lpStart && !dragTeam) {
+                        const dx = Math.abs(touch.clientX - el._lpStart.x);
+                        const dy = Math.abs(touch.clientY - el._lpStart.y);
+                        if (dx > 10 || dy > 10) clearTimeout(el._lpTimer);
+                      }
+                      if (dragTeam) {
+                        e.preventDefault();
+                        setDragTeam(prev => prev ? { ...prev, ghostPos: { x: touch.clientX, y: touch.clientY } } : null);
+                      }
+                    }}
+                    onTouchEnd={(e) => {
+                      clearTimeout(e.currentTarget._lpTimer);
+                      if (dragTeam) {
+                        const touch = e.changedTouches[0];
+                        const el = document.elementFromPoint(touch.clientX, touch.clientY);
+                        const targetCard = el?.closest?.('[data-team-card]');
+                        if (targetCard) {
+                          try {
+                            const target = JSON.parse(targetCard.getAttribute('data-team-card'));
+                            if (target.teamId !== dragTeam.teamId) {
+                              const newMatches = wk.matches.map(mm => ({ ...mm }));
+                              const srcMatch = newMatches[dragTeam.matchIdx];
+                              const dstMatch = newMatches[target.matchIdx];
+                              const dstTeamId = dstMatch[target.slot];
+                              if (dragTeam.slot === "team1") srcMatch.team1 = dstTeamId;
+                              else srcMatch.team2 = dstTeamId;
+                              dstMatch[target.slot] = dragTeam.teamId;
+                              saveWeekSchedule({ ...wk, matches: newMatches });
+                            }
+                          } catch {}
+                        }
+                        setDragTeam(null);
+                      }
+                    }}
+                    onTouchCancel={(e) => { clearTimeout(e.currentTarget._lpTimer); setDragTeam(null); }}
                     style={{
-                      flex: 1, cursor: "grab", borderRadius: 8, padding: "8px 10px",
-                      background: isDragSrc ? K.cardHi : isDropTarget ? K.act + "08" : K.inp,
+                      flex: 1, borderRadius: 8, padding: "8px 10px",
+                      background: isDragSrc ? K.act + "15" : isDropTarget ? K.act + "08" : K.inp,
                       border: isDragSrc ? `1.5px dashed ${K.act}` : isDropTarget ? `1.5px dashed ${K.act}40` : `1px solid ${K.bdr}`,
                       display: "flex", alignItems: "center", gap: 8,
                       transition: "background .15s, border .15s",
+                      touchAction: "none", WebkitUserSelect: "none", userSelect: "none",
                     }}
                   >
                     <div style={{
@@ -1041,22 +1089,14 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
               return (
                 <div
                   key={mi}
-                  draggable
-                  onDragStart={(e) => { if (!e.target.closest('[data-team-drag]')) { setDragIdx(mi); setDragTeam(null); } else { e.preventDefault(); } }}
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    if (dragTeam) return;
-                    if (dragIdx !== null) { moveMatch(wk, dragIdx, mi); setDragIdx(null); }
-                  }}
                   style={{
-                    background: isDraggingRow ? K.cardHi : K.card, borderRadius: 10,
-                    border: `1px solid ${isDraggingRow ? K.act + "40" : K.bdr}`,
+                    background: K.card, borderRadius: 10,
+                    border: `1px solid ${K.bdr}`,
                     padding: "10px 12px", display: "flex", alignItems: "center", gap: 8,
                     userSelect: "none",
                   }}
                 >
-                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, flexShrink: 0, cursor: "grab" }}>
-                    <div style={{ color: K.t3, fontSize: 12 }}>⠿</div>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, flexShrink: 0 }}>
                     <div style={{ fontSize: 10, color: K.acc, fontWeight: 700 }}>{formatTeeTime(cfg.startTime || "4:28 PM", mi).replace(/\s*(AM|PM)$/i, '')}</div>
                   </div>
                   <TeamCard teamId={m.team1} seed={seed1} slot="team1" />
