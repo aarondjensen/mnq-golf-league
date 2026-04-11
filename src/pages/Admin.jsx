@@ -894,10 +894,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
 
                 const isRoundRobin = wk.week <= regWeeks && !wk.seeded && !wk.isPlayoff;
 
-                // Un-mark the rain out
-                const restored = { ...wk };
-                delete restored.rainedOut;
-                await saveWeekSchedule(restored);
+                // Un-mark the rain out — must explicitly set false (merge:true won't delete fields)
+                await saveWeekSchedule({ ...wk, rainedOut: false });
 
                 if (isRoundRobin) {
                   // Find and remove the makeup week that was created for this week
