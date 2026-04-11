@@ -260,7 +260,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     );
 
     return (
-      <div style={{ margin: "4px 0 2px", borderRadius: 6, overflow: "hidden", border: `1px solid ${K.bdr}30` }}>
+      <div style={{ margin: "4px 0 2px", borderRadius: 6, overflow: "hidden", border: `1px solid ${K.bdr}30`, paddingBottom: 2 }}>
         <div style={{ display: "flex", background: K.acc }}>
           <div style={{ width: 32, flexShrink: 0, fontSize: 7, color: K.bg, fontWeight: 800, paddingLeft: 3, opacity: .8, display: "flex", alignItems: "center", height: 20 }}>HOLE</div>
           {Array.from({ length: 9 }, (_, i) => (
