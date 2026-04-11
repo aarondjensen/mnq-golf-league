@@ -136,31 +136,39 @@ function SharedScorecard({
 
   const TeamNetRow = ({ pids, isTeam1Side }) => {
     let netTotal = 0;
+    const isAM = variant === "allMatches";
     return (
-      <div style={{ display: "flex", background: variant === "allMatches" ? K.act + "0c" : undefined }}>
-        <div style={{ ...lblStyle, height: 34, fontSize: 9, fontWeight: 800 }}>{variant === "allMatches" ? "NET" : "TEAM"}</div>
+      <div style={{ display: "flex", ...(isAM ? { alignItems: "center", background: K.act + "0c" } : {}) }}>
+        <div style={{ ...lblStyle, height: isAM ? 28 : 34, fontSize: 9, fontWeight: 800 }}>{isAM ? "NET" : "TEAM"}</div>
         {Array.from({ length: 9 }, (_, h) => {
           let tNet = 0; let ok = true;
           pids.forEach(pid => { const s = getScore(pid, h); if (s <= 0) ok = false; else tNet += s - getStrokes(pid, h); });
           if (ok) netTotal += tNet; else netTotal = NaN;
           const won = holeResults && holeResults[h] === (isTeam1Side ? 1 : -1);
+
+          if (isAM) {
+            // All Matches style: gold border on the cell itself, bg swap, remove borderRight
+            return <div key={h} style={{
+              flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800,
+              color: !ok ? K.t3 + "30" : K.t1, lineHeight: "22px",
+              padding: "4px 0", borderRight: won ? "none" : gridLine,
+              ...(won ? { background: K.bg, border: `1.5px solid ${K.act}`, borderRadius: 3, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
+            }}>{ok ? tNet : "\u00B7"}</div>;
+          }
+
+          // Full/compact style: gold background cell + inner 26x26 bordered box
           return <div key={h} style={{
             flex: 1, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
-            borderRight: won ? "none" : gridLine,
-            background: won ? (variant === "allMatches" ? K.bg : K.act + "18") : "transparent",
-            ...(won ? { border: `1.5px solid ${K.act}`, borderRadius: 3, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
+            borderRight: h < 8 ? colBdr : "none",
+            background: won ? K.act + "18" : "transparent",
           }}>
-            {variant !== "allMatches" ? (
-              <div style={{
-                display: "flex", alignItems: "center", justifyContent: "center",
-                width: 26, height: 26, borderRadius: 3,
-                border: won ? `1.5px solid ${K.act}` : "none",
-              }}>
-                <span style={{ fontSize: 15, fontWeight: 800, color: K.t2 }}>{ok ? tNet : "·"}</span>
-              </div>
-            ) : (
-              <span style={{ fontSize: 13, fontWeight: 800, color: !ok ? K.t3 + "30" : K.t1 }}>{ok ? tNet : "·"}</span>
-            )}
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: 26, height: 26, borderRadius: 3,
+              border: won ? `1.5px solid ${K.act}` : "none",
+            }}>
+              <span style={{ fontSize: 15, fontWeight: 800, color: K.t2 }}>{ok ? tNet : "·"}</span>
+            </div>
           </div>;
         })}
         {totStyle && <div style={{ ...totStyle, height: 34 }}><span style={{ fontSize: 14, fontWeight: 800, color: K.t1 }}>{isNaN(netTotal) ? "" : netTotal}</span></div>}
