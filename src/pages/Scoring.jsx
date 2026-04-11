@@ -929,7 +929,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 16, fontWeight: 800, color, lineHeight: "30px", ...colBorderR }}>{st > 0 ? <><span style={{ fontSize: 16 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 16 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
             })}
           </button>
-          {showScorecard && (() => {
+          {showScorecard && !isAlreadyFinalized && (() => {
             const gridLine = `1px solid ${K.bdr}25`;
             const netBg = K.act + "0c";
             const subHeaderBg = K.acc + "18";
