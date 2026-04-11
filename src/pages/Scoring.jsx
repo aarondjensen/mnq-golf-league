@@ -762,41 +762,40 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
                     if (isRoundRobin) {
                       // Round robin: insert a makeup week at the end of the round robin portion
-                      // Find the last round robin week (before seeded/playoff weeks)
                       const rrWeeks = schedule.filter(s => s.week <= regWeeks && !s.seeded && !s.isPlayoff && !s.rainedOut && s.week !== weekSch.week);
                       const lastRRWeek = rrWeeks.length > 0 ? Math.max(...rrWeeks.map(s => s.week)) : weekSch.week;
-                      // Find the first seeded or playoff week
-                      const postRRWeeks = schedule.filter(s => (s.seeded || s.isPlayoff || s.week > regWeeks) && !s.rainedOut);
-                      // The makeup week number slots after round robin
-                      // We need to shift all seeded/playoff weeks up by 1 and insert our makeup
                       const insertAfter = lastRRWeek;
                       const makeupWeekNum = insertAfter + 1;
+                      const year = leagueConfig?.year || new Date().getFullYear();
 
-                      // Shift all weeks after insertAfter up by 1
-                      const weeksToShift = schedule.filter(s => s.week > insertAfter).sort((a, b) => b.week - a.week); // descending to avoid collisions
+                      // Helper: parse schedule date strings like "Jun 2" or "May 19"
+                      const parseDate = (dateStr) => {
+                        if (!dateStr) return null;
+                        const d = new Date(`${dateStr}, ${year}`);
+                        return isNaN(d.getTime()) ? null : d;
+                      };
+                      const fmtDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+                      // Shift all weeks after insertAfter up by 1 (descending to avoid collisions)
+                      const weeksToShift = schedule.filter(s => s.week > insertAfter).sort((a, b) => b.week - a.week);
                       for (const fw of weeksToShift) {
                         const newNum = fw.week + 1;
-                        let newDate = "";
-                        if (fw.date) {
-                          const d = new Date(fw.date + "T12:00:00");
-                          if (!isNaN(d.getTime())) {
-                            d.setDate(d.getDate() + 7);
-                            newDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                          }
+                        let newDate = fw.date || "";
+                        const parsed = parseDate(fw.date);
+                        if (parsed) {
+                          parsed.setDate(parsed.getDate() + 7);
+                          newDate = fmtDate(parsed);
                         }
-                        // Create new doc with incremented week number (delete old if ID changes)
-                        await saveWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newNum}`, week: newNum, date: newDate || fw.date });
+                        await saveWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newNum}`, week: newNum, date: newDate });
                       }
 
                       // Determine the makeup week date (1 week after the last RR week's date)
                       const lastRRWeekData = schedule.find(s => s.week === lastRRWeek);
                       let makeupDate = "";
-                      if (lastRRWeekData?.date) {
-                        const d = new Date(lastRRWeekData.date + "T12:00:00");
-                        if (!isNaN(d.getTime())) {
-                          d.setDate(d.getDate() + 7);
-                          makeupDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                        }
+                      const lastParsed = parseDate(lastRRWeekData?.date);
+                      if (lastParsed) {
+                        lastParsed.setDate(lastParsed.getDate() + 7);
+                        makeupDate = fmtDate(lastParsed);
                       }
                       const makeupSide = lastRRWeekData?.side === 'front' ? 'back' : 'front';
 
@@ -811,14 +810,20 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       });
                     } else {
                       // Seeded/Playoff: just push all future dates forward by 1 week
+                      const year = leagueConfig?.year || new Date().getFullYear();
+                      const parseDate = (dateStr) => {
+                        if (!dateStr) return null;
+                        const d = new Date(`${dateStr}, ${year}`);
+                        return isNaN(d.getTime()) ? null : d;
+                      };
+                      const fmtDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
                       const futureWeeks = schedule.filter(s => s.week > weekSch.week && !s.rainedOut);
                       for (const fw of futureWeeks) {
-                        if (fw.date) {
-                          const d = new Date(fw.date + "T12:00:00");
-                          if (isNaN(d.getTime())) continue;
-                          d.setDate(d.getDate() + 7);
-                          const newDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                          await saveWeekSchedule({ ...fw, date: newDate });
+                        const parsed = parseDate(fw.date);
+                        if (parsed) {
+                          parsed.setDate(parsed.getDate() + 7);
+                          await saveWeekSchedule({ ...fw, date: fmtDate(parsed) });
                         }
                       }
                     }

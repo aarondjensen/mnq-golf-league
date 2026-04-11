@@ -377,6 +377,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
   });
   const [editWeek, setEditWeek] = useState(null);
   const [dragIdx, setDragIdx] = useState(null);
+  const [dragTeam, setDragTeam] = useState(null); // { matchIdx, slot: "team1"|"team2", teamId }
   const [generating, setGenerating] = useState(false);
 
   const totalWeeks = cfg.regularWeeks + cfg.playoffWeeks;
@@ -812,10 +813,17 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
         : `Rain out Week ${wk.week}? This will:\n\n• Skip this week\n• Push all future dates forward one week`;
       if (!window.confirm(msgDetail)) return;
 
+      const year = leagueConfig?.year || new Date().getFullYear();
+      const parseDate = (dateStr) => {
+        if (!dateStr) return null;
+        const d = new Date(`${dateStr}, ${year}`);
+        return isNaN(d.getTime()) ? null : d;
+      };
+      const fmtDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
       await saveWeekSchedule({ ...wk, rainedOut: true });
 
       if (isRoundRobin) {
-        // Insert makeup at end of round robin, shift seeded/playoff weeks up by 1
         const rrWeeks = schedule.filter(s => s.week <= regWeeks && !s.seeded && !s.isPlayoff && !s.rainedOut && s.week !== wk.week);
         const lastRRWeek = rrWeeks.length > 0 ? Math.max(...rrWeeks.map(s => s.week)) : wk.week;
         const insertAfter = lastRRWeek;
@@ -826,12 +834,10 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
         for (const fw of weeksToShift) {
           const newNum = fw.week + 1;
           let newDate = fw.date || "";
-          if (fw.date) {
-            const d = new Date(fw.date + "T12:00:00");
-            if (!isNaN(d.getTime())) {
-              d.setDate(d.getDate() + 7);
-              newDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            }
+          const parsed = parseDate(fw.date);
+          if (parsed) {
+            parsed.setDate(parsed.getDate() + 7);
+            newDate = fmtDate(parsed);
           }
           await saveWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newNum}`, week: newNum, date: newDate });
         }
@@ -839,12 +845,10 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
         // Determine makeup week date
         const lastRRWeekData = schedule.find(s => s.week === lastRRWeek);
         let makeupDate = "";
-        if (lastRRWeekData?.date) {
-          const d = new Date(lastRRWeekData.date + "T12:00:00");
-          if (!isNaN(d.getTime())) {
-            d.setDate(d.getDate() + 7);
-            makeupDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-          }
+        const lastParsed = parseDate(lastRRWeekData?.date);
+        if (lastParsed) {
+          lastParsed.setDate(lastParsed.getDate() + 7);
+          makeupDate = fmtDate(lastParsed);
         }
         const makeupSide = lastRRWeekData?.side === 'front' ? 'back' : 'front';
 
@@ -860,12 +864,10 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
         // Seeded/Playoff: just push future dates forward by 1 week
         const futureWeeks = schedule.filter(s => s.week > wk.week && !s.rainedOut);
         for (const fw of futureWeeks) {
-          if (fw.date) {
-            const d = new Date(fw.date + "T12:00:00");
-            if (isNaN(d.getTime())) continue;
-            d.setDate(d.getDate() + 7);
-            const newFwDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-            await saveWeekSchedule({ ...fw, date: newFwDate });
+          const parsed = parseDate(fw.date);
+          if (parsed) {
+            parsed.setDate(parsed.getDate() + 7);
+            await saveWeekSchedule({ ...fw, date: fmtDate(parsed) });
           }
         }
       }
@@ -893,42 +895,41 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
                 if (!window.confirm(`Undo rain out for Week ${wk.week}? This will restore the week and remove the makeup week / reverse date shifts.`)) return;
 
                 const isRoundRobin = wk.week <= regWeeks && !wk.seeded && !wk.isPlayoff;
+                const year = leagueConfig?.year || new Date().getFullYear();
+                const parseDate = (dateStr) => {
+                  if (!dateStr) return null;
+                  const d = new Date(`${dateStr}, ${year}`);
+                  return isNaN(d.getTime()) ? null : d;
+                };
+                const fmtDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-                // Un-mark the rain out — must explicitly set false (merge:true won't delete fields)
+                // Un-mark the rain out
                 await saveWeekSchedule({ ...wk, rainedOut: false });
 
                 if (isRoundRobin) {
-                  // Find and remove the makeup week that was created for this week
                   const makeupWeek = schedule.find(s => s.makeupFor === wk.week);
                   if (makeupWeek) {
-                    // Blank out the makeup week (remove matches, mark as removed)
                     await saveWeekSchedule({ ...makeupWeek, matches: [], rainedOut: true, makeupFor: null, removed: true });
 
-                    // Shift all weeks that were bumped back down by 1
                     const weeksToShift = schedule.filter(s => s.week > makeupWeek.week && s.week !== makeupWeek.week).sort((a, b) => a.week - b.week);
                     for (const fw of weeksToShift) {
                       const newNum = fw.week - 1;
                       let newDate = fw.date || "";
-                      if (fw.date) {
-                        const d = new Date(fw.date + "T12:00:00");
-                        if (!isNaN(d.getTime())) {
-                          d.setDate(d.getDate() - 7);
-                          newDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                        }
+                      const parsed = parseDate(fw.date);
+                      if (parsed) {
+                        parsed.setDate(parsed.getDate() - 7);
+                        newDate = fmtDate(parsed);
                       }
                       await saveWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newNum}`, week: newNum, date: newDate });
                     }
                   }
                 } else {
-                  // Seeded/Playoff: pull future dates back by 1 week
                   const futureWeeks = schedule.filter(s => s.week > wk.week && !s.rainedOut);
                   for (const fw of futureWeeks) {
-                    if (fw.date) {
-                      const d = new Date(fw.date + "T12:00:00");
-                      if (isNaN(d.getTime())) continue;
-                      d.setDate(d.getDate() - 7);
-                      const newDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-                      await saveWeekSchedule({ ...fw, date: newDate });
+                    const parsed = parseDate(fw.date);
+                    if (parsed) {
+                      parsed.setDate(parsed.getDate() - 7);
+                      await saveWeekSchedule({ ...fw, date: fmtDate(parsed) });
                     }
                   }
                 }
@@ -974,22 +975,83 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
 
         {/* Normal week — show matches */}
         {!isSeeded && !isRainedOut && (<>
-          <div style={{ fontSize: 11, color: K.t3, marginBottom: 12 }}>Drag matches to reorder tee times</div>
+          <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Drag matches to reorder tee times</div>
+          <div style={{ fontSize: 11, color: K.t3, marginBottom: 12 }}>Drag team names between matches to swap opponents</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
             {wk.matches.map((m, mi) => (
               <div
                 key={mi}
                 draggable
-                onDragStart={() => setDragIdx(mi)}
+                onDragStart={(e) => { if (!e.target.hasAttribute('data-team-drag')) { setDragIdx(mi); setDragTeam(null); } }}
                 onDragOver={(e) => e.preventDefault()}
-                onDrop={() => { if (dragIdx !== null) { moveMatch(wk, dragIdx, mi); setDragIdx(null); } }}
-                style={{ background: dragIdx === mi ? K.cardHi : K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "12px 14px", cursor: "grab", display: "flex", alignItems: "center", gap: 12, userSelect: "none" }}
+                onDrop={(e) => {
+                  if (dragTeam) return; // team drag handled by team drop zones
+                  if (dragIdx !== null) { moveMatch(wk, dragIdx, mi); setDragIdx(null); }
+                }}
+                style={{ background: dragIdx === mi ? K.cardHi : K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "12px 14px", cursor: "grab", display: "flex", alignItems: "center", gap: 8, userSelect: "none" }}
               >
-                <div style={{ color: K.t3, fontSize: 14, cursor: "grab" }}>⠿</div>
-                <div style={{ width: 70, fontSize: 12, color: K.acc, fontWeight: 600 }}>{formatTeeTime(cfg.startTime || "4:28 PM", mi)}</div>
-                <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: K.t1 }}>{gn(m.team1)}</div>
-                <div style={{ fontSize: 11, color: K.t3, fontWeight: 700 }}>vs</div>
-                <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: K.t1, textAlign: "right" }}>{gn(m.team2)}</div>
+                <div style={{ color: K.t3, fontSize: 14, cursor: "grab", flexShrink: 0 }}>⠿</div>
+                <div style={{ width: 60, fontSize: 12, color: K.acc, fontWeight: 600, flexShrink: 0 }}>{formatTeeTime(cfg.startTime || "4:28 PM", mi)}</div>
+                {/* Team 1 — draggable */}
+                <div
+                  data-team-drag="true"
+                  draggable
+                  onDragStart={(e) => { e.stopPropagation(); setDragTeam({ matchIdx: mi, slot: "team1", teamId: m.team1 }); setDragIdx(null); }}
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                  onDrop={(e) => {
+                    e.stopPropagation();
+                    if (!dragTeam) return;
+                    // Swap: dragTeam goes here, this team goes to dragTeam's old spot
+                    const newMatches = wk.matches.map((mm, i) => ({ ...mm }));
+                    const srcMatch = newMatches[dragTeam.matchIdx];
+                    const dstMatch = newMatches[mi];
+                    const srcTeamId = dragTeam.teamId;
+                    const dstTeamId = dstMatch.team1;
+                    // Put dst team into src slot
+                    if (dragTeam.slot === "team1") srcMatch.team1 = dstTeamId;
+                    else srcMatch.team2 = dstTeamId;
+                    // Put src team into dst slot
+                    dstMatch.team1 = srcTeamId;
+                    saveWeekSchedule({ ...wk, matches: newMatches });
+                    setDragTeam(null);
+                  }}
+                  style={{
+                    flex: 1, fontSize: 13, fontWeight: 600, color: K.t1, cursor: "grab",
+                    padding: "4px 6px", borderRadius: 6,
+                    background: dragTeam && !(dragTeam.matchIdx === mi && dragTeam.slot === "team1") ? K.act + "08" : "transparent",
+                    border: dragTeam && dragTeam.matchIdx === mi && dragTeam.slot === "team1" ? `1.5px dashed ${K.act}` : "1.5px solid transparent",
+                    transition: "background .15s",
+                  }}
+                >{gn(m.team1)}</div>
+                <div style={{ fontSize: 11, color: K.t3, fontWeight: 700, flexShrink: 0 }}>vs</div>
+                {/* Team 2 — draggable */}
+                <div
+                  data-team-drag="true"
+                  draggable
+                  onDragStart={(e) => { e.stopPropagation(); setDragTeam({ matchIdx: mi, slot: "team2", teamId: m.team2 }); setDragIdx(null); }}
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                  onDrop={(e) => {
+                    e.stopPropagation();
+                    if (!dragTeam) return;
+                    const newMatches = wk.matches.map((mm, i) => ({ ...mm }));
+                    const srcMatch = newMatches[dragTeam.matchIdx];
+                    const dstMatch = newMatches[mi];
+                    const srcTeamId = dragTeam.teamId;
+                    const dstTeamId = dstMatch.team2;
+                    if (dragTeam.slot === "team1") srcMatch.team1 = dstTeamId;
+                    else srcMatch.team2 = dstTeamId;
+                    dstMatch.team2 = srcTeamId;
+                    saveWeekSchedule({ ...wk, matches: newMatches });
+                    setDragTeam(null);
+                  }}
+                  style={{
+                    flex: 1, fontSize: 13, fontWeight: 600, color: K.t1, textAlign: "right", cursor: "grab",
+                    padding: "4px 6px", borderRadius: 6,
+                    background: dragTeam && !(dragTeam.matchIdx === mi && dragTeam.slot === "team2") ? K.act + "08" : "transparent",
+                    border: dragTeam && dragTeam.matchIdx === mi && dragTeam.slot === "team2" ? `1.5px dashed ${K.act}` : "1.5px solid transparent",
+                    transition: "background .15s",
+                  }}
+                >{gn(m.team2)}</div>
               </div>
             ))}
           </div>
