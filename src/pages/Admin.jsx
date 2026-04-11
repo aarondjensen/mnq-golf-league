@@ -1032,10 +1032,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
             {dragTeam && !dragTeam.dragging ? "Tap another team to swap" : "Tap to select · Hold and drag to move"}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {wk.matches.map((m, mi) => {
-              const seed1 = seedMap[m.team1] || "—";
-              const seed2 = seedMap[m.team2] || "—";
-
+            {(() => {
               const doSwap = (srcInfo, targetInfo) => {
                 if (srcInfo.teamId === targetInfo.teamId) return;
                 const newMatches = wk.matches.map(mm => ({ ...mm }));
@@ -1048,134 +1045,127 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
                 saveWeekSchedule({ ...wk, matches: newMatches });
               };
 
-              const renderTeamCard = (teamId, seed, slot) => {
-                const info = { matchIdx: mi, slot, teamId };
-                const isSelected = dragTeam && dragTeam.teamId === teamId && !dragTeam.dragging;
-                const isDragging = dragTeam && dragTeam.dragging && dragTeam.teamId === teamId;
-                const isTarget = dragTeam && dragTeam.teamId !== teamId;
+              const findDropTarget = (tx, ty, draggedTeamId) => {
+                const allCards = document.querySelectorAll('[data-team-card]');
+                let best = null;
+                allCards.forEach(card => {
+                  try {
+                    const ci = JSON.parse(card.getAttribute('data-team-card'));
+                    if (ci.teamId === draggedTeamId) return;
+                    const r = card.getBoundingClientRect();
+                    if (tx >= r.left && tx <= r.right && ty >= r.top && ty <= r.bottom) best = ci;
+                  } catch {}
+                });
+                return best;
+              };
 
-                // Compute transform offset if this card is being dragged
-                const dx = isDragging ? (dragTeam.curX - dragTeam.startX) : 0;
-                const dy = isDragging ? (dragTeam.curY - dragTeam.startY) : 0;
+              return wk.matches.map((m, mi) => {
+                const seed1 = seedMap[m.team1] || "—";
+                const seed2 = seedMap[m.team2] || "—";
 
-                return (
-                  <div
-                    data-team-card={JSON.stringify(info)}
-                    onClick={() => {
-                      if (dragTeam && dragTeam.dragging) return;
-                      if (dragTeam) {
-                        if (dragTeam.teamId !== teamId) {
-                          doSwap(dragTeam, info);
-                          // Keep the swapped team selected at its new position
-                          setDragTeam({ matchIdx: info.matchIdx, slot: info.slot, teamId: dragTeam.teamId });
-                        } else {
-                          setDragTeam(null);
-                        }
-                        dragTeamRef.current = null;
-                      } else {
-                        setDragTeam(info); dragTeamRef.current = null;
-                      }
-                    }}
-                    onTouchStart={(e) => {
-                      const touch = e.touches[0];
-                      const el = e.currentTarget;
-                      el._lpMoved = false;
-                      el._lpStartX = touch.clientX;
-                      el._lpStartY = touch.clientY;
-                      el._lpTimer = setTimeout(() => {
-                        if (!el._lpMoved) {
-                          const dt = { ...info, dragging: true, startX: touch.clientX, startY: touch.clientY, curX: touch.clientX, curY: touch.clientY };
-                          dragTeamRef.current = dt;
-                          setDragTeam(dt);
-                          if (navigator.vibrate) navigator.vibrate(20);
-                        }
-                      }, 200);
-                    }}
-                    onTouchMove={(e) => {
-                      const touch = e.touches[0];
-                      const el = e.currentTarget;
-                      if (!dragTeamRef.current) {
-                        el._lpMoved = true;
-                        clearTimeout(el._lpTimer);
-                        return;
-                      }
-                      e.preventDefault();
-                      dragTeamRef.current = { ...dragTeamRef.current, curX: touch.clientX, curY: touch.clientY };
-                      setDragTeam({ ...dragTeamRef.current });
-                    }}
-                    onTouchEnd={(e) => {
-                      clearTimeout(e.currentTarget._lpTimer);
-                      const dt = dragTeamRef.current;
-                      if (dt && dt.dragging) {
-                        e.preventDefault();
-                        const touch = e.changedTouches[0];
-                        const tx = touch.clientX, ty = touch.clientY;
-                        // Find all team card elements and check which one the finger is over
-                        const allCards = document.querySelectorAll('[data-team-card]');
-                        let bestTarget = null;
-                        allCards.forEach(card => {
-                          // Skip the card we're dragging
-                          try {
-                            const cardInfo = JSON.parse(card.getAttribute('data-team-card'));
-                            if (cardInfo.teamId === dt.teamId) return;
-                          } catch { return; }
-                          const rect = card.getBoundingClientRect();
-                          if (tx >= rect.left && tx <= rect.right && ty >= rect.top && ty <= rect.bottom) {
-                            bestTarget = card;
+                const renderTeamCard = (teamId, seed, slot) => {
+                  const info = { matchIdx: mi, slot, teamId };
+                  const isSelected = dragTeam && dragTeam.teamId === teamId && !dragTeam.dragging;
+                  const isDragging = dragTeam && dragTeam.dragging && dragTeam.teamId === teamId;
+                  const isTarget = dragTeam && dragTeam.teamId !== teamId;
+                  const dx = isDragging ? (dragTeam.curX - dragTeam.startX) : 0;
+                  const dy = isDragging ? (dragTeam.curY - dragTeam.startY) : 0;
+
+                  return (
+                    <div
+                      data-team-card={JSON.stringify(info)}
+                      onClick={() => {
+                        if (dragTeam && dragTeam.dragging) return;
+                        if (dragTeam) {
+                          if (dragTeam.teamId !== teamId) {
+                            doSwap(dragTeam, info);
+                            setDragTeam({ matchIdx: info.matchIdx, slot: info.slot, teamId: dragTeam.teamId });
+                          } else {
+                            setDragTeam(null);
                           }
-                        });
-                        if (bestTarget) {
-                          try {
-                            const target = JSON.parse(bestTarget.getAttribute('data-team-card'));
+                          dragTeamRef.current = null;
+                        } else {
+                          setDragTeam(info); dragTeamRef.current = null;
+                        }
+                      }}
+                      onTouchStart={(e) => {
+                        const touch = e.touches[0];
+                        const el = e.currentTarget;
+                        el._lpMoved = false;
+                        el._lpTimer = setTimeout(() => {
+                          if (!el._lpMoved) {
+                            const dt = { ...info, dragging: true, startX: touch.clientX, startY: touch.clientY, curX: touch.clientX, curY: touch.clientY };
+                            dragTeamRef.current = dt;
+                            setDragTeam(dt);
+                            if (navigator.vibrate) navigator.vibrate(20);
+                          }
+                        }, 200);
+                      }}
+                      onTouchMove={(e) => {
+                        const touch = e.touches[0];
+                        const el = e.currentTarget;
+                        if (!dragTeamRef.current) {
+                          el._lpMoved = true;
+                          clearTimeout(el._lpTimer);
+                          return;
+                        }
+                        e.preventDefault();
+                        dragTeamRef.current = { ...dragTeamRef.current, curX: touch.clientX, curY: touch.clientY };
+                        setDragTeam({ ...dragTeamRef.current });
+                      }}
+                      onTouchEnd={(e) => {
+                        clearTimeout(e.currentTarget._lpTimer);
+                        const dt = dragTeamRef.current;
+                        if (dt && dt.dragging) {
+                          e.preventDefault();
+                          const touch = e.changedTouches[0];
+                          const target = findDropTarget(touch.clientX, touch.clientY, dt.teamId);
+                          if (target) {
                             doSwap(dt, target);
                             dragTeamRef.current = null;
                             setDragTeam({ matchIdx: target.matchIdx, slot: target.slot, teamId: dt.teamId });
-                            return;
-                          } catch {}
+                          } else {
+                            dragTeamRef.current = null;
+                            setDragTeam(null);
+                          }
                         }
-                        dragTeamRef.current = null;
-                        setDragTeam(null);
-                      }
-                    }}}
-                    onTouchCancel={(e) => { clearTimeout(e.currentTarget._lpTimer); dragTeamRef.current = null; setDragTeam(null); }}
-                    style={{
-                      flex: 1, borderRadius: 8, padding: "8px 10px",
-                      background: isSelected ? K.act + "20" : isDragging ? K.cardHi : isTarget ? K.act + "08" : K.inp,
-                      border: isSelected ? `2px solid ${K.act}` : isDragging ? `2px solid ${K.act}` : isTarget ? `1.5px dashed ${K.act}50` : `1px solid ${K.bdr}`,
-                      display: "flex", alignItems: "center", gap: 8,
-                      cursor: "pointer",
-                      touchAction: "none", WebkitUserSelect: "none", userSelect: "none",
-                      // When dragging: lift the card, apply transform to follow finger
-                      ...(isDragging ? {
-                        position: "relative", zIndex: 100,
-                        transform: `translate(${dx}px, ${dy}px) scale(1.05)`,
-                        boxShadow: "0 8px 24px rgba(0,0,0,.3)",
-                        transition: "box-shadow .1s",
-                      } : {
-                        transition: "background .15s, border .15s",
-                      }),
-                    }}
-                  >
-                    <div style={{
-                      width: 22, height: 22, borderRadius: 6, flexShrink: 0,
-                      background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: 11, fontWeight: 800, color: K.logoBright,
-                    }}>{seed}</div>
-                    <div style={{ fontSize: 12, fontWeight: 600, color: K.t1, lineHeight: 1.3 }}>{lastNamesOnly(gn(teamId))}</div>
+                      }}
+                      onTouchCancel={(e) => { clearTimeout(e.currentTarget._lpTimer); dragTeamRef.current = null; setDragTeam(null); }}
+                      style={{
+                        flex: 1, borderRadius: 8, padding: "8px 10px",
+                        background: isSelected ? K.act + "20" : isDragging ? K.cardHi : isTarget ? K.act + "08" : K.inp,
+                        border: isSelected ? `2px solid ${K.act}` : isDragging ? `2px solid ${K.act}` : isTarget ? `1.5px dashed ${K.act}50` : `1px solid ${K.bdr}`,
+                        display: "flex", alignItems: "center", gap: 8,
+                        cursor: "pointer",
+                        touchAction: "none", WebkitUserSelect: "none", userSelect: "none",
+                        ...(isDragging ? {
+                          position: "relative", zIndex: 100,
+                          transform: `translate(${dx}px, ${dy}px) scale(1.05)`,
+                          boxShadow: "0 8px 24px rgba(0,0,0,.3)",
+                        } : {}),
+                      }}
+                    >
+                      <div style={{
+                        width: 22, height: 22, borderRadius: 6, flexShrink: 0,
+                        background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 11, fontWeight: 800, color: K.logoBright,
+                      }}>{seed}</div>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: K.t1, lineHeight: 1.3 }}>{lastNamesOnly(gn(teamId))}</div>
+                    </div>
+                  );
+                };
+
+                return (
+                  <div key={mi} style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, userSelect: "none" }}>
+                    <div style={{ flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700 }}>{formatTeeTime(cfg.startTime || "4:28 PM", mi).replace(/\s*(AM|PM)$/i, '')}</div>
+                    {renderTeamCard(m.team1, seed1, "team1")}
+                    <div style={{ fontSize: 10, color: K.t3, fontWeight: 800, flexShrink: 0 }}>VS</div>
+                    {renderTeamCard(m.team2, seed2, "team2")}
                   </div>
                 );
-              };
-
-              return (
-                <div key={mi} style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, userSelect: "none" }}>
-                  <div style={{ flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700 }}>{formatTeeTime(cfg.startTime || "4:28 PM", mi).replace(/\s*(AM|PM)$/i, '')}</div>
-                  {renderTeamCard(m.team1, seed1, "team1")}
-                  <div style={{ fontSize: 10, color: K.t3, fontWeight: 800, flexShrink: 0 }}>VS</div>
-                  {renderTeamCard(m.team2, seed2, "team2")}
-                </div>
-              );
-            })}
+              });
+            })()}
           </div>
         </>)}
 
