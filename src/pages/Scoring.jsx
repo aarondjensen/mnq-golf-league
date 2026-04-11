@@ -340,7 +340,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     };
 
     return (
-      <div>
+      <div style={{ maxWidth: 540, margin: "0 auto" }}>
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
           <div style={{ display: "flex", background: K.inp, borderRadius: 20, border: `1px solid ${K.bdr}`, padding: 3 }}>
             <button onClick={() => setShowAllMatches(false)} style={{ padding: "6px 16px", borderRadius: 17, cursor: "pointer", fontSize: 12, fontWeight: 700, border: "none", background: "transparent", color: K.t3, transition: "all .2s" }}>
@@ -847,7 +847,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   };
 
   return (
-    <div>
+    <div style={{ maxWidth: 480, margin: "0 auto" }}>
       {activeMatch && (
         <div style={{ marginBottom: 8 }}>
           <BackBtn onClick={() => { setActiveMatch(null); }} />
@@ -876,7 +876,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
         {Array.from({ length: 9 }, (_, i) => {
           const cur = i === curHole; const done = allP.every(pid => getS(pid, i) > 0);
-          return <button key={i} onClick={() => { setCurHole(i); setEditing(i < currentHoleIdx); }} style={{ flex: 1, height: 38, borderRadius: done || cur ? 10 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 16, fontWeight: 700, cursor: "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{i + 1}</button>;
+          return <button key={i} onClick={() => { setCurHole(i); setEditing(i < currentHoleIdx); }} style={{ flex: 1, height: 38, borderRadius: done || cur ? 10 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 16, fontWeight: 700, cursor: "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{side === 'front' ? i + 1 : i + 10}</button>;
         })}
       </div>
       )}
