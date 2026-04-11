@@ -243,7 +243,6 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
       {/* Header row */}
       <div style={{ display: "flex", gap: 8, padding: "0 4px 6px", fontSize: 10, fontWeight: 600, color: K.t3, textTransform: "uppercase", letterSpacing: 1 }}>
         <div style={{ width: 24 }}>#</div>
-        <div style={{ width: 140 }}>Team Name</div>
         <div style={{ flex: 1 }}>Player 1</div>
         <div style={{ flex: 1 }}>Player 2</div>
       </div>
@@ -252,12 +251,6 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
         {rows.map((r, i) => (
           <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", background: K.card, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: "8px 8px" }}>
             <div style={{ width: 24, fontSize: 13, fontWeight: 700, color: K.t3, textAlign: "center", flexShrink: 0 }}>{i + 1}</div>
-            <input
-              value={r.name}
-              onChange={e => { const next = [...rows]; next[i].name = e.target.value; setRows(next); setDirty(true); }}
-              placeholder="Auto"
-              style={{ width: 140, padding: "8px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13, fontWeight: 600, flexShrink: 0 }}
-            />
             <select value={r.player1} onChange={e => updateRow(i, "player1", e.target.value)} style={selectStyle}>
               <option value="">— Select —</option>
               {avail(r.player1).map(p => <option key={p.id} value={p.id}>{shortName(p)}</option>)}
@@ -392,10 +385,38 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
     playoffRounds: leagueConfig.playoffRounds || [],
   });
   const [editWeek, setEditWeek] = useState(null);
+  const [localWk, setLocalWk] = useState(null); // local edits for the week being edited
+  const [weekDirty, setWeekDirty] = useState(false);
   const [dragIdx, setDragIdx] = useState(null);
   const [dragTeam, setDragTeam] = useState(null); // { matchIdx, slot: "team1"|"team2", teamId, ghostPos? }
   const dragTeamRef = useRef(null); // ref mirror for touch handlers (avoids stale closures)
   const [generating, setGenerating] = useState(false);
+
+  // Sync localWk when editWeek changes or schedule updates
+  useEffect(() => {
+    if (editWeek !== null) {
+      const wk = schedule.find(s => s.week === editWeek);
+      if (wk && !weekDirty) setLocalWk({ ...wk, matches: wk.matches?.map(m => ({ ...m })) || [] });
+    } else {
+      setLocalWk(null);
+      setWeekDirty(false);
+    }
+  }, [editWeek, schedule]);
+
+  const saveWeekEdits = async () => {
+    if (localWk) {
+      await saveWeekSchedule(localWk);
+      setWeekDirty(false);
+    }
+  };
+
+  const handleWeekBack = async () => {
+    if (weekDirty) {
+      const choice = window.confirm("You have unsaved changes. Save before leaving?");
+      if (choice) await saveWeekEdits();
+    }
+    setEditWeek(null);
+  };
 
   const totalWeeks = cfg.regularWeeks + cfg.playoffWeeks;
 
@@ -708,7 +729,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
 
   // ── Week detail / edit view ──
   if (editWeek !== null) {
-    const wk = schedule.find(s => s.week === editWeek);
+    const wk = localWk || schedule.find(s => s.week === editWeek);
     if (!wk) { setEditWeek(null); return null; }
     const isFinalized = wk.locked || (matchResults || []).some(r => r.week === wk.week);
     const isRainedOut = wk.rainedOut === true;
@@ -909,7 +930,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
     return (
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
-          <BackBtn onClick={() => setEditWeek(null)} />
+          <BackBtn onClick={handleWeekBack} />
           <span style={{ fontSize: 16, fontWeight: 700, color: K.t1, flex: 1 }}>Week {wk.week}</span>
           {wk.date && <span style={{ fontSize: 12, color: K.t3 }}>{wk.date}</span>}
           <Pill color={K.logoBright}>{wk.side === 'front' ? 'FRONT 9' : 'BACK 9'}</Pill>
@@ -1053,9 +1074,13 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
             )}
             <button onClick={() => {
               const newSide = wk.side === 'front' ? 'back' : 'front';
-              saveWeekSchedule({ ...wk, side: newSide });
+              setLocalWk({ ...wk, side: newSide });
+              setWeekDirty(true);
             }} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 12, cursor: "pointer" }}>
               Change to {wk.side === 'front' ? 'Back' : 'Front'} 9
+            </button>
+            <button onClick={saveWeekEdits} style={{ padding: "10px 16px", borderRadius: 8, background: weekDirty ? K.act : K.inp, border: weekDirty ? "none" : `1px solid ${K.bdr}`, color: weekDirty ? K.bg : K.t3, fontSize: 12, fontWeight: 700, cursor: weekDirty ? "pointer" : "default", transition: "all .2s" }}>
+              {weekDirty ? "Save" : "Saved"}
             </button>
           </div>
 
@@ -1073,7 +1098,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
                 if (srcInfo.slot === "team1") srcMatch.team1 = dstTeamId;
                 else srcMatch.team2 = dstTeamId;
                 dstMatch[targetInfo.slot] = srcInfo.teamId;
-                saveWeekSchedule({ ...wk, matches: newMatches });
+                setLocalWk({ ...wk, matches: newMatches });
+                setWeekDirty(true);
               };
 
               const findDropTarget = (tx, ty, draggedTeamId) => {
