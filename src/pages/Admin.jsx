@@ -1025,12 +1025,18 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
                     onClick={() => {
                       if (dragTeam && dragTeam.dragging) return;
                       if (dragTeam) {
-                        if (dragTeam.teamId !== teamId) doSwap(dragTeam, info);
-                        setDragTeam(null); dragTeamRef.current = null;
+                        if (dragTeam.teamId !== teamId) {
+                          doSwap(dragTeam, info);
+                          // Keep the swapped team selected at its new position
+                          setDragTeam({ matchIdx: info.matchIdx, slot: info.slot, teamId: dragTeam.teamId });
+                        } else {
+                          setDragTeam(null);
+                        }
+                        dragTeamRef.current = null;
                       } else {
                         setDragTeam(info); dragTeamRef.current = null;
                       }
-                    }}
+                    }}}
                     onTouchStart={(e) => {
                       const touch = e.touches[0];
                       const el = e.currentTarget;
@@ -1076,6 +1082,10 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
                           try {
                             const target = JSON.parse(targetCard.getAttribute('data-team-card'));
                             doSwap(dt, target);
+                            // Keep the swapped team selected (bold border) at its new position
+                            dragTeamRef.current = null;
+                            setDragTeam({ matchIdx: target.matchIdx, slot: target.slot, teamId: dt.teamId });
+                            return;
                           } catch {}
                         }
                         dragTeamRef.current = null;
@@ -1154,36 +1164,34 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
       {!schedule.length ? (
         <div style={{ textAlign: "center", padding: 30, color: K.t3, fontSize: 13 }}>No schedule yet. Set up teams, then configure the season.</div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
           {schedule.map(wk => {
             const isPlayoff = wk.isPlayoff || wk.week >= (leagueConfig.regularWeeks || 14);
             const isRainedOut = wk.rainedOut === true;
             const isSeeded = wk.seeded === true && (!wk.matches || wk.matches.length === 0);
+            const isFinalized = wk.locked === true;
+            const side = wk.side || 'front';
             return (
-              <button key={wk.week} onClick={() => setEditWeek(wk.week)} style={{ background: K.card, borderRadius: 10, padding: "10px 14px", border: `1px solid ${isRainedOut ? K.warn + "40" : K.bdr}`, cursor: "pointer", textAlign: "left", width: "100%", opacity: isRainedOut ? 0.6 : 1 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                  <span style={{ fontWeight: 700, fontSize: 12, color: isRainedOut ? K.warn : isPlayoff ? K.warn : K.t1 }}>
-                    Week {wk.week}{wk.date ? ` · ${wk.date}` : ""}
-                  </span>
-                  <div style={{ display: "flex", gap: 4 }}>
-                    {isRainedOut && <Pill color={K.warn} style={{ fontSize: 8 }}>RAIN</Pill>}
-                    {wk.makeupFor && <Pill color={K.teal} style={{ fontSize: 8 }}>MAKEUP</Pill>}
-                    <Pill color={wk.side === 'front' ? K.acc : K.t3} style={{ fontSize: 8 }}>{wk.side === 'front' ? 'F9' : 'B9'}</Pill>
-                    {isSeeded && <Pill color={K.acc} style={{ fontSize: 8 }}>SEEDED</Pill>}
-                    {isPlayoff && !isRainedOut && <Pill color={K.warn} style={{ fontSize: 8 }}>PLAYOFF</Pill>}
-                  </div>
+              <button key={wk.week} onClick={() => setEditWeek(wk.week)} style={{
+                display: "flex", alignItems: "center", width: "100%",
+                background: K.card, borderRadius: CARD_RADIUS,
+                border: `1px solid ${isRainedOut ? K.warn + "40" : K.bdr}`,
+                padding: "10px 14px", cursor: "pointer", textAlign: "left",
+                opacity: isRainedOut ? 0.5 : 1, gap: 8,
+              }}>
+                <div style={{ width: 26, fontSize: 14, fontWeight: 700, color: K.t1, flexShrink: 0 }}>{wk.week}</div>
+                <div style={{ width: 52, fontSize: 12, fontWeight: 600, color: K.t1, flexShrink: 0 }}>{wk.date || "—"}</div>
+                <div style={{ width: 42, flexShrink: 0 }}>
+                  <Pill color={K.logoBright} style={{ fontSize: 8 }}>{side === 'front' ? 'FRONT' : 'BACK'}</Pill>
                 </div>
-                {isRainedOut ? (
-                  <div style={{ fontSize: 11, color: K.warn, fontStyle: "italic", marginLeft: 4 }}>Rained out — rescheduled</div>
-                ) : isSeeded ? (
-                  <div style={{ fontSize: 11, color: K.t3, fontStyle: "italic", marginLeft: 4 }}>Matchups TBD — based on standings</div>
-                ) : (
-                  wk.matches.map((m, mi) => (
-                    <div key={mi} style={{ fontSize: 11, color: K.t3, marginLeft: 4 }}>
-                      {formatTeeTime(leagueConfig.startTime || cfg.startTime || "4:28 PM", mi)} — {gn(m.team1)} vs {gn(m.team2)}
-                    </div>
-                  ))
-                )}
+                <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+                  {isRainedOut ? "RAIN OUT" : isSeeded ? (isPlayoff ? "PLAYOFF — TBD" : "SEEDED — TBD") : wk.matches?.length ? `${wk.matches.length} matches` : "—"}
+                </div>
+                <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
+                  {isFinalized && <Pill color={K.grn} style={{ fontSize: 7 }}>FINAL</Pill>}
+                  {wk.makeupFor && <Pill color={K.teal} style={{ fontSize: 7 }}>MU</Pill>}
+                </div>
+                <div style={{ color: K.t3, fontSize: 12, flexShrink: 0 }}>›</div>
               </button>
             );
           })}
