@@ -341,10 +341,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
     return (
       <div>
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-          <button onClick={() => setShowAllMatches(false)} style={{ background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.acc, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: "8px 14px", display: "flex", alignItems: "center", gap: 6 }}>
-            My Match <span style={{ display: "inline-flex", transform: "rotate(180deg)" }}>{I.arrowLeft(11, K.acc)}</span>
-          </button>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
+          <div style={{ display: "flex", background: K.inp, borderRadius: 20, border: `1px solid ${K.bdr}`, padding: 3 }}>
+            <button onClick={() => setShowAllMatches(false)} style={{ padding: "6px 16px", borderRadius: 17, cursor: "pointer", fontSize: 12, fontWeight: 700, border: "none", background: "transparent", color: K.t3, transition: "all .2s" }}>
+              My Match
+            </button>
+            <button style={{ padding: "6px 16px", borderRadius: 17, cursor: "default", fontSize: 12, fontWeight: 700, border: "none", background: K.acc, color: K.bg, transition: "all .2s" }}>
+              All Matches
+            </button>
+          </div>
         </div>
 
         <div style={{ marginBottom: 10 }}>
@@ -424,6 +429,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             const t1NameColor = !isFinalOrSigned ? dimColor : t1Leading ? K.t1 : dimColor;
             const t2NameColor = !isFinalOrSigned ? dimColor : t2Leading ? K.t1 : dimColor;
 
+            // Determine which display side signed (for orange arrow on SIGNED matches)
+            const isSigned = isFinalOrSigned && res && !res.attested;
+            const signerIsDispT1 = isSigned && (
+              (swapped && res.finalizedByTeamId === rawT2.id) ||
+              (!swapped && res.finalizedByTeamId === rawT1.id)
+            );
+            const signerIsDispT2 = isSigned && !signerIsDispT1;
+
             return (
               <div key={mi} style={{ background: K.card, borderRadius: 10, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}40`, overflow: "hidden" }}>
                 <button onClick={() => setExpandedMatch(isExp ? null : mi)} style={{ width: "100%", padding: "8px 10px", cursor: "pointer", textAlign: "left", background: "transparent", border: "none" }}>
@@ -443,6 +456,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                           }
                         </svg>
                       )}
+                      {signerIsDispT1 && !t1Leading && (
+                        <svg width="10" height="12" viewBox="0 0 10 12" style={{ transform: "rotate(-90deg)" }}>
+                          <polygon points="5,1 9,11 1,11" fill="none" stroke={K.warn} strokeWidth="1.5" />
+                        </svg>
+                      )}
                     </div>
                     {/* Center — fixed width */}
                     <div style={{ textAlign: "center", width: 80, flexShrink: 0 }}>
@@ -459,6 +477,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                             ? <polygon points="5,0 10,12 0,12" fill={K.matchGrn} />
                             : <polygon points="5,1 9,11 1,11" fill="none" stroke={K.matchGrn} strokeWidth="1.5" />
                           }
+                        </svg>
+                      )}
+                      {signerIsDispT2 && !t2Leading && (
+                        <svg width="10" height="12" viewBox="0 0 10 12" style={{ transform: "rotate(90deg)" }}>
+                          <polygon points="5,1 9,11 1,11" fill="none" stroke={K.warn} strokeWidth="1.5" />
                         </svg>
                       )}
                     </div>
@@ -838,10 +861,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       )}
       {/* See All Matches */}
       {!activeMatch && (
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-          <button onClick={() => setShowAllMatches(true)} style={{ background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.acc, fontSize: 13, fontWeight: 600, cursor: "pointer", padding: "8px 14px", display: "flex", alignItems: "center", gap: 6 }}>
-            All Matches <span style={{ display: "inline-flex", transform: "rotate(180deg)" }}>{I.arrowLeft(11, K.acc)}</span>
-          </button>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
+          <div style={{ display: "flex", background: K.inp, borderRadius: 20, border: `1px solid ${K.bdr}`, padding: 3 }}>
+            <button style={{ padding: "6px 16px", borderRadius: 17, cursor: "default", fontSize: 12, fontWeight: 700, border: "none", background: K.acc, color: K.bg, transition: "all .2s" }}>
+              My Match
+            </button>
+            <button onClick={() => setShowAllMatches(true)} style={{ padding: "6px 16px", borderRadius: 17, cursor: "pointer", fontSize: 12, fontWeight: 700, border: "none", background: "transparent", color: K.t3, transition: "all .2s" }}>
+              All Matches
+            </button>
+          </div>
         </div>
       )}
       {/* Status banners */}
