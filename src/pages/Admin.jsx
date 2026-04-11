@@ -991,28 +991,9 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
         {/* Normal week — show matches */}
         {!isSeeded && !isRainedOut && (<>
           <div style={{ fontSize: 11, color: K.t3, marginBottom: 12 }}>
-            {dragTeam && !dragTeam.ghostPos ? "Tap another team to swap" : "Tap to select · Long press to drag"}
+            {dragTeam && !dragTeam.dragging ? "Tap another team to swap" : "Tap to select · Hold and drag to move"}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6, position: "relative" }}>
-            {/* Floating ghost card while touch-dragging */}
-            {dragTeam && dragTeam.ghostPos && (
-              <div style={{
-                position: "fixed",
-                left: dragTeam.ghostPos.x - 75, top: dragTeam.ghostPos.y - 55,
-                zIndex: 999, pointerEvents: "none",
-                background: K.cardHi, border: `1.5px solid ${K.act}`, borderRadius: 8,
-                padding: "6px 10px", display: "flex", alignItems: "center", gap: 6,
-                boxShadow: "0 8px 24px rgba(0,0,0,.4)", width: 150,
-              }}>
-                <div style={{
-                  width: 20, height: 20, borderRadius: 5, flexShrink: 0,
-                  background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 10, fontWeight: 800, color: K.logoBright,
-                }}>{seedMap[dragTeam.teamId] || "—"}</div>
-                <div style={{ fontSize: 11, fontWeight: 700, color: K.t1, lineHeight: 1.2 }}>{lastNamesOnly(gn(dragTeam.teamId))}</div>
-              </div>
-            )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {wk.matches.map((m, mi) => {
               const seed1 = seedMap[m.team1] || "—";
               const seed2 = seedMap[m.team2] || "—";
@@ -1031,20 +1012,23 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
 
               const renderTeamCard = (teamId, seed, slot) => {
                 const info = { matchIdx: mi, slot, teamId };
-                const isSelected = dragTeam && dragTeam.teamId === teamId && !dragTeam.ghostPos;
-                const isDragSrc = dragTeam && dragTeam.ghostPos && dragTeam.teamId === teamId;
+                const isSelected = dragTeam && dragTeam.teamId === teamId && !dragTeam.dragging;
+                const isDragging = dragTeam && dragTeam.dragging && dragTeam.teamId === teamId;
                 const isTarget = dragTeam && dragTeam.teamId !== teamId;
+
+                // Compute transform offset if this card is being dragged
+                const dx = isDragging ? (dragTeam.curX - dragTeam.startX) : 0;
+                const dy = isDragging ? (dragTeam.curY - dragTeam.startY) : 0;
+
                 return (
                   <div
                     data-team-card={JSON.stringify(info)}
                     onClick={() => {
-                      if (dragTeam && dragTeam.ghostPos) return; // touch drag — ignore click
+                      if (dragTeam && dragTeam.dragging) return;
                       if (dragTeam) {
-                        // Second click: swap and clear
                         if (dragTeam.teamId !== teamId) doSwap(dragTeam, info);
                         setDragTeam(null); dragTeamRef.current = null;
                       } else {
-                        // First click: select
                         setDragTeam(info); dragTeamRef.current = null;
                       }
                     }}
@@ -1052,9 +1036,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
                       const touch = e.touches[0];
                       const el = e.currentTarget;
                       el._lpMoved = false;
+                      el._lpStartX = touch.clientX;
+                      el._lpStartY = touch.clientY;
                       el._lpTimer = setTimeout(() => {
                         if (!el._lpMoved) {
-                          const dt = { ...info, ghostPos: { x: touch.clientX, y: touch.clientY } };
+                          const dt = { ...info, dragging: true, startX: touch.clientX, startY: touch.clientY, curX: touch.clientX, curY: touch.clientY };
                           dragTeamRef.current = dt;
                           setDragTeam(dt);
                           if (navigator.vibrate) navigator.vibrate(20);
@@ -1065,20 +1051,18 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
                       const touch = e.touches[0];
                       const el = e.currentTarget;
                       if (!dragTeamRef.current) {
-                        // Not yet dragging — check if moved too much to cancel long press
                         el._lpMoved = true;
                         clearTimeout(el._lpTimer);
                         return;
                       }
-                      // Active drag — move ghost
                       e.preventDefault();
-                      dragTeamRef.current = { ...dragTeamRef.current, ghostPos: { x: touch.clientX, y: touch.clientY } };
+                      dragTeamRef.current = { ...dragTeamRef.current, curX: touch.clientX, curY: touch.clientY };
                       setDragTeam({ ...dragTeamRef.current });
                     }}
                     onTouchEnd={(e) => {
                       clearTimeout(e.currentTarget._lpTimer);
                       const dt = dragTeamRef.current;
-                      if (dt && dt.ghostPos) {
+                      if (dt && dt.dragging) {
                         e.preventDefault();
                         const touch = e.changedTouches[0];
                         const hitEl = document.elementFromPoint(touch.clientX, touch.clientY);
@@ -1096,11 +1080,20 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
                     onTouchCancel={(e) => { clearTimeout(e.currentTarget._lpTimer); dragTeamRef.current = null; setDragTeam(null); }}
                     style={{
                       flex: 1, borderRadius: 8, padding: "8px 10px",
-                      background: isSelected ? K.act + "20" : isDragSrc ? K.act + "15" : isTarget ? K.act + "08" : K.inp,
-                      border: isSelected ? `2px solid ${K.act}` : isDragSrc ? `1.5px dashed ${K.act}` : isTarget ? `1.5px dashed ${K.act}50` : `1px solid ${K.bdr}`,
+                      background: isSelected ? K.act + "20" : isDragging ? K.cardHi : isTarget ? K.act + "08" : K.inp,
+                      border: isSelected ? `2px solid ${K.act}` : isDragging ? `2px solid ${K.act}` : isTarget ? `1.5px dashed ${K.act}50` : `1px solid ${K.bdr}`,
                       display: "flex", alignItems: "center", gap: 8,
                       cursor: "pointer",
                       touchAction: "none", WebkitUserSelect: "none", userSelect: "none",
+                      // When dragging: lift the card, apply transform to follow finger
+                      ...(isDragging ? {
+                        position: "relative", zIndex: 100,
+                        transform: `translate(${dx}px, ${dy}px) scale(1.05)`,
+                        boxShadow: "0 8px 24px rgba(0,0,0,.3)",
+                        transition: "box-shadow .1s",
+                      } : {
+                        transition: "background .15s, border .15s",
+                      }),
                     }}
                   >
                     <div style={{
