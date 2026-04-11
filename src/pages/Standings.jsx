@@ -312,9 +312,9 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                     border: i < 3 ? `1.5px solid ${mc}40` : `1.5px solid ${K.logoBright}30`,
                   }}>{curPos}</div>
                   {posChange !== null && posChange !== 0 ? (
-                    <div style={{ fontSize: 10, fontWeight: 700, color: posChange > 0 ? K.matchGrn : K.red, display: "flex", alignItems: "center", gap: 0, marginLeft: 3, minWidth: 16 }}>
-                      <span style={{ fontSize: 8 }}>{posChange > 0 ? "▲" : "▼"}</span>
-                      <span>{Math.abs(posChange)}</span>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: posChange > 0 ? K.matchGrn : K.red, display: "flex", alignItems: "baseline", gap: 1, marginLeft: 3, minWidth: 16, lineHeight: 1 }}>
+                      <span style={{ fontSize: 7, lineHeight: 1 }}>{posChange > 0 ? "▲" : "▼"}</span>
+                      <span style={{ lineHeight: 1 }}>{Math.abs(posChange)}</span>
                     </div>
                   ) : (
                     <div style={{ minWidth: 16, marginLeft: 3 }} />
@@ -359,7 +359,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                     return (
                       <div key={ri}>
                         <button onClick={() => toggleResultExpand(s.teamId, r.week)} style={{ display: "flex", alignItems: "center", padding: "7px 8px", fontSize: 12, width: "100%", background: "transparent", border: "none", borderTop: `1px solid ${K.bdr}30`, cursor: "pointer", textAlign: "left" }}>
-                          <div style={{ width: 14, flexShrink: 0, color: K.t3, fontSize: 9, transform: isResExp ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</div>
+                          <div style={{ width: 14, flexShrink: 0, color: K.t3, fontSize: 9 }}>{isResExp ? "▾" : "›"}</div>
                           <div style={{ width: 24, flexShrink: 0, color: K.t3, fontSize: 11 }}>{r.week}</div>
                           <div style={{ width: 48, flexShrink: 0, color: K.t3, fontSize: 11 }}>{r.date || "—"}</div>
                           <div style={{ flex: 1, color: K.t2, fontWeight: 500 }}>{r.oppName}</div>
@@ -367,7 +367,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                           <div style={{ width: 28, flexShrink: 0, textAlign: "right", color: "#3b82f6", fontWeight: 700 }}>{r.holesWon}</div>
                         </button>
                         {isResExp && (
-                          <div style={{ padding: "0 4px 6px" }}>
+                          <div style={{ padding: "2px 4px 10px" }}>
                             {renderMiniScorecard(s.teamId, r)}
                           </div>
                         )}
