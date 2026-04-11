@@ -9,7 +9,7 @@ export default function AdminView(props) {
   const { players, savePlayer, deletePlayer, teams, saveTeam, deleteTeam, schedule, saveWeekSchedule, course, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, members, saveMember, deleteMember } = props;
   const [sec, setSec] = useState(null);
   const sections = [
-    { id: "config", label: "League Settings", icon: "settings", desc: leagueConfig.name },
+    { id: "config", label: "Basic Info", icon: "settings", desc: leagueConfig.name },
     { id: "players", label: "Players", icon: "user", desc: `${players.filter(p => p.status !== "inactive").length} active` },
     { id: "teams", label: "Teams", icon: "users", desc: `${teams.length} teams` },
     { id: "course", label: "Course Setup", icon: "mapPin", desc: course?.name || "Not set" },
@@ -892,13 +892,12 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
 
     return (
       <div>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
           <BackBtn onClick={() => setEditWeek(null)} />
-          <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Week {wk.week}{wk.date ? ` · ${wk.date}` : ""}</span>
-          <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-            <Pill color={wk.side === 'front' ? K.acc : K.t2}>{wk.side === 'front' ? 'FRONT 9' : 'BACK 9'}</Pill>
-            {isPlayoff && <Pill color={K.warn}>PLAYOFF</Pill>}
-          </div>
+          <span style={{ fontSize: 16, fontWeight: 700, color: K.t1, flex: 1 }}>Week {wk.week}</span>
+          {wk.date && <span style={{ fontSize: 12, color: K.t3 }}>{wk.date}</span>}
+          <Pill color={K.logoBright}>{wk.side === 'front' ? 'FRONT 9' : 'BACK 9'}</Pill>
+          {isPlayoff && <Pill color={K.warn}>PLAYOFF</Pill>}
         </div>
 
         {isRainedOut && (
@@ -1065,7 +1064,13 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
                       if (dt && dt.dragging) {
                         e.preventDefault();
                         const touch = e.changedTouches[0];
+                        // Hide the dragged card so elementFromPoint hits the card underneath
+                        const draggedEl = e.currentTarget;
+                        draggedEl.style.pointerEvents = "none";
+                        draggedEl.style.visibility = "hidden";
                         const hitEl = document.elementFromPoint(touch.clientX, touch.clientY);
+                        draggedEl.style.pointerEvents = "";
+                        draggedEl.style.visibility = "";
                         const targetCard = hitEl?.closest?.('[data-team-card]');
                         if (targetCard) {
                           try {
@@ -1381,7 +1386,7 @@ function AdminConfig({ config, saveLeagueConfig, onBack }) {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <BackBtn onClick={onBack} />
-        <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>League Settings</span>
+        <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Basic Info</span>
         <button onClick={save} style={{ background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: 13, padding: "7px 16px", cursor: dirty ? "pointer" : "default", fontWeight: 600, letterSpacing: .4, transition: "all .2s" }}>{dirty ? "Save" : "Saved"}</button>
       </div>
       <Card style={{ padding: 14, marginBottom: 12 }}>
