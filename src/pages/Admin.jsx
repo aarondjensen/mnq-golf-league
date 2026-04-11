@@ -888,6 +888,58 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
           <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "8px 12px", marginBottom: 10, textAlign: "center" }}>
             <span style={{ fontSize: 13, fontWeight: 700, color: K.warn }}>Rained Out</span>
             {wk.makeupFor && <span style={{ fontSize: 11, color: K.t3, marginLeft: 6 }}>(Makeup for Week {wk.makeupFor})</span>}
+            <div style={{ marginTop: 8 }}>
+              <button onClick={async () => {
+                if (!window.confirm(`Undo rain out for Week ${wk.week}? This will restore the week and remove the makeup week / reverse date shifts.`)) return;
+
+                const isRoundRobin = wk.week <= regWeeks && !wk.seeded && !wk.isPlayoff;
+
+                // Un-mark the rain out
+                const restored = { ...wk };
+                delete restored.rainedOut;
+                await saveWeekSchedule(restored);
+
+                if (isRoundRobin) {
+                  // Find and remove the makeup week that was created for this week
+                  const makeupWeek = schedule.find(s => s.makeupFor === wk.week);
+                  if (makeupWeek) {
+                    // Blank out the makeup week (remove matches, mark as removed)
+                    await saveWeekSchedule({ ...makeupWeek, matches: [], rainedOut: true, makeupFor: null, removed: true });
+
+                    // Shift all weeks that were bumped back down by 1
+                    const weeksToShift = schedule.filter(s => s.week > makeupWeek.week && s.week !== makeupWeek.week).sort((a, b) => a.week - b.week);
+                    for (const fw of weeksToShift) {
+                      const newNum = fw.week - 1;
+                      let newDate = fw.date || "";
+                      if (fw.date) {
+                        const d = new Date(fw.date + "T12:00:00");
+                        if (!isNaN(d.getTime())) {
+                          d.setDate(d.getDate() - 7);
+                          newDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                        }
+                      }
+                      await saveWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newNum}`, week: newNum, date: newDate });
+                    }
+                  }
+                } else {
+                  // Seeded/Playoff: pull future dates back by 1 week
+                  const futureWeeks = schedule.filter(s => s.week > wk.week && !s.rainedOut);
+                  for (const fw of futureWeeks) {
+                    if (fw.date) {
+                      const d = new Date(fw.date + "T12:00:00");
+                      if (isNaN(d.getTime())) continue;
+                      d.setDate(d.getDate() - 7);
+                      const newDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                      await saveWeekSchedule({ ...fw, date: newDate });
+                    }
+                  }
+                }
+
+                setEditWeek(null);
+              }} style={{ padding: "6px 16px", borderRadius: 6, background: K.card, border: `1px solid ${K.warn}40`, color: K.warn, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                Undo Rain Out
+              </button>
+            </div>
           </div>
         )}
 

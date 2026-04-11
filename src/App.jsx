@@ -221,7 +221,7 @@ export default function GolfLeagueApp() {
 
     unsubs.push(db.subscribe("league_players", LF, (docs) => setPlayers(docs)));
     unsubs.push(db.subscribe("league_teams", LF, (docs) => setTeams(docs)));
-    unsubs.push(db.subscribe("league_schedule", LF, (docs) => setSchedule(docs.filter(d => d.week > 0).sort((a, b) => a.week - b.week))));
+    unsubs.push(db.subscribe("league_schedule", LF, (docs) => setSchedule(docs.filter(d => d.week > 0 && !d.removed).sort((a, b) => a.week - b.week))));
     unsubs.push(db.subscribe("league_match_results", LF, (docs) => setMatchResults(docs)));
     unsubs.push(db.subscribe("league_ctp", LF, (docs) => setCtpData(docs)));
 
