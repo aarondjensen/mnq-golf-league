@@ -734,7 +734,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
     const isFinalized = wk.locked || (matchResults || []).some(r => r.week === wk.week);
     const isRainedOut = wk.rainedOut === true;
     const isSeeded = wk.seeded === true && (!wk.matches || wk.matches.length === 0);
-    const isPlayoff = wk.isPlayoff || wk.week > (leagueConfig.regularWeeks || 14);
+    const isPlayoff = wk.isPlayoff === true;
     const regWeeks = leagueConfig.regularWeeks || 14;
     const playoffWeeks = leagueConfig.playoffWeeks || 2;
     const playoffRound = isPlayoff ? wk.week - regWeeks : 0; // 1 = play-in, 2 = quarters, etc.
@@ -1340,7 +1340,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
           {schedule.map(wk => {
-            const isPlayoff = wk.isPlayoff || wk.week >= (leagueConfig.regularWeeks || 14);
+            const isPlayoff = wk.isPlayoff === true;
             const isRainedOut = wk.rainedOut === true;
             const isSeeded = wk.seeded === true && (!wk.matches || wk.matches.length === 0);
             const isFinalized = wk.locked === true;

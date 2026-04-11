@@ -225,7 +225,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   // ── My Schedule compact row ──
   const renderMyWeek = (wk, isDone) => {
     const isSeeded = wk.seeded === true && (!wk.matches || wk.matches.length === 0);
-    const isPlayoff = wk.isPlayoff || wk.week > (leagueConfig?.regularWeeks || REGULAR_WEEKS);
+    const isPlayoff = wk.isPlayoff === true;
     const myMatch = !isSeeded ? wk.matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id) : null;
     const origIdx = myMatch ? wk.matches.indexOf(myMatch) : 0;
     const side = wk.side || getWeekSide(wk.week);
@@ -399,7 +399,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
   // ── Full week view ──
   const renderWeek = (wk, isDone) => {
-    const isPlayoff = wk.isPlayoff || wk.week > (leagueConfig?.regularWeeks || REGULAR_WEEKS);
+    const isPlayoff = wk.isPlayoff === true;
     const weekComplete = isWeekComplete(wk);
     const isRainedOut = wk.rainedOut === true;
     const isSeeded = wk.seeded === true && (!wk.matches || wk.matches.length === 0);
