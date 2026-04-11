@@ -279,13 +279,16 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const [showEditConfirm, setShowEditConfirm] = useState(false);
   const [absentPlayers, setAbsentPlayers] = useState({});
   const [confirmModal, setConfirmModal] = useState(null);
+  const [justSigned, setJustSigned] = useState(false); // prevents flash between sign and Firestore update
+  const [showCtpPopup, setShowCtpPopup] = useState(false);
+  const [ctpSelections, setCtpSelections] = useState({}); // { holeNum: { playerId, distance } }
   const initialJump = useRef(false);
   const matchGrn = K.matchGrn;
 
   // Notify App.jsx when popups open/close for body scroll lock
   useEffect(() => {
-    if (setPopupOpen) setPopupOpen(showFinalize || showScorecard || !!confirmModal);
-  }, [showFinalize, showScorecard, confirmModal, setPopupOpen]);
+    if (setPopupOpen) setPopupOpen(showFinalize || showScorecard || !!confirmModal || showCtpPopup);
+  }, [showFinalize, showScorecard, confirmModal, showCtpPopup, setPopupOpen]);
 
   // ── Player lookup map (O(1) instead of repeated .find()) ──
   const playerMap = useMemo(() => {
@@ -436,6 +439,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   const existingResult = (t1 && t2) ? matchResults.find(r => r.week === week && r.team1Id === t1.id && r.team2Id === t2.id) : null;
   const isAlreadyFinalized = !!existingResult;
+
+  // Clear justSigned once Firestore confirms the result
+  useEffect(() => {
+    if (isAlreadyFinalized && justSigned) setJustSigned(false);
+  }, [isAlreadyFinalized, justSigned]);
   const isAttested = existingResult?.attested === true;
   const finalizedByTeamId = existingResult?.finalizedByTeamId || null;
   const signedByPlayerId = existingResult?.signedByPlayerId || null;
@@ -599,7 +607,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
             if (isFinalOrSigned) {
               centerText = res.matchResultText || `${score1}-${score2}`;
-              centerColor = isTied ? K.t3 : K.t1;
+              centerColor = (res.matchResultText === "TIED" || score1 === score2) ? K.t3 : K.t1;
               if (res.attested) { progressLabel = "FINAL"; progressColor = K.grn; }
               else {
                 progressLabel = attestNeededDispT1 ? "‹ ATTEST" : "ATTEST ›";
@@ -737,22 +745,140 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
         {isComm && (
           <div style={{ marginTop: 12 }}>
+            {/* Rain Out button — before week is finalized */}
+            {!isWeekLocked && !allMatchesAttested && (
+              <button onClick={() => {
+                setConfirmModal({
+                  title: `Rain out Week ${week}?`,
+                  message: "This will skip this week (no matches played), add a makeup week with the same matchups, and push future dates forward.",
+                  onConfirm: async () => {
+                    await saveWeekSchedule({ ...weekSch, rainedOut: true });
+                    // Create makeup week
+                    const maxWeek = Math.max(...schedule.map(s => s.week));
+                    const newWeekNum = maxWeek + 1;
+                    const lastWeek = schedule.find(s => s.week === maxWeek);
+                    let newDate = "";
+                    if (lastWeek?.date) {
+                      const d = new Date(lastWeek.date + "T12:00:00");
+                      d.setDate(d.getDate() + 7);
+                      newDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    }
+                    await saveWeekSchedule({
+                      id: `${LEAGUE_ID}_w${newWeekNum}`, week: newWeekNum,
+                      matches: [...(weekSch.matches || [])],
+                      side: weekSch.side || (lastWeek?.side === 'front' ? 'back' : 'front'),
+                      date: newDate, makeupFor: weekSch.week,
+                      ...(weekSch.isPlayoff ? { isPlayoff: true } : {}),
+                      ...(weekSch.seeded ? { seeded: true } : {}),
+                    });
+                    setConfirmModal(null);
+                    setToast("Week " + week + " rained out — makeup added");
+                    setTimeout(() => { setToast(null); setShowAllMatches(false); }, 2000);
+                  },
+                });
+              }} style={{ width: "100%", padding: 12, borderRadius: 10, marginBottom: 8, cursor: "pointer", background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 13, fontWeight: 700 }}>
+                Rain Out Week {week}
+              </button>
+            )}
             {allMatchesAttested && !isWeekLocked && saveWeekSchedule && (
-              <button onClick={async () => {
-                await saveWeekSchedule({ ...weekSch, locked: true });
-                setToast("Week " + week + " finalized");
-                setTimeout(() => {
-                  setToast(null);
-                  setShowAllMatches(false);
-                  setActiveMatch(null);
-                  setExpandedMatch(null);
-                }, 2000);
+              <button onClick={() => {
+                // Identify par 3 holes for CTP selection
+                const par3Holes = pars.map((p, i) => p === 3 ? (side === 'front' ? i + 1 : i + 10) : null).filter(Boolean);
+                // Pre-fill with existing CTP data for this week
+                const existing = {};
+                par3Holes.forEach(h => {
+                  const c = ctpData.find(cd => cd.week === week && cd.holeNum === h);
+                  if (c) existing[h] = { playerId: c.playerId || "", distance: c.distance || "" };
+                });
+                setCtpSelections(existing);
+                setShowCtpPopup(true);
               }} style={{ width: "100%", padding: 14, borderRadius: 12, cursor: "pointer", background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: 800 }}>
                 Finalize Week {week}
               </button>
             )}
           </div>
         )}
+
+        {/* CTP Selection Popup */}
+        {showCtpPopup && (() => {
+          const par3Holes = pars.map((p, i) => p === 3 ? (side === 'front' ? i + 1 : i + 10) : null).filter(Boolean);
+          const allPlayersSorted = [...players].sort((a, b) => a.name.localeCompare(b.name));
+
+          const handleFinalize = async () => {
+            // Save CTP selections
+            for (const holeNum of par3Holes) {
+              const sel = ctpSelections[holeNum];
+              if (sel && sel.playerId) {
+                await saveCtp({
+                  id: `${LEAGUE_ID}_w${week}_h${holeNum}`,
+                  week, holeNum,
+                  playerId: sel.playerId,
+                  distance: sel.distance || "",
+                  season: 2026,
+                });
+              }
+            }
+            // Lock the week
+            await saveWeekSchedule({ ...weekSch, locked: true });
+            setShowCtpPopup(false);
+            setToast("Week " + week + " finalized");
+            setTimeout(() => {
+              setToast(null);
+              setShowAllMatches(false);
+              setActiveMatch(null);
+              setExpandedMatch(null);
+            }, 2000);
+          };
+
+          return (<>
+            <div onClick={() => setShowCtpPopup(false)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 500 }} />
+            <div data-popup style={{ position: "fixed", inset: 0, zIndex: 550, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+              <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "20px", width: "100%", maxWidth: 360 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>Finalize Week {week}</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 14 }}>Closest to the Pin</div>
+
+                {par3Holes.map(holeNum => {
+                  const sel = ctpSelections[holeNum] || {};
+                  return (
+                    <div key={holeNum} style={{ marginBottom: 14, background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 10, padding: "12px" }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: K.t1, marginBottom: 8 }}>Hole {holeNum}</div>
+                      <select
+                        value={sel.playerId || ""}
+                        onChange={e => setCtpSelections(prev => ({ ...prev, [holeNum]: { ...prev[holeNum], playerId: e.target.value } }))}
+                        style={{ width: "100%", padding: "10px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13, marginBottom: 6 }}
+                      >
+                        <option value="">No winner</option>
+                        {allPlayersSorted.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                      </select>
+                      {sel.playerId && (
+                        <input
+                          type="text"
+                          placeholder="Distance (e.g. 4'6&quot;)"
+                          value={sel.distance || ""}
+                          onChange={e => setCtpSelections(prev => ({ ...prev, [holeNum]: { ...prev[holeNum], distance: e.target.value } }))}
+                          style={{ width: "100%", padding: "8px 10px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13 }}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+
+                {par3Holes.length === 0 && (
+                  <div style={{ fontSize: 13, color: K.t3, padding: "8px 0" }}>No par 3 holes this side</div>
+                )}
+
+                <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                  <button onClick={handleFinalize} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                    Finalize Week
+                  </button>
+                  <button onClick={() => setShowCtpPopup(false)} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </>);
+        })()}
 
         {toast && (
           <div style={{ position: "fixed", top: 80, left: "50%", transform: "translateX(-50%)", background: K.act, color: K.bg, padding: "12px 48px", borderRadius: 12, fontSize: 13, fontWeight: 700, zIndex: 1000, whiteSpace: "nowrap", minWidth: 240, textAlign: "center", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
@@ -1025,7 +1151,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         </>);
       })()}
       {/* After signed: show inline scorecard. Before signed: show hole card + scoring UI */}
-      {isAlreadyFinalized ? (() => {
+      {(isAlreadyFinalized || justSigned) ? (() => {
+        if (justSigned && !isAlreadyFinalized) {
+          // Brief transition: scorecard was just signed, waiting for Firestore confirmation
+          return <div style={{ textAlign: "center", padding: 30, color: K.t3, fontSize: 13 }} className="pu">Saving scorecard...</div>;
+        }
         const sc = buildScorecardData();
         const scComp = buildSC(sc.myPids, sc.oppPids, sc.holeResults, sc.runningStatus, sc.clinchHole, sc.clinchText, "full", true);
 
@@ -1077,7 +1207,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         <button onClick={() => { const next = Math.min(8, curHole + 1); setCurHole(next); setEditing(next < currentHoleIdx); }} disabled={curHole === 8} style={{ width: 32, height: 40, borderRadius: 8, background: "none", border: "none", cursor: curHole === 8 ? "default" : "pointer", color: curHole === 8 ? K.bg + "40" : K.bg, fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
       </div>
       </>)}
-      {!isAlreadyFinalized && (<>
+      {!isAlreadyFinalized && !justSigned && (<>
 
       {allP.map(pid => {
         const pl = playerMap[pid]; if (!pl) return null;
@@ -1235,7 +1365,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div style={{ marginTop: 16 }}>
                 {!isAlreadyFinalized && (
                   <>
-                    <button onClick={async () => { await finalizeMatch(); setShowFinalize(false); }} style={{ width: "100%", padding: "14px", borderRadius: 12, background: "#3b82f6", border: "none", color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
+                    <button onClick={async () => { setJustSigned(true); await finalizeMatch(); setShowFinalize(false); }} style={{ width: "100%", padding: "14px", borderRadius: 12, background: "#3b82f6", border: "none", color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
                       Sign Scorecard
                     </button>
                     <button onClick={() => setShowFinalize(false)} style={{ width: "100%", padding: 10, background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 4 }}>
@@ -1336,7 +1466,7 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
           const isCur = btn === score; const sd = btn - par; const sc = sd < 0 ? K.red : sd === 0 ? K.t3 : K.bg;
           return (
             <button key={btn} onClick={() => handleScore(isCur ? 0 : btn)} style={{ flex: 1, height: 42, borderRadius: 8, cursor: "pointer", fontSize: 16, fontWeight: 800, border: "none", background: isCur ? K.acc : K.inp, color: isCur ? K.bg : K.t2, position: "relative", transition: "all .15s" }}>
-              {isCur && sd !== 0 && <div style={{ position: "absolute", width: 34, height: 34, left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}><div style={{ position: "absolute", inset: 0, borderRadius: sd < 0 ? "50%" : 3, border: `2px solid ${sc}` }} />{Math.abs(sd) >= 2 && <div style={{ position: "absolute", inset: 5, borderRadius: sd < 0 ? "50%" : 2, border: `2px solid ${sc}` }} />}</div>}
+              {isCur && sd !== 0 && <div style={{ position: "absolute", width: 34, height: 34, left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}><div style={{ position: "absolute", inset: 0, borderRadius: sd < 0 ? "50%" : 3, border: `1.5px solid ${sc}` }} />{Math.abs(sd) >= 2 && <div style={{ position: "absolute", inset: 4, borderRadius: sd < 0 ? "50%" : 2, border: `1px solid ${sc}` }} />}</div>}
               <span style={{ position: "relative", zIndex: 1 }}>{btn}</span>
             </button>
           );

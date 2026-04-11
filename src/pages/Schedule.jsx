@@ -1,16 +1,63 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, REGULAR_WEEKS, LIST_GAP, CARD_RADIUS, NAME_SIZE, HERO_NUM_SIZE, CHEVRON_SIZE } from "../theme";
 
-export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig }) {
+// Mini ScoreCell for schedule scorecard expansion
+function MiniScoreCell({ score, par, strokes, size = 11 }) {
+  if (!score || score <= 0) return <span style={{ color: K.t3 + "30", fontSize: size }}>·</span>;
+  const diff = score - par;
+  const sh = size + 6;
+  const bc = K.t2;
+  let border = null;
+  if (diff <= -2) {
+    border = (
+      <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: sh - 5, height: sh - 5, borderRadius: "50%", border: `1px solid ${bc}` }} />
+      </div>
+    );
+  } else if (diff === -1) {
+    border = <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}` }} />;
+  } else if (diff === 1) {
+    border = <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: 2, border: `1.5px solid ${bc}` }} />;
+  } else if (diff >= 2) {
+    border = (
+      <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: 2, border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: sh - 5, height: sh - 5, borderRadius: 1, border: `1px solid ${bc}` }} />
+      </div>
+    );
+  }
+  return (
+    <div style={{ position: "relative", width: sh, height: sh, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {border}
+      <span style={{ position: "relative", zIndex: 1, fontSize: size, fontWeight: 700, lineHeight: 1 }}>{score}</span>
+    </div>
+  );
+}
+
+export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, scoringRules }) {
   const [showAll, setShowAll] = useState(false);
   const [myOnly, setMyOnly] = useState(true);
   const [expandedWeeks, setExpandedWeeks] = useState({});
+  const [expandedMatchKey, setExpandedMatchKey] = useState(null); // "week_mi"
+  const [matchScores, setMatchScores] = useState({}); // { week: { key: score } }
 
   const toggleWeek = (weekNum) => {
     setExpandedWeeks(prev => ({ ...prev, [weekNum]: !prev[weekNum] }));
   };
 
-  // Build display names: last name only, add first initial if duplicate last names
+  const toggleMatchExpand = useCallback(async (weekNum, mi) => {
+    const key = `${weekNum}_${mi}`;
+    if (expandedMatchKey === key) {
+      setExpandedMatchKey(null);
+      return;
+    }
+    setExpandedMatchKey(key);
+    // Fetch scores for this week if not already loaded
+    if (!matchScores[weekNum] && fetchWeekScores) {
+      const scores = await fetchWeekScores(weekNum);
+      setMatchScores(prev => ({ ...prev, [weekNum]: scores }));
+    }
+  }, [expandedMatchKey, matchScores, fetchWeekScores]);
+
   const displayNames = useMemo(() => {
     const lastNames = {};
     players.forEach(p => {
@@ -35,13 +82,12 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     return teams.find(t => t.player1 === leagueUser.playerId || t.player2 === leagueUser.playerId);
   }, [teams, leagueUser]);
 
-  // Find current week (skip rained-out weeks)
   const currentWeekIdx = useMemo(() => {
     for (let i = 0; i < schedule.length; i++) {
       const wk = schedule[i];
       if (wk.rainedOut) continue;
-      if (!wk.matches || wk.matches.length === 0) continue; // skip seeded/TBD
-      if (!wk.locked) return i; // stay on this week until commish locks it
+      if (!wk.matches || wk.matches.length === 0) continue;
+      if (!wk.locked) return i;
     }
     return schedule.length - 1;
   }, [schedule, matchResults]);
@@ -59,7 +105,6 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     return formatTeeTime(base, idx, interval);
   };
 
-  // Team records: { teamId: { w, l, t } }
   const teamRecords = useMemo(() => {
     const rec = {};
     teams.forEach(t => { rec[t.id] = { w: 0, l: 0, t: 0 }; });
@@ -85,7 +130,6 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     return r ? `${r.w}-${r.l}-${r.t}` : "0-0-0";
   };
 
-  // Split schedule into upcoming and complete
   const { upcoming, complete } = useMemo(() => {
     const up = [];
     const done = [];
@@ -114,7 +158,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
   if (!schedule.length) return <EmptyState icon="calendar" title="No schedule yet" subtitle="Commissioner needs to generate the schedule." />;
 
-  // ── Generate ICS calendar file with ALL upcoming matches ──
+  // ── ICS calendar ──
   const addAllToCalendar = async () => {
     if (!myTeam) return;
     const base = leagueConfig?.startTime || "4:28 PM";
@@ -147,9 +191,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       let startDate;
       if (wk.date) {
         const [mon, day] = wk.date.split('/').map(Number);
-        if (mon && day) {
-          startDate = new Date(year, mon - 1, day, teeHr, teeMin);
-        }
+        if (mon && day) startDate = new Date(year, mon - 1, day, teeHr, teeMin);
       }
       if (!startDate) {
         const months = { 'Jan':0,'Feb':1,'Mar':2,'Apr':3,'May':4,'Jun':5,'Jul':6,'Aug':7,'Sep':8,'Oct':9,'Nov':10,'Dec':11 };
@@ -204,7 +246,6 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
     const teeTimeShort = myMatch ? fmtTeeTime(origIdx).replace(/\s*(AM|PM)$/i, '') : "—";
 
-    // Determine result display for my team
     let resultText = "";
     if (res) {
       const isT1 = myMatch.team1 === myTeam.id;
@@ -249,6 +290,102 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     );
   };
 
+  // ── Mini scorecard for expanded match ──
+  const renderMatchScorecard = (wk, m, res) => {
+    if (!course || !res) return null;
+    const side = wk.side || getWeekSide(wk.week);
+    const pars = side === 'front' ? course.frontPars : course.backPars;
+    const hcps = side === 'front' ? course.frontHcps : course.backHcps;
+    const wkScores = matchScores[wk.week];
+    if (!wkScores) return <div style={{ padding: 10, textAlign: "center", color: K.t3, fontSize: 11 }} className="pu">Loading scores...</div>;
+
+    const t1Pids = [teams.find(t => t.id === m.team1)?.player1, teams.find(t => t.id === m.team1)?.player2].filter(Boolean);
+    const t2Pids = [teams.find(t => t.id === m.team2)?.player1, teams.find(t => t.id === m.team2)?.player2].filter(Boolean);
+
+    const getScore = (pid, h) => wkScores[`w${wk.week}_p${pid}_h${h}`] || 0;
+    const sorted = hcps.map((h, i) => ({ idx: i, hcp: h })).sort((a, b) => a.hcp - b.hcp);
+    const getStrokesMap = (nh) => {
+      const map = {}; let rem = Math.abs(nh);
+      for (const h of sorted) { if (rem <= 0) break; map[h.idx] = (map[h.idx] || 0) + 1; rem--; }
+      for (const h of sorted) { if (rem <= 0) break; map[h.idx] = (map[h.idx] || 0) + 1; rem--; }
+      return map;
+    };
+    const getHcp = (pid) => {
+      const p = players.find(pl => pl.id === pid);
+      return p ? Math.round(p.handicapIndex || 0) : 0;
+    };
+    const getStrokes = (pid, h) => getStrokesMap(getHcp(pid))[h] || 0;
+    const getInitials = (pid) => {
+      const p = players.find(pl => pl.id === pid);
+      return p ? p.name.split(' ').map(n => n[0]).join('') : "?";
+    };
+
+    // Compute hole results
+    const holeResults = [];
+    for (let h = 0; h < 9; h++) {
+      let n1 = 0, n2 = 0;
+      t1Pids.forEach(pid => { n1 += getScore(pid, h) - getStrokes(pid, h); });
+      t2Pids.forEach(pid => { n2 += getScore(pid, h) - getStrokes(pid, h); });
+      holeResults.push(n1 < n2 ? 1 : n2 < n1 ? -1 : 0);
+    }
+
+    const gridLine = `1px solid ${K.bdr}20`;
+
+    const PlayerRow = ({ pid }) => (
+      <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
+        <div style={{ width: 32, flexShrink: 0, paddingLeft: 3, display: "flex", alignItems: "center", height: 28 }}>
+          <span style={{ fontSize: 10, color: K.t1, fontWeight: 800 }}>{getInitials(pid)}</span>
+          <span style={{ fontSize: 8, color: "#3b82f6", fontWeight: 700, marginLeft: 2 }}>{getHcp(pid)}</span>
+        </div>
+        {Array.from({ length: 9 }, (_, h) => {
+          const s = getScore(pid, h);
+          return <div key={h} style={{ flex: 1, height: 28, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? gridLine : "none" }}>
+            <MiniScoreCell score={s} par={pars[h]} strokes={getStrokes(pid, h)} size={11} />
+          </div>;
+        })}
+      </div>
+    );
+
+    const TeamRow = ({ pids, isT1 }) => (
+      <div style={{ display: "flex", alignItems: "center", background: K.act + "08" }}>
+        <div style={{ width: 32, flexShrink: 0, fontSize: 7, color: K.act, fontWeight: 800, paddingLeft: 3, display: "flex", alignItems: "center", height: 22 }}>NET</div>
+        {Array.from({ length: 9 }, (_, h) => {
+          let tNet = 0;
+          pids.forEach(pid => { tNet += getScore(pid, h) - getStrokes(pid, h); });
+          const won = holeResults[h] === (isT1 ? 1 : -1);
+          return <div key={h} style={{
+            flex: 1, textAlign: "center", fontSize: 10, fontWeight: 800,
+            color: K.t1, lineHeight: "22px", borderRight: won ? "none" : gridLine,
+            ...(won ? { background: K.bg, border: `1px solid ${K.act}`, borderRadius: 2, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
+          }}>{tNet}</div>;
+        })}
+      </div>
+    );
+
+    // Swap so user's team is on top
+    const isMyT1 = myTeam && m.team1 === myTeam.id;
+    const isMyT2 = myTeam && m.team2 === myTeam.id;
+    const topPids = isMyT2 ? t2Pids : t1Pids;
+    const botPids = isMyT2 ? t1Pids : t2Pids;
+    const topIsT1 = isMyT2 ? false : true;
+
+    return (
+      <div style={{ margin: "4px 0 2px", borderRadius: 6, overflow: "hidden", border: `1px solid ${K.bdr}30` }}>
+        <div style={{ display: "flex", background: K.acc, padding: "0" }}>
+          <div style={{ width: 32, flexShrink: 0, fontSize: 7, color: K.bg, fontWeight: 800, paddingLeft: 3, opacity: .8, display: "flex", alignItems: "center", height: 20 }}>HOLE</div>
+          {Array.from({ length: 9 }, (_, i) => (
+            <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 10, color: K.bg, fontWeight: 800, lineHeight: "20px" }}>{side === 'front' ? i + 1 : i + 10}</div>
+          ))}
+        </div>
+        {topPids.map(pid => <PlayerRow key={pid} pid={pid} />)}
+        <TeamRow pids={topPids} isT1={topIsT1} />
+        <div style={{ height: 1, background: K.bdr + "40" }} />
+        {botPids.map(pid => <PlayerRow key={pid} pid={pid} />)}
+        <TeamRow pids={botPids} isT1={!topIsT1} />
+      </div>
+    );
+  };
+
   // ── Full week view ──
   const renderWeek = (wk, isDone) => {
     const isPlayoff = wk.isPlayoff || wk.week > (leagueConfig?.regularWeeks || REGULAR_WEEKS);
@@ -262,11 +399,14 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       ? wk.matches.filter(m => myTeam && (m.team1 === myTeam.id || m.team2 === myTeam.id))
       : wk.matches;
 
+    // Gray header background for completed expanded weeks
+    const headerBg = isExp && weekComplete && !isRainedOut ? K.inp : K.card;
+
     return (
       <div key={wk.week}>
         <button onClick={() => toggleWeek(wk.week)} style={{
           display: "flex", justifyContent: "space-between", alignItems: "center", width: "100%",
-          background: K.card, padding: "10px 14px", cursor: "pointer", textAlign: "left",
+          background: headerBg, padding: "10px 14px", cursor: "pointer", textAlign: "left",
           borderRadius: isExp ? `${CARD_RADIUS}px ${CARD_RADIUS}px 0 0` : CARD_RADIUS,
           border: `1px solid ${isRainedOut ? K.warn + "40" : weekComplete ? K.bdr : wk.week === schedule[currentWeekIdx]?.week ? K.act + "40" : K.bdr}`,
           borderBottom: isExp ? "none" : undefined,
@@ -332,6 +472,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 const res = matchResults.find(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2);
                 const isMyMatch = myTeam && (m.team1 === myTeam.id || m.team2 === myTeam.id);
                 const origIdx = wk.matches.indexOf(m);
+                const isMatchExp = expandedMatchKey === `${wk.week}_${mi}`;
 
                 const swapped = isMyMatch && m.team2 === myTeam.id;
                 const t1 = swapped ? rawT2 : rawT1;
@@ -339,38 +480,53 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 const score1 = res ? (swapped ? res.team2Points : res.team1Points) : null;
                 const score2 = res ? (swapped ? res.team1Points : res.team2Points) : null;
 
+                // Match result color: TIED = gray, everything else = black
+                const resultColor = res && res.matchResultText === "TIED" ? K.t3 : K.t1;
+
                 return (
-                  <div key={mi} style={{ background: K.card, borderRadius: 8, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}`, padding: "8px 10px", display: "flex", alignItems: "center" }}>
-                    {/* Left team */}
-                    <div style={{ flex: 1, textAlign: "right", paddingRight: res && score1 > score2 ? 8 : 18, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-                      <div style={{ fontSize: NAME_SIZE, fontWeight: res && score1 > score2 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player1)}</div>
-                      <div style={{ fontSize: NAME_SIZE, fontWeight: res && score1 > score2 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player2)}</div>
-                      <div style={{ fontSize: 12, color: K.t3, fontWeight: 600, marginTop: 2 }}>{fmtRecord(t1?.id)}</div>
-                    </div>
-                    {/* Winner triangle left */}
-                    {res && score1 > score2 && (
-                      <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, marginRight: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>
-                    )}
-                    {/* Center — match result or tee time */}
-                    <div style={{ textAlign: "center", minWidth: 74, flexShrink: 0, padding: "0 2px" }}>
-                      {res ? (
-                        <div style={{ fontSize: HERO_NUM_SIZE, fontWeight: 800, color: K.t1, letterSpacing: .5 }}>
-                          {res.matchResultText || `${score1}–${score2}`}
-                        </div>
-                      ) : (
-                        <div style={{ fontSize: 18, fontWeight: 800, color: K.act, letterSpacing: .3 }}>{fmtTeeTime(origIdx)}</div>
+                  <div key={mi} style={{ background: K.card, borderRadius: 8, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}`, overflow: "hidden" }}>
+                    <button onClick={() => res ? toggleMatchExpand(wk.week, mi) : null} style={{ width: "100%", padding: "8px 10px", display: "flex", alignItems: "center", background: "transparent", border: "none", cursor: res ? "pointer" : "default", textAlign: "left" }}>
+                      {/* Left team */}
+                      <div style={{ flex: 1, textAlign: "right", paddingRight: res && score1 > score2 ? 8 : 18, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                        <div style={{ fontSize: NAME_SIZE, fontWeight: res && score1 > score2 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player1)}</div>
+                        <div style={{ fontSize: NAME_SIZE, fontWeight: res && score1 > score2 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player2)}</div>
+                        <div style={{ fontSize: 12, color: K.t3, fontWeight: 600, marginTop: 2 }}>{fmtRecord(t1?.id)}</div>
+                      </div>
+                      {/* Winner triangle left */}
+                      {res && score1 > score2 && (
+                        <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, marginRight: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>
                       )}
-                    </div>
-                    {/* Winner triangle right */}
-                    {res && score2 > score1 && (
-                      <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, marginLeft: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>
+                      {/* Center — match result or tee time */}
+                      <div style={{ textAlign: "center", minWidth: 74, flexShrink: 0, padding: "0 2px" }}>
+                        {res ? (
+                          <div style={{ fontSize: HERO_NUM_SIZE, fontWeight: 800, color: resultColor, letterSpacing: .5 }}>
+                            {res.matchResultText || `${score1}–${score2}`}
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 18, fontWeight: 800, color: K.act, letterSpacing: .3 }}>{fmtTeeTime(origIdx)}</div>
+                        )}
+                      </div>
+                      {/* Winner triangle right */}
+                      {res && score2 > score1 && (
+                        <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, marginLeft: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>
+                      )}
+                      {/* Right team */}
+                      <div style={{ flex: 1, textAlign: "left", paddingLeft: res && score2 > score1 ? 8 : 18, overflow: "hidden" }}>
+                        <div style={{ fontSize: NAME_SIZE, fontWeight: res && score2 > score1 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player1)}</div>
+                        <div style={{ fontSize: NAME_SIZE, fontWeight: res && score2 > score1 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player2)}</div>
+                        <div style={{ fontSize: 12, color: K.t3, fontWeight: 600, marginTop: 2 }}>{fmtRecord(t2?.id)}</div>
+                      </div>
+                      {/* Expand chevron — only for finalized matches */}
+                      {res && (
+                        <div style={{ flexShrink: 0, marginLeft: 4, color: K.t3, fontSize: 10, transform: isMatchExp ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</div>
+                      )}
+                    </button>
+                    {/* Expanded match scorecard */}
+                    {isMatchExp && (
+                      <div style={{ padding: "0 6px 8px", borderTop: `1px solid ${K.bdr}30` }}>
+                        {renderMatchScorecard(wk, m, res)}
+                      </div>
                     )}
-                    {/* Right team */}
-                    <div style={{ flex: 1, textAlign: "left", paddingLeft: res && score2 > score1 ? 8 : 18, overflow: "hidden" }}>
-                      <div style={{ fontSize: NAME_SIZE, fontWeight: res && score2 > score1 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player1)}</div>
-                      <div style={{ fontSize: NAME_SIZE, fontWeight: res && score2 > score1 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player2)}</div>
-                      <div style={{ fontSize: 12, color: K.t3, fontWeight: 600, marginTop: 2 }}>{fmtRecord(t2?.id)}</div>
-                    </div>
                   </div>
                 );
               })}
