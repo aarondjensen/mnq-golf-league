@@ -257,31 +257,46 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const isCurrent = wk.week === schedule[currentWeekIdx]?.week;
 
     return (
-      <div key={wk.week} style={{
-        display: "flex", alignItems: "center", padding: "11px 14px",
-        background: isCurrent && !isRainedOut ? K.matchGrn + "12" : K.card,
-        borderRadius: CARD_RADIUS,
-        border: `1px solid ${isCurrent && !isRainedOut ? K.matchGrn + "40" : K.bdr}`,
-        opacity: isRainedOut ? 0.5 : 1,
-        gap: 10,
-      }}>
-        <div style={{ width: 22, fontSize: 14, fontWeight: 700, color: K.t1, flexShrink: 0 }}>{wk.week}</div>
-        <div style={{ width: 52, fontSize: 12, fontWeight: 600, color: K.t1, flexShrink: 0 }}>{wk.date || "—"}</div>
-        <div style={{ width: 40, fontSize: 14, fontWeight: 700, flexShrink: 0, color: isRainedOut ? K.warn : isComplete ? resultColor : isSeeded ? K.t3 : K.act }}>
-          {isRainedOut ? "—" : isComplete ? resultText : isSeeded ? "—" : teeTimeShort}
-        </div>
-        <div style={{ width: 38, fontSize: 11, fontWeight: 600, color: "#3b82f6", flexShrink: 0 }}>
-          {isRainedOut ? "" : side === 'front' ? 'Front' : 'Back'}
-        </div>
-        <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
-          {isRainedOut ? "RAIN" : isSeeded ? (() => {
-            if (!isPlayoff) return "Seeded — TBD";
-            const regWeeks = leagueConfig?.regularWeeks || REGULAR_WEEKS;
-            const pRound = wk.week - regWeeks;
-            const roundName = (leagueConfig?.playoffRounds || [])[pRound - 1]?.name;
-            return roundName ? `${roundName} — TBD` : "Playoff — TBD";
-          })() : oppName}
-        </div>
+      <div key={wk.week} style={{ borderRadius: CARD_RADIUS, overflow: "hidden", border: `1px solid ${isCurrent && !isRainedOut ? K.matchGrn + "40" : K.bdr}` }}>
+        <button
+          onClick={() => {
+            if (isComplete && myMatch && res) {
+              toggleMatchExpand(wk.week, 0);
+            }
+          }}
+          style={{
+            display: "flex", alignItems: "center", padding: "11px 14px", width: "100%",
+            background: isCurrent && !isRainedOut ? K.matchGrn + "12" : K.card,
+            border: "none", cursor: isComplete && res ? "pointer" : "default",
+            opacity: isRainedOut ? 0.5 : 1, gap: 10, textAlign: "left",
+          }}
+        >
+          <div style={{ width: 22, fontSize: 14, fontWeight: 700, color: K.t1, flexShrink: 0 }}>{wk.week}</div>
+          <div style={{ width: 52, fontSize: 12, fontWeight: 600, color: K.t1, flexShrink: 0 }}>{wk.date || "—"}</div>
+          <div style={{ width: 40, fontSize: 14, fontWeight: 700, flexShrink: 0, color: isRainedOut ? K.warn : isComplete ? resultColor : isSeeded ? K.t3 : K.act }}>
+            {isRainedOut ? "—" : isComplete ? resultText : isSeeded ? "—" : teeTimeShort}
+          </div>
+          <div style={{ width: 38, fontSize: 11, fontWeight: 600, color: "#3b82f6", flexShrink: 0 }}>
+            {isRainedOut ? "" : side === 'front' ? 'Front' : 'Back'}
+          </div>
+          <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+            {isRainedOut ? "RAIN" : isSeeded ? (() => {
+              if (!isPlayoff) return "Seeded — TBD";
+              const regWeeks = leagueConfig?.regularWeeks || REGULAR_WEEKS;
+              const pRound = wk.week - regWeeks;
+              const roundName = (leagueConfig?.playoffRounds || [])[pRound - 1]?.name;
+              return roundName ? `${roundName} — TBD` : "Playoff — TBD";
+            })() : oppName}
+          </div>
+          {isComplete && res && (
+            <div style={{ flexShrink: 0, color: K.t3, fontSize: 9 }}>{expandedMatchKey === `${wk.week}_0` ? "▾" : "›"}</div>
+          )}
+        </button>
+        {expandedMatchKey === `${wk.week}_0` && isComplete && myMatch && res && (
+          <div style={{ padding: "2px 8px 10px", background: K.card, borderTop: `1px solid ${K.bdr}30` }}>
+            {renderMatchScorecard(wk, myMatch, res)}
+          </div>
+        )}
       </div>
     );
   };

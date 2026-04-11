@@ -146,9 +146,8 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   }, [prevStandings]);
 
   const getTeamResults = (teamId) => {
-    return lockedResults
+    const matchRows = lockedResults
       .filter(r => r.team1Id === teamId || r.team2Id === teamId)
-      .sort((a, b) => a.week - b.week)
       .map(r => {
         const isTeam1 = r.team1Id === teamId;
         const oppId = isTeam1 ? r.team2Id : r.team1Id;
@@ -172,8 +171,18 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
           resultDisplay = `${wResult} ${myPts}-${oppPts}`;
         }
 
-        return { week: r.week, date: wk?.date || "", oppName: lastNamesOnly(opp?.name || "TBD"), myPts, oppPts, result: wResult, holesWon, resultDisplay, matchResult: r };
+        return { week: r.week, date: wk?.date || "", oppName: lastNamesOnly(opp?.name || "TBD"), myPts, oppPts, result: wResult, holesWon, resultDisplay, matchResult: r, rainedOut: false };
       });
+
+    // Add rained-out weeks
+    const rainRows = schedule
+      .filter(wk => wk.rainedOut && wk.week > 0)
+      .map(wk => ({
+        week: wk.week, date: wk.date || "", oppName: "", myPts: 0, oppPts: 0,
+        result: "R", holesWon: "", resultDisplay: "RAIN", matchResult: null, rainedOut: true,
+      }));
+
+    return [...matchRows, ...rainRows].sort((a, b) => a.week - b.week);
   };
 
   // ── Mini scorecard renderer ──
@@ -354,6 +363,18 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                   {results.length === 0 ? (
                     <div style={{ padding: "10px 8px", fontSize: 12, color: K.t3, fontStyle: "italic" }}>No matches played yet</div>
                   ) : results.map((r, ri) => {
+                    if (r.rainedOut) {
+                      return (
+                        <div key={ri} style={{ display: "flex", alignItems: "center", padding: "7px 8px", borderTop: `1px solid ${K.bdr}30`, fontSize: 12, opacity: 0.5 }}>
+                          <div style={{ width: 14, flexShrink: 0 }} />
+                          <div style={{ width: 24, flexShrink: 0, color: K.t3, fontSize: 11 }}>{r.week}</div>
+                          <div style={{ width: 48, flexShrink: 0, color: K.t3, fontSize: 11 }}>{r.date || "—"}</div>
+                          <div style={{ flex: 1, color: K.warn, fontWeight: 600 }}>RAIN OUT</div>
+                          <div style={{ width: 58, flexShrink: 0 }} />
+                          <div style={{ width: 28, flexShrink: 0 }} />
+                        </div>
+                      );
+                    }
                     const resKey = `${s.teamId}_${r.week}`;
                     const isResExp = expandedResult === resKey;
                     return (
