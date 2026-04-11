@@ -268,18 +268,18 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   const hasAnyScores = allP.some(pid => { for (let h = 0; h < 9; h++) if (getS(pid, h) > 0) return true; return false; });
 
+  // On initial load, jump to the first incomplete hole (only runs once)
   useEffect(() => {
     if (!initialJump.current && currentHoleIdx > 0 && hasAnyScores) {
       setCurHole(currentHoleIdx);
-      initialJump.current = true;
     }
-  }, [currentHoleIdx, hasAnyScores]);
+    initialJump.current = true;
+  }, []); // empty deps = mount only
 
   useEffect(() => {
     if (holeComplete && curHole < 8 && !editing && !allComplete) {
       const holeNum = side === 'front' ? curHole + 1 : curHole + 10;
       setToast(`✓ Hole ${holeNum} saved — advancing...`);
-      initialJump.current = true; // prevent initialJump from competing
       const timer = setTimeout(() => {
         setToast(null);
         let next = curHole + 1;
