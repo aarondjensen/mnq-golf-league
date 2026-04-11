@@ -24,7 +24,7 @@ export default function AdminView(props) {
   if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} onBack={() => setSec(null)} />;
   if (sec === "scoring") return <AdminScoring scoring={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
   if (sec === "members") return <AdminMembers members={members} saveMember={saveMember} deleteMember={deleteMember} players={players} onBack={() => setSec(null)} />;
-  if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
+  if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} resetSeasonData={props.resetSeasonData} onBack={() => setSec(null)} />;
 
   return (
     <div><SectionTitle>Commissioner Dashboard</SectionTitle>
@@ -1578,9 +1578,10 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
 }
 
 
-function AdminConfig({ config, saveLeagueConfig, onBack }) {
+function AdminConfig({ config, saveLeagueConfig, resetSeasonData, onBack }) {
   const [lc, setLc] = useState({ ...config });
   const [dirty, setDirty] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const save = async () => { await saveLeagueConfig(lc); setDirty(false); };
 
   const handleBack = async () => {
@@ -1589,6 +1590,14 @@ function AdminConfig({ config, saveLeagueConfig, onBack }) {
       if (choice) await save();
     }
     onBack();
+  };
+
+  const handleReset = async () => {
+    if (!window.confirm("Reset all season data?\n\nThis will permanently delete:\n• All hole scores\n• All match results\n• All CTP data\n• Unlock all weeks\n\nThis cannot be undone.")) return;
+    if (!window.confirm("Are you sure? This will wipe ALL scores and results for the current season.")) return;
+    setResetting(true);
+    await resetSeasonData();
+    setResetting(false);
   };
 
   return (
@@ -1602,6 +1611,20 @@ function AdminConfig({ config, saveLeagueConfig, onBack }) {
         <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Season Year</div><input value={lc.year} onChange={e => { setLc({ ...lc, year: parseInt(e.target.value) || 2026 }); setDirty(true); }} type="number" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} /></div>
         <div><div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Invite Code</div><input value={lc.inviteCode || ""} onChange={e => { setLc({ ...lc, inviteCode: e.target.value.toUpperCase() }); setDirty(true); }} placeholder="e.g. MNQ2026" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14, letterSpacing: 2, textTransform: "uppercase" }} /><div style={{ fontSize: 10, color: K.t3, marginTop: 4 }}>New members must enter this code to join. Leave blank to allow anyone.</div></div>
       </Card>
+
+      {resetSeasonData && (
+        <div style={{ marginTop: 24, paddingTop: 16, borderTop: `1px solid ${K.bdr}30` }}>
+          <SubLabel color={K.red}>Danger Zone</SubLabel>
+          <Card style={{ padding: 14, border: `1px solid ${K.red}30` }}>
+            <div style={{ fontSize: 12, color: K.t2, marginBottom: 10, lineHeight: 1.5 }}>
+              Wipe all hole scores, match results, and CTP data for the current season. Use this to clear test data before the real season starts.
+            </div>
+            <button onClick={handleReset} disabled={resetting} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.red + "15", border: `1.5px solid ${K.red}50`, color: K.red, fontSize: 13, fontWeight: 700, cursor: resetting ? "default" : "pointer", opacity: resetting ? 0.6 : 1 }}>
+              {resetting ? "Resetting..." : "Reset Season Data"}
+            </button>
+          </Card>
+        </div>
+      )}
     </div>
   );
 }
