@@ -913,13 +913,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             <div data-popup style={{ position: "fixed", inset: 0, zIndex: 550, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
               <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "20px", width: "100%", maxWidth: 360 }}>
                 <div style={{ fontSize: 11, fontWeight: 700, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>Finalize Week {week}</div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 14 }}>Closest to the Pin</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 14, textTransform: "uppercase", letterSpacing: 1 }}>Closest to the Pin</div>
 
                 {par3Holes.map(holeNum => {
                   const sel = ctpSelections[holeNum] || {};
                   return (
                     <div key={holeNum} style={{ marginBottom: 14, background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 10, padding: "12px" }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: K.t1, marginBottom: 8 }}>Hole {holeNum}</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: K.t1, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Hole {holeNum}</div>
                       <select
                         value={sel.playerId || ""}
                         onChange={e => setCtpSelections(prev => ({ ...prev, [holeNum]: { ...prev[holeNum], playerId: e.target.value } }))}
