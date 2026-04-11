@@ -84,6 +84,7 @@ export default function GolfLeagueApp() {
   useEffect(() => {
     if (refreshing) return;
     const getScrollEl = () => appBodyRef.current || document.querySelector('.app-body');
+    let activeScrollEl = null;
     const findScrollEl = (target) => {
       let el = target;
       while (el) {
@@ -94,21 +95,23 @@ export default function GolfLeagueApp() {
       return getScrollEl();
     };
     const handleStart = (e) => {
-      const scrollEl = findScrollEl(e.target);
-      if (scrollEl && scrollEl.scrollTop <= 0) { touchStartY.current = e.touches[0].clientY; }
+      activeScrollEl = findScrollEl(e.target);
+      if (activeScrollEl && activeScrollEl.scrollTop <= 0) { touchStartY.current = e.touches[0].clientY; }
       else { touchStartY.current = 0; }
       pullingRef.current = false;
     };
     const handleMove = (e) => {
       if (!touchStartY.current) return;
-      const scrollEl = findScrollEl(e.target);
       const diff = e.touches[0].clientY - touchStartY.current;
-      if (diff > 10 && scrollEl && scrollEl.scrollTop <= 0) {
+      if (diff > 10 && activeScrollEl && activeScrollEl.scrollTop <= 0) {
         pullingRef.current = true;
         e.preventDefault();
         const val = Math.min(diff * 0.4, 120);
         pullYRef.current = val;
         setPullY(val);
+      } else if (!pullingRef.current && diff > 5) {
+        // User is scrolling down inside the container, not pulling to refresh
+        touchStartY.current = 0;
       } else if (pullingRef.current && diff <= 5) {
         pullingRef.current = false;
         pullYRef.current = 0;
@@ -118,6 +121,7 @@ export default function GolfLeagueApp() {
     };
     const handleEnd = () => {
       pullingRef.current = false;
+      activeScrollEl = null;
       if (pullYRef.current >= PULL_THRESHOLD) {
         setPullY(PULL_THRESHOLD); pullYRef.current = PULL_THRESHOLD;
         setRefreshing(true);
