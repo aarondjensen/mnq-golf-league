@@ -305,6 +305,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     }
   }, [allComplete, isAlreadyFinalized]);
 
+  // Lock body scroll when finalize popup is open (prevents iOS white gap)
+  useEffect(() => {
+    if (showFinalize) {
+      document.body.classList.add('popup-open');
+      return () => document.body.classList.remove('popup-open');
+    }
+  }, [showFinalize]);
+
   // ── All Matches view (Schedule "This Week" style + expandable scorecards) ──
   if (showAllMatches && !activeMatch) {
     const formatTeeTime = (idx) => fmtTeeTimeUtil(leagueConfig?.startTime || "4:28 PM", idx, leagueConfig?.teeInterval || 8);
@@ -847,7 +855,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   };
 
   return (
-    <div style={{ maxWidth: 480, margin: "0 auto" }}>
+    <div style={{ maxWidth: 420, margin: "0 auto" }}>
       {activeMatch && (
         <div style={{ marginBottom: 8 }}>
           <BackBtn onClick={() => { setActiveMatch(null); }} />
@@ -913,8 +921,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           }
         }
 
+        const hasAnyStatus = holeStatuses.some(s => s !== null);
+
         return (<>
-          <button onClick={() => setShowScorecard(!showScorecard)} style={{ display: isAlreadyFinalized ? "none" : "flex", marginTop: 6, marginBottom: showScorecard ? 0 : 8, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: showScorecard ? "8px 8px 0 0" : 8, cursor: "pointer", padding: "8px 0", alignItems: "center" }}>
+          <button onClick={() => setShowScorecard(!showScorecard)} style={{ display: isAlreadyFinalized || !hasAnyStatus ? "none" : "flex", marginTop: 6, marginBottom: showScorecard ? 0 : 8, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: showScorecard ? "8px 8px 0 0" : 8, cursor: "pointer", padding: "8px 0", alignItems: "center" }}>
             {holeStatuses.map((st, i) => {
               const colBorderR = i < 8 ? { borderRight: `1px solid ${K.bdr}30` } : {};
               if (matchClinchHole !== null && i === matchClinchHole) {
@@ -1496,7 +1506,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         );
 
         return (<>
-          <div onClick={() => { setShowFinalize(false); setShowEditConfirm(false); }} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 500 }} />
+          <style>{`body.popup-open { overflow: hidden !important; position: fixed !important; width: 100% !important; }`}</style>
+          <div onClick={() => { setShowFinalize(false); setShowEditConfirm(false); }} data-popup style={{ position: "fixed", top: -50, left: 0, right: 0, bottom: -50, background: "rgba(0,0,0,.7)", zIndex: 500 }} />
           {/* Confetti for wins — only on first finalize */}
           {sc.matchResult === "WIN" && !isAlreadyFinalized && (
             <div style={{ position: "fixed", inset: 0, zIndex: 550, pointerEvents: "none", overflow: "hidden" }}>
@@ -1527,7 +1538,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               `}</style>
             </div>
           )}
-          <div data-popup style={{ position: "fixed", inset: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: "60px 16px 16px", touchAction: "pan-y" }}>
+          <div data-popup style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: "60px 16px 16px", touchAction: "pan-y", paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}>
             <div style={{ background: K.bg, border: `1.5px solid ${sc.resultColor}50`, borderRadius: 16, padding: "16px 12px 20px", width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto", overscrollBehavior: "none", WebkitOverflowScrolling: "touch" }}>
               {/* Header — Players vs Players with match score and winner arrow */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 14, padding: "0 4px" }}>
