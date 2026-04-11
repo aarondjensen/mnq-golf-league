@@ -4,11 +4,9 @@ import { K, FONTS, CSS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card,
   lastNamesOnly, formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 
-// Golf scorecard cell — shows score with standard indicators:
-// Eagle (−2): double circle  |  Birdie (−1): circle
-// Par (0): plain  |  Bogey (+1): square
-// Double bogey (+2): double square  |  Triple+ (+3): double square
-// All borders use same muted color for clean look
+// ═══════════════════════════════════════════════════════════════
+//  ScoreCell — golf scorecard notation (circles, squares, dots)
+// ═══════════════════════════════════════════════════════════════
 function ScoreCell({ score, par, strokes, size = 13, color: colorOverride }) {
   if (!score || score <= 0) return <span style={{ color: K.t3 + "30", fontSize: size }}>·</span>;
   const diff = score - par;
@@ -18,7 +16,6 @@ function ScoreCell({ score, par, strokes, size = 13, color: colorOverride }) {
   const textColor = colorOverride || undefined;
   const dotH = 10;
 
-  // Border shape — centered absolutely in the score area
   let border = null;
   if (diff <= -2) {
     border = (
@@ -30,13 +27,7 @@ function ScoreCell({ score, par, strokes, size = 13, color: colorOverride }) {
     border = <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}` }} />;
   } else if (diff === 1) {
     border = <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}` }} />;
-  } else if (diff === 2) {
-    border = (
-      <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ width: sh - 6, height: sh - 6, borderRadius: 2, border: `1px solid ${bc}` }} />
-      </div>
-    );
-  } else if (diff >= 3) {
+  } else if (diff >= 2) {
     border = (
       <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ width: sh - 6, height: sh - 6, borderRadius: 2, border: `1px solid ${bc}` }} />
@@ -57,14 +48,216 @@ function ScoreCell({ score, par, strokes, size = 13, color: colorOverride }) {
   );
 }
 
-export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule, openAllMatches, onAllMatchesOpened }) {
+
+// ═══════════════════════════════════════════════════════════════
+//  Shared Scorecard — reusable across all views
+//  Eliminates 4x duplication of hole/par/player/team/match rows
+// ═══════════════════════════════════════════════════════════════
+
+// Shared style constants (created once, reused across renders)
+const GRID_LINE_STYLE = (bdr) => `1px solid ${bdr}25`;
+const COL_BDR_STYLE = (bdr) => `1px solid ${bdr}30`;
+
+function SharedScorecard({
+  pars, side, hcps,
+  team1Pids, team2Pids,        // player ID arrays
+  getScore,                     // (pid, hole) => score
+  getStrokes,                   // (pid, hole) => strokes
+  getHcp,                       // (pid) => nine handicap
+  getInitials,                  // (pid) => "JC"
+  isAbsent,                     // (pid) => bool
+  holeResults,                  // [1, -1, 0, ...] from team1 perspective
+  runningStatus,                // cumulative
+  clinchHole,                   // index or null
+  clinchText,                   // "3&2" etc
+  variant = "full",             // "full" | "compact" | "allMatches"
+  showTotals = false,           // show TOT column
+  showMatchRow = true,
+  matchGrn,
+  team1Label,                   // team name for allMatches
+  team2Label,
+}) {
+  const colBdr = COL_BDR_STYLE(K.bdr);
+  const gridLine = GRID_LINE_STYLE(K.bdr);
+  const lw = variant === "allMatches" ? 44 : 40;
+  const tw = 30;
+  const lblStyle = { width: lw, flexShrink: 0, fontSize: 9, fontWeight: 700, color: K.t3, display: "flex", alignItems: "center", paddingLeft: 4, borderRight: variant === "allMatches" ? gridLine : colBdr, textTransform: "uppercase", letterSpacing: .3 };
+  const totStyle = showTotals ? { width: tw, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", borderLeft: colBdr } : null;
+
+  const scoreSize = variant === "compact" ? 13 : 15;
+  const parTotal = pars.reduce((a, b) => a + b, 0);
+
+  // Header row style depends on variant
+  const useAccHeader = variant !== "compact";
+
+  const HoleRow = () => (
+    <div style={{ display: "flex", background: useAccHeader ? K.acc : K.inp, borderRadius: variant === "allMatches" ? "6px 6px 0 0" : useAccHeader ? "10px 10px 0 0" : undefined, borderBottom: !useAccHeader ? colBdr : undefined }}>
+      <div style={{ ...lblStyle, height: useAccHeader ? 28 : 24, color: useAccHeader ? K.bg : K.t3, opacity: useAccHeader ? .8 : 1, borderRight: "none", fontWeight: 800, fontSize: 10 }}>HOLE</div>
+      {Array.from({ length: 9 }, (_, i) => (
+        <div key={i} style={{ flex: 1, height: useAccHeader ? 28 : 24, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ fontSize: useAccHeader ? 12 : 12, fontWeight: useAccHeader ? 800 : 700, color: useAccHeader ? K.bg : K.t3 }}>{side === 'front' ? i + 1 : i + 10}</span>
+        </div>
+      ))}
+      {totStyle && <div style={{ ...totStyle, height: useAccHeader ? 28 : 24, borderLeft: "none" }}><span style={{ fontSize: 10, fontWeight: 700, color: useAccHeader ? K.bg : K.t3 }}>TOT</span></div>}
+    </div>
+  );
+
+  const ParRow = () => (
+    <div style={{ display: "flex", borderBottom: gridLine, background: useAccHeader ? K.acc + "18" : undefined }}>
+      <div style={{ ...lblStyle, height: variant === "allMatches" ? 26 : 22 }}>PAR</div>
+      {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 11, color: K.t2, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", height: variant === "allMatches" ? 26 : 22, borderRight: i < 8 ? gridLine : "none" }}>{p}</div>)}
+      {totStyle && <div style={{ ...totStyle, height: 22 }}><span style={{ fontSize: 11, fontWeight: 700, color: K.t3 }}>{parTotal}</span></div>}
+    </div>
+  );
+
+  const PlayerRow = ({ pid }) => {
+    const absent = isAbsent ? isAbsent(pid) : false;
+    let grossTotal = 0;
+    const cells = Array.from({ length: 9 }, (_, h) => {
+      const s = getScore(pid, h); const st = getStrokes(pid, h);
+      if (s > 0) grossTotal += s;
+      return { s, st };
+    });
+    return (
+      <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
+        <div style={{ ...lblStyle, height: 38, paddingTop: 10 }}>
+          <span style={{ fontSize: variant === "allMatches" ? 13 : 15, fontWeight: 800, color: K.t1, width: 24, flexShrink: 0 }}>{getInitials(pid)}</span>
+          <span style={{ fontSize: variant === "allMatches" ? 10 : 11, color: "#3b82f6", fontWeight: 700 }}>{getHcp(pid)}</span>
+        </div>
+        {cells.map((c, h) => (
+          <div key={h} style={{ flex: 1, height: 38, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? gridLine : "none" }}>
+            <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={scoreSize} color={absent ? K.red : undefined} />
+          </div>
+        ))}
+        {totStyle && <div style={{ ...totStyle, height: 38, paddingTop: 10 }}><span style={{ fontSize: 14, fontWeight: 800, color: absent ? K.red : K.t1 }}>{grossTotal || ""}</span></div>}
+      </div>
+    );
+  };
+
+  const TeamNetRow = ({ pids, isTeam1Side }) => {
+    let netTotal = 0;
+    return (
+      <div style={{ display: "flex", background: variant === "allMatches" ? K.act + "0c" : undefined }}>
+        <div style={{ ...lblStyle, height: 34, fontSize: 9, fontWeight: 800 }}>{variant === "allMatches" ? "NET" : "TEAM"}</div>
+        {Array.from({ length: 9 }, (_, h) => {
+          let tNet = 0; let ok = true;
+          pids.forEach(pid => { const s = getScore(pid, h); if (s <= 0) ok = false; else tNet += s - getStrokes(pid, h); });
+          if (ok) netTotal += tNet; else netTotal = NaN;
+          const won = holeResults && holeResults[h] === (isTeam1Side ? 1 : -1);
+          return <div key={h} style={{
+            flex: 1, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
+            borderRight: won ? "none" : gridLine,
+            background: won ? (variant === "allMatches" ? K.bg : K.act + "18") : "transparent",
+            ...(won ? { border: `1.5px solid ${K.act}`, borderRadius: 3, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
+          }}>
+            {variant !== "allMatches" ? (
+              <div style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 26, height: 26, borderRadius: 3,
+                border: won ? `1.5px solid ${K.act}` : "none",
+              }}>
+                <span style={{ fontSize: 15, fontWeight: 800, color: K.t2 }}>{ok ? tNet : "·"}</span>
+              </div>
+            ) : (
+              <span style={{ fontSize: 13, fontWeight: 800, color: !ok ? K.t3 + "30" : K.t1 }}>{ok ? tNet : "·"}</span>
+            )}
+          </div>;
+        })}
+        {totStyle && <div style={{ ...totStyle, height: 34 }}><span style={{ fontSize: 14, fontWeight: 800, color: K.t1 }}>{isNaN(netTotal) ? "" : netTotal}</span></div>}
+      </div>
+    );
+  };
+
+  const MatchRow = () => {
+    if (!showMatchRow || !runningStatus) return null;
+    const mGrn = matchGrn || K.matchGrn;
+    return (
+      <div style={{ display: "flex", background: K.card, border: `1px solid ${K.bdr}${variant === "allMatches" ? "40" : "60"}`, borderRadius: variant === "allMatches" ? 6 : 8, padding: "2px 0", margin: variant === "allMatches" ? "4px 0" : "4px 0" }}>
+        <div style={{ ...lblStyle, height: 28, fontSize: 8, fontWeight: 800, color: K.t2 }}>MATCH</div>
+        {runningStatus.map((rs, i) => {
+          const colBorderR = i < 8 ? { borderRight: gridLine } : {};
+          if (clinchHole !== null && i > clinchHole) return <div key={i} style={{ flex: 1, height: 28, ...colBorderR }} />;
+          if (clinchHole !== null && i === clinchHole) {
+            const color = rs > 0 ? mGrn : rs < 0 ? K.red : K.t3;
+            return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: variant === "allMatches" ? 12 : 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>{clinchText}</div>;
+          }
+          const color = rs > 0 ? mGrn : rs < 0 ? K.red : K.t3;
+          return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: variant === "allMatches" ? 12 : 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>
+            {rs > 0 ? <><span style={{ fontSize: variant === "allMatches" ? 12 : 14 }}>▲</span>{rs}</> : rs < 0 ? <><span style={{ fontSize: variant === "allMatches" ? 12 : 14 }}>▼</span>{Math.abs(rs)}</> : "—"}
+          </div>;
+        })}
+        {totStyle && <div style={{ width: tw, flexShrink: 0, height: 28 }} />}
+      </div>
+    );
+  };
+
+  return { HoleRow, ParRow, PlayerRow, TeamNetRow, MatchRow };
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  Helper: compute strokes map for a given handicap
+// ═══════════════════════════════════════════════════════════════
+function buildStrokesCache(hcps) {
+  const cache = {};
+  const sorted = hcps.map((h, i) => ({ idx: i, hcp: h })).sort((a, b) => a.hcp - b.hcp);
+  return (nh) => {
+    if (cache[nh]) return cache[nh];
+    const map = {};
+    let rem = Math.abs(nh);
+    for (const h of sorted) { if (rem <= 0) break; map[h.idx] = (map[h.idx] || 0) + 1; rem--; }
+    for (const h of sorted) { if (rem <= 0) break; map[h.idx] = (map[h.idx] || 0) + 1; rem--; }
+    cache[nh] = map;
+    return map;
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  Helper: compute hole results and clinch info
+// ═══════════════════════════════════════════════════════════════
+function computeMatchStatus(t1Pids, t2Pids, getScore, getStrokes, pars) {
+  const holeResults = [];
+  for (let h = 0; h < 9; h++) {
+    let n1 = 0, n2 = 0, ok1 = true, ok2 = true;
+    t1Pids.forEach(pid => { const s = getScore(pid, h); if (s <= 0) ok1 = false; else n1 += s - getStrokes(pid, h); });
+    t2Pids.forEach(pid => { const s = getScore(pid, h); if (s <= 0) ok2 = false; else n2 += s - getStrokes(pid, h); });
+    if (ok1 && ok2) holeResults.push(n1 < n2 ? 1 : n2 < n1 ? -1 : 0);
+    else holeResults.push(null);
+  }
+  const runningStatus = []; let cum = 0;
+  holeResults.forEach(r => { if (r !== null) cum += r; runningStatus.push(r !== null ? cum : null); });
+
+  let clinchHole = null, clinchText = null;
+  for (let h = 0; h < 9; h++) {
+    if (runningStatus[h] === null) break;
+    const lead = Math.abs(runningStatus[h]);
+    const rem = 8 - h;
+    if (lead > rem) {
+      clinchHole = h;
+      clinchText = rem > 0 ? `${lead}&${rem}` : `${lead}UP`;
+      break;
+    }
+  }
+  if (clinchHole === null && runningStatus.length === 9 && runningStatus[8] !== null) {
+    clinchHole = 8;
+    const f = runningStatus[8];
+    clinchText = f !== 0 ? `${Math.abs(f)}UP` : "TIED";
+  }
+
+  return { holeResults, runningStatus, clinchHole, clinchText };
+}
+
+
+// ═══════════════════════════════════════════════════════════════
+//  MAIN COMPONENT
+// ═══════════════════════════════════════════════════════════════
+export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule, openAllMatches, onAllMatchesOpened, setPopupOpen }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
   const [showAllMatches, setShowAllMatches] = useState(false);
   const [expandedMatch, setExpandedMatch] = useState(null);
   const [toast, setToast] = useState(null);
 
-  // If App signals to open All Matches (e.g. from finalize banner), do it
   useEffect(() => {
     if (openAllMatches) {
       setShowAllMatches(true);
@@ -76,27 +269,34 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const [showScorecard, setShowScorecard] = useState(false);
   const [showFinalize, setShowFinalize] = useState(false);
   const [showEditConfirm, setShowEditConfirm] = useState(false);
-  const [absentPlayers, setAbsentPlayers] = useState({}); // { playerId: true }
-  const [confirmModal, setConfirmModal] = useState(null); // { title, message, onConfirm }
+  const [absentPlayers, setAbsentPlayers] = useState({});
+  const [confirmModal, setConfirmModal] = useState(null);
   const initialJump = useRef(false);
   const matchGrn = K.matchGrn;
 
-  // Find current week: first non-locked week with matches
-  // Only advances when the commish locks/finalizes the week
+  // Notify App.jsx when popups open/close for body scroll lock
+  useEffect(() => {
+    if (setPopupOpen) setPopupOpen(showFinalize || showScorecard || !!confirmModal);
+  }, [showFinalize, showScorecard, confirmModal, setPopupOpen]);
+
+  // ── Player lookup map (O(1) instead of repeated .find()) ──
+  const playerMap = useMemo(() => {
+    const m = {};
+    players.forEach(p => { m[p.id] = p; });
+    return m;
+  }, [players]);
+
   const currentWeek = useMemo(() => {
     for (const wk of schedule) {
       if (wk.rainedOut) continue;
-      if (!wk.matches || wk.matches.length === 0) continue; // skip seeded/TBD weeks
-      if (!wk.locked) return wk.week; // stay on this week until commish locks it
+      if (!wk.matches || wk.matches.length === 0) continue;
+      if (!wk.locked) return wk.week;
     }
-    // All weeks locked — show the last playable week
     const playable = schedule.filter(wk => !wk.rainedOut && wk.matches && wk.matches.length > 0);
     return playable.length ? playable[playable.length - 1].week : 0;
   }, [schedule, matchResults]);
 
   const week = currentWeek;
-
-  // Tell App.jsx which week to subscribe to
   useEffect(() => { setLiveWeek(week); }, [week, setLiveWeek]);
 
   const weekSch = schedule.find(s => s.week === week);
@@ -105,11 +305,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const pars = course ? (side === 'front' ? course.frontPars : course.backPars) : [4,4,4,3,5,4,4,3,5];
   const hcps = course ? (side === 'front' ? course.frontHcps : course.backHcps) : [1,3,5,7,9,11,13,15,17];
   const myTeam = teams.find(t => t.player1 === leagueUser.playerId || t.player2 === leagueUser.playerId);
-
-  // Find user's match
   const myMatch = myTeam ? matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id) : null;
 
-  // Week finalization checks
+  // ── Memoized strokes calculator ──
+  const getStrokesMap = useMemo(() => buildStrokesCache(hcps), [hcps]);
+
   const isWeekLocked = weekSch?.locked === true;
   const allMatchesFinalized = matches.every(m =>
     matchResults.some(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2)
@@ -121,7 +321,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   if (!course?.name) return <EmptyState icon="flag" title="Course not configured" subtitle="Commissioner needs to set up the course." />;
   if (!matches.length) return <EmptyState icon="calendar" title="No matches this week" subtitle="Commissioner needs to set the schedule." />;
 
-  // ── Compute match data unconditionally (hooks must always run) ──
   const matchToScore = activeMatch || myMatch;
   const t1 = matchToScore ? teams.find(t => t.id === matchToScore.team1) : null;
   const t2 = matchToScore ? teams.find(t => t.id === matchToScore.team2) : null;
@@ -158,7 +357,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const t1Players = t1 ? [t1.player1, t1.player2] : [];
   const t2Players = t2 ? [t2.player1, t2.player2] : [];
   const getHcp = (pid) => {
-    const p = players.find(pl => pl.id === pid);
+    const p = playerMap[pid];
     return p ? Math.round(p.handicapIndex || 0) : 0;
   };
 
@@ -205,11 +404,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     if (isPlayerAbsent(pid)) {
       const tm = getTeammate(pid);
       if (!tm || isPlayerAbsent(tm)) {
-        // Net bogey: gross score = par + 1 + strokes so that net = par + 1
-        const strokes = getStrokesMap((() => {
-          const p = players.find(pl => pl.id === pid);
-          return p ? Math.round(p.handicapIndex || 0) : 0;
-        })())[h] || 0;
+        const strokes = getStrokesMap(getHcp(pid))[h] || 0;
         return (pars[h] || 4) + 1 + strokes;
       }
       return getRawScore(tm, h);
@@ -217,20 +412,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     return getRawScore(pid, h);
   };
   const getNineHcp = (pid) => {
-    if (isBothAbsent(pid)) {
-      const p = players.find(pl => pl.id === pid);
-      return p ? Math.round(p.handicapIndex || 0) : 0;
-    }
+    if (isBothAbsent(pid)) return getHcp(pid);
     const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
-    const p = players.find(pl => pl.id === effectivePid);
+    const p = playerMap[effectivePid];
     return p ? Math.round(p.handicapIndex || 0) : 0;
-  };
-  const getStrokesMap = (nh) => {
-    const map = {}; const sorted = hcps.map((h, i) => ({ idx: i, hcp: h })).sort((a, b) => a.hcp - b.hcp);
-    let rem = Math.abs(nh);
-    for (const h of sorted) { if (rem <= 0) break; map[h.idx] = (map[h.idx] || 0) + 1; rem--; }
-    for (const h of sorted) { if (rem <= 0) break; map[h.idx] = (map[h.idx] || 0) + 1; rem--; }
-    return map;
   };
   const getStrokes = (pid, h) => getStrokesMap(getNineHcp(pid))[h] || 0;
   const getRunning = (pid) => {
@@ -268,13 +453,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   const hasAnyScores = allP.some(pid => { for (let h = 0; h < 9; h++) if (getS(pid, h) > 0) return true; return false; });
 
-  // On initial load, jump to the first incomplete hole (only runs once)
   useEffect(() => {
     if (!initialJump.current && currentHoleIdx > 0 && hasAnyScores) {
       setCurHole(currentHoleIdx);
     }
     initialJump.current = true;
-  }, []); // empty deps = mount only
+  }, []);
 
   useEffect(() => {
     if (holeComplete && curHole < 8 && !editing && !allComplete) {
@@ -290,7 +474,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     }
   }, [holeComplete, curHole, editing, allComplete]);
 
-  // Safety: clear any stuck toast after 3s
   useEffect(() => {
     if (toast) {
       const safety = setTimeout(() => setToast(null), 3000);
@@ -305,38 +488,29 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     }
   }, [allComplete, isAlreadyFinalized]);
 
-  // Lock body scroll when finalize popup is open (prevents iOS white gap)
-  useEffect(() => {
-    if (showFinalize) {
-      document.body.classList.add('popup-open');
-      return () => document.body.classList.remove('popup-open');
-    }
-  }, [showFinalize]);
+  // ── Shared helper: get initials (with absent fallback) ──
+  const getInitials = useCallback((pid) => {
+    const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
+    const pl = playerMap[effectivePid];
+    return pl ? pl.name.split(' ').map(n => n[0]).join('') : "?";
+  }, [playerMap, absentPlayers]);
 
-  // ── All Matches view (Schedule "This Week" style + expandable scorecards) ──
+  // ── All Matches view ──
   if (showAllMatches && !activeMatch) {
     const formatTeeTime = (idx) => fmtTeeTimeUtil(leagueConfig?.startTime || "4:28 PM", idx, leagueConfig?.teeInterval || 8);
     const dn = (pid) => {
-      const pl = players.find(p => p.id === pid);
+      const pl = playerMap[pid];
       if (!pl) return "TBD";
       const parts = pl.name.split(' ');
       return parts.length > 1 ? parts[parts.length - 1] : parts[0];
     };
     const amGetHcp = (pid) => {
-      const p = players.find(pl => pl.id === pid);
+      const p = playerMap[pid];
       return p ? Math.round(p.handicapIndex || 0) : 0;
     };
     const amGetScore = (pid, h) => holeScores[`w${week}_p${pid}_h${h}`] || 0;
-    const amGetStrokesMap = (nh) => {
-      const map = {}; const sorted = hcps.map((h, i) => ({ idx: i, hcp: h })).sort((a, b) => a.hcp - b.hcp);
-      let rem = Math.abs(nh);
-      for (const item of sorted) { if (rem <= 0) break; map[item.idx] = (map[item.idx] || 0) + 1; rem--; }
-      for (const item of sorted) { if (rem <= 0) break; map[item.idx] = (map[item.idx] || 0) + 1; rem--; }
-      return map;
-    };
-    const amGetStrokes = (pid, h) => amGetStrokesMap(amGetHcp(pid))[h] || 0;
+    const amGetStrokes = (pid, h) => getStrokesMap(amGetHcp(pid))[h] || 0;
 
-    // Count holes completed for a match
     const getThru = (mT1Pids, mT2Pids) => {
       let thru = 0;
       for (let h = 0; h < 9; h++) {
@@ -384,7 +558,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             const mT2Pids = [rawT2.player1, rawT2.player2];
             const thru = getThru(mT1Pids, mT2Pids);
 
-            // Compute live match score (from dispT1 perspective)
+            // Compute live match score
             let dispCum = 0;
             if (thru > 0) {
               let cum = 0;
@@ -397,13 +571,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               dispCum = swapped ? -cum : cum;
             }
 
-            // Determine display state
             const isFinalOrSigned = !!res;
             const isTied = isFinalOrSigned ? (score1 === score2) : (thru > 0 && dispCum === 0);
             const t1Leading = isFinalOrSigned ? (score1 > score2) : (dispCum > 0);
             const t2Leading = isFinalOrSigned ? (score2 > score1) : (dispCum < 0);
 
-            // Determine which display side needs to attest (opponent of signer)
             const isSigned = isFinalOrSigned && res && !res.attested;
             const signerIsRawT1 = isSigned && res.finalizedByTeamId === rawT1.id;
             const signerIsRawT2 = isSigned && res.finalizedByTeamId === rawT2.id;
@@ -412,7 +584,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             );
             const attestNeededDispT2 = isSigned && !attestNeededDispT1;
 
-            // Center text and color
             let centerText = "";
             let centerColor = K.t1;
             let progressLabel = "";
@@ -436,14 +607,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               centerColor = K.act;
             }
 
-            // Shrink font for longer result text like "TIED"
             const centerFontSize = !isFinalOrSigned && thru === 0 ? 18 : centerText.length > 3 ? 17 : 20;
-
-            // Slightly darker gray for All Matches names
             const dimColor = K.t2;
-
-            // Name styling: final winners = bold + full color, final losers = lighter gray,
-            // non-final = all gray
             const t1NameWeight = isFinalOrSigned && t1Leading ? 700 : 600;
             const t2NameWeight = isFinalOrSigned && t2Leading ? 700 : 600;
             const t1NameColor = !isFinalOrSigned ? dimColor : t1Leading ? K.t1 : dimColor;
@@ -453,12 +618,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div key={mi} style={{ background: K.card, borderRadius: 10, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}40`, overflow: "hidden" }}>
                 <button onClick={() => setExpandedMatch(isExp ? null : mi)} style={{ width: "100%", padding: "8px 10px", cursor: "pointer", textAlign: "left", background: "transparent", border: "none" }}>
                   <div style={{ display: "flex", alignItems: "center" }}>
-                    {/* Left team */}
                     <div style={{ flex: 1, textAlign: "right", paddingRight: 4, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
                       <div style={{ fontSize: 14, fontWeight: t1NameWeight, color: t1NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT1?.player1)}</div>
                       <div style={{ fontSize: 14, fontWeight: t1NameWeight, color: t1NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT1?.player2)}</div>
                     </div>
-                    {/* Left arrow — fixed 16px column */}
                     <div style={{ width: 16, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                       {t1Leading && (
                         <svg width="10" height="12" viewBox="0 0 10 12" style={{ transform: "rotate(-90deg)" }}>
@@ -469,14 +632,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                         </svg>
                       )}
                     </div>
-                    {/* Center — fixed width */}
                     <div style={{ textAlign: "center", width: 80, flexShrink: 0 }}>
                       <div style={{ fontSize: centerFontSize, fontWeight: 800, color: centerColor, letterSpacing: .5 }}>{centerText}</div>
                       {progressLabel && (
                         <div style={{ fontSize: 9, fontWeight: 700, color: progressColor, textTransform: "uppercase", letterSpacing: 1, marginTop: 1 }}>{progressLabel}</div>
                       )}
                     </div>
-                    {/* Right arrow — fixed 16px column */}
                     <div style={{ width: 16, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                       {t2Leading && (
                         <svg width="10" height="12" viewBox="0 0 10 12" style={{ transform: "rotate(90deg)" }}>
@@ -487,48 +648,44 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                         </svg>
                       )}
                     </div>
-                    {/* Right team */}
                     <div style={{ flex: 1, textAlign: "left", paddingLeft: 4, overflow: "hidden", display: "flex", flexDirection: "column", gap: 3 }}>
                       <div style={{ fontSize: 14, fontWeight: t2NameWeight, color: t2NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT2?.player1)}</div>
                       <div style={{ fontSize: 14, fontWeight: t2NameWeight, color: t2NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT2?.player2)}</div>
                     </div>
-                    {/* Expand chevron */}
                     <div style={{ flexShrink: 0, marginLeft: 4, color: K.t3, fontSize: 12, transform: isExp ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</div>
                   </div>
                 </button>
 
-                {/* Expanded scorecard */}
+                {/* Expanded scorecard — uses SharedScorecard */}
                 {isExp && (() => {
-                  const colBdr = `1px solid ${K.bdr}30`;
-                  const gridLine = `1px solid ${K.bdr}25`;
-                  const getInitials = (pid) => { const pl = players.find(p => p.id === pid); return pl ? pl.name.split(' ').map(n => n[0]).join('') : "?"; };
+                  const amIsAbsent = (pid) => holeScores[`w${week}_p${pid}_habsent`] === 1;
+                  const amGetTeammate = (pid) => {
+                    if (mT1Pids.includes(pid)) return mT1Pids.find(p => p !== pid);
+                    if (mT2Pids.includes(pid)) return mT2Pids.find(p => p !== pid);
+                    return null;
+                  };
+                  const amGetEffectiveScore = (pid, h) => {
+                    if (amIsAbsent(pid)) {
+                      const tm = amGetTeammate(pid);
+                      if (!tm || amIsAbsent(tm)) {
+                        const nh = amGetHcp(pid);
+                        const strokesOnHole = getStrokesMap(nh)[h] || 0;
+                        return (pars[h] || 4) + 1 + strokesOnHole;
+                      }
+                      return amGetScore(tm, h);
+                    }
+                    return amGetScore(pid, h);
+                  };
+                  const amGetInitials = (pid) => { const pl = playerMap[pid]; return pl ? pl.name.split(' ').map(n => n[0]).join('') : "?"; };
 
-                  // Compute hole results for this match
-                  const mHoleResults = [];
-                  for (let h = 0; h < 9; h++) {
-                    let n1 = 0, n2 = 0, ok1 = true, ok2 = true;
-                    mT1Pids.forEach(pid => { const s = amGetScore(pid, h); if (s <= 0) ok1 = false; else n1 += s - amGetStrokes(pid, h); });
-                    mT2Pids.forEach(pid => { const s = amGetScore(pid, h); if (s <= 0) ok2 = false; else n2 += s - amGetStrokes(pid, h); });
-                    if (ok1 && ok2) mHoleResults.push(n1 < n2 ? 1 : n2 < n1 ? -1 : 0);
-                    else mHoleResults.push(null);
-                  }
-                  // Running status from T1 perspective
-                  const mRunning = []; let mCum = 0;
-                  mHoleResults.forEach(r => { if (r !== null) mCum += r; mRunning.push(r !== null ? mCum : null); });
-                  let mClinchHole = null, mClinchText = null;
-                  for (let h = 0; h < 9; h++) {
-                    if (mRunning[h] === null) break;
-                    const lead = Math.abs(mRunning[h]);
-                    const rem = 8 - h;
-                    if (lead > rem) { mClinchHole = h; mClinchText = rem > 0 ? lead + "&" + rem : lead + "UP"; break; }
-                  }
+                  const dispT1Pids = swapped ? mT2Pids : mT1Pids;
+                  const dispT2Pids = swapped ? mT1Pids : mT2Pids;
 
-                  // Swap holeResults to be from dispT1 perspective if swapped
-                  const dispHoleResults = swapped ? mHoleResults.map(r => r !== null ? -r : null) : mHoleResults;
+                  // Compute match status from raw T1 perspective, then flip if swapped
+                  const rawStatus = computeMatchStatus(mT1Pids, mT2Pids, amGetEffectiveScore, amGetStrokes, pars);
+                  const dispHoleResults = swapped ? rawStatus.holeResults.map(r => r !== null ? -r : null) : rawStatus.holeResults;
                   const dispRunning = []; let dCum = 0;
                   dispHoleResults.forEach(r => { if (r !== null) dCum += r; dispRunning.push(r !== null ? dCum : null); });
-
-                  // Compute clinch from display perspective (top team)
                   let dispClinchHole = null, dispClinchText = null;
                   for (let h = 0; h < 9; h++) {
                     if (dispRunning[h] === null) break;
@@ -542,113 +699,26 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     }
                   }
 
-                  // Absent detection for all-matches view
-                  const amIsAbsent = (pid) => holeScores[`w${week}_p${pid}_habsent`] === 1;
-                  const amGetTeammate = (pid) => {
-                    if (mT1Pids.includes(pid)) return mT1Pids.find(p => p !== pid);
-                    if (mT2Pids.includes(pid)) return mT2Pids.find(p => p !== pid);
-                    return null;
-                  };
-                  const amGetEffectiveScore = (pid, h) => {
-                    if (amIsAbsent(pid)) {
-                      const tm = amGetTeammate(pid);
-                      if (!tm || amIsAbsent(tm)) {
-                        // Both absent — net bogey
-                        const nh = amGetHcp(pid);
-                        const strokesOnHole = amGetStrokesMap(nh)[h] || 0;
-                        return (pars[h] || 4) + 1 + strokesOnHole;
-                      }
-                      return amGetScore(tm, h); // teammate's score doubled
-                    }
-                    return amGetScore(pid, h);
-                  };
-
-                  const PlayerRow = ({ pid }) => {
-                    const absent = amIsAbsent(pid);
-                    let gt = 0;
-                    return (
-                      <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
-                        <div style={{ width: 28, flexShrink: 0, borderRight: "none", paddingLeft: 4, display: "flex", alignItems: "center", height: 38, paddingTop: 10 }}>
-                          <span style={{ fontSize: 13, color: K.t1, fontWeight: 800 }}>{getInitials(pid)}</span>
-                        </div>
-                        <div style={{ width: 16, flexShrink: 0, borderRight: gridLine, display: "flex", alignItems: "center", height: 38, paddingTop: 10 }}>
-                          <span style={{ fontSize: 10, color: "#3b82f6", fontWeight: 700 }}>{amGetHcp(pid)}</span>
-                        </div>
-                        {Array.from({ length: 9 }, (_, h) => {
-                          const s = amGetEffectiveScore(pid, h); const st = amGetStrokes(pid, h); if (s > 0) gt += s;
-                          return <div key={h} style={{ flex: 1, height: 38, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? gridLine : "none" }}>
-                            <ScoreCell score={s} par={pars[h]} strokes={st} size={13} color={absent ? K.red : undefined} />
-                          </div>;
-                        })}
-                      </div>
-                    );
-                  };
-
-                  const TeamNetRow = ({ pids, isDispT1 }) => {
-                    return (
-                      <div style={{ display: "flex", alignItems: "center", background: K.act + "0c" }}>
-                        <div style={{ width: 44, flexShrink: 0, fontSize: 9, color: K.act, fontWeight: 800, borderRight: gridLine, paddingLeft: 4, display: "flex", alignItems: "center", height: 28 }}>NET</div>
-                        {Array.from({ length: 9 }, (_, h) => {
-                          let tNet = 0; let ok = true;
-                          pids.forEach(pid => { const s = amGetEffectiveScore(pid, h); if (s <= 0) ok = false; else tNet += s - amGetStrokes(pid, h); });
-                          const won = dispHoleResults[h] === (isDispT1 ? 1 : -1);
-                          return <div key={h} style={{
-                            flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color: !ok ? K.t3 + "30" : K.t1, lineHeight: "22px",
-                            padding: "4px 0", borderRight: won ? "none" : gridLine,
-                            ...(won ? { background: K.bg, border: `1.5px solid ${K.act}`, borderRadius: 3, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
-                          }}>{ok ? tNet : "\u00B7"}</div>;
-                        })}
-                      </div>
-                    );
-                  };
-
-                  const MatchRow = () => (
-                    <div style={{ display: "flex", background: K.card, border: `1px solid ${K.bdr}40`, borderRadius: 6, padding: "2px 0", margin: "4px 0" }}>
-                      <div style={{ width: 44, flexShrink: 0, fontSize: 8, fontWeight: 800, color: K.t2, display: "flex", alignItems: "center", paddingLeft: 4, borderRight: gridLine }}>MATCH</div>
-                      {dispRunning.map((rs, i) => {
-                        const bdr = i < 8 ? { borderRight: gridLine } : {};
-                        if (rs === null) return <div key={i} style={{ flex: 1, height: 22, ...bdr }} />;
-                        if (dispClinchHole !== null && i > dispClinchHole) return <div key={i} style={{ flex: 1, height: 22, ...bdr }} />;
-                        if (dispClinchHole !== null && i === dispClinchHole) {
-                          const c = rs > 0 ? matchGrn : rs < 0 ? K.red : K.t3;
-                          return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 12, fontWeight: 800, color: c, lineHeight: "22px", ...bdr }}>{dispClinchText}</div>;
-                        }
-                        const c = rs > 0 ? matchGrn : rs < 0 ? K.red : K.t3;
-                        return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 12, fontWeight: 800, color: c, lineHeight: "22px", ...bdr }}>
-                          {rs > 0 ? "\u25B2" + rs : rs < 0 ? "\u25BC" + Math.abs(rs) : "\u2014"}
-                        </div>;
-                      })}
-                    </div>
-                  );
-
-                  const dispT1Pids = swapped ? mT2Pids : mT1Pids;
-                  const dispT2Pids = swapped ? mT1Pids : mT2Pids;
+                  const sc = SharedScorecard({
+                    pars, side, hcps, team1Pids: dispT1Pids, team2Pids: dispT2Pids,
+                    getScore: amGetEffectiveScore, getStrokes: amGetStrokes, getHcp: amGetHcp,
+                    getInitials: amGetInitials, isAbsent: amIsAbsent,
+                    holeResults: dispHoleResults, runningStatus: dispRunning,
+                    clinchHole: dispClinchHole, clinchText: dispClinchText,
+                    variant: "allMatches", matchGrn,
+                  });
 
                   return (
                     <div style={{ padding: "6px 8px 10px", borderTop: `1px solid ${K.bdr}30` }}>
-                      {/* Header row + Par row */}
-                      <div style={{ display: "flex", background: K.acc, borderRadius: "6px 6px 0 0" }}>
-                        <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.bg, fontWeight: 800, paddingLeft: 4, opacity: .8, display: "flex", alignItems: "center", height: 30 }}>HOLE</div>
-                        {Array.from({ length: 9 }, (_, i) => (
-                          <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 12, color: K.bg, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", height: 30 }}>{side === 'front' ? i + 1 : i + 10}</div>
-                        ))}
-                      </div>
-                      <div style={{ display: "flex", borderBottom: gridLine, background: K.acc + "18" }}>
-                        <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700, borderRight: gridLine, paddingLeft: 4, display: "flex", alignItems: "center", height: 26 }}>PAR</div>
-                        {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 11, color: K.t2, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", height: 26, borderRight: i < 8 ? gridLine : "none" }}>{p}</div>)}
-                      </div>
-
-                      {/* Team 1 (display perspective) */}
+                      <sc.HoleRow />
+                      <sc.ParRow />
                       <div style={{ fontSize: 9, fontWeight: 700, color: K.acc, textTransform: "uppercase", letterSpacing: 1, padding: "4px 4px 2px" }}>{dispT1.name}</div>
-                      {dispT1Pids.map(pid => <PlayerRow key={pid} pid={pid} />)}
-                      <TeamNetRow pids={dispT1Pids} isDispT1={true} />
-
-                      <MatchRow />
-
-                      {/* Team 2 (display perspective) */}
+                      {dispT1Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
+                      <sc.TeamNetRow pids={dispT1Pids} isTeam1Side={true} />
+                      <sc.MatchRow />
                       <div style={{ fontSize: 9, fontWeight: 700, color: K.acc, textTransform: "uppercase", letterSpacing: 1, padding: "4px 4px 2px" }}>{dispT2.name}</div>
-                      {dispT2Pids.map(pid => <PlayerRow key={pid} pid={pid} />)}
-                      <TeamNetRow pids={dispT2Pids} isDispT1={false} />
+                      {dispT2Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
+                      <sc.TeamNetRow pids={dispT2Pids} isTeam1Side={false} />
                     </div>
                   );
                 })()}
@@ -685,7 +755,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     );
   }
 
-  // ── Default: auto-open user's match, or show prompt ──
+  // ── Default: no match found ──
   if (!matchToScore) {
     return (
       <div>
@@ -724,31 +794,22 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
       const bonusType = leagueConfig?.bonusType || "teamNetTotal";
       let b1, b2;
-      if (bonusType === "lowestNet") {
-        b1 = Math.min(getRunning(t1s[0]).net, getRunning(t1s[1]).net);
-        b2 = Math.min(getRunning(t2s[0]).net, getRunning(t2s[1]).net);
-      } else if (bonusType === "totalGross") {
-        b1 = t1Gross; b2 = t2Gross;
-      } else {
-        b1 = t1Net; b2 = t2Net;
-      }
+      if (bonusType === "lowestNet") { b1 = Math.min(getRunning(t1s[0]).net, getRunning(t1s[1]).net); b2 = Math.min(getRunning(t2s[0]).net, getRunning(t2s[1]).net); }
+      else if (bonusType === "totalGross") { b1 = t1Gross; b2 = t2Gross; }
+      else { b1 = t1Net; b2 = t2Net; }
       if (b1 < b2) { t1Pts += sr.bw; t2Pts += sr.bl; } else if (b1 > b2) { t1Pts += sr.bl; t2Pts += sr.bw; } else { t1Pts += sr.bt; t2Pts += sr.bt; }
     }
 
-    // Calculate holes won per team (net-based) and match result text
     let hw1 = 0, hw2 = 0;
     const holeResults = [];
     for (let h = 0; h < 9; h++) {
       let n1 = 0, n2 = 0;
       t1Players.forEach(pid => { n1 += getS(pid, h) - getStrokes(pid, h); });
       t2Players.forEach(pid => { n2 += getS(pid, h) - getStrokes(pid, h); });
-      if (n1 < n2) { hw1++; holeResults.push(1); }
-      else if (n2 < n1) { hw2++; holeResults.push(-1); }
-      else { holeResults.push(0); }
+      if (n1 < n2) { hw1++; holeResults.push(1); } else if (n2 < n1) { hw2++; holeResults.push(-1); } else { holeResults.push(0); }
     }
 
-    const runningStatus = [];
-    let cum = 0;
+    const runningStatus = []; let cum = 0;
     holeResults.forEach(r => { cum += r; runningStatus.push(cum); });
 
     let matchEndHole = 8;
@@ -756,23 +817,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     for (let h = 0; h < 9; h++) {
       const lead = Math.abs(runningStatus[h]);
       const remaining = 8 - h;
-      if (lead > remaining) {
-        matchEndHole = h;
-        matchMargin = lead;
-        break;
-      }
+      if (lead > remaining) { matchEndHole = h; matchMargin = lead; break; }
     }
     const holesRemaining = 8 - matchEndHole;
     const finalStatus = runningStatus[8];
 
     let matchResultText;
-    if (finalStatus === 0) {
-      matchResultText = "TIED";
-    } else if (holesRemaining > 0) {
-      matchResultText = `${matchMargin}&${holesRemaining}`;
-    } else {
-      matchResultText = `${Math.abs(finalStatus)}UP`;
-    }
+    if (finalStatus === 0) matchResultText = "TIED";
+    else if (holesRemaining > 0) matchResultText = `${matchMargin}&${holesRemaining}`;
+    else matchResultText = `${Math.abs(finalStatus)}UP`;
 
     await saveMatchResult({
       id: `${LEAGUE_ID}_w${week}_${t1.id}_${t2.id}`, week,
@@ -802,7 +855,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     setTimeout(() => setToast(null), 2000);
   };
 
-  // ── Shared scorecard data builder ──
+  // ── Build scorecard data (used by finalize popup + inline signed view) ──
   const buildScorecardData = () => {
     const myTeamId = myTeam?.id || t1.id;
     const isMyT1 = t1.id === myTeamId;
@@ -811,47 +864,33 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     const myTeamObj = isMyT1 ? t1 : t2;
     const oppTeamObj = isMyT1 ? t2 : t1;
 
-    let myHW = 0, oppHW = 0;
-    const holeResults = [];
-    for (let h = 0; h < 9; h++) {
-      let mN = 0, oN = 0;
-      myPids.forEach(pid => { mN += getS(pid, h) - getStrokes(pid, h); });
-      oppPids.forEach(pid => { oN += getS(pid, h) - getStrokes(pid, h); });
-      if (mN < oN) { myHW++; holeResults.push(1); }
-      else if (oN < mN) { oppHW++; holeResults.push(-1); }
-      else holeResults.push(0);
-    }
-
-    const runningStatus = [];
-    let cum = 0;
-    holeResults.forEach(r => { cum += r; runningStatus.push(cum); });
-
-    let matchEndHole = 8;
-    let matchMargin = Math.abs(runningStatus[8]);
-    for (let h = 0; h < 9; h++) {
-      const lead = Math.abs(runningStatus[h]);
-      const remaining = 8 - h;
-      if (lead > remaining) { matchEndHole = h; matchMargin = lead; break; }
-    }
-    const holesRemaining = 8 - matchEndHole;
-    const finalStatus = runningStatus[8];
+    const status = computeMatchStatus(myPids, oppPids, getS, getStrokes, pars);
+    const myHW = status.holeResults.filter(r => r === 1).length;
+    const oppHW = status.holeResults.filter(r => r === -1).length;
+    const finalStatus = status.runningStatus[8];
     const isWin = finalStatus > 0;
     const isLoss = finalStatus < 0;
     const isTie = finalStatus === 0;
 
-    let matchResultText;
-    if (isTie) matchResultText = "TIED";
-    else if (holesRemaining > 0) matchResultText = `${matchMargin}&${holesRemaining}`;
-    else matchResultText = `${Math.abs(finalStatus)}UP`;
-
     const matchResult = isWin ? "WIN" : isLoss ? "LOSS" : "TIE";
     const resultColor = isTie ? K.t2 : K.grn;
 
-    // Sort players by handicap (low first) for header display
     const myPidsSorted = [...myPids].sort((a, b) => getHcp(a) - getHcp(b));
     const oppPidsSorted = [...oppPids].sort((a, b) => getHcp(a) - getHcp(b));
 
-    return { myPids, oppPids, myPidsSorted, oppPidsSorted, myTeamObj, oppTeamObj, myHW, oppHW, holeResults, runningStatus, matchResultText, matchResult, resultColor, isMyT1, matchEndHole };
+    return { myPids, oppPids, myPidsSorted, oppPidsSorted, myTeamObj, oppTeamObj, myHW, oppHW, ...status, matchResult, resultColor, isMyT1 };
+  };
+
+  // ── Shared scorecard builder for both inline and popup views ──
+  const buildSC = (team1Pids, team2Pids, hResults, rStatus, cHole, cText, variant, showTotals) => {
+    return SharedScorecard({
+      pars, side, hcps, team1Pids, team2Pids,
+      getScore: getS, getStrokes, getHcp: getNineHcp,
+      getInitials, isAbsent: isPlayerAbsent,
+      holeResults: hResults, runningStatus: rStatus,
+      clinchHole: cHole, clinchText: cText,
+      variant, showTotals, matchGrn,
+    });
   };
 
   return (
@@ -861,7 +900,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           <BackBtn onClick={() => { setActiveMatch(null); }} />
         </div>
       )}
-      {/* See All Matches */}
       {!activeMatch && (
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
           <div style={{ display: "flex", background: K.inp, borderRadius: 20, border: `1px solid ${K.bdr}`, padding: 3 }}>
@@ -907,7 +945,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           return hasData ? holesUp : null;
         });
 
-        // Calculate match clinch hole
         let matchClinchHole = null;
         let clinchScoreText = null;
         for (let h = 0; h < 9; h++) {
@@ -931,117 +968,45 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
                 return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 16, color, fontWeight: 800, lineHeight: "30px", ...colBorderR }}>{clinchScoreText}</div>;
               }
-              if (matchClinchHole !== null && i > matchClinchHole) {
-                return <div key={i} style={{ flex: 1, height: 30, ...colBorderR }} />;
-              }
+              if (matchClinchHole !== null && i > matchClinchHole) return <div key={i} style={{ flex: 1, height: 30, ...colBorderR }} />;
               if (st === null) return <div key={i} style={{ flex: 1, height: 30, ...colBorderR }} />;
               const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
               return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 16, fontWeight: 800, color, lineHeight: "30px", ...colBorderR }}>{st > 0 ? <><span style={{ fontSize: 16 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 16 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
             })}
           </button>
           {showScorecard && !isAlreadyFinalized && (() => {
-            const gridLine = `1px solid ${K.bdr}25`;
-            const netBg = K.act + "0c";
-            const subHeaderBg = K.acc + "18";
-            const scIsMyT1 = t1.id === myTeamId;
-            const scMyPids = scIsMyT1 ? t1Players : t2Players;
-            const scOppPids = scIsMyT1 ? t2Players : t1Players;
-
-            const scHoleResults = [];
-            for (let h = 0; h < 9; h++) {
-              let mN = 0, oN = 0, mOk = true, oOk = true;
-              scMyPids.forEach(pid => { const s = getS(pid, h); if (s <= 0) mOk = false; else mN += s - getStrokes(pid, h); });
-              scOppPids.forEach(pid => { const s = getS(pid, h); if (s <= 0) oOk = false; else oN += s - getStrokes(pid, h); });
-              if (mOk && oOk) { scHoleResults.push(mN < oN ? 1 : oN < mN ? -1 : 0); } else { scHoleResults.push(null); }
-            }
-
-            const ScPlayerRow = ({ pid }) => {
-              const pl = players.find(p => p.id === pid); if (!pl) return null;
-              const nh = getNineHcp(pid);
-              let grossTotal = 0;
-              const cells = Array.from({ length: 9 }, (_, h) => {
-                const s = getS(pid, h); const st = getStrokes(pid, h);
-                if (s > 0) grossTotal += s;
-                return { s, st };
-              });
-              const initials = pl.name.split(' ').map(n => n[0]).join('');
-              return (
-                <div style={{ display: "flex", alignItems: "stretch", borderBottom: gridLine }}>
-                  <div style={{ width: 28, flexShrink: 0, fontSize: 13, color: K.t1, fontWeight: 800, paddingLeft: 4, display: "flex", alignItems: "center" }}>{initials}</div>
-                  <div style={{ width: 16, flexShrink: 0, fontSize: 10, color: "#3b82f6", fontWeight: 700, borderRight: gridLine, display: "flex", alignItems: "center", justifyContent: "flex-end", paddingRight: 3 }}>{nh}</div>
-                  {cells.map((c, h) => (
-                    <div key={h} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", minHeight: 38, borderRight: h < 8 ? gridLine : "none" }}>
-                      <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={13} color={isPlayerAbsent(pid) ? K.red : undefined} />
-                    </div>
-                  ))}
-                </div>
-              );
-            };
-
-            const ScTeamRow = ({ pids, side: teamSide }) => {
-              let total = 0; let hasAll = true;
-              return (
-                <div style={{ display: "flex", alignItems: "center", position: "relative", background: netBg, borderBottom: `1.5px solid ${K.act}20` }}>
-                  <div style={{ width: 44, flexShrink: 0, fontSize: 9, color: K.act, fontWeight: 800, padding: "5px 0", borderRight: gridLine, paddingLeft: 4, letterSpacing: .5 }}>NET</div>
-                  {Array.from({ length: 9 }, (_, h) => {
-                    let tNet = 0; let ok = true;
-                    pids.forEach(pid => { const s = getS(pid, h); if (s <= 0) ok = false; else tNet += s - getStrokes(pid, h); });
-                    if (ok) total += tNet; else hasAll = false;
-                    const won = scHoleResults[h] === (teamSide === "my" ? 1 : -1);
-                    return <div key={h} style={{
-                      flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color: !ok ? K.t3 + "30" : K.t1, lineHeight: "22px",
-                      padding: "4px 0", borderRight: won ? "none" : gridLine,
-                      ...(won ? { background: K.bg, border: `1.5px solid ${K.act}`, borderRadius: 3, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
-                    }}>{ok ? tNet : "·"}</div>;
-                  })}
-                </div>
-              );
-            };
+            const scMyPids = isMyT1 ? t1Players : t2Players;
+            const scOppPids = isMyT1 ? t2Players : t1Players;
+            const scStatus = computeMatchStatus(scMyPids, scOppPids, getS, getStrokes, pars);
+            const sc = buildSC(scMyPids, scOppPids, scStatus.holeResults, scStatus.runningStatus, scStatus.clinchHole, scStatus.clinchText, "allMatches", false);
 
             return (<>
             <div onClick={() => setShowScorecard(false)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 400 }} />
-            <div onClick={() => setShowScorecard(false)} style={{ position: "fixed", inset: 0, zIndex: 450, display: "flex", alignItems: "center", justifyContent: "center", padding: 12, touchAction: "pan-y" }}>
-            <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "0 0 10px", width: "100%", maxWidth: 420, maxHeight: "85vh", overflowY: "auto", overflow: "hidden", overscrollBehavior: "none", WebkitOverflowScrolling: "touch" }}>
-              <div style={{ display: "flex", alignItems: "center", background: K.acc, borderRadius: "14px 14px 0 0" }}>
-                <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.bg, fontWeight: 800, padding: "7px 0", paddingLeft: 4, letterSpacing: .5, opacity: .8 }}>HOLE</div>
-                {Array.from({ length: 9 }, (_, i) => (
-                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.bg, fontWeight: 800, lineHeight: "22px", padding: "7px 0" }}>{side === 'front' ? i + 1 : i + 10}</div>
-                ))}
-              </div>
-
-              <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine, background: subHeaderBg }}>
-                <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700, padding: "5px 0", borderRight: gridLine, paddingLeft: 4, letterSpacing: .3 }}>PAR</div>
-                {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color: K.t2, fontWeight: 700, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none" }}>{p}</div>)}
-              </div>
-
+            <div onClick={() => setShowScorecard(false)} data-popup style={{ position: "fixed", inset: 0, zIndex: 450, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "0 0 10px", width: "100%", maxWidth: 420, overflow: "hidden", overscrollBehavior: "contain" }}>
+              <sc.HoleRow />
+              <sc.ParRow />
               <div style={{ padding: "0 4px" }}>
-                {scMyPids.map(pid => <ScPlayerRow key={pid} pid={pid} />)}
-                <ScTeamRow pids={scMyPids} side="my" />
-
+                {scMyPids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
+                <sc.TeamNetRow pids={scMyPids} isTeam1Side={true} />
                 <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "3px 0" }} />
-
-                <div style={{ display: "flex", alignItems: "center", background: subHeaderBg, borderBottom: `2px solid ${K.bdr}40` }}>
-                  <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700, padding: "5px 0", borderRight: gridLine, paddingLeft: 4, letterSpacing: .3 }}>MATCH</div>
+                <div style={{ display: "flex", alignItems: "center", background: K.acc + "18", borderBottom: `2px solid ${K.bdr}40` }}>
+                  <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700, padding: "5px 0", borderRight: `1px solid ${K.bdr}25`, paddingLeft: 4, letterSpacing: .3 }}>MATCH</div>
                   {holeStatuses.map((st, i) => {
                     if (matchClinchHole !== null && i === matchClinchHole) {
                       const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-                      return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color, fontWeight: 800, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none" }}>{clinchScoreText}</div>;
+                      return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color, fontWeight: 800, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none" }}>{clinchScoreText}</div>;
                     }
-                    if (matchClinchHole !== null && i > matchClinchHole) {
-                      return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none" }} />;
-                    }
-                    if (st === null) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none", color: K.t3 + "30" }}>—</div>;
+                    if (matchClinchHole !== null && i > matchClinchHole) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none" }} />;
+                    if (st === null) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none", color: K.t3 + "30" }}>—</div>;
                     const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-                    return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? gridLine : "none" }}>{st > 0 ? <><span style={{ fontSize: 15 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 15 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
+                    return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none" }}>{st > 0 ? <><span style={{ fontSize: 15 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 15 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
                   })}
                 </div>
-
                 <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "3px 0" }} />
-
-                {scOppPids.map(pid => <ScPlayerRow key={pid} pid={pid} />)}
-                <ScTeamRow pids={scOppPids} side="opp" />
+                {scOppPids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
+                <sc.TeamNetRow pids={scOppPids} isTeam1Side={false} />
               </div>
-
               <button onClick={() => setShowScorecard(false)} style={{ display: "block", width: "calc(100% - 20px)", margin: "10px auto 0", padding: "9px", background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.t2, fontSize: 13, fontWeight: 600, cursor: "pointer", letterSpacing: .4 }}>
                 Close
               </button>
@@ -1053,251 +1018,37 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       })()}
       {/* After signed: show inline scorecard. Before signed: show hole card + scoring UI */}
       {isAlreadyFinalized ? (() => {
-        const myTeamId = myTeam?.id || t1.id;
-        const isMyT1 = t1.id === myTeamId;
-        const scMyPids = isMyT1 ? t1Players : t2Players;
-        const scOppPids = isMyT1 ? t2Players : t1Players;
-        const scHoleResults = [];
-        for (let h = 0; h < 9; h++) {
-          let mN = 0, oN = 0;
-          scMyPids.forEach(pid => { mN += getS(pid, h) - getStrokes(pid, h); });
-          scOppPids.forEach(pid => { oN += getS(pid, h) - getStrokes(pid, h); });
-          scHoleResults.push(mN < oN ? 1 : oN < mN ? -1 : 0);
-        }
-        // Running match status: cumulative holes up/down
-        const scRunningStatus = [];
-        let cum = 0;
-        scHoleResults.forEach(r => { cum += r; scRunningStatus.push(cum); });
-
-        // Calculate clinch hole
-        let scClinchHole = null;
-        let scClinchText = null;
-        for (let h = 0; h < 9; h++) {
-          const lead = Math.abs(scRunningStatus[h]);
-          const remaining = 8 - h;
-          if (lead > remaining && lead > 0) {
-            scClinchHole = h;
-            scClinchText = remaining > 0 ? `${lead}&${remaining}` : `${lead}UP`;
-            break;
-          }
-        }
-        // If no clinch but match is over (all 9 holes), show final result on hole 9
-        if (scClinchHole === null && scRunningStatus.length === 9) {
-          scClinchHole = 8;
-          const final = scRunningStatus[8];
-          if (final !== 0) scClinchText = `${Math.abs(final)}UP`;
-          else scClinchText = "TIED";
-        }
-
-        const SignedPlayerRow = ({ pid }) => {
-          const pl = players.find(p => p.id === pid); if (!pl) return null;
-          const nh = getNineHcp(pid);
-          let grossTotal = 0;
-          const cells = Array.from({ length: 9 }, (_, h) => {
-            const s = getS(pid, h); const st = getStrokes(pid, h);
-            if (s > 0) grossTotal += s;
-            return { s, st };
-          });
-          return (
-            <div style={{ display: "flex" }}>
-              {cells.map((c, h) => (
-                <div key={h} style={{ flex: 1, minHeight: 38, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? colBdr : "none" }}>
-                  <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} color={isPlayerAbsent(pid) ? K.red : undefined} />
-                </div>
-              ))}
-            </div>
-          );
-        };
-
-        const SignedTeamRow = ({ pids, isMyTeam }) => {
-          const hw = isMyTeam ? (scHoleResults.filter(r => r === 1).length) : (scHoleResults.filter(r => r === -1).length);
-          return (
-            <div style={{ display: "flex" }}>
-              {Array.from({ length: 9 }, (_, h) => {
-                let tNet = 0;
-                pids.forEach(pid => { tNet += getS(pid, h) - getStrokes(pid, h); });
-                const won = scHoleResults[h] === (isMyTeam ? 1 : -1);
-                return <div key={h} style={{
-                  flex: 1, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
-                  borderRight: h < 8 ? colBdr : "none",
-                  background: won ? K.act + "18" : "transparent",
-                }}>
-                  <div style={{
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    width: 26, height: 26, borderRadius: 3,
-                    border: won ? `1.5px solid ${K.act}` : "none",
-                  }}>
-                    <span style={{ fontSize: 15, fontWeight: 800, color: K.t2 }}>{tNet}</span>
-                  </div>
-                </div>;
-              })}
-            </div>
-          );
-        };
-
-        const myTeamName = isMyT1 ? t1.name : t2.name;
-        const oppTeamName = isMyT1 ? t2.name : t1.name;
-
-        const colBdr = `1px solid ${K.bdr}30`;
-        const lw = 40; // label column width
-        const lblStyle = { width: lw, flexShrink: 0, fontSize: 9, fontWeight: 700, color: K.t3, display: "flex", alignItems: "center", paddingLeft: 3, borderRight: colBdr, textTransform: "uppercase", letterSpacing: .3 };
-        const tw = 30; // total column width
-        const totStyle = { width: tw, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", borderLeft: colBdr };
-
-        // Helper: get player initials
-        const getInitials = (pid) => {
-          const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
-          const pl = players.find(p => p.id === effectivePid);
-          return pl ? pl.name.split(' ').map(n => n[0]).join('') : "?";
-        };
-
-        // Row builders
-        const HoleRow = () => (
-          <div style={{ display: "flex", background: K.acc, borderRadius: "10px 10px 0 0" }}>
-            <div style={{ ...lblStyle, height: 28, color: K.bg, opacity: .8, borderRight: "none" }}>HOLE</div>
-            {Array.from({ length: 9 }, (_, i) => (
-              <div key={i} style={{ flex: 1, height: 28, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: K.bg }}>{side === 'front' ? i + 1 : i + 10}</span>
-              </div>
-            ))}
-            <div style={{ ...totStyle, height: 28, borderLeft: "none" }}><span style={{ fontSize: 10, fontWeight: 700, color: K.bg }}>TOT</span></div>
-          </div>
-        );
-
-        const ParRow = () => (
-          <div style={{ display: "flex", borderBottom: colBdr, background: K.acc + "18" }}>
-            <div style={{ ...lblStyle, height: 22 }}>PAR</div>
-            {pars.map((p, i) => (
-              <div key={i} style={{ flex: 1, height: 22, display: "flex", alignItems: "center", justifyContent: "center", borderRight: i < 8 ? colBdr : "none" }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: K.t3 }}>{p}</span>
-              </div>
-            ))}
-            <div style={{ ...totStyle, height: 22 }}><span style={{ fontSize: 11, fontWeight: 700, color: K.t3 }}>{pars.reduce((a, b) => a + b, 0)}</span></div>
-          </div>
-        );
-
-        const PlayerScoreRow = ({ pid }) => {
-          let grossTotal = 0;
-          const cells = Array.from({ length: 9 }, (_, h) => {
-            const s = getS(pid, h); const st = getStrokes(pid, h);
-            if (s > 0) grossTotal += s;
-            return { s, st };
-          });
-          return (
-            <div style={{ display: "flex", alignItems: "center", borderBottom: colBdr }}>
-              <div style={{ ...lblStyle, height: 38, paddingTop: 10 }}>
-                <span style={{ fontSize: 15, fontWeight: 800, color: K.t1, width: 24, flexShrink: 0 }}>{getInitials(pid)}</span>
-                <span style={{ fontSize: 11, color: "#3b82f6", fontWeight: 700 }}>{getNineHcp(pid)}</span>
-              </div>
-              {cells.map((c, h) => (
-                <div key={h} style={{ flex: 1, height: 38, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? colBdr : "none" }}>
-                  <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} color={isPlayerAbsent(pid) ? K.red : undefined} />
-                </div>
-              ))}
-              <div style={{ ...totStyle, height: 38, paddingTop: 10 }}><span style={{ fontSize: 14, fontWeight: 800, color: isPlayerAbsent(pid) ? K.red : K.t1 }}>{grossTotal || ""}</span></div>
-            </div>
-          );
-        };
-
-        const TeamNetRow = ({ pids, isMyTeam }) => {
-          let netTotal = 0;
-          return (
-            <div style={{ display: "flex" }}>
-              <div style={{ ...lblStyle, height: 34, fontSize: 9, fontWeight: 800 }}>TEAM</div>
-              {Array.from({ length: 9 }, (_, h) => {
-                let tNet = 0;
-                pids.forEach(pid => { tNet += getS(pid, h) - getStrokes(pid, h); });
-                netTotal += tNet;
-                const won = scHoleResults[h] === (isMyTeam ? 1 : -1);
-                return <div key={h} style={{
-                  flex: 1, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
-                  borderRight: h < 8 ? colBdr : "none",
-                  background: won ? K.act + "18" : "transparent",
-                }}>
-                  <div style={{
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    width: 26, height: 26, borderRadius: 3,
-                    border: won ? `1.5px solid ${K.act}` : "none",
-                  }}>
-                    <span style={{ fontSize: 15, fontWeight: 800, color: K.t2 }}>{tNet}</span>
-                  </div>
-                </div>;
-              })}
-              <div style={{ ...totStyle, height: 34 }}><span style={{ fontSize: 14, fontWeight: 800, color: K.t1 }}>{netTotal}</span></div>
-            </div>
-          );
-        };
-
-        const MatchStatusRow = () => {
-          return (
-            <div style={{ display: "flex", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 8, padding: "4px 0", marginBottom: 4, marginTop: 4 }}>
-              <div style={{ ...lblStyle, height: 28, fontWeight: 800, color: K.t2 }}>MATCH</div>
-              {scRunningStatus.map((rs, i) => {
-                const colBorderR = i < 8 ? { borderRight: colBdr } : {};
-                // After clinch — empty
-                if (scClinchHole !== null && i > scClinchHole) {
-                  return <div key={i} style={{ flex: 1, height: 28, ...colBorderR }} />;
-                }
-                // On clinch hole — show result text
-                if (scClinchHole !== null && i === scClinchHole) {
-                  const color = rs > 0 ? matchGrn : rs < 0 ? K.red : K.t3;
-                  return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>{scClinchText}</div>;
-                }
-                // Normal hole — show running status
-                const color = rs > 0 ? matchGrn : rs < 0 ? K.red : K.t3;
-                return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>
-                  {rs > 0 ? <><span style={{ fontSize: 14 }}>▲</span>{rs}</> : rs < 0 ? <><span style={{ fontSize: 14 }}>▼</span>{Math.abs(rs)}</> : "—"}
-                </div>;
-              })}
-              <div style={{ width: tw, flexShrink: 0, height: 28 }} />
-            </div>
-          );
-        };
+        const sc = buildScorecardData();
+        const scComp = buildSC(sc.myPids, sc.oppPids, sc.holeResults, sc.runningStatus, sc.clinchHole, sc.clinchText, "full", true);
 
         return (
           <div style={{ marginBottom: 6, position: "relative" }}>
-            {/* FINAL watermark */}
             {isAttested && (
-              <div style={{
-                position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
-                pointerEvents: "none", zIndex: 2, overflow: "hidden",
-              }}>
-                <div style={{
-                  fontSize: "clamp(70px, 22vw, 120px)", fontWeight: 900, color: K.t3 + "20",
-                  letterSpacing: "clamp(12px, 4vw, 24px)", textTransform: "uppercase",
-                  userSelect: "none", whiteSpace: "nowrap",
-                  transform: "rotate(-18deg)",
-                }}>FINAL</div>
+              <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", zIndex: 2, overflow: "hidden" }}>
+                <div style={{ fontSize: "clamp(70px, 22vw, 120px)", fontWeight: 900, color: K.t3 + "20", letterSpacing: "clamp(12px, 4vw, 24px)", textTransform: "uppercase", userSelect: "none", whiteSpace: "nowrap", transform: "rotate(-18deg)" }}>FINAL</div>
               </div>
             )}
 
-            {/* My team card */}
             <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, overflow: "hidden", marginBottom: 4 }}>
-              <HoleRow />
-              <ParRow />
-              {scMyPids.map(pid => <PlayerScoreRow key={pid} pid={pid} />)}
-              <TeamNetRow pids={scMyPids} isMyTeam={true} />
+              <scComp.HoleRow />
+              <scComp.ParRow />
+              {sc.myPids.map(pid => <scComp.PlayerRow key={pid} pid={pid} />)}
+              <scComp.TeamNetRow pids={sc.myPids} isTeam1Side={true} />
             </div>
-
-            {/* Match status */}
-            <MatchStatusRow />
-
-            {/* Opp team card */}
+            <scComp.MatchRow />
             <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, overflow: "hidden" }}>
-              <HoleRow />
-              <ParRow />
-              {scOppPids.map(pid => <PlayerScoreRow key={pid} pid={pid} />)}
-              <TeamNetRow pids={scOppPids} isMyTeam={false} />
+              <scComp.HoleRow />
+              <scComp.ParRow />
+              {sc.oppPids.map(pid => <scComp.PlayerRow key={pid} pid={pid} />)}
+              <scComp.TeamNetRow pids={sc.oppPids} isTeam1Side={false} />
             </div>
 
-            {/* Awaiting opponent attestation banner — shown to the team that signed */}
             {isAlreadyFinalized && !isAttested && !isWeekLocked && !needsAttestation && (
               <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginTop: 8, fontSize: 13, color: K.warn, fontWeight: 700, textAlign: "center" }}>
                 Scorecard signed — awaiting opponent attestation
               </div>
             )}
 
-            {/* Attest button — only for opposing team */}
             {needsAttestation && (
               <div style={{ marginTop: 12 }}>
                 <button onClick={attestMatch} style={{ width: "100%", padding: "14px", borderRadius: 12, background: "#3b82f6", border: "none", color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
@@ -1321,11 +1072,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       {!isAlreadyFinalized && (<>
 
       {allP.map(pid => {
-        const pl = players.find(p => p.id === pid); if (!pl) return null;
+        const pl = playerMap[pid]; if (!pl) return null;
         const absent = isPlayerAbsent(pid);
         const score = getS(pid, curHole); const strokes = getStrokes(pid, curHole); const nh = getNineHcp(pid); const run = getRunning(pid);
         const btns = par === 3 ? [1,2,3,4,5,6,7] : par === 5 ? [2,3,4,5,6,7,8] : [2,3,4,5,6,7,8];
-        // Disable absent toggle after hole 1 has scores from all present players
         const hole1Done = allP.filter(p => !isPlayerAbsent(p)).every(p => getRawScore(p, 0) > 0);
         const absentLocked = hole1Done && !absent;
         const absentBtn = !isAlreadyFinalized ? (
@@ -1333,7 +1083,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             onClick={() => {
               if (absentLocked) return;
               const tm = getTeammate(pid);
-              const tmPlayer = tm ? players.find(p => p.id === tm) : null;
+              const tmPlayer = tm ? playerMap[tm] : null;
               const tmAbsent = tm && isPlayerAbsent(tm);
               const tmName = tmPlayer?.name || "teammate";
               const message = tmAbsent
@@ -1393,125 +1143,17 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         </button>
       )}
 
-      {/* ═══ Finalize Popup — for initial signing or commish editing ═══ */}
+      {/* ═══ Finalize Popup ═══ */}
       {showFinalize && (!isAlreadyFinalized || isComm) && (() => {
         const sc = buildScorecardData();
-        const colBdr = `1px solid ${K.bdr}30`;
-        const lw = 40;
-        const tw = 30;
-        const lblStyle = { width: lw, flexShrink: 0, fontSize: 9, fontWeight: 700, color: K.t3, display: "flex", alignItems: "center", paddingLeft: 3, borderRight: colBdr, textTransform: "uppercase", letterSpacing: .3 };
-        const totStyle = { width: tw, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", borderLeft: colBdr };
-
-        const getInitials = (pid) => {
-          const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
-          const pl = players.find(p => p.id === effectivePid);
-          return pl ? pl.name.split(' ').map(n => n[0]).join('') : "?";
-        };
-
-        const FHoleRow = () => (
-          <div style={{ display: "flex", background: K.inp, borderBottom: colBdr }}>
-            <div style={{ ...lblStyle, height: 24 }}>HOLE</div>
-            {Array.from({ length: 9 }, (_, i) => (
-              <div key={i} style={{ flex: 1, height: 24, display: "flex", alignItems: "center", justifyContent: "center", borderRight: i < 8 ? colBdr : "none" }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: K.t3 }}>{side === 'front' ? i + 1 : i + 10}</span>
-              </div>
-            ))}
-            <div style={{ ...totStyle, height: 24 }}><span style={{ fontSize: 10, fontWeight: 700, color: K.t3 }}>TOT</span></div>
-          </div>
-        );
-
-        const FParRow = () => (
-          <div style={{ display: "flex", borderBottom: colBdr }}>
-            <div style={{ ...lblStyle, height: 22 }}>PAR</div>
-            {pars.map((p, i) => (
-              <div key={i} style={{ flex: 1, height: 22, display: "flex", alignItems: "center", justifyContent: "center", borderRight: i < 8 ? colBdr : "none" }}>
-                <span style={{ fontSize: 11, fontWeight: 600, color: K.t3 }}>{p}</span>
-              </div>
-            ))}
-            <div style={{ ...totStyle, height: 22 }}><span style={{ fontSize: 11, fontWeight: 700, color: K.t3 }}>{pars.reduce((a, b) => a + b, 0)}</span></div>
-          </div>
-        );
-
-        const FPlayerRow = ({ pid }) => {
-          let grossTotal = 0;
-          const cells = Array.from({ length: 9 }, (_, h) => {
-            const s = getS(pid, h); const st = getStrokes(pid, h);
-            if (s > 0) grossTotal += s;
-            return { s, st };
-          });
-          return (
-            <div style={{ display: "flex", alignItems: "center", borderBottom: colBdr }}>
-              <div style={{ ...lblStyle, height: 38, paddingTop: 10 }}>
-                <span style={{ fontSize: 15, fontWeight: 800, color: K.t1, width: 24, flexShrink: 0 }}>{getInitials(pid)}</span>
-                <span style={{ fontSize: 11, color: "#3b82f6", fontWeight: 700 }}>{getNineHcp(pid)}</span>
-              </div>
-              {cells.map((c, h) => (
-                <div key={h} style={{ flex: 1, height: 38, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? colBdr : "none" }}>
-                  <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={15} color={isPlayerAbsent(pid) ? K.red : undefined} />
-                </div>
-              ))}
-              <div style={{ ...totStyle, height: 38, paddingTop: 10 }}><span style={{ fontSize: 14, fontWeight: 800, color: isPlayerAbsent(pid) ? K.red : K.t1 }}>{grossTotal || ""}</span></div>
-            </div>
-          );
-        };
-
-        const FTeamRow = ({ pids, isMyTeam }) => {
-          let netTotal = 0;
-          return (
-            <div style={{ display: "flex" }}>
-              <div style={{ ...lblStyle, height: 34, fontSize: 9, fontWeight: 800 }}>TEAM</div>
-              {Array.from({ length: 9 }, (_, h) => {
-                let tNet = 0;
-                pids.forEach(pid => { tNet += getS(pid, h) - getStrokes(pid, h); });
-                netTotal += tNet;
-                const won = sc.holeResults[h] === (isMyTeam ? 1 : -1);
-                return <div key={h} style={{
-                  flex: 1, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
-                  borderRight: h < 8 ? colBdr : "none",
-                  background: won ? K.act + "18" : "transparent",
-                }}>
-                  <div style={{
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    width: 26, height: 26, borderRadius: 3,
-                    border: won ? `1.5px solid ${K.act}` : "none",
-                  }}>
-                    <span style={{ fontSize: 15, fontWeight: 800, color: K.t2 }}>{tNet}</span>
-                  </div>
-                </div>;
-              })}
-              <div style={{ ...totStyle, height: 34 }}><span style={{ fontSize: 14, fontWeight: 800, color: K.t1 }}>{netTotal}</span></div>
-            </div>
-          );
-        };
-
-        const FMatchRow = () => (
-          <div style={{ display: "flex", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 8, padding: "4px 0", marginBottom: 4, marginTop: 4 }}>
-            <div style={{ ...lblStyle, height: 28, fontSize: 8, fontWeight: 800, color: K.t2 }}>MATCH</div>
-            {sc.runningStatus.map((st, i) => {
-              const colBorderR = i < 8 ? { borderRight: colBdr } : {};
-              if (i === sc.matchEndHole) {
-                const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-                return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>{sc.matchResultText}</div>;
-              }
-              if (i > sc.matchEndHole) {
-                return <div key={i} style={{ flex: 1, height: 28, ...colBorderR }} />;
-              }
-              const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>
-                {st > 0 ? <><span style={{ fontSize: 14 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 14 }}>▼</span>{Math.abs(st)}</> : "—"}
-              </div>;
-            })}
-            <div style={{ ...totStyle, height: 28 }} />
-          </div>
-        );
+        const scComp = buildSC(sc.myPids, sc.oppPids, sc.holeResults, sc.runningStatus, sc.clinchHole, sc.clinchText, "compact", true);
 
         return (<>
-          <style>{`body.popup-open { overflow: hidden !important; position: fixed !important; width: 100% !important; }`}</style>
           <div onClick={() => { setShowFinalize(false); setShowEditConfirm(false); }} data-popup style={{ position: "fixed", top: -50, left: 0, right: 0, bottom: -50, background: "rgba(0,0,0,.7)", zIndex: 500 }} />
-          {/* Confetti for wins — only on first finalize */}
+          {/* Confetti — reduced to 25 particles for mobile performance */}
           {sc.matchResult === "WIN" && !isAlreadyFinalized && (
             <div style={{ position: "fixed", inset: 0, zIndex: 550, pointerEvents: "none", overflow: "hidden" }}>
-              {Array.from({ length: 60 }, (_, i) => {
+              {Array.from({ length: 25 }, (_, i) => {
                 const colors = [K.act, K.grn, K.teal, "#fff", K.logoBright, K.red, "#ff6b6b", "#ffd93d"];
                 const c = colors[i % colors.length];
                 const left = Math.random() * 100;
@@ -1519,7 +1161,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 const dur = 2 + Math.random() * 2;
                 const size = 4 + Math.random() * 6;
                 const rot = Math.random() * 360;
-                const drift = (Math.random() - 0.5) * 80;
                 return (
                   <div key={i} style={{
                     position: "absolute", top: -20, left: `${left}%`,
@@ -1533,36 +1174,32 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <style>{`
                 @keyframes confettiFall {
                   0% { opacity: 1; transform: translateY(0) translateX(0) rotate(0deg); }
-                  100% { opacity: 0; transform: translateY(100vh) translateX(${Math.random() > 0.5 ? '' : '-'}40px) rotate(720deg); }
+                  100% { opacity: 0; transform: translateY(100vh) translateX(40px) rotate(720deg); }
                 }
               `}</style>
             </div>
           )}
-          <div data-popup style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: "60px 16px 16px", touchAction: "pan-y", paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}>
+          <div data-popup style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: "60px 16px 16px", paddingBottom: "max(16px, env(safe-area-inset-bottom))" }}>
             <div style={{ background: K.bg, border: `1.5px solid ${sc.resultColor}50`, borderRadius: 16, padding: "16px 12px 20px", width: "100%", maxWidth: 420 }}>
-              {/* Header — Players vs Players with match score and winner arrow */}
+              {/* Header */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 14, padding: "0 4px" }}>
                 <div style={{ flex: 1, textAlign: "right" }}>
                   {sc.myPidsSorted.map(pid => {
                     const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
-                    const pl = players.find(p => p.id === effectivePid);
+                    const pl = playerMap[effectivePid];
                     const last = pl?.name?.split(' ').slice(1).join(' ') || pl?.name || "?";
                     return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "WIN" ? K.matchGrn : K.t1, lineHeight: 1.3 }}>{last}</div>;
                   })}
                 </div>
-                {sc.matchResult === "WIN" && (
-                  <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>
-                )}
+                {sc.matchResult === "WIN" && <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>}
                 <div style={{ textAlign: "center", minWidth: 60 }}>
-                  <div style={{ fontSize: 26, fontWeight: 800, color: sc.matchResult === "TIE" ? K.t2 : K.matchGrn, lineHeight: 1 }}>{sc.matchResultText}</div>
+                  <div style={{ fontSize: 26, fontWeight: 800, color: sc.matchResult === "TIE" ? K.t2 : K.matchGrn, lineHeight: 1 }}>{sc.clinchText || "TIED"}</div>
                 </div>
-                {sc.matchResult === "LOSS" && (
-                  <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>
-                )}
+                {sc.matchResult === "LOSS" && <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>}
                 <div style={{ flex: 1, textAlign: "left" }}>
                   {sc.oppPidsSorted.map(pid => {
                     const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
-                    const pl = players.find(p => p.id === effectivePid);
+                    const pl = playerMap[effectivePid];
                     const last = pl?.name?.split(' ').slice(1).join(' ') || pl?.name || "?";
                     return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "LOSS" ? K.matchGrn : K.t1, lineHeight: 1.3 }}>{last}</div>;
                   })}
@@ -1571,25 +1208,23 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
               {/* My team card */}
               <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, overflow: "hidden", marginBottom: 4 }}>
-                <FHoleRow />
-                <FParRow />
-                {sc.myPids.map(pid => <FPlayerRow key={pid} pid={pid} />)}
-                <FTeamRow pids={sc.myPids} isMyTeam={true} />
+                <scComp.HoleRow />
+                <scComp.ParRow />
+                {sc.myPids.map(pid => <scComp.PlayerRow key={pid} pid={pid} />)}
+                <scComp.TeamNetRow pids={sc.myPids} isTeam1Side={true} />
               </div>
 
-              {/* Match status */}
-              <FMatchRow />
+              <scComp.MatchRow />
 
               {/* Opp team card */}
               <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, overflow: "hidden" }}>
-                <FHoleRow />
-                <FParRow />
-                {sc.oppPids.map(pid => <FPlayerRow key={pid} pid={pid} />)}
-                <FTeamRow pids={sc.oppPids} isMyTeam={false} />
+                <scComp.HoleRow />
+                <scComp.ParRow />
+                {sc.oppPids.map(pid => <scComp.PlayerRow key={pid} pid={pid} />)}
+                <scComp.TeamNetRow pids={sc.oppPids} isTeam1Side={false} />
               </div>
 
               <div style={{ marginTop: 16 }}>
-                {/* First finalize — Sign Scorecard */}
                 {!isAlreadyFinalized && (
                   <>
                     <button onClick={async () => { await finalizeMatch(); setShowFinalize(false); }} style={{ width: "100%", padding: "14px", borderRadius: 12, background: "#3b82f6", border: "none", color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
@@ -1600,7 +1235,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     </button>
                   </>
                 )}
-                {/* Already finalized: Edit Scores (comm only) + Close */}
                 {isAlreadyFinalized && (
                   <>
                     {isComm && !showEditConfirm && (
@@ -1633,8 +1267,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       })()}
       {/* Custom confirm modal */}
       {confirmModal && (<>
-        <div onClick={() => setConfirmModal(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 900 }} />
-        <div style={{ position: "fixed", inset: 0, zIndex: 950, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+        <div onClick={() => setConfirmModal(null)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 900 }} />
+        <div data-popup style={{ position: "fixed", inset: 0, zIndex: 950, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
           <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "20px", width: "100%", maxWidth: 320 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>MnQ Golf League</div>
             <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 6 }}>{confirmModal.title}</div>

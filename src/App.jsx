@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "./firebase";
 import { K, FONTS, CSS, I, DEFAULT_SCORING, SEASON_WEEKS, applyTheme, getCSS, lastNamesOnly } from "./theme";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
@@ -67,6 +67,11 @@ export default function GolfLeagueApp() {
   const PULL_THRESHOLD = 80;
   const appBodyRef = useRef(null);
 
+  // Track whether ANY popup is open (for consistent body lock + pull-to-refresh)
+  const [popupOpen, setPopupOpen] = useState(false);
+  const popupOpenRef = useRef(false);
+  useEffect(() => { popupOpenRef.current = popupOpen; }, [popupOpen]);
+
   const toggleTheme = () => {
     const newMode = darkMode ? "light" : "dark";
     try { localStorage.setItem("mnq_theme", newMode); } catch {}
@@ -88,7 +93,7 @@ export default function GolfLeagueApp() {
     const findScrollEl = (target) => {
       let el = target;
       while (el) {
-        if (el.hasAttribute && el.hasAttribute('data-popup')) return null; // popup = always at top
+        if (el.hasAttribute && el.hasAttribute('data-popup')) return null;
         if (el.classList && el.classList.contains('app-body')) return el;
         el = el.parentElement;
       }
@@ -96,8 +101,25 @@ export default function GolfLeagueApp() {
     };
     const handleStart = (e) => {
       activeScrollEl = findScrollEl(e.target);
-      // null means inside popup (always allow pull), otherwise check scrollTop
-      if (activeScrollEl === null || activeScrollEl.scrollTop <= 0) {
+      // If inside popup (null) OR if inside a popup with scrollable content, check scroll
+      if (activeScrollEl === null) {
+        // Inside popup — check if the popup itself has a scrollable container
+        let el = e.target;
+        while (el) {
+          if (el.hasAttribute && el.hasAttribute('data-popup-scroll')) {
+            // This popup has scrollable content — only allow pull if at top
+            if (el.scrollTop > 0) {
+              touchStartY.current = 0;
+              return;
+            }
+            break;
+          }
+          if (el.hasAttribute && el.hasAttribute('data-popup')) break;
+          el = el.parentElement;
+        }
+        // Non-scrollable popup or at top — allow pull
+        touchStartY.current = e.touches[0].clientY;
+      } else if (activeScrollEl.scrollTop <= 0) {
         touchStartY.current = e.touches[0].clientY;
       } else {
         touchStartY.current = 0;
@@ -110,7 +132,6 @@ export default function GolfLeagueApp() {
       const atTop = activeScrollEl === null || activeScrollEl.scrollTop <= 0;
 
       if (pullingRef.current) {
-        // Already pulling — continue or cancel
         if (diff <= 5) {
           pullingRef.current = false;
           pullYRef.current = 0;
@@ -123,7 +144,6 @@ export default function GolfLeagueApp() {
           setPullY(val);
         }
       } else if (diff > 10 && atTop) {
-        // Start pulling — reset start position to current so pull feels natural
         touchStartY.current = e.touches[0].clientY;
         pullingRef.current = true;
         e.preventDefault();
@@ -160,6 +180,22 @@ export default function GolfLeagueApp() {
     }
   }, [pullY, refreshing, resetPull]);
 
+  // Lock body scroll when ANY popup is open (prevents iOS rubber-banding)
+  useEffect(() => {
+    if (popupOpen || showPlayerPicker) {
+      document.body.style.overflow = 'hidden';
+      document.body.style.position = 'fixed';
+      document.body.style.width = '100%';
+      document.body.style.top = '0';
+      return () => {
+        document.body.style.overflow = '';
+        document.body.style.position = '';
+        document.body.style.width = '';
+        document.body.style.top = '';
+      };
+    }
+  }, [popupOpen, showPlayerPicker]);
+
   // Firebase Auth listener
   useEffect(() => {
     const unsub = onAuthStateChanged(_auth, (user) => {
@@ -174,6 +210,7 @@ export default function GolfLeagueApp() {
     if (!authUser) { setLeagueUser(null); setMembersLoaded(false); return; }
     const unsubs = [];
 
+    // These change frequently or need real-time updates
     unsubs.push(db.subscribe("league_members", LF, (docs) => {
       setMembers(docs);
       setMembersLoaded(true);
@@ -185,12 +222,14 @@ export default function GolfLeagueApp() {
     unsubs.push(db.subscribe("league_players", LF, (docs) => setPlayers(docs)));
     unsubs.push(db.subscribe("league_teams", LF, (docs) => setTeams(docs)));
     unsubs.push(db.subscribe("league_schedule", LF, (docs) => setSchedule(docs.filter(d => d.week > 0).sort((a, b) => a.week - b.week))));
-    unsubs.push(db.subscribe("league_course", LF, (docs) => { if (docs.length) setCourseData(docs[0]); }));
-    unsubs.push(db.subscribe("league_scoring", LF, (docs) => { if (docs.length) setScoringRules(docs[0]); }));
-
-    unsubs.push(db.subscribe("league_ctp", LF, (docs) => setCtpData(docs)));
     unsubs.push(db.subscribe("league_match_results", LF, (docs) => setMatchResults(docs)));
-    unsubs.push(db.subscribe("league_config", LF, (docs) => { if (docs.length) setLeagueConfig(docs[0]); }));
+    unsubs.push(db.subscribe("league_ctp", LF, (docs) => setCtpData(docs)));
+
+    // These rarely change — one-time reads instead of persistent listeners
+    // (course, scoring rules, config). Re-read on save via their save handlers.
+    db.get("league_course", LF).then(docs => { if (docs.length) setCourseData(docs[0]); });
+    db.get("league_scoring", LF).then(docs => { if (docs.length) setScoringRules(docs[0]); });
+    db.get("league_config", LF).then(docs => { if (docs.length) setLeagueConfig(docs[0]); });
 
     return () => unsubs.forEach(u => u && u());
   }, [authUser?.uid]);
@@ -230,29 +269,31 @@ export default function GolfLeagueApp() {
   const CURRENT_SEASON = 2026;
 
   // Data write helpers
-  const saveScore = async (week, playerId, hole, score) => {
+  const saveScore = useCallback(async (week, playerId, hole, score) => {
     const id = `${LEAGUE_ID}_s${CURRENT_SEASON}_w${week}_p${playerId}_h${hole}`;
     setHoleScores(prev => ({ ...prev, [`w${week}_p${playerId}_h${hole}`]: score }));
     await db.upsert("league_hole_scores", { id, league_id: LEAGUE_ID, season: CURRENT_SEASON, week, player_id: playerId, hole, score, ts: Date.now() });
-  };
+  }, []);
+
   // Fetch scores for a specific week on-demand (non-realtime, one-time read)
-  const fetchWeekScores = async (weekNum) => {
+  const fetchWeekScores = useCallback(async (weekNum) => {
     const docs = await db.get("league_hole_scores", [...LF, { field: "season", op: "==", value: CURRENT_SEASON }, { field: "week", op: "==", value: weekNum }]);
     const scores = {};
     docs.forEach(r => { scores[`w${r.week}_p${r.player_id}_h${r.hole}`] = r.score; });
     return scores;
-  };
+  }, []);
+
   // Fetch scores for current season (for stats/handicap calc)
-  const fetchSeasonScores = async () => {
+  const fetchSeasonScores = useCallback(async () => {
     const docs = await db.get("league_hole_scores", [...LF, { field: "season", op: "==", value: CURRENT_SEASON }]);
     const scores = {};
     docs.forEach(r => { scores[`w${r.week}_p${r.player_id}_h${r.hole}`] = r.score; });
     return scores;
-  };
+  }, []);
+
   // Fetch ALL scores across all seasons (for handicap calc that carries over)
-  const fetchAllScores = async () => {
+  const fetchAllScores = useCallback(async () => {
     const docs = await db.get("league_hole_scores", LF);
-    // Return grouped by player: { playerId: [{ season, week, gross }] }
     const byPlayer = {};
     const roundMap = {};
     docs.forEach(r => {
@@ -266,27 +307,43 @@ export default function GolfLeagueApp() {
         byPlayer[rd.playerId].push({ season: rd.season, week: rd.week, gross: rd.gross });
       }
     });
-    // Sort each player's rounds chronologically (by season then week)
     for (const pid in byPlayer) {
       byPlayer[pid].sort((a, b) => a.season !== b.season ? a.season - b.season : a.week - b.week);
     }
     return byPlayer;
-  };
-  const saveCtp = async (data) => await db.upsert("league_ctp", { ...data, league_id: LEAGUE_ID });
-  const saveMatchResult = async (data) => await db.upsert("league_match_results", { ...data, league_id: LEAGUE_ID });
-  const savePlayer = async (p) => await db.upsert("league_players", { ...p, league_id: LEAGUE_ID });
-  const deletePlayer = async (id) => await db.deleteDoc("league_players", id);
-  const saveTeam = async (t) => await db.upsert("league_teams", { ...t, league_id: LEAGUE_ID });
-  const deleteTeam = async (id) => await db.deleteDoc("league_teams", id);
-  const saveWeekSchedule = async (w) => await db.upsert("league_schedule", { ...w, league_id: LEAGUE_ID });
-  const saveCourseData = async (c) => await db.upsert("league_course", { ...c, id: `${LEAGUE_ID}_course`, league_id: LEAGUE_ID });
-  const saveScoringRules = async (s) => await db.upsert("league_scoring", { ...s, id: `${LEAGUE_ID}_scoring`, league_id: LEAGUE_ID });
-  const saveLeagueConfig = async (c) => await db.upsert("league_config", { ...c, id: `${LEAGUE_ID}_config`, league_id: LEAGUE_ID });
-  const saveMember = async (m) => await db.upsert("league_members", { ...m, league_id: LEAGUE_ID });
-  const deleteMember = async (id) => await db.deleteDoc("league_members", id);
+  }, []);
+
+  const saveCtp = useCallback(async (data) => await db.upsert("league_ctp", { ...data, league_id: LEAGUE_ID }), []);
+
+  const saveMatchResult = useCallback(async (data) => await db.upsert("league_match_results", { ...data, league_id: LEAGUE_ID }), []);
+
+  const savePlayer = useCallback(async (p) => await db.upsert("league_players", { ...p, league_id: LEAGUE_ID }), []);
+  const deletePlayer = useCallback(async (id) => await db.deleteDoc("league_players", id), []);
+  const saveTeam = useCallback(async (t) => await db.upsert("league_teams", { ...t, league_id: LEAGUE_ID }), []);
+  const deleteTeam = useCallback(async (id) => await db.deleteDoc("league_teams", id), []);
+  const saveWeekSchedule = useCallback(async (w) => await db.upsert("league_schedule", { ...w, league_id: LEAGUE_ID }), []);
+
+  // Save handlers for rarely-changing data: write + refresh local state
+  const saveCourseData = useCallback(async (c) => {
+    const data = { ...c, id: `${LEAGUE_ID}_course`, league_id: LEAGUE_ID };
+    await db.upsert("league_course", data);
+    setCourseData(data);
+  }, []);
+  const saveScoringRules = useCallback(async (s) => {
+    const data = { ...s, id: `${LEAGUE_ID}_scoring`, league_id: LEAGUE_ID };
+    await db.upsert("league_scoring", data);
+    setScoringRules(data);
+  }, []);
+  const saveLeagueConfig = useCallback(async (c) => {
+    const data = { ...c, id: `${LEAGUE_ID}_config`, league_id: LEAGUE_ID };
+    await db.upsert("league_config", data);
+    setLeagueConfig(data);
+  }, []);
+  const saveMember = useCallback(async (m) => await db.upsert("league_members", { ...m, league_id: LEAGUE_ID }), []);
+  const deleteMember = useCallback(async (id) => await db.deleteDoc("league_members", id), []);
 
   const isComm = leagueUser?.isCommissioner === true;
-  const activePlayers = players.filter(p => p.status !== "inactive");
+  const activePlayers = useMemo(() => players.filter(p => p.status !== "inactive"), [players]);
 
   // When commissioner impersonates a player, effectiveUser overrides leagueUser for scoring/schedule
   const effectiveUser = impersonating
@@ -347,7 +404,6 @@ export default function GolfLeagueApp() {
       const mn = mins % 60;
       const ap = Math.floor(mins / 60) >= 12 ? 'PM' : 'AM';
       const teeTime = `${hr}:${String(mn).padStart(2, '0')}`;
-      // Get opponent player names
       const oppP1 = opp ? activePlayers.find(p => p.id === opp.player1) : null;
       const oppP2 = opp ? activePlayers.find(p => p.id === opp.player2) : null;
       const oppName1 = oppP1 ? oppP1.name.split(' ').pop() : "TBD";
@@ -357,7 +413,6 @@ export default function GolfLeagueApp() {
     return null;
   })();
 
-  // Banner green color — theme-aware
   const bannerGrn = K.matchGrn;
 
   return (
@@ -392,7 +447,7 @@ export default function GolfLeagueApp() {
       {/* Header */}
       <div className="app-header">
         <div style={{ maxWidth: 900, width: "100%", margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: "0 14px" }}>
-          {/* Left: LIVE dot + Commissioner Switch Player */}
+          {/* Left: Commissioner Switch Player */}
           <div style={{ position: "absolute", left: 14, display: "flex", alignItems: "center", gap: 6 }}>
             {isComm && (
               <button onClick={() => setShowPlayerPicker(true)} style={{ background: impersonating ? K.teal + "15" : "none", border: `1px solid ${impersonating ? K.teal + "40" : K.bdr}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
@@ -462,7 +517,7 @@ export default function GolfLeagueApp() {
           })()}
           <div className="main-content fi" key={tab}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} />}
-          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} />}
+          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} setPopupOpen={setPopupOpen} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} />}
           {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} />}
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
@@ -480,9 +535,9 @@ export default function GolfLeagueApp() {
       {/* Player picker popup (commissioner) */}
       {showPlayerPicker && (
         <>
-          <div onClick={() => setShowPlayerPicker(false)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 400 }} />
-          <div onClick={() => setShowPlayerPicker(false)} style={{ position: "fixed", inset: 0, zIndex: 450, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-            <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "16px", width: "100%", maxWidth: 340, maxHeight: "70vh", overflowY: "auto" }}>
+          <div onClick={() => setShowPlayerPicker(false)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 400 }} />
+          <div onClick={() => setShowPlayerPicker(false)} data-popup style={{ position: "fixed", inset: 0, zIndex: 450, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+            <div onClick={e => e.stopPropagation()} data-popup-scroll style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "16px", width: "100%", maxWidth: 340, maxHeight: "70vh", overflowY: "auto", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch" }}>
               <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 12, textAlign: "center" }}>Switch Player</div>
               {impersonating && (
                 <button onClick={() => { setImpersonating(null); setShowPlayerPicker(false); }} style={{ width: "100%", padding: "10px 14px", marginBottom: 8, borderRadius: 8, background: K.teal + "15", border: `1px solid ${K.teal}40`, color: K.teal, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
