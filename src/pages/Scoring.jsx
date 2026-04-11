@@ -429,13 +429,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             const t1NameColor = !isFinalOrSigned ? dimColor : t1Leading ? K.t1 : dimColor;
             const t2NameColor = !isFinalOrSigned ? dimColor : t2Leading ? K.t1 : dimColor;
 
-            // Determine which display side signed (for orange arrow on SIGNED matches)
+            // Determine which display side needs to attest (opponent of signer)
             const isSigned = isFinalOrSigned && res && !res.attested;
-            const signerIsDispT1 = isSigned && (
-              (swapped && res.finalizedByTeamId === rawT2.id) ||
-              (!swapped && res.finalizedByTeamId === rawT1.id)
+            const signerIsRawT1 = isSigned && res.finalizedByTeamId === rawT1.id;
+            const signerIsRawT2 = isSigned && res.finalizedByTeamId === rawT2.id;
+            // The team that needs to attest is the OTHER team from the signer
+            const attestNeededDispT1 = isSigned && (
+              (swapped && signerIsRawT1) || (!swapped && signerIsRawT2)
             );
-            const signerIsDispT2 = isSigned && !signerIsDispT1;
+            const attestNeededDispT2 = isSigned && !attestNeededDispT1;
 
             return (
               <div key={mi} style={{ background: K.card, borderRadius: 10, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}40`, overflow: "hidden" }}>
@@ -443,6 +445,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   <div style={{ display: "flex", alignItems: "center" }}>
                     {/* Left team */}
                     <div style={{ flex: 1, textAlign: "right", paddingRight: 4, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
+                      {attestNeededDispT1 && (
+                        <div style={{ fontSize: 8, fontWeight: 800, color: "#3b82f6", letterSpacing: .5, display: "flex", alignItems: "center", gap: 2 }}>
+                          <span style={{ fontSize: 10 }}>‹</span> ATTEST
+                        </div>
+                      )}
                       <div style={{ fontSize: 14, fontWeight: t1NameWeight, color: t1NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT1?.player1)}</div>
                       <div style={{ fontSize: 14, fontWeight: t1NameWeight, color: t1NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT1?.player2)}</div>
                     </div>
@@ -454,11 +461,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                             ? <polygon points="5,0 10,12 0,12" fill={K.matchGrn} />
                             : <polygon points="5,1 9,11 1,11" fill="none" stroke={K.matchGrn} strokeWidth="1.5" />
                           }
-                        </svg>
-                      )}
-                      {signerIsDispT1 && !t1Leading && (
-                        <svg width="10" height="12" viewBox="0 0 10 12" style={{ transform: "rotate(-90deg)" }}>
-                          <polygon points="5,1 9,11 1,11" fill="none" stroke={K.warn} strokeWidth="1.5" />
                         </svg>
                       )}
                     </div>
@@ -479,14 +481,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                           }
                         </svg>
                       )}
-                      {signerIsDispT2 && !t2Leading && (
-                        <svg width="10" height="12" viewBox="0 0 10 12" style={{ transform: "rotate(90deg)" }}>
-                          <polygon points="5,1 9,11 1,11" fill="none" stroke={K.warn} strokeWidth="1.5" />
-                        </svg>
-                      )}
                     </div>
                     {/* Right team */}
                     <div style={{ flex: 1, textAlign: "left", paddingLeft: 4, overflow: "hidden", display: "flex", flexDirection: "column", gap: 3 }}>
+                      {attestNeededDispT2 && (
+                        <div style={{ fontSize: 8, fontWeight: 800, color: "#3b82f6", letterSpacing: .5, display: "flex", alignItems: "center", gap: 2 }}>
+                          ATTEST <span style={{ fontSize: 10 }}>›</span>
+                        </div>
+                      )}
                       <div style={{ fontSize: 14, fontWeight: t2NameWeight, color: t2NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT2?.player1)}</div>
                       <div style={{ fontSize: 14, fontWeight: t2NameWeight, color: t2NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT2?.player2)}</div>
                     </div>
