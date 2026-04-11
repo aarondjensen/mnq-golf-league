@@ -885,6 +885,25 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             {toast}
           </div>
         )}
+        {/* Confirm modal (for rain out etc.) */}
+        {confirmModal && (<>
+          <div onClick={() => setConfirmModal(null)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 900 }} />
+          <div data-popup style={{ position: "fixed", inset: 0, zIndex: 950, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "20px", width: "100%", maxWidth: 320 }}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>MnQ Golf League</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 6 }}>{confirmModal.title}</div>
+              <div style={{ fontSize: 13, color: K.t2, lineHeight: 1.5, marginBottom: 16 }}>{confirmModal.message}</div>
+              <div style={{ display: "flex", gap: 8 }}>
+                <button onClick={confirmModal.onConfirm} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                  Confirm
+                </button>
+                <button onClick={() => setConfirmModal(null)} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </>)}
       </div>
     );
   }

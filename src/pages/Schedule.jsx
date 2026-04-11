@@ -105,29 +105,25 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     return formatTeeTime(base, idx, interval);
   };
 
-  const teamRecords = useMemo(() => {
-    const rec = {};
-    teams.forEach(t => { rec[t.id] = { w: 0, l: 0, t: 0 }; });
+  // Build records through a specific week (inclusive)
+  const getRecordThrough = useCallback((teamId, throughWeek) => {
+    let w = 0, l = 0, t = 0;
     matchResults.forEach(r => {
-      if (!r) return;
+      if (!r || r.week > throughWeek) return;
       const d = (r.team1Points || 0) - (r.team2Points || 0);
-      if (d > 0) {
-        if (rec[r.team1Id]) rec[r.team1Id].w++;
-        if (rec[r.team2Id]) rec[r.team2Id].l++;
-      } else if (d < 0) {
-        if (rec[r.team1Id]) rec[r.team1Id].l++;
-        if (rec[r.team2Id]) rec[r.team2Id].w++;
-      } else {
-        if (rec[r.team1Id]) rec[r.team1Id].t++;
-        if (rec[r.team2Id]) rec[r.team2Id].t++;
+      if (r.team1Id === teamId) {
+        if (d > 0) w++; else if (d < 0) l++; else t++;
+      } else if (r.team2Id === teamId) {
+        if (d < 0) w++; else if (d > 0) l++; else t++;
       }
     });
-    return rec;
-  }, [teams, matchResults]);
+    return { w, l, t };
+  }, [matchResults]);
 
-  const fmtRecord = (teamId) => {
-    const r = teamRecords[teamId];
-    return r ? `${r.w}-${r.l}-${r.t}` : "0-0-0";
+  const fmtRecord = (teamId, throughWeek) => {
+    if (!teamId) return "0-0-0";
+    const r = getRecordThrough(teamId, throughWeek);
+    return `${r.w}-${r.l}-${r.t}`;
   };
 
   const { upcoming, complete } = useMemo(() => {
@@ -490,7 +486,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                       <div style={{ flex: 1, textAlign: "right", paddingRight: res && score1 > score2 ? 8 : 18, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
                         <div style={{ fontSize: NAME_SIZE, fontWeight: res && score1 > score2 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player1)}</div>
                         <div style={{ fontSize: NAME_SIZE, fontWeight: res && score1 > score2 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player2)}</div>
-                        <div style={{ fontSize: 12, color: K.t3, fontWeight: 600, marginTop: 2 }}>{fmtRecord(t1?.id)}</div>
+                        <div style={{ fontSize: 12, color: K.t3, fontWeight: 600, marginTop: 2 }}>{fmtRecord(t1?.id, wk.week)}</div>
                       </div>
                       {/* Winner triangle left */}
                       {res && score1 > score2 && (
@@ -514,7 +510,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                       <div style={{ flex: 1, textAlign: "left", paddingLeft: res && score2 > score1 ? 8 : 18, overflow: "hidden" }}>
                         <div style={{ fontSize: NAME_SIZE, fontWeight: res && score2 > score1 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player1)}</div>
                         <div style={{ fontSize: NAME_SIZE, fontWeight: res && score2 > score1 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player2)}</div>
-                        <div style={{ fontSize: 12, color: K.t3, fontWeight: 600, marginTop: 2 }}>{fmtRecord(t2?.id)}</div>
+                        <div style={{ fontSize: 12, color: K.t3, fontWeight: 600, marginTop: 2 }}>{fmtRecord(t2?.id, wk.week)}</div>
                       </div>
                       {/* Expand chevron — only for finalized matches */}
                       {res && (
