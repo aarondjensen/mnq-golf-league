@@ -162,12 +162,10 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
           ? (isTeam1 ? r.t1HolesWon : r.t2HolesWon)
           : 0;
 
-        // Build result display: W/L shows match result text, T shows just "T" with points
+        // Build result display: W/L shows match result text, T always shows TIED
         let resultDisplay = wResult;
         if (wResult === "T") {
-          // Tie on points — show "T" only (match play result like "1UP" doesn't apply to point ties)
-          resultDisplay = r.matchResultText === "TIED" || r.matchResultText === "ALL SQUARE"
-            ? "T" : `T ${myPts}-${oppPts}`;
+          resultDisplay = "TIED";
         } else if (r.matchResultText) {
           resultDisplay = `${wResult} ${r.matchResultText}`;
         } else {
@@ -346,11 +344,12 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
               {isExp && (
                 <div ref={expandedRef} style={{ background: K.inp, border: `1px solid ${i === 0 ? K.act + '30' : K.bdr}`, borderTop: "none", borderRadius: `0 0 ${CARD_RADIUS}px ${CARD_RADIUS}px`, padding: "8px 10px" }}>
                   <div style={{ display: "flex", padding: "5px 8px", fontSize: 9, color: K.logoBright, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8 }}>
-                    <div style={{ width: 26 }}>Wk</div>
-                    <div style={{ width: 50 }}>Date</div>
+                    <div style={{ width: 14, flexShrink: 0 }} />
+                    <div style={{ width: 24, flexShrink: 0 }}>Wk</div>
+                    <div style={{ width: 48, flexShrink: 0 }}>Date</div>
                     <div style={{ flex: 1 }}>Opponent</div>
-                    <div style={{ width: 62, textAlign: "center" }}>Result</div>
-                    <div style={{ width: 30, textAlign: "center" }}>HW</div>
+                    <div style={{ width: 58, flexShrink: 0, textAlign: "right" }}>Result</div>
+                    <div style={{ width: 28, flexShrink: 0, textAlign: "right" }}>HW</div>
                   </div>
                   {results.length === 0 ? (
                     <div style={{ padding: "10px 8px", fontSize: 12, color: K.t3, fontStyle: "italic" }}>No matches played yet</div>
@@ -359,13 +358,13 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                     const isResExp = expandedResult === resKey;
                     return (
                       <div key={ri}>
-                        <button onClick={() => toggleResultExpand(s.teamId, r.week)} style={{ display: "flex", alignItems: "center", padding: "7px 8px", borderTop: `1px solid ${K.bdr}30`, fontSize: 12, width: "100%", background: "transparent", border: "none", borderTop: `1px solid ${K.bdr}30`, cursor: "pointer", textAlign: "left" }}>
-                          <div style={{ width: 26, color: K.t3, fontSize: 11 }}>{r.week}</div>
-                          <div style={{ width: 50, color: K.t3, fontSize: 11 }}>{r.date || "—"}</div>
-                          <div style={{ flex: 1, color: K.t2, fontWeight: 500 }}>{r.oppName}</div>
-                          <div style={{ width: 62, textAlign: "center", fontWeight: 700, fontSize: 11, color: r.result === "W" ? K.matchGrn : r.result === "L" ? K.red : K.t2 }}>{r.resultDisplay}</div>
-                          <div style={{ width: 30, textAlign: "center", color: "#3b82f6", fontWeight: 700 }}>{r.holesWon}</div>
+                        <button onClick={() => toggleResultExpand(s.teamId, r.week)} style={{ display: "flex", alignItems: "center", padding: "7px 8px", fontSize: 12, width: "100%", background: "transparent", border: "none", borderTop: `1px solid ${K.bdr}30`, cursor: "pointer", textAlign: "left" }}>
                           <div style={{ width: 14, flexShrink: 0, color: K.t3, fontSize: 9, transform: isResExp ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</div>
+                          <div style={{ width: 24, flexShrink: 0, color: K.t3, fontSize: 11 }}>{r.week}</div>
+                          <div style={{ width: 48, flexShrink: 0, color: K.t3, fontSize: 11 }}>{r.date || "—"}</div>
+                          <div style={{ flex: 1, color: K.t2, fontWeight: 500 }}>{r.oppName}</div>
+                          <div style={{ width: 58, flexShrink: 0, textAlign: "right", fontWeight: 700, fontSize: 11, color: r.result === "W" ? K.matchGrn : r.result === "L" ? K.red : K.t2 }}>{r.resultDisplay}</div>
+                          <div style={{ width: 28, flexShrink: 0, textAlign: "right", color: "#3b82f6", fontWeight: 700 }}>{r.holesWon}</div>
                         </button>
                         {isResExp && (
                           <div style={{ padding: "0 4px 6px" }}>
