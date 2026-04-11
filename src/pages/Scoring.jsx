@@ -395,6 +395,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             const t1Leading = isFinalOrSigned ? (score1 > score2) : (dispCum > 0);
             const t2Leading = isFinalOrSigned ? (score2 > score1) : (dispCum < 0);
 
+            // Determine which display side needs to attest (opponent of signer)
+            const isSigned = isFinalOrSigned && res && !res.attested;
+            const signerIsRawT1 = isSigned && res.finalizedByTeamId === rawT1.id;
+            const signerIsRawT2 = isSigned && res.finalizedByTeamId === rawT2.id;
+            const attestNeededDispT1 = isSigned && (
+              (swapped && signerIsRawT1) || (!swapped && signerIsRawT2)
+            );
+            const attestNeededDispT2 = isSigned && !attestNeededDispT1;
+
             // Center text and color
             let centerText = "";
             let centerColor = K.t1;
@@ -431,16 +440,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             const t2NameWeight = isFinalOrSigned && t2Leading ? 700 : 600;
             const t1NameColor = !isFinalOrSigned ? dimColor : t1Leading ? K.t1 : dimColor;
             const t2NameColor = !isFinalOrSigned ? dimColor : t2Leading ? K.t1 : dimColor;
-
-            // Determine which display side needs to attest (opponent of signer)
-            const isSigned = isFinalOrSigned && res && !res.attested;
-            const signerIsRawT1 = isSigned && res.finalizedByTeamId === rawT1.id;
-            const signerIsRawT2 = isSigned && res.finalizedByTeamId === rawT2.id;
-            // The team that needs to attest is the OTHER team from the signer
-            const attestNeededDispT1 = isSigned && (
-              (swapped && signerIsRawT1) || (!swapped && signerIsRawT2)
-            );
-            const attestNeededDispT2 = isSigned && !attestNeededDispT1;
 
             return (
               <div key={mi} style={{ background: K.card, borderRadius: 10, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}40`, overflow: "hidden" }}>
