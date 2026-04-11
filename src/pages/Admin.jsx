@@ -224,10 +224,18 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
 
   const selectStyle = { flex: 1, padding: "8px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13 };
 
+  const handleBack = async () => {
+    if (dirty) {
+      const choice = window.confirm("You have unsaved changes. Save before leaving?");
+      if (choice) await saveAll();
+    }
+    onBack();
+  };
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <BackBtn onClick={onBack} />
+        <BackBtn onClick={handleBack} />
         <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Teams</span>
         <button onClick={saveAll} style={{ background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: 13, padding: "7px 16px", cursor: dirty ? "pointer" : "default", fontWeight: 600, letterSpacing: .4, transition: "all .2s" }}>{saving ? "Saving..." : dirty ? "Save All" : "Saved"}</button>
       </div>
@@ -325,10 +333,18 @@ function AdminCourse({ course, saveCourseData, onBack }) {
     );
   };
 
+  const handleBack = async () => {
+    if (dirty) {
+      const choice = window.confirm("You have unsaved changes. Save before leaving?");
+      if (choice) await saveWithRefs();
+    }
+    onBack();
+  };
+
   return (
     <div onInput={() => { if (!dirty) setDirty(true); }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <BackBtn onClick={onBack} />
+        <BackBtn onClick={handleBack} />
         <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Course Setup</span>
         <button onClick={saveWithRefs} style={{ background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: 13, padding: "7px 16px", cursor: dirty ? "pointer" : "default", fontWeight: 600, letterSpacing: .4, transition: "all .2s" }}>{dirty ? "Save" : "Saved"}</button>
       </div>
@@ -1353,11 +1369,18 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
     </div>
   );
 
+  const handleBack = async () => {
+    if (dirty) {
+      const choice = window.confirm("You have unsaved changes. Save before leaving?");
+      if (choice) await save();
+    }
+    onBack();
+  };
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <BackBtn onClick={onBack} />
-        <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Scoring Rules</span>
+        <BackBtn onClick={handleBack} />
         <button onClick={save} style={{ background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: 13, padding: "7px 16px", cursor: dirty ? "pointer" : "default", fontWeight: 600, letterSpacing: .4, transition: "all .2s" }}>{dirty ? "Save" : "Saved"}</button>
       </div>
 
@@ -1490,11 +1513,18 @@ function AdminConfig({ config, saveLeagueConfig, onBack }) {
   const [dirty, setDirty] = useState(false);
   const save = async () => { await saveLeagueConfig(lc); setDirty(false); };
 
+  const handleBack = async () => {
+    if (dirty) {
+      const choice = window.confirm("You have unsaved changes. Save before leaving?");
+      if (choice) await save();
+    }
+    onBack();
+  };
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <BackBtn onClick={onBack} />
-        <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Basic Info</span>
+        <BackBtn onClick={handleBack} />
         <button onClick={save} style={{ background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: 13, padding: "7px 16px", cursor: dirty ? "pointer" : "default", fontWeight: 600, letterSpacing: .4, transition: "all .2s" }}>{dirty ? "Save" : "Saved"}</button>
       </div>
       <Card style={{ padding: 14, marginBottom: 12 }}>
