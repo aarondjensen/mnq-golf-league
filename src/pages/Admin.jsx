@@ -1028,6 +1028,21 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
 
         {/* Normal week — show matches */}
         {!isSeeded && !isRainedOut && (<>
+          {/* Action buttons — top of pairings */}
+          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+            {!isFinalized && (
+              <button onClick={handleRainOut} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.red + "18", border: `1.5px solid ${K.red}50`, color: K.red, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                Rain Out
+              </button>
+            )}
+            <button onClick={() => {
+              const newSide = wk.side === 'front' ? 'back' : 'front';
+              saveWeekSchedule({ ...wk, side: newSide });
+            }} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 12, cursor: "pointer" }}>
+              Change to {wk.side === 'front' ? 'Back' : 'Front'} 9
+            </button>
+          </div>
+
           <div style={{ fontSize: 11, color: K.t3, marginBottom: 12 }}>
             {dragTeam && !dragTeam.dragging ? "Tap another team to swap" : "Tap to select · Hold and drag to move"}
           </div>
@@ -1074,7 +1089,12 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
                   return (
                     <div
                       data-team-card={JSON.stringify(info)}
-                      onClick={() => {
+                      onClick={(e) => {
+                        // Skip click if we just finished a mouse drag
+                        if (e.currentTarget._mouseMoved) {
+                          e.currentTarget._mouseMoved = false;
+                          return;
+                        }
                         if (dragTeam && dragTeam.dragging) return;
                         if (dragTeam) {
                           if (dragTeam.teamId !== teamId) {
@@ -1088,6 +1108,48 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
                           setDragTeam(info); dragTeamRef.current = null;
                         }
                       }}
+                      onMouseDown={(e) => {
+                        if (e.button !== 0) return;
+                        e.preventDefault();
+                        const el = e.currentTarget;
+                        el._mouseStartX = e.clientX;
+                        el._mouseStartY = e.clientY;
+                        el._mouseMoved = false;
+                        el._mouseInfo = info;
+
+                        const onMouseMove = (ev) => {
+                          const dx2 = ev.clientX - el._mouseStartX;
+                          const dy2 = ev.clientY - el._mouseStartY;
+                          if (!el._mouseMoved && (Math.abs(dx2) > 4 || Math.abs(dy2) > 4)) {
+                            el._mouseMoved = true;
+                            const dt = { ...el._mouseInfo, dragging: true, startX: el._mouseStartX, startY: el._mouseStartY, curX: ev.clientX, curY: ev.clientY };
+                            dragTeamRef.current = dt;
+                            setDragTeam(dt);
+                          }
+                          if (el._mouseMoved && dragTeamRef.current) {
+                            dragTeamRef.current = { ...dragTeamRef.current, curX: ev.clientX, curY: ev.clientY };
+                            setDragTeam({ ...dragTeamRef.current });
+                          }
+                        };
+                        const onMouseUp = (ev) => {
+                          document.removeEventListener('mousemove', onMouseMove);
+                          document.removeEventListener('mouseup', onMouseUp);
+                          const dt = dragTeamRef.current;
+                          if (dt && dt.dragging) {
+                            const target = findDropTarget(ev.clientX, ev.clientY, dt.teamId);
+                            if (target) {
+                              doSwap(dt, target);
+                              dragTeamRef.current = null;
+                              setDragTeam({ matchIdx: target.matchIdx, slot: target.slot, teamId: dt.teamId });
+                            } else {
+                              dragTeamRef.current = null;
+                              setDragTeam(null);
+                            }
+                          }
+                        };
+                        document.addEventListener('mousemove', onMouseMove);
+                        document.addEventListener('mouseup', onMouseUp);
+                      }}
                       onTouchStart={(e) => {
                         const touch = e.touches[0];
                         const el = e.currentTarget;
@@ -1098,39 +1160,58 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
                             dragTeamRef.current = dt;
                             setDragTeam(dt);
                             if (navigator.vibrate) navigator.vibrate(20);
+
+                            // Attach document-level listeners so drag tracks beyond card bounds
+                            const onTouchMove2 = (ev) => {
+                              const t2 = ev.touches[0];
+                              if (!dragTeamRef.current) return;
+                              ev.preventDefault();
+                              dragTeamRef.current = { ...dragTeamRef.current, curX: t2.clientX, curY: t2.clientY };
+                              setDragTeam({ ...dragTeamRef.current });
+                            };
+                            const onTouchEnd2 = (ev) => {
+                              document.removeEventListener('touchmove', onTouchMove2, { passive: false });
+                              document.removeEventListener('touchend', onTouchEnd2);
+                              document.removeEventListener('touchcancel', onTouchCancel2);
+                              const dt2 = dragTeamRef.current;
+                              if (dt2 && dt2.dragging) {
+                                ev.preventDefault();
+                                const t2 = ev.changedTouches[0];
+                                const target = findDropTarget(t2.clientX, t2.clientY, dt2.teamId);
+                                if (target) {
+                                  doSwap(dt2, target);
+                                  dragTeamRef.current = null;
+                                  setDragTeam({ matchIdx: target.matchIdx, slot: target.slot, teamId: dt2.teamId });
+                                } else {
+                                  dragTeamRef.current = null;
+                                  setDragTeam(null);
+                                }
+                              }
+                            };
+                            const onTouchCancel2 = () => {
+                              document.removeEventListener('touchmove', onTouchMove2, { passive: false });
+                              document.removeEventListener('touchend', onTouchEnd2);
+                              document.removeEventListener('touchcancel', onTouchCancel2);
+                              dragTeamRef.current = null;
+                              setDragTeam(null);
+                            };
+                            document.addEventListener('touchmove', onTouchMove2, { passive: false });
+                            document.addEventListener('touchend', onTouchEnd2);
+                            document.addEventListener('touchcancel', onTouchCancel2);
                           }
                         }, 200);
                       }}
                       onTouchMove={(e) => {
-                        const touch = e.touches[0];
-                        const el = e.currentTarget;
+                        // Before long-press fires, any movement cancels it
                         if (!dragTeamRef.current) {
-                          el._lpMoved = true;
-                          clearTimeout(el._lpTimer);
-                          return;
+                          e.currentTarget._lpMoved = true;
+                          clearTimeout(e.currentTarget._lpTimer);
                         }
-                        e.preventDefault();
-                        dragTeamRef.current = { ...dragTeamRef.current, curX: touch.clientX, curY: touch.clientY };
-                        setDragTeam({ ...dragTeamRef.current });
                       }}
                       onTouchEnd={(e) => {
                         clearTimeout(e.currentTarget._lpTimer);
-                        const dt = dragTeamRef.current;
-                        if (dt && dt.dragging) {
-                          e.preventDefault();
-                          const touch = e.changedTouches[0];
-                          const target = findDropTarget(touch.clientX, touch.clientY, dt.teamId);
-                          if (target) {
-                            doSwap(dt, target);
-                            dragTeamRef.current = null;
-                            setDragTeam({ matchIdx: target.matchIdx, slot: target.slot, teamId: dt.teamId });
-                          } else {
-                            dragTeamRef.current = null;
-                            setDragTeam(null);
-                          }
-                        }
                       }}
-                      onTouchCancel={(e) => { clearTimeout(e.currentTarget._lpTimer); dragTeamRef.current = null; setDragTeam(null); }}
+                      onTouchCancel={(e) => { clearTimeout(e.currentTarget._lpTimer); }}
                       style={{
                         flex: 1, borderRadius: 8, padding: "8px 10px",
                         background: isSelected ? K.act + "20" : isDragging ? K.cardHi : isTarget ? K.act + "08" : K.inp,
@@ -1168,22 +1249,6 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
             })()}
           </div>
         </>)}
-
-        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-          <button onClick={() => {
-            const newSide = wk.side === 'front' ? 'back' : 'front';
-            saveWeekSchedule({ ...wk, side: newSide });
-          }} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 12, cursor: "pointer" }}>
-            Flip to {wk.side === 'front' ? 'Back' : 'Front'} 9
-          </button>
-        </div>
-
-        {/* Rain Out button — any non-finalized, non-rained-out week */}
-        {!isFinalized && !isRainedOut && (
-          <button onClick={handleRainOut} style={{ width: "100%", padding: 12, borderRadius: 10, marginTop: 12, cursor: "pointer", background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 14, fontWeight: 700 }}>
-            Rain Out
-          </button>
-        )}
       </div>
     );
   }
