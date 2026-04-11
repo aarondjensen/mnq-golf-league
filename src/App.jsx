@@ -88,7 +88,7 @@ export default function GolfLeagueApp() {
     const findScrollEl = (target) => {
       let el = target;
       while (el) {
-        if (el.hasAttribute && el.hasAttribute('data-scroll')) return el;
+        if (el.hasAttribute && el.hasAttribute('data-popup')) return null; // popup = always at top
         if (el.classList && el.classList.contains('app-body')) return el;
         el = el.parentElement;
       }
@@ -96,27 +96,39 @@ export default function GolfLeagueApp() {
     };
     const handleStart = (e) => {
       activeScrollEl = findScrollEl(e.target);
-      if (activeScrollEl && activeScrollEl.scrollTop <= 0) { touchStartY.current = e.touches[0].clientY; }
-      else { touchStartY.current = 0; }
+      // null means inside popup (always allow pull), otherwise check scrollTop
+      if (activeScrollEl === null || activeScrollEl.scrollTop <= 0) {
+        touchStartY.current = e.touches[0].clientY;
+      } else {
+        touchStartY.current = 0;
+      }
       pullingRef.current = false;
     };
     const handleMove = (e) => {
       if (!touchStartY.current) return;
       const diff = e.touches[0].clientY - touchStartY.current;
-      if (diff > 10 && activeScrollEl && activeScrollEl.scrollTop <= 0) {
+      const atTop = activeScrollEl === null || activeScrollEl.scrollTop <= 0;
+
+      if (pullingRef.current) {
+        // Already pulling — continue or cancel
+        if (diff <= 5) {
+          pullingRef.current = false;
+          pullYRef.current = 0;
+          setPullY(0);
+          touchStartY.current = 0;
+        } else {
+          e.preventDefault();
+          const val = Math.min(diff * 0.4, 120);
+          pullYRef.current = val;
+          setPullY(val);
+        }
+      } else if (diff > 10 && atTop) {
+        // Start pulling — reset start position to current so pull feels natural
+        touchStartY.current = e.touches[0].clientY;
         pullingRef.current = true;
         e.preventDefault();
-        const val = Math.min(diff * 0.4, 120);
-        pullYRef.current = val;
-        setPullY(val);
-      } else if (!pullingRef.current && diff > 5) {
-        // User is scrolling down inside the container, not pulling to refresh
-        touchStartY.current = 0;
-      } else if (pullingRef.current && diff <= 5) {
-        pullingRef.current = false;
         pullYRef.current = 0;
         setPullY(0);
-        touchStartY.current = 0;
       }
     };
     const handleEnd = () => {
