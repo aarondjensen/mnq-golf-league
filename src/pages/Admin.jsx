@@ -859,9 +859,12 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
     };
 
     const handleRainOut = async () => {
-      const isRoundRobin = !wk.seeded && !wk.isPlayoff;
+      // Round-robin = weeks 1 through (teams.length - 1), originally
+      // With 10 teams, that's weeks 1-9 as generated
+      const rrWeekCount = teams.length - 1;
+      const isRoundRobin = wk.week <= rrWeekCount && !wk.isPlayoff;
       const msgDetail = isRoundRobin
-        ? `Rain out Week ${wk.week}? This will:\n\n• Skip this week (no matches played)\n• Insert a makeup week after the round robin\n• Push seeded/playoff weeks forward\n• Extend the season by one week`
+        ? `Rain out Week ${wk.week}? This will:\n\n• Skip this week (no matches played)\n• Insert a makeup week after week ${rrWeekCount} (end of round robin)\n• Push seeded/playoff weeks forward\n• Extend the season by one week`
         : `Rain out Week ${wk.week}? This will:\n\n• Skip this week\n• Add a makeup week at the end of the season\n• Push all future dates forward one week\n• Extend the season by one week`;
       if (!window.confirm(msgDetail)) return;
 
@@ -877,11 +880,15 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
       await saveWeekSchedule({ ...wk, rainedOut: true });
 
       if (isRoundRobin) {
-        // Find the last non-rained-out round-robin week number (excluding current)
-        const rrWeeks = schedule.filter(s =>
-          !s.seeded && !s.isPlayoff && !s.rainedOut && s.week !== wk.week && !s.removed
+        // Find the end of the round-robin block: start from rrWeekCount,
+        // but also include any makeup weeks previously inserted after it
+        let lastRRWeekNum = rrWeekCount;
+        const makeupRRWeeks = schedule.filter(s =>
+          s.makeupFor && s.makeupFor <= rrWeekCount && !s.removed
         );
-        const lastRRWeekNum = rrWeeks.length > 0 ? Math.max(...rrWeeks.map(s => s.week)) : wk.week;
+        if (makeupRRWeeks.length > 0) {
+          lastRRWeekNum = Math.max(lastRRWeekNum, ...makeupRRWeeks.map(s => s.week));
+        }
 
         // Everything after the last RR week shifts up by 1 (process descending to avoid collisions)
         const weeksToShift = schedule.filter(s => s.week > lastRRWeekNum && !s.removed).sort((a, b) => b.week - a.week);
@@ -975,7 +982,6 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
               <button onClick={async () => {
                 if (!window.confirm(`Undo rain out for Week ${wk.week}? This will restore the week, remove the makeup week, and reverse date shifts.`)) return;
 
-                const isRoundRobin = !wk.seeded && !wk.isPlayoff;
                 const year = leagueConfig?.year || new Date().getFullYear();
                 const parseDate = (dateStr) => {
                   if (!dateStr) return null;
