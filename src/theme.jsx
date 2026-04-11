@@ -90,7 +90,7 @@ export function applyTheme(mode) {
 
 export const getCSS = (k) => `
   * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-  html, body { overscroll-behavior: none; background: ${k.bg}; letter-spacing: 0.8px; text-transform: uppercase; }
+  html, body { overscroll-behavior: none; background: ${k.bg}; letter-spacing: 0.8px; text-transform: uppercase; min-height: 100vh; min-height: -webkit-fill-available; }
   input, select, textarea { text-transform: none; }
   input, select, textarea, button { font-family: 'League Spartan', sans-serif; letter-spacing: 0.8px; font-size: 15px; text-transform: uppercase; }
   input, select, textarea { text-transform: none; }

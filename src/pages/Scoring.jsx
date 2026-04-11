@@ -1253,8 +1253,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 pointerEvents: "none", zIndex: 2, overflow: "hidden",
               }}>
                 <div style={{
-                  fontSize: "min(192px, 22vw)", fontWeight: 900, color: K.t3 + "20",
-                  letterSpacing: "min(36px, 4vw)", textTransform: "uppercase",
+                  fontSize: "clamp(70px, 22vw, 120px)", fontWeight: 900, color: K.t3 + "20",
+                  letterSpacing: "clamp(12px, 4vw, 24px)", textTransform: "uppercase",
                   userSelect: "none", whiteSpace: "nowrap",
                   transform: "rotate(-18deg)",
                 }}>FINAL</div>
@@ -1309,11 +1309,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       </div>
       </>)}
       {!isAlreadyFinalized && (<>
-      {editing && (
-        <button onClick={() => { setCurHole(currentHoleIdx); setEditing(false); }} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 6, cursor: "pointer", background: K.teal + "15", border: `1px solid ${K.teal}40`, color: K.teal, fontSize: 12, fontWeight: 700 }}>
-          Hole {side === 'front' ? currentHoleIdx + 1 : currentHoleIdx + 10} →
-        </button>
-      )}
 
       {allP.map(pid => {
         const pl = players.find(p => p.id === pid); if (!pl) return null;
@@ -1375,6 +1370,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           )}
         </div>;
       })}
+      {editing && (
+        <button onClick={() => { setCurHole(currentHoleIdx); setEditing(false); }} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.warn, border: "none", color: K.bg, fontSize: 13, fontWeight: 800 }}>
+          Back to Hole {side === 'front' ? currentHoleIdx + 1 : currentHoleIdx + 10} →
+        </button>
+      )}
       </>)}
       {/* Finalize / Show Match Details buttons */}
       {allComplete && !showFinalize && !isAlreadyFinalized && (
