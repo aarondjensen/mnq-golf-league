@@ -748,31 +748,83 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             {/* Rain Out button — before week is finalized */}
             {!isWeekLocked && !allMatchesAttested && (
               <button onClick={() => {
+                const regWeeks = leagueConfig?.regularWeeks || REGULAR_WEEKS;
+                const isRoundRobin = weekSch.week <= regWeeks && !weekSch.seeded && !weekSch.isPlayoff;
+                const msgDetail = isRoundRobin
+                  ? "This will skip this week and add a makeup week at the end of the round robin with the same matchups. All future dates will shift forward one week."
+                  : "This will skip this week and push all future dates forward one week. The same matchups will play the following week.";
                 setConfirmModal({
                   title: `Rain out Week ${week}?`,
-                  message: "This will skip this week (no matches played), add a makeup week with the same matchups, and push future dates forward.",
+                  message: msgDetail,
                   onConfirm: async () => {
+                    // Mark the week as rained out
                     await saveWeekSchedule({ ...weekSch, rainedOut: true });
-                    // Create makeup week
-                    const maxWeek = Math.max(...schedule.map(s => s.week));
-                    const newWeekNum = maxWeek + 1;
-                    const lastWeek = schedule.find(s => s.week === maxWeek);
-                    let newDate = "";
-                    if (lastWeek?.date) {
-                      const d = new Date(lastWeek.date + "T12:00:00");
-                      d.setDate(d.getDate() + 7);
-                      newDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
+                    if (isRoundRobin) {
+                      // Round robin: insert a makeup week at the end of the round robin portion
+                      // Find the last round robin week (before seeded/playoff weeks)
+                      const rrWeeks = schedule.filter(s => s.week <= regWeeks && !s.seeded && !s.isPlayoff && !s.rainedOut && s.week !== weekSch.week);
+                      const lastRRWeek = rrWeeks.length > 0 ? Math.max(...rrWeeks.map(s => s.week)) : weekSch.week;
+                      // Find the first seeded or playoff week
+                      const postRRWeeks = schedule.filter(s => (s.seeded || s.isPlayoff || s.week > regWeeks) && !s.rainedOut);
+                      // The makeup week number slots after round robin
+                      // We need to shift all seeded/playoff weeks up by 1 and insert our makeup
+                      const insertAfter = lastRRWeek;
+                      const makeupWeekNum = insertAfter + 1;
+
+                      // Shift all weeks after insertAfter up by 1
+                      const weeksToShift = schedule.filter(s => s.week > insertAfter).sort((a, b) => b.week - a.week); // descending to avoid collisions
+                      for (const fw of weeksToShift) {
+                        const newNum = fw.week + 1;
+                        let newDate = "";
+                        if (fw.date) {
+                          const d = new Date(fw.date + "T12:00:00");
+                          if (!isNaN(d.getTime())) {
+                            d.setDate(d.getDate() + 7);
+                            newDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                          }
+                        }
+                        // Create new doc with incremented week number (delete old if ID changes)
+                        await saveWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newNum}`, week: newNum, date: newDate || fw.date });
+                      }
+
+                      // Determine the makeup week date (1 week after the last RR week's date)
+                      const lastRRWeekData = schedule.find(s => s.week === lastRRWeek);
+                      let makeupDate = "";
+                      if (lastRRWeekData?.date) {
+                        const d = new Date(lastRRWeekData.date + "T12:00:00");
+                        if (!isNaN(d.getTime())) {
+                          d.setDate(d.getDate() + 7);
+                          makeupDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                        }
+                      }
+                      const makeupSide = lastRRWeekData?.side === 'front' ? 'back' : 'front';
+
+                      // Insert the makeup week
+                      await saveWeekSchedule({
+                        id: `${LEAGUE_ID}_w${makeupWeekNum}`,
+                        week: makeupWeekNum,
+                        matches: [...(weekSch.matches || [])],
+                        side: weekSch.side || makeupSide,
+                        date: makeupDate,
+                        makeupFor: weekSch.week,
+                      });
+                    } else {
+                      // Seeded/Playoff: just push all future dates forward by 1 week
+                      const futureWeeks = schedule.filter(s => s.week > weekSch.week && !s.rainedOut);
+                      for (const fw of futureWeeks) {
+                        if (fw.date) {
+                          const d = new Date(fw.date + "T12:00:00");
+                          if (isNaN(d.getTime())) continue;
+                          d.setDate(d.getDate() + 7);
+                          const newDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                          await saveWeekSchedule({ ...fw, date: newDate });
+                        }
+                      }
                     }
-                    await saveWeekSchedule({
-                      id: `${LEAGUE_ID}_w${newWeekNum}`, week: newWeekNum,
-                      matches: [...(weekSch.matches || [])],
-                      side: weekSch.side || (lastWeek?.side === 'front' ? 'back' : 'front'),
-                      date: newDate, makeupFor: weekSch.week,
-                      ...(weekSch.isPlayoff ? { isPlayoff: true } : {}),
-                      ...(weekSch.seeded ? { seeded: true } : {}),
-                    });
+
                     setConfirmModal(null);
-                    setToast("Week " + week + " rained out — makeup added");
+                    setToast("Week " + week + " rained out");
                     setTimeout(() => { setToast(null); setShowAllMatches(false); }, 2000);
                   },
                 });
