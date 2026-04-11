@@ -221,7 +221,7 @@ export default function GolfLeagueApp() {
 
     unsubs.push(db.subscribe("league_players", LF, (docs) => setPlayers(docs)));
     unsubs.push(db.subscribe("league_teams", LF, (docs) => setTeams(docs)));
-    unsubs.push(db.subscribe("league_schedule", LF, (docs) => setSchedule(docs.filter(d => d.week > 0 && !d.removed).sort((a, b) => a.week - b.week))));
+    unsubs.push(db.subscribe("league_schedule", LF, (docs) => setSchedule(docs.filter(d => d.week > 0).sort((a, b) => a.week - b.week))));
     unsubs.push(db.subscribe("league_match_results", LF, (docs) => setMatchResults(docs)));
     unsubs.push(db.subscribe("league_ctp", LF, (docs) => setCtpData(docs)));
 
@@ -322,6 +322,8 @@ export default function GolfLeagueApp() {
   const saveTeam = useCallback(async (t) => await db.upsert("league_teams", { ...t, league_id: LEAGUE_ID }), []);
   const deleteTeam = useCallback(async (id) => await db.deleteDoc("league_teams", id), []);
   const saveWeekSchedule = useCallback(async (w) => await db.upsert("league_schedule", { ...w, league_id: LEAGUE_ID }), []);
+  const setWeekSchedule = useCallback(async (w) => await db.set("league_schedule", { ...w, league_id: LEAGUE_ID }), []);
+  const deleteWeekSchedule = useCallback(async (id) => await db.deleteDoc("league_schedule", id), []);
 
   // Save handlers for rarely-changing data: write + refresh local state
   const saveCourseData = useCallback(async (c) => {
@@ -522,7 +524,7 @@ export default function GolfLeagueApp() {
           {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} />}
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
           {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} isComm={isComm} saveCtp={saveCtp} />}
-          {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} />}
+          {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} />}
           </div>
         </div>
       </div>

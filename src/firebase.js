@@ -36,6 +36,13 @@ export const db = {
       return data;
     } catch (e) { console.error("db.upsert error:", col, e); return null; }
   },
+  set: async (col, data) => {
+    if (!data.id) { console.error("db.set: missing id", col, data); return null; }
+    try {
+      await setDoc(doc(_db, col, String(data.id)), data);
+      return data;
+    } catch (e) { console.error("db.set error:", col, e); return null; }
+  },
   deleteDoc: async (col, id) => {
     try { await deleteDoc(doc(_db, col, String(id))); return true; }
     catch (e) { console.error("db.deleteDoc error:", col, e); return null; }

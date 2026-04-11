@@ -772,14 +772,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       // Find end of RR block including any prior makeup weeks
                       let lastRRWeekNum = rrWeekCount;
                       const makeupRRWeeks = schedule.filter(s =>
-                        s.makeupFor && s.makeupFor <= rrWeekCount && !s.removed
+                        s.makeupFor && s.makeupFor <= rrWeekCount
                       );
                       if (makeupRRWeeks.length > 0) {
                         lastRRWeekNum = Math.max(lastRRWeekNum, ...makeupRRWeeks.map(s => s.week));
                       }
 
                       // Shift everything after the last RR week up by 1 (descending)
-                      const weeksToShift = schedule.filter(s => s.week > lastRRWeekNum && !s.removed).sort((a, b) => b.week - a.week);
+                      const weeksToShift = schedule.filter(s => s.week > lastRRWeekNum).sort((a, b) => b.week - a.week);
                       for (const fw of weeksToShift) {
                         const newNum = fw.week + 1;
                         let newDate = fw.date || "";
@@ -812,7 +812,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       });
                     } else {
                       // Seeded or Playoff: shift all future weeks up by 1
-                      const futureWeeks = schedule.filter(s => s.week > weekSch.week && !s.rainedOut && !s.removed).sort((a, b) => b.week - a.week);
+                      const futureWeeks = schedule.filter(s => s.week > weekSch.week && !s.rainedOut).sort((a, b) => b.week - a.week);
                       for (const fw of futureWeeks) {
                         const newNum = fw.week + 1;
                         let newDate = fw.date || "";
@@ -825,7 +825,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       }
 
                       // Add makeup week at end of season
-                      const allWeekNums = schedule.filter(s => !s.removed).map(s => s.week);
+                      const allWeekNums = schedule.map(s => s.week);
                       const maxWeek = Math.max(...allWeekNums, 0);
                       const makeupWeekNum = maxWeek + 1;
                       const lastWeekData = schedule.find(s => s.week === maxWeek);

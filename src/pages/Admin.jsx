@@ -6,7 +6,7 @@ import { K, FONTS, CSS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card,
 
 
 export default function AdminView(props) {
-  const { players, savePlayer, deletePlayer, teams, saveTeam, deleteTeam, schedule, saveWeekSchedule, course, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, members, saveMember, deleteMember } = props;
+  const { players, savePlayer, deletePlayer, teams, saveTeam, deleteTeam, schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, course, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, members, saveMember, deleteMember } = props;
   const [sec, setSec] = useState(null);
   const sections = [
     { id: "config", label: "Basic Info", icon: "settings", desc: leagueConfig.name },
@@ -21,7 +21,7 @@ export default function AdminView(props) {
   if (sec === "players") return <AdminPlayers players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} course={course} members={members} saveMember={saveMember} onBack={() => setSec(null)} />;
   if (sec === "teams") return <AdminTeams teams={teams} saveTeam={saveTeam} players={players} onBack={() => setSec(null)} />;
   if (sec === "course") return <AdminCourse course={course} saveCourseData={saveCourseData} onBack={() => setSec(null)} />;
-  if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} onBack={() => setSec(null)} />;
+  if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} onBack={() => setSec(null)} />;
   if (sec === "scoring") return <AdminScoring scoring={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
   if (sec === "members") return <AdminMembers members={members} saveMember={saveMember} deleteMember={deleteMember} players={players} onBack={() => setSec(null)} />;
   if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
@@ -372,7 +372,7 @@ function AdminCourse({ course, saveCourseData, onBack }) {
 }
 
 
-function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLeagueConfig, matchResults, onBack }) {
+function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, teams, leagueConfig, saveLeagueConfig, matchResults, onBack }) {
   const [step, setStep] = useState(schedule.length > 0 ? "view" : "setup");
   const [cfg, setCfg] = useState({
     dayOfWeek: leagueConfig.dayOfWeek || "Tuesday",
@@ -470,6 +470,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
     if (!cfg.startDate) return alert("Set a season start date");
     setGenerating(true);
 
+    // Delete all existing schedule documents first to avoid stale/zombie data
+    for (const existing of schedule) {
+      if (existing.id) await deleteWeekSchedule(existing.id);
+    }
+
     const teamIds = teams.map(t => t.id);
     const rrRounds = generateRoundRobin(teamIds);
     const rrWeeks = Math.min(rrRounds.length, cfg.regularWeeks);
@@ -481,14 +486,14 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
 
       if (w < rrWeeks) {
         // Round-robin weeks — fixed matchups
-        await saveWeekSchedule({
+        await setWeekSchedule({
           id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum, matches: rrRounds[w], side,
           date: getWeekDate(w),
           isPlayoff: false,
         });
       } else {
         // Post-round-robin regular season or playoffs — seeded, TBD matchups
-        await saveWeekSchedule({
+        await setWeekSchedule({
           id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum, matches: [], side,
           date: getWeekDate(w),
           isPlayoff,
@@ -884,14 +889,14 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
         // but also include any makeup weeks previously inserted after it
         let lastRRWeekNum = rrWeekCount;
         const makeupRRWeeks = schedule.filter(s =>
-          s.makeupFor && s.makeupFor <= rrWeekCount && !s.removed
+          s.makeupFor && s.makeupFor <= rrWeekCount
         );
         if (makeupRRWeeks.length > 0) {
           lastRRWeekNum = Math.max(lastRRWeekNum, ...makeupRRWeeks.map(s => s.week));
         }
 
         // Everything after the last RR week shifts up by 1 (process descending to avoid collisions)
-        const weeksToShift = schedule.filter(s => s.week > lastRRWeekNum && !s.removed).sort((a, b) => b.week - a.week);
+        const weeksToShift = schedule.filter(s => s.week > lastRRWeekNum).sort((a, b) => b.week - a.week);
         for (const fw of weeksToShift) {
           const newNum = fw.week + 1;
           let newDate = fw.date || "";
@@ -900,7 +905,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
             parsed.setDate(parsed.getDate() + 7);
             newDate = fmtDate(parsed);
           }
-          await saveWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newNum}`, week: newNum, date: newDate });
+          await setWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newNum}`, week: newNum, date: newDate });
         }
 
         // Insert makeup week right after the last RR week
@@ -914,7 +919,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
         }
         const makeupSide = lastRRWeekData?.side === 'front' ? 'back' : 'front';
 
-        await saveWeekSchedule({
+        await setWeekSchedule({
           id: `${LEAGUE_ID}_w${makeupWeekNum}`,
           week: makeupWeekNum,
           matches: [...(wk.matches || [])],
@@ -923,8 +928,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
           makeupFor: wk.week,
         });
       } else {
-        // Seeded or Playoff rain out — push all future dates forward by 1 week
-        const futureWeeks = schedule.filter(s => s.week > wk.week && !s.rainedOut && !s.removed).sort((a, b) => b.week - a.week);
+        // Seeded or Playoff rain out — push all future weeks forward by 1
+        const futureWeeks = schedule.filter(s => s.week > wk.week && !s.rainedOut).sort((a, b) => b.week - a.week);
         for (const fw of futureWeeks) {
           const newNum = fw.week + 1;
           let newDate = fw.date || "";
@@ -933,23 +938,23 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
             parsed.setDate(parsed.getDate() + 7);
             newDate = fmtDate(parsed);
           }
-          await saveWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newNum}`, week: newNum, date: newDate });
+          await setWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newNum}`, week: newNum, date: newDate });
         }
 
         // Add a makeup week at the end of the season
-        const allWeekNums = schedule.filter(s => !s.removed).map(s => s.week);
+        const allWeekNums = schedule.map(s => s.week);
         const maxWeek = Math.max(...allWeekNums, 0);
-        const makeupWeekNum = maxWeek + 1; // +1 because we already shifted everything above
+        const makeupWeekNum = maxWeek + 1;
         const lastWeekData = schedule.find(s => s.week === maxWeek);
         let makeupDate = "";
         const lastParsed = parseDate(lastWeekData?.date);
         if (lastParsed) {
-          lastParsed.setDate(lastParsed.getDate() + 14); // +14 because lastWeekData just got shifted +7
+          lastParsed.setDate(lastParsed.getDate() + 14);
           makeupDate = fmtDate(lastParsed);
         }
         const makeupSide = lastWeekData?.side === 'front' ? 'back' : 'front';
 
-        await saveWeekSchedule({
+        await setWeekSchedule({
           id: `${LEAGUE_ID}_w${makeupWeekNum}`,
           week: makeupWeekNum,
           matches: [...(wk.matches || [])],
@@ -993,16 +998,14 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
                 // Un-mark the rain out
                 await saveWeekSchedule({ ...wk, rainedOut: false });
 
-                // Find and remove the makeup week
-                const makeupWeek = schedule.find(s => s.makeupFor === wk.week && !s.removed);
+                // Find the makeup week
+                const makeupWeek = schedule.find(s => s.makeupFor === wk.week);
 
                 if (makeupWeek) {
-                  // Mark the makeup week as removed
-                  await saveWeekSchedule({ ...makeupWeek, matches: [], rainedOut: true, makeupFor: null, removed: true });
-
                   // Shift all weeks after the makeup week back down by 1 (ascending order)
+                  // We need to process ascending so week N+1 moves to N before N+2 moves to N+1
                   const weeksToShift = schedule.filter(s =>
-                    s.week > makeupWeek.week && s.week !== makeupWeek.week && !s.removed
+                    s.week > makeupWeek.week
                   ).sort((a, b) => a.week - b.week);
 
                   for (const fw of weeksToShift) {
@@ -1013,7 +1016,16 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
                       parsed.setDate(parsed.getDate() - 7);
                       newDate = fmtDate(parsed);
                     }
-                    await saveWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newNum}`, week: newNum, date: newDate });
+                    // Overwrite the target slot cleanly, then delete the old one
+                    await setWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newNum}`, week: newNum, date: newDate });
+                  }
+
+                  // Delete the now-vacant last week doc and the original makeup doc
+                  const lastShiftedWeek = weeksToShift.length > 0 ? weeksToShift[weeksToShift.length - 1].week : makeupWeek.week;
+                  await deleteWeekSchedule(`${LEAGUE_ID}_w${lastShiftedWeek}`);
+                  // If no weeks were shifted, the makeup week itself needs deleting
+                  if (weeksToShift.length === 0) {
+                    await deleteWeekSchedule(makeupWeek.id);
                   }
                 }
 
