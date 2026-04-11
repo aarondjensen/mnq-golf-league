@@ -1036,7 +1036,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
                       } else {
                         setDragTeam(info); dragTeamRef.current = null;
                       }
-                    }}}
+                    }}
                     onTouchStart={(e) => {
                       const touch = e.touches[0];
                       const el = e.currentTarget;
