@@ -960,25 +960,64 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
         {isSeeded && !isRainedOut && (() => {
           const roundDef = isPlayoff ? (leagueConfig.playoffRounds || [])[playoffRound - 1] : null;
           const roundName = isPlayoff ? (roundDef?.name || `Playoff Round ${playoffRound}`) : "Seeded Matchups";
-          const descParts = [];
+
+          // Build current seeded pairings preview
+          const seedEntries = Object.entries(seedMap).sort((a, b) => a[1] - b[1]); // sorted by seed
+          const getTeamBySeed = (seed) => {
+            const entry = seedEntries.find(([, s]) => s === seed);
+            return entry ? teams.find(t => t.id === entry[0]) : null;
+          };
+
+          let previewPairings = [];
           if (isPlayoff && roundDef?.matchups?.length) {
-            roundDef.matchups.forEach(mu => {
+            roundDef.matchups.forEach((mu, i) => {
               const s1Label = mu.s1type === "seed" ? `#${mu.s1}` : (mu.s1 === "lowestWinner" ? "Lowest winner" : mu.s1 === "nextLowestWinner" ? "Next lowest" : mu.s1?.startsWith("winner_") ? `Winner M${parseInt(mu.s1.split("_")[1]) + 1}` : "?");
               const s2Label = mu.s2type === "seed" ? `#${mu.s2}` : (mu.s2 === "lowestWinner" ? "Lowest winner" : mu.s2 === "nextLowestWinner" ? "Next lowest" : mu.s2?.startsWith("winner_") ? `Winner M${parseInt(mu.s2.split("_")[1]) + 1}` : "?");
-              descParts.push(`${s1Label} vs ${s2Label}`);
+              const t1 = mu.s1type === "seed" ? getTeamBySeed(mu.s1) : null;
+              const t2 = mu.s2type === "seed" ? getTeamBySeed(mu.s2) : null;
+              previewPairings.push({
+                label1: s1Label, label2: s2Label,
+                name1: t1 ? lastNamesOnly(t1.name) : s1Label,
+                name2: t2 ? lastNamesOnly(t2.name) : s2Label,
+                seed1: mu.s1type === "seed" ? mu.s1 : null,
+                seed2: mu.s2type === "seed" ? mu.s2 : null,
+              });
             });
+          } else {
+            // Standard seeded: #1 vs #N, #2 vs #(N-1), etc.
+            const n = teams.length;
+            for (let i = 0; i < Math.floor(n / 2); i++) {
+              const s1 = i + 1, s2 = n - i;
+              const t1 = getTeamBySeed(s1), t2 = getTeamBySeed(s2);
+              previewPairings.push({
+                label1: `#${s1}`, label2: `#${s2}`,
+                name1: t1 ? lastNamesOnly(t1.name) : `Seed #${s1}`,
+                name2: t2 ? lastNamesOnly(t2.name) : `Seed #${s2}`,
+                seed1: s1, seed2: s2,
+              });
+            }
           }
 
           return (
-            <div style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: CARD_RADIUS, padding: "16px", textAlign: "center", marginBottom: 12 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: K.t1, marginBottom: 4 }}>{roundName}</div>
-              <div style={{ fontSize: 12, color: K.t3, marginBottom: 12, lineHeight: 1.5 }}>
-                {isPlayoff && descParts.length > 0
-                  ? descParts.join("  ·  ")
-                  : isPlayoff
-                  ? "No matchups configured — go to Edit Setup to build the bracket"
-                  : `Matchups by standings: #1 vs #${teams.length}, #2 vs #${teams.length - 1}, etc.`
-                }
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: CARD_RADIUS, padding: "14px", marginBottom: 8 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: K.t1, marginBottom: 4, textAlign: "center" }}>{roundName}</div>
+                <div style={{ fontSize: 10, color: K.t3, textAlign: "center", marginBottom: 10 }}>Current pairings based on standings</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {previewPairings.map((p, i) => (
+                    <div key={i} style={{ background: K.card, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: "8px 10px", display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: K.t1 }}>{p.name1}</span>
+                        {p.seed1 && <div style={{ width: 20, height: 20, borderRadius: 5, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: K.logoBright, flexShrink: 0 }}>{p.seed1}</div>}
+                      </div>
+                      <div style={{ fontSize: 10, color: K.t3, fontWeight: 800, flexShrink: 0 }}>VS</div>
+                      <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6 }}>
+                        {p.seed2 && <div style={{ width: 20, height: 20, borderRadius: 5, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: K.logoBright, flexShrink: 0 }}>{p.seed2}</div>}
+                        <span style={{ fontSize: 12, fontWeight: 600, color: K.t1 }}>{p.name2}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
               <button onClick={handleSeedWeek} style={{ width: "100%", padding: 14, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
                 Seed Week {wk.week}
@@ -1070,19 +1109,25 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
                       if (dt && dt.dragging) {
                         e.preventDefault();
                         const touch = e.changedTouches[0];
-                        // Hide the dragged card so elementFromPoint hits the card underneath
-                        const draggedEl = e.currentTarget;
-                        draggedEl.style.pointerEvents = "none";
-                        draggedEl.style.visibility = "hidden";
-                        const hitEl = document.elementFromPoint(touch.clientX, touch.clientY);
-                        draggedEl.style.pointerEvents = "";
-                        draggedEl.style.visibility = "";
-                        const targetCard = hitEl?.closest?.('[data-team-card]');
-                        if (targetCard) {
+                        const tx = touch.clientX, ty = touch.clientY;
+                        // Find all team card elements and check which one the finger is over
+                        const allCards = document.querySelectorAll('[data-team-card]');
+                        let bestTarget = null;
+                        allCards.forEach(card => {
+                          // Skip the card we're dragging
                           try {
-                            const target = JSON.parse(targetCard.getAttribute('data-team-card'));
+                            const cardInfo = JSON.parse(card.getAttribute('data-team-card'));
+                            if (cardInfo.teamId === dt.teamId) return;
+                          } catch { return; }
+                          const rect = card.getBoundingClientRect();
+                          if (tx >= rect.left && tx <= rect.right && ty >= rect.top && ty <= rect.bottom) {
+                            bestTarget = card;
+                          }
+                        });
+                        if (bestTarget) {
+                          try {
+                            const target = JSON.parse(bestTarget.getAttribute('data-team-card'));
                             doSwap(dt, target);
-                            // Keep the swapped team selected (bold border) at its new position
                             dragTeamRef.current = null;
                             setDragTeam({ matchIdx: target.matchIdx, slot: target.slot, teamId: dt.teamId });
                             return;
@@ -1091,7 +1136,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, teams, leagueConfig, saveLe
                         dragTeamRef.current = null;
                         setDragTeam(null);
                       }
-                    }}
+                    }}}
                     onTouchCancel={(e) => { clearTimeout(e.currentTarget._lpTimer); dragTeamRef.current = null; setDragTeam(null); }}
                     style={{
                       flex: 1, borderRadius: 8, padding: "8px 10px",
