@@ -85,16 +85,32 @@ export default function GolfLeagueApp() {
     if (refreshing) return;
     const getScrollEl = () => appBodyRef.current || document.querySelector('.app-body');
     const handleStart = (e) => {
-      const el = getScrollEl();
-      if (el && el.scrollTop <= 0) { touchStartY.current = e.touches[0].clientY; }
+      // Find the nearest scrollable ancestor of the touch target
+      let el = e.target;
+      let scrollEl = null;
+      while (el) {
+        if (el.hasAttribute && el.hasAttribute('data-popup')) { scrollEl = el; break; }
+        if (el.classList && el.classList.contains('app-body')) { scrollEl = el; break; }
+        el = el.parentElement;
+      }
+      if (!scrollEl) scrollEl = getScrollEl();
+      if (scrollEl && scrollEl.scrollTop <= 0) { touchStartY.current = e.touches[0].clientY; }
       else { touchStartY.current = 0; }
       pullingRef.current = false;
     };
     const handleMove = (e) => {
       if (!touchStartY.current) return;
-      const el = getScrollEl();
       const diff = e.touches[0].clientY - touchStartY.current;
-      if (diff > 10 && el && el.scrollTop <= 0) {
+      // Check if we're inside a scrollable popup
+      let el = e.target;
+      let scrollEl = null;
+      while (el) {
+        if (el.hasAttribute && el.hasAttribute('data-popup')) { scrollEl = el; break; }
+        if (el.classList && el.classList.contains('app-body')) { scrollEl = el; break; }
+        el = el.parentElement;
+      }
+      if (!scrollEl) scrollEl = getScrollEl();
+      if (diff > 10 && scrollEl && scrollEl.scrollTop <= 0) {
         pullingRef.current = true;
         e.preventDefault();
         const val = Math.min(diff * 0.4, 120);
