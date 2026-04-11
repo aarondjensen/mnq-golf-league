@@ -84,32 +84,25 @@ export default function GolfLeagueApp() {
   useEffect(() => {
     if (refreshing) return;
     const getScrollEl = () => appBodyRef.current || document.querySelector('.app-body');
-    const handleStart = (e) => {
-      // Find the nearest scrollable ancestor of the touch target
-      let el = e.target;
-      let scrollEl = null;
+    const findScrollEl = (target) => {
+      let el = target;
       while (el) {
-        if (el.hasAttribute && el.hasAttribute('data-popup')) { scrollEl = el; break; }
-        if (el.classList && el.classList.contains('app-body')) { scrollEl = el; break; }
+        if (el.hasAttribute && el.hasAttribute('data-scroll')) return el;
+        if (el.classList && el.classList.contains('app-body')) return el;
         el = el.parentElement;
       }
-      if (!scrollEl) scrollEl = getScrollEl();
+      return getScrollEl();
+    };
+    const handleStart = (e) => {
+      const scrollEl = findScrollEl(e.target);
       if (scrollEl && scrollEl.scrollTop <= 0) { touchStartY.current = e.touches[0].clientY; }
       else { touchStartY.current = 0; }
       pullingRef.current = false;
     };
     const handleMove = (e) => {
       if (!touchStartY.current) return;
+      const scrollEl = findScrollEl(e.target);
       const diff = e.touches[0].clientY - touchStartY.current;
-      // Check if we're inside a scrollable popup
-      let el = e.target;
-      let scrollEl = null;
-      while (el) {
-        if (el.hasAttribute && el.hasAttribute('data-popup')) { scrollEl = el; break; }
-        if (el.classList && el.classList.contains('app-body')) { scrollEl = el; break; }
-        el = el.parentElement;
-      }
-      if (!scrollEl) scrollEl = getScrollEl();
       if (diff > 10 && scrollEl && scrollEl.scrollTop <= 0) {
         pullingRef.current = true;
         e.preventDefault();
