@@ -405,7 +405,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               centerText = res.matchResultText || `${score1}-${score2}`;
               centerColor = isTied ? K.t3 : K.t1;
               if (res.attested) { progressLabel = "FINAL"; progressColor = K.grn; }
-              else { progressLabel = "SIGNED"; progressColor = K.warn; }
+              else {
+                progressLabel = attestNeededDispT1 ? "‹ ATTEST" : "ATTEST ›";
+                progressColor = "#3b82f6";
+              }
             } else if (thru > 0) {
               if (dispCum > 0) { centerText = dispCum + "UP"; centerColor = K.matchGrn; }
               else if (dispCum < 0) { centerText = Math.abs(dispCum) + "UP"; centerColor = K.matchGrn; }
@@ -445,11 +448,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   <div style={{ display: "flex", alignItems: "center" }}>
                     {/* Left team */}
                     <div style={{ flex: 1, textAlign: "right", paddingRight: 4, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
-                      {attestNeededDispT1 && (
-                        <div style={{ fontSize: 8, fontWeight: 800, color: "#3b82f6", letterSpacing: .5, display: "flex", alignItems: "center", gap: 2 }}>
-                          <span style={{ fontSize: 10 }}>‹</span> ATTEST
-                        </div>
-                      )}
                       <div style={{ fontSize: 14, fontWeight: t1NameWeight, color: t1NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT1?.player1)}</div>
                       <div style={{ fontSize: 14, fontWeight: t1NameWeight, color: t1NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT1?.player2)}</div>
                     </div>
@@ -484,11 +482,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     </div>
                     {/* Right team */}
                     <div style={{ flex: 1, textAlign: "left", paddingLeft: 4, overflow: "hidden", display: "flex", flexDirection: "column", gap: 3 }}>
-                      {attestNeededDispT2 && (
-                        <div style={{ fontSize: 8, fontWeight: 800, color: "#3b82f6", letterSpacing: .5, display: "flex", alignItems: "center", gap: 2 }}>
-                          ATTEST <span style={{ fontSize: 10 }}>›</span>
-                        </div>
-                      )}
                       <div style={{ fontSize: 14, fontWeight: t2NameWeight, color: t2NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT2?.player1)}</div>
                       <div style={{ fontSize: 14, fontWeight: t2NameWeight, color: t2NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT2?.player2)}</div>
                     </div>
