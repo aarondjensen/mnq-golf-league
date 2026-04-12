@@ -748,84 +748,6 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           </div>
           )}
 
-          {/* Bracket Preview */}
-          {cfg.playoffWeeks > 0 && (cfg.playoffRounds || []).some(r => r.matchups?.length > 0) && (
-          <div>
-            <SubLabel color={K.warn}>Bracket Preview</SubLabel>
-            <Card style={{ padding: 14, overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
-              {(() => {
-                const rounds = cfg.playoffRounds || [];
-                const slotLabel = (mu, side) => {
-                  const type = mu[side + "type"];
-                  const val = mu[side];
-                  if (type === "seed") return val ? `#${val}` : "?";
-                  if (type === "loser") {
-                    if (val === "highestLoser") return "Hi L";
-                    if (val === "nextHighestLoser") return "2nd L";
-                    if (val?.startsWith("loser_")) return `L-M${parseInt(val.split("_")[1]) + 1}`;
-                    return "L ?";
-                  }
-                  if (val === "lowestWinner") return "Low W";
-                  if (val === "nextLowestWinner") return "Next W";
-                  if (val === "lowestSeed") return "Low S";
-                  if (val === "nextLowestSeed") return "2nd S";
-                  if (val?.startsWith("winner_")) return `W-M${parseInt(val.split("_")[1]) + 1}`;
-                  return "?";
-                };
-
-                return (
-                  <div style={{ display: "flex", gap: 10, minWidth: rounds.length > 2 ? rounds.length * 140 + 100 : "auto" }}>
-                    {rounds.map((round, ri) => (
-                      <div key={ri} style={{ flex: 1, minWidth: 120 }}>
-                        <div style={{ textAlign: "center", marginBottom: 6 }}>
-                          <div style={{ fontSize: 10, fontWeight: 700, color: K.warn, letterSpacing: 1 }}>{round.name || `R${ri + 1}`}</div>
-                          <div style={{ fontSize: 9, color: K.t3 }}>Week {cfg.regularWeeks + ri + 1}</div>
-                        </div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8, justifyContent: "space-around", minHeight: (round.matchups?.length || 1) * 60 }}>
-                          {(round.matchups || []).map((mu, mi) => (
-                            <div key={mi} style={{ display: "flex", alignItems: "center" }}>
-                              <div style={{ flex: 1, background: K.inp, borderRadius: 6, border: `1px solid ${K.bdr}`, overflow: "hidden" }}>
-                                <div style={{ display: "flex", alignItems: "center", padding: "5px 8px", borderBottom: `1px solid ${K.bdr}30` }}>
-                                  <div style={{ width: 18, height: 18, borderRadius: 4, background: mu.s1type === "loser" ? K.red + "20" : K.logoBright + "20", border: `1px solid ${mu.s1type === "loser" ? K.red + "30" : K.logoBright + "30"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 800, color: mu.s1type === "loser" ? K.red : K.logoBright, marginRight: 5, flexShrink: 0 }}>
-                                    {mu.s1type === "seed" ? (mu.s1 || "?") : mu.s1type === "loser" ? "L" : "W"}
-                                  </div>
-                                  <div style={{ fontSize: 10, fontWeight: 600, color: K.t2 }}>{slotLabel(mu, "s1")}</div>
-                                </div>
-                                <div style={{ display: "flex", alignItems: "center", padding: "5px 8px" }}>
-                                  <div style={{ width: 18, height: 18, borderRadius: 4, background: mu.s2type === "loser" ? K.red + "20" : K.logoBright + "20", border: `1px solid ${mu.s2type === "loser" ? K.red + "30" : K.logoBright + "30"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 800, color: mu.s2type === "loser" ? K.red : K.logoBright, marginRight: 5, flexShrink: 0 }}>
-                                    {mu.s2type === "seed" ? (mu.s2 || "?") : mu.s2type === "loser" ? "L" : "W"}
-                                  </div>
-                                  <div style={{ fontSize: 10, fontWeight: 600, color: K.t2 }}>{slotLabel(mu, "s2")}</div>
-                                </div>
-                              </div>
-                              {ri < rounds.length - 1 && (
-                                <div style={{ width: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                                  <div style={{ width: 10, height: 2, background: K.bdr + "60" }} />
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                          {(!round.matchups || round.matchups.length === 0) && (
-                            <div style={{ background: K.inp, borderRadius: 6, border: `1px solid ${K.bdr}`, padding: "10px", textAlign: "center", fontSize: 10, color: K.t3 }}>No matches</div>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                    {/* Champion */}
-                    <div style={{ minWidth: 70, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                      <div style={{ fontSize: 10, fontWeight: 700, color: K.gold, letterSpacing: 1, marginBottom: 4 }}>Champ</div>
-                      <div style={{ background: K.gold + "10", border: `1.5px solid ${K.gold}30`, borderRadius: 8, padding: "10px 8px", textAlign: "center", width: "100%" }}>
-                        <div style={{ fontSize: 16 }}>🏆</div>
-                        <div style={{ fontSize: 9, color: K.t3, marginTop: 2 }}>TBD</div>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-            </Card>
-          </div>
-          )}
-
           {cfg.playoffWeeks > 0 && (
           <div>
             <SubLabel color={K.teal}>Individual Tournament</SubLabel>
@@ -841,6 +763,119 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           </div>
           )}
         </div>
+
+        {/* Bracket Preview — full width, outside the grid */}
+        {cfg.playoffWeeks > 0 && (cfg.playoffRounds || []).some(r => r.matchups?.length > 0) && (
+        <div style={{ marginTop: 12 }}>
+          <SubLabel color={K.warn}>Bracket Preview</SubLabel>
+          <Card style={{ padding: 10 }}>
+            {(() => {
+              const rounds = cfg.playoffRounds || [];
+              const slotLabel = (mu, side) => {
+                const type = mu[side + "type"];
+                const val = mu[side];
+                if (type === "seed") return val ? `#${val}` : "?";
+                if (type === "loser") {
+                  if (val === "highestLoser") return "Hi L";
+                  if (val === "nextHighestLoser") return "2nd L";
+                  if (val?.startsWith("loser_")) return `L${parseInt(val.split("_")[1]) + 1}`;
+                  return "L?";
+                }
+                if (val === "lowestWinner") return "Lo W";
+                if (val === "nextLowestWinner") return "Nxt W";
+                if (val === "lowestSeed") return "Lo S";
+                if (val === "nextLowestSeed") return "2nd S";
+                if (val?.startsWith("winner_")) return `W${parseInt(val.split("_")[1]) + 1}`;
+                return "?";
+              };
+              const badgeLetter = (mu, side) => {
+                const type = mu[side + "type"];
+                if (type === "seed") return mu[side] || "?";
+                if (type === "loser") return "L";
+                return "W";
+              };
+              const badgeColor = (mu, side) => mu[side + "type"] === "loser" ? K.red : K.logoBright;
+
+              // Compute converging layout
+              const cardH = 44; // compact card height
+              const baseGap = 6;
+
+              return (
+                <div style={{ display: "flex", alignItems: "flex-start" }}>
+                  {rounds.map((round, ri) => {
+                    const matchCount = round.matchups?.length || 0;
+                    const gap = ri === 0 ? baseGap : baseGap + (cardH + baseGap) * (Math.pow(2, ri) - 1);
+                    const topPad = ri === 0 ? 0 : (gap - baseGap) / 2;
+
+                    return (
+                      <div key={ri} style={{ flex: 1, minWidth: 0 }}>
+                        {/* Round header */}
+                        <div style={{ textAlign: "center", marginBottom: 4, height: 28 }}>
+                          <div style={{ fontSize: 9, fontWeight: 700, color: K.warn, letterSpacing: .8 }}>{round.name || `R${ri + 1}`}</div>
+                          <div style={{ fontSize: 8, color: K.t3 }}>Wk {cfg.regularWeeks + ri + 1}</div>
+                        </div>
+                        {/* Matchups */}
+                        <div style={{ paddingTop: topPad }}>
+                          {matchCount > 0 ? (round.matchups || []).map((mu, mi) => (
+                            <div key={mi} style={{ marginBottom: mi < matchCount - 1 ? gap : 0 }}>
+                              <div style={{ display: "flex", alignItems: "center" }}>
+                                {ri > 0 && <div style={{ width: 8, height: 2, background: K.bdr + "50", flexShrink: 0 }} />}
+                                <div style={{ flex: 1, minWidth: 0, background: K.inp, borderRadius: 4, border: `1px solid ${K.bdr}`, overflow: "hidden" }}>
+                                  <div style={{ display: "flex", alignItems: "center", padding: "3px 5px", borderBottom: `1px solid ${K.bdr}30`, gap: 4 }}>
+                                    <div style={{ width: 14, height: 14, borderRadius: 3, background: badgeColor(mu, "s1") + "20", border: `1px solid ${badgeColor(mu, "s1")}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, fontWeight: 800, color: badgeColor(mu, "s1"), flexShrink: 0 }}>{badgeLetter(mu, "s1")}</div>
+                                    <div style={{ fontSize: 9, fontWeight: 600, color: K.t2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{slotLabel(mu, "s1")}</div>
+                                  </div>
+                                  <div style={{ display: "flex", alignItems: "center", padding: "3px 5px", gap: 4 }}>
+                                    <div style={{ width: 14, height: 14, borderRadius: 3, background: badgeColor(mu, "s2") + "20", border: `1px solid ${badgeColor(mu, "s2")}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, fontWeight: 800, color: badgeColor(mu, "s2"), flexShrink: 0 }}>{badgeLetter(mu, "s2")}</div>
+                                    <div style={{ fontSize: 9, fontWeight: 600, color: K.t2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{slotLabel(mu, "s2")}</div>
+                                  </div>
+                                </div>
+                                {ri < rounds.length - 1 && (
+                                  <div style={{ width: 8, flexShrink: 0, position: "relative", height: cardH }}>
+                                    <div style={{ position: "absolute", top: "50%", left: 0, width: 4, height: 2, background: K.bdr + "50" }} />
+                                    {(() => {
+                                      const isTop = mi % 2 === 0;
+                                      const pairSize = (cardH + gap) / 2;
+                                      if (isTop && mi + 1 < matchCount) {
+                                        return <>
+                                          <div style={{ position: "absolute", top: "50%", left: 4, width: 2, height: pairSize, background: K.bdr + "50" }} />
+                                          <div style={{ position: "absolute", top: `calc(50% + ${pairSize}px)`, left: 4, width: 4, height: 2, background: K.bdr + "50" }} />
+                                        </>;
+                                      } else if (!isTop) {
+                                        return <div style={{ position: "absolute", bottom: "50%", left: 4, width: 2, height: pairSize, background: K.bdr + "50" }} />;
+                                      }
+                                      if (matchCount === 1) return <div style={{ position: "absolute", top: "50%", left: 4, width: 4, height: 2, background: K.bdr + "50" }} />;
+                                      return null;
+                                    })()}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          )) : (
+                            <div style={{ background: K.inp, borderRadius: 4, border: `1px solid ${K.bdr}`, padding: 8, textAlign: "center", fontSize: 9, color: K.t3 }}>—</div>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {/* Champion */}
+                  <div style={{ width: 50, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
+                    <div style={{ height: 28 }} />
+                    <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
+                      <div style={{ display: "flex", alignItems: "center" }}>
+                        <div style={{ width: 8, height: 2, background: K.bdr + "50" }} />
+                        <div style={{ background: K.gold + "10", border: `1.5px solid ${K.gold}30`, borderRadius: 6, padding: "6px 4px", textAlign: "center" }}>
+                          <div style={{ fontSize: 14 }}>🏆</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </Card>
+        </div>
+        )}
 
         <button onClick={generate} disabled={generating || teams.length < 2} style={{ width: "100%", padding: 14, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: generating ? .6 : 1, marginTop: 16 }}>
           {generating ? "Generating..." : "Generate Schedule"}
