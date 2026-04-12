@@ -698,7 +698,44 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 updateRound("matchups", m);
               };
 
-              const selectStyle = { padding: "6px 4px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 12, flex: 1 };
+              const selectStyle = { padding: "6px 4px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 12, flex: 1, minWidth: 0 };
+              const typeStyle = { ...selectStyle, flex: "none", width: 52, fontSize: 11 };
+
+              const SlotSelect = ({ type, val, onTypeChange, onValChange }) => (
+                <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+                  <select value={type} onChange={e => onTypeChange(e.target.value)} style={typeStyle}>
+                    <option value="seed">Seed</option>
+                    {ri > 0 && <option value="winner">Win</option>}
+                    {ri > 0 && <option value="loser">Loss</option>}
+                  </select>
+                  {type === "seed" ? (
+                    <select value={val} onChange={e => onValChange(parseInt(e.target.value) || "")} style={selectStyle}>
+                      <option value="">—</option>
+                      {seedOptions.map(s => <option key={s} value={s}>#{s}</option>)}
+                    </select>
+                  ) : type === "loser" ? (
+                    <select value={val} onChange={e => onValChange(e.target.value)} style={selectStyle}>
+                      <option value="">—</option>
+                      <option value="highestLoser">High seed loser</option>
+                      <option value="nextHighestLoser">2nd high loser</option>
+                      {prevWinnerCount > 0 && Array.from({ length: prevWinnerCount }, (_, i) => (
+                        <option key={i} value={`loser_${i}`}>Loser M{i + 1}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <select value={val} onChange={e => onValChange(e.target.value)} style={selectStyle}>
+                      <option value="">—</option>
+                      <option value="lowestWinner">Low winner</option>
+                      <option value="lowestSeed">Low rem. seed</option>
+                      <option value="nextLowestWinner">2nd low winner</option>
+                      <option value="nextLowestSeed">2nd low seed</option>
+                      {prevWinnerCount > 0 && Array.from({ length: prevWinnerCount }, (_, i) => (
+                        <option key={i} value={`winner_${i}`}>Winner M{i + 1}</option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              );
 
               return (
                 <Card key={ri} style={{ padding: 12, marginBottom: 8 }}>
@@ -706,73 +743,17 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                     <input value={round.name} onChange={e => updateRound("name", e.target.value)} style={{ padding: "4px 8px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.warn, fontSize: 13, fontWeight: 700, flex: 1, maxWidth: 200 }} />
                     <span style={{ fontSize: 10, color: K.t3 }}>Week {roundWeekNum}</span>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {round.matchups.map((mu, mi) => (
-                      <div key={mi} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                        <select value={mu.s1type} onChange={e => updateMatchup(mi, "s1type", e.target.value)} style={{ ...selectStyle, flex: "none", width: 55 }}>
-                          <option value="seed">Seed</option>
-                          {ri > 0 && <option value="winner">Winner</option>}
-                          {ri > 0 && <option value="loser">Loser</option>}
-                        </select>
-                        {mu.s1type === "seed" ? (
-                          <select value={mu.s1} onChange={e => updateMatchup(mi, "s1", parseInt(e.target.value) || "")} style={selectStyle}>
-                            <option value="">—</option>
-                            {seedOptions.map(s => <option key={s} value={s}>#{s}</option>)}
-                          </select>
-                        ) : mu.s1type === "loser" ? (
-                          <select value={mu.s1} onChange={e => updateMatchup(mi, "s1", e.target.value)} style={selectStyle}>
-                            <option value="">—</option>
-                            <option value="highestLoser">Highest seed loser</option>
-                            <option value="nextHighestLoser">2nd highest loser</option>
-                            {prevWinnerCount > 0 && Array.from({ length: prevWinnerCount }, (_, i) => (
-                              <option key={i} value={`loser_${i}`}>Loser match {i + 1}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <select value={mu.s1} onChange={e => updateMatchup(mi, "s1", e.target.value)} style={selectStyle}>
-                            <option value="">—</option>
-                            <option value="lowestWinner">Lowest winner</option>
-                            <option value="lowestSeed">Lowest remaining seed</option>
-                            <option value="nextLowestWinner">Next lowest winner</option>
-                            <option value="nextLowestSeed">2nd lowest remaining seed</option>
-                            {prevWinnerCount > 0 && Array.from({ length: prevWinnerCount }, (_, i) => (
-                              <option key={i} value={`winner_${i}`}>Winner match {i + 1}</option>
-                            ))}
-                          </select>
-                        )}
-                        <span style={{ fontSize: 11, color: K.t3, fontWeight: 700, flexShrink: 0 }}>vs</span>
-                        <select value={mu.s2type} onChange={e => updateMatchup(mi, "s2type", e.target.value)} style={{ ...selectStyle, flex: "none", width: 55 }}>
-                          <option value="seed">Seed</option>
-                          {ri > 0 && <option value="winner">Winner</option>}
-                          {ri > 0 && <option value="loser">Loser</option>}
-                        </select>
-                        {mu.s2type === "seed" ? (
-                          <select value={mu.s2} onChange={e => updateMatchup(mi, "s2", parseInt(e.target.value) || "")} style={selectStyle}>
-                            <option value="">—</option>
-                            {seedOptions.map(s => <option key={s} value={s}>#{s}</option>)}
-                          </select>
-                        ) : mu.s2type === "loser" ? (
-                          <select value={mu.s2} onChange={e => updateMatchup(mi, "s2", e.target.value)} style={selectStyle}>
-                            <option value="">—</option>
-                            <option value="highestLoser">Highest seed loser</option>
-                            <option value="nextHighestLoser">2nd highest loser</option>
-                            {prevWinnerCount > 0 && Array.from({ length: prevWinnerCount }, (_, i) => (
-                              <option key={i} value={`loser_${i}`}>Loser match {i + 1}</option>
-                            ))}
-                          </select>
-                        ) : (
-                          <select value={mu.s2} onChange={e => updateMatchup(mi, "s2", e.target.value)} style={selectStyle}>
-                            <option value="">—</option>
-                            <option value="lowestWinner">Lowest winner</option>
-                            <option value="lowestSeed">Lowest remaining seed</option>
-                            <option value="nextLowestWinner">Next lowest winner</option>
-                            <option value="nextLowestSeed">2nd lowest remaining seed</option>
-                            {prevWinnerCount > 0 && Array.from({ length: prevWinnerCount }, (_, i) => (
-                              <option key={i} value={`winner_${i}`}>Winner match {i + 1}</option>
-                            ))}
-                          </select>
-                        )}
-                        <button onClick={() => removeMatchup(mi)} style={{ background: "none", border: "none", color: K.t3, fontSize: 14, cursor: "pointer", padding: "0 4px", flexShrink: 0 }}>✕</button>
+                      <div key={mi} style={{ background: K.inp, borderRadius: 8, padding: "8px 8px 8px 10px", border: `1px solid ${K.bdr}30` }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <SlotSelect type={mu.s1type} val={mu.s1} onTypeChange={v => updateMatchup(mi, "s1type", v)} onValChange={v => updateMatchup(mi, "s1", v)} />
+                          </div>
+                          <button onClick={() => removeMatchup(mi)} style={{ background: "none", border: "none", color: K.t3, fontSize: 13, cursor: "pointer", padding: "0 2px", flexShrink: 0, lineHeight: 1 }}>✕</button>
+                        </div>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: K.t3, textAlign: "center", padding: "3px 0", letterSpacing: 1 }}>VS</div>
+                        <SlotSelect type={mu.s2type} val={mu.s2} onTypeChange={v => updateMatchup(mi, "s2type", v)} onValChange={v => updateMatchup(mi, "s2", v)} />
                       </div>
                     ))}
                   </div>
