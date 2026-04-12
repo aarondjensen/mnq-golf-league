@@ -847,6 +847,9 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                                       })()}
                                     </div>
                                   )}
+                                  {ri === rounds.length - 1 && mc === 1 && (
+                                    <div style={{ fontSize: 14, marginLeft: 6, flexShrink: 0 }}>🏆</div>
+                                  )}
                                 </div>
                               </div>
                             )) : <div style={{ background: K.inp, borderRadius: 4, border: `1px solid ${K.bdr}`, padding: 8, textAlign: "center", fontSize: 9, color: K.t3 }}>—</div>}
@@ -854,12 +857,6 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                         </div>
                       );
                     })}
-                    <div style={{ width: 50, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
-                      <div style={{ height: 28 }} />
-                      <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
-                        <div style={{ display: "flex", alignItems: "center" }}><div style={{ width: 8, height: 2, background: K.bdr + "50" }} /><div style={{ background: K.gold + "10", border: `1.5px solid ${K.gold}30`, borderRadius: 6, padding: "6px 4px", textAlign: "center" }}><div style={{ fontSize: 14 }}>🏆</div></div></div>
-                      </div>
-                    </div>
                   </div>
                 );
               })()}
