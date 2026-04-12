@@ -1561,6 +1561,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       </div>
     );
   }
+}
+
 
 function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfig, onBack }) {
   const [lc, setLc] = useState({ ...scoring });
