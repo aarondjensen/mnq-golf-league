@@ -674,7 +674,6 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                   <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                     {round.matchups.map((mu, mi) => (
                       <div key={mi} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                        {/* Seed 1 */}
                         <select value={mu.s1type} onChange={e => updateMatchup(mi, "s1type", e.target.value)} style={{ ...selectStyle, flex: "none", width: 55 }}>
                           <option value="seed">Seed</option>
                           {ri > 0 && <option value="winner">Winner</option>}
@@ -695,7 +694,6 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                           </select>
                         )}
                         <span style={{ fontSize: 11, color: K.t3, fontWeight: 700, flexShrink: 0 }}>vs</span>
-                        {/* Seed 2 */}
                         <select value={mu.s2type} onChange={e => updateMatchup(mi, "s2type", e.target.value)} style={{ ...selectStyle, flex: "none", width: 55 }}>
                           <option value="seed">Seed</option>
                           {ri > 0 && <option value="winner">Winner</option>}
