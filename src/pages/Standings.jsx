@@ -1,5 +1,5 @@
-import { useState, useMemo, useCallback, useRef } from "react";
-import { K, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, CHEVRON_SIZE } from "../theme";
+import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, CHEVRON_SIZE, calcCourseHandicap, calcNineHandicap } from "../theme";
 
 // Mini ScoreCell for scorecard expansion
 function MiniScoreCell({ score, par, size = 11 }) {
@@ -79,13 +79,311 @@ function buildStandings(teams, results, isRecord, tiebreaker) {
   return arr;
 }
 
+
+// ════════════════════════════════════════════════════════════
+//  PLAYOFF BRACKET VIEW
+// ════════════════════════════════════════════════════════════
+function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
+  const regWeeks = leagueConfig?.regularWeeks || 14;
+  const playoffRounds = leagueConfig?.playoffRounds || [];
+  const playoffWeeks = schedule.filter(wk => wk.isPlayoff === true && !wk.rainedOut).sort((a, b) => a.week - b.week);
+
+  const gn = (id) => lastNamesOnly(teams.find(t => t.id === id)?.name || "TBD");
+
+  if (!playoffRounds.length) {
+    return <EmptyState icon="trophy" title="No playoff bracket configured" subtitle="Commissioner can set up playoff rounds in Admin → Schedule → Edit Setup." />;
+  }
+
+  return (
+    <div style={{ padding: "0 2px" }}>
+      {playoffRounds.map((round, ri) => {
+        const roundWeek = playoffWeeks[ri];
+        const roundResults = roundWeek ? matchResults.filter(r => r.week === roundWeek.week) : [];
+        const isLocked = roundWeek?.locked === true;
+
+        return (
+          <div key={ri} style={{ marginBottom: 16 }}>
+            {/* Round header */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: K.warn, letterSpacing: 1, flex: 1 }}>
+                {round.name || `Round ${ri + 1}`}
+              </div>
+              {roundWeek && <span style={{ fontSize: 11, color: K.t3 }}>Week {roundWeek.week} · {roundWeek.date || ""}</span>}
+              {isLocked && <Pill color={K.grn} style={{ fontSize: 7 }}>Final</Pill>}
+            </div>
+
+            {/* Matchups */}
+            {roundWeek?.matches?.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
+                {roundWeek.matches.map((m, mi) => {
+                  const res = roundResults.find(r => r.team1Id === m.team1 && r.team2Id === m.team2);
+                  const t1Pts = res?.team1Points || 0;
+                  const t2Pts = res?.team2Points || 0;
+                  const t1Won = res && t1Pts > t2Pts;
+                  const t2Won = res && t2Pts > t1Pts;
+                  const tied = res && t1Pts === t2Pts;
+                  const resultText = res?.matchResultText || (res ? `${t1Pts}-${t2Pts}` : "");
+
+                  return (
+                    <div key={mi} style={{ background: K.card, borderRadius: CARD_RADIUS, border: `1px solid ${K.bdr}`, overflow: "hidden" }}>
+                      {/* Team 1 */}
+                      <div style={{
+                        display: "flex", alignItems: "center", padding: "10px 14px",
+                        background: t1Won ? K.matchGrn + "15" : "transparent",
+                        borderLeft: t1Won ? `3px solid ${K.matchGrn}` : "3px solid transparent",
+                      }}>
+                        <div style={{ flex: 1, fontSize: 14, fontWeight: 700, color: t1Won ? K.t1 : t2Won ? K.t3 : K.t1 }}>
+                          {gn(m.team1)}
+                        </div>
+                        {res && <div style={{ fontSize: 14, fontWeight: 800, color: t1Won ? K.matchGrn : K.t3 }}>{t1Pts}</div>}
+                      </div>
+                      {/* Divider with result */}
+                      <div style={{ display: "flex", alignItems: "center", padding: "0 14px", background: K.inp, height: 24 }}>
+                        <div style={{ flex: 1, height: 1, background: K.bdr + "40" }} />
+                        {res && (
+                          <span style={{ fontSize: 10, fontWeight: 700, color: K.acc, padding: "0 10px", letterSpacing: 1 }}>
+                            {tied ? "TIED" : resultText}
+                          </span>
+                        )}
+                        {!res && <span style={{ fontSize: 10, color: K.t3, padding: "0 10px" }}>VS</span>}
+                        <div style={{ flex: 1, height: 1, background: K.bdr + "40" }} />
+                      </div>
+                      {/* Team 2 */}
+                      <div style={{
+                        display: "flex", alignItems: "center", padding: "10px 14px",
+                        background: t2Won ? K.matchGrn + "15" : "transparent",
+                        borderLeft: t2Won ? `3px solid ${K.matchGrn}` : "3px solid transparent",
+                      }}>
+                        <div style={{ flex: 1, fontSize: 14, fontWeight: 700, color: t2Won ? K.t1 : t1Won ? K.t3 : K.t1 }}>
+                          {gn(m.team2)}
+                        </div>
+                        {res && <div style={{ fontSize: 14, fontWeight: 800, color: t2Won ? K.matchGrn : K.t3 }}>{t2Pts}</div>}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div style={{ background: K.card, borderRadius: CARD_RADIUS, border: `1px solid ${K.bdr}`, padding: "16px", textAlign: "center" }}>
+                <div style={{ fontSize: 12, color: K.t3 }}>
+                  {round.matchups?.length > 0 ? "Matchups determined by standings — TBD" : "No matchups configured"}
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+
+// ════════════════════════════════════════════════════════════
+//  INDIVIDUAL TOURNAMENT VIEW
+// ════════════════════════════════════════════════════════════
+function IndividualEventView({ players, teams, schedule, course, leagueConfig, fetchWeekScores }) {
+  const [scores, setScores] = useState({});
+  const [loading, setLoading] = useState(true);
+  const fetched = useRef(false);
+
+  // Find playoff weeks
+  const playoffWeeks = useMemo(() =>
+    schedule.filter(wk => wk.isPlayoff === true && !wk.rainedOut && wk.matches?.length > 0)
+      .sort((a, b) => a.week - b.week),
+    [schedule]
+  );
+
+  // Fetch scores for all playoff weeks
+  useEffect(() => {
+    if (fetched.current || !playoffWeeks.length || !fetchWeekScores) return;
+    fetched.current = true;
+    (async () => {
+      const all = {};
+      for (const wk of playoffWeeks) {
+        const wkScores = await fetchWeekScores(wk.week);
+        Object.assign(all, wkScores);
+      }
+      setScores(all);
+      setLoading(false);
+    })();
+  }, [playoffWeeks, fetchWeekScores]);
+
+  // Build leaderboard: each player's net total across playoff rounds
+  const leaderboard = useMemo(() => {
+    if (!course || !players.length) return [];
+
+    const teeBoxes = course.teeBoxes || [];
+    const frontPars = course.frontPars || [];
+    const backPars = course.backPars || [];
+    const frontPar = frontPars.reduce((a, b) => a + b, 0);
+    const backPar = backPars.reduce((a, b) => a + b, 0);
+
+    const board = players.map(p => {
+      const teeBox = teeBoxes.find(t => t.name === p.teeBox) || teeBoxes[0] || {};
+      const par9 = 36; // standard 9-hole par placeholder
+      const ch = calcCourseHandicap(p.handicapIndex || 0, teeBox.slope || 113, teeBox.rating || 36, par9);
+      const nineHcp = calcNineHandicap(ch);
+
+      let totalGross = 0;
+      let totalNet = 0;
+      let roundsPlayed = 0;
+      const rounds = [];
+
+      for (const wk of playoffWeeks) {
+        const side = wk.side || 'front';
+        const pars = side === 'front' ? frontPars : backPars;
+        const parTotal = pars.reduce((a, b) => a + b, 0);
+
+        let gross = 0;
+        let hasScores = false;
+        for (let h = 1; h <= 9; h++) {
+          const key = `w${wk.week}_p${p.id}_h${h}`;
+          const s = scores[key];
+          if (s && s > 0) { gross += s; hasScores = true; }
+        }
+
+        if (hasScores) {
+          const net = gross - nineHcp;
+          totalGross += gross;
+          totalNet += net;
+          roundsPlayed++;
+          rounds.push({ week: wk.week, date: wk.date, side, gross, net, parTotal, toPar: net - parTotal });
+        }
+      }
+
+      // Find team for display
+      const team = teams.find(t => t.player1 === p.id || t.player2 === p.id);
+
+      return {
+        playerId: p.id,
+        name: p.name,
+        teamName: team ? lastNamesOnly(team.name) : "",
+        handicapIndex: p.handicapIndex || 0,
+        nineHcp,
+        totalGross,
+        totalNet,
+        roundsPlayed,
+        rounds,
+      };
+    }).filter(p => p.roundsPlayed > 0 || playoffWeeks.length > 0);
+
+    // Sort by total net (lowest first), then gross as tiebreaker
+    board.sort((a, b) => {
+      if (a.roundsPlayed === 0 && b.roundsPlayed === 0) return a.name.localeCompare(b.name);
+      if (a.roundsPlayed === 0) return 1;
+      if (b.roundsPlayed === 0) return -1;
+      if (a.totalNet !== b.totalNet) return a.totalNet - b.totalNet;
+      return a.totalGross - b.totalGross;
+    });
+
+    return board;
+  }, [players, teams, course, playoffWeeks, scores]);
+
+  if (loading && playoffWeeks.length > 0) {
+    return <div style={{ textAlign: "center", padding: 40, color: K.t3, fontSize: 13 }} className="pu">Loading scores...</div>;
+  }
+
+  if (!playoffWeeks.length) {
+    return <EmptyState icon="flag" title="No playoff rounds played yet" subtitle="The individual tournament runs alongside the playoff weeks." />;
+  }
+
+  const leaderName = leaderboard[0]?.roundsPlayed > 0 ? leaderboard[0].name.split(" ").pop() : null;
+
+  return (
+    <div style={{ padding: "0 2px" }}>
+      {/* Header */}
+      <div style={{ fontSize: 11, color: K.t3, marginBottom: 10, textAlign: "center" }}>
+        Net stroke play · {playoffWeeks.length} round{playoffWeeks.length !== 1 ? "s" : ""} · All players
+      </div>
+
+      {/* Leaderboard */}
+      <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
+        {/* Column header */}
+        <div style={{ display: "flex", padding: "0 14px", fontSize: 9, fontWeight: 700, color: K.logoBright, textTransform: "uppercase", letterSpacing: .8 }}>
+          <div style={{ width: 28 }} />
+          <div style={{ flex: 1 }}>Player</div>
+          <div style={{ width: 36, textAlign: "center" }}>HCP</div>
+          {playoffWeeks.map((wk, i) => (
+            <div key={i} style={{ width: 36, textAlign: "center" }}>R{i + 1}</div>
+          ))}
+          <div style={{ width: 44, textAlign: "right" }}>Net</div>
+        </div>
+
+        {leaderboard.map((p, i) => {
+          const mc = i === 0 ? K.gold : i === 1 ? K.silver : i === 2 ? K.bronze : K.logoBright;
+          const hasRounds = p.roundsPlayed > 0;
+
+          return (
+            <div key={p.playerId} style={{
+              display: "flex", alignItems: "center", background: K.card,
+              borderRadius: CARD_RADIUS, border: `1px solid ${i === 0 && hasRounds ? K.act + "30" : K.bdr}`,
+              padding: "10px 14px",
+            }}>
+              {/* Rank */}
+              <div style={{ width: 28, flexShrink: 0 }}>
+                {hasRounds && (
+                  <div style={{
+                    width: 22, height: 22, borderRadius: 6,
+                    background: i < 3 ? mc + "20" : K.logoBright + "20",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 11, fontWeight: 800, color: mc,
+                    border: i < 3 ? `1.5px solid ${mc}40` : `1.5px solid ${K.logoBright}30`,
+                  }}>{i + 1}</div>
+                )}
+              </div>
+
+              {/* Name */}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: K.t1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {p.name.split(" ").pop()}
+                </div>
+              </div>
+
+              {/* Handicap */}
+              <div style={{ width: 36, textAlign: "center", fontSize: 11, color: K.t3 }}>{p.nineHcp}</div>
+
+              {/* Round scores */}
+              {playoffWeeks.map((wk, wi) => {
+                const round = p.rounds.find(r => r.week === wk.week);
+                return (
+                  <div key={wi} style={{ width: 36, textAlign: "center", fontSize: 12, fontWeight: 600, color: round ? K.t1 : K.t3 + "40" }}>
+                    {round ? round.net : "–"}
+                  </div>
+                );
+              })}
+
+              {/* Total net */}
+              <div style={{ width: 44, textAlign: "right", fontSize: HERO_NUM_SIZE - 4, fontWeight: HERO_NUM_WEIGHT, color: hasRounds ? K.t1 : K.t3, fontFamily: "'League Spartan', sans-serif" }}>
+                {hasRounds ? p.totalNet : "–"}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+
+// ════════════════════════════════════════════════════════════
+//  MAIN STANDINGS VIEW
+// ════════════════════════════════════════════════════════════
 export default function StandingsView({ teams, players, matchResults, leagueConfig, schedule, fetchSeasonScores, course, fetchWeekScores }) {
   const isRecord = leagueConfig?.standingsMethod === "record";
   const tiebreaker = leagueConfig?.tiebreaker || "holesWon";
   const [expanded, setExpanded] = useState(null);
-  const [expandedResult, setExpandedResult] = useState(null); // "teamId_week" for scorecard
-  const [weekScores, setWeekScores] = useState({}); // { week: { key: score } }
+  const [expandedResult, setExpandedResult] = useState(null);
+  const [weekScores, setWeekScores] = useState({});
   const expandedRef = useRef(null);
+
+  // Determine if playoffs have started (any playoff week has matches)
+  const playoffsStarted = useMemo(() =>
+    schedule.some(wk => wk.isPlayoff === true && wk.matches?.length > 0 && !wk.rainedOut),
+    [schedule]
+  );
+
+  const hasIndividualEvent = leagueConfig?.individualEvent !== false; // default on
+  const [view, setView] = useState("standings"); // "standings" | "bracket" | "individual"
 
   const handleExpand = (teamId) => {
     const next = expanded === teamId ? null : teamId;
@@ -161,7 +459,6 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
           ? (isTeam1 ? r.t1HolesWon : r.t2HolesWon)
           : 0;
 
-        // Build result display: W/L shows match result text, T always shows TIED
         let resultDisplay = wResult;
         if (wResult === "T") {
           resultDisplay = "TIED";
@@ -174,7 +471,6 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
         return { week: r.week, date: wk?.date || "", oppName: lastNamesOnly(opp?.name || "TBD"), myPts, oppPts, result: wResult, holesWon, resultDisplay, matchResult: r, rainedOut: false };
       });
 
-    // Add rained-out weeks
     const rainRows = schedule
       .filter(wk => wk.rainedOut && wk.week > 0)
       .map(wk => ({
@@ -199,74 +495,47 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     const myTeam = teams.find(t => t.id === teamId);
     const oppTeamId = mr.team1Id === teamId ? mr.team2Id : mr.team1Id;
     const oppTeam = teams.find(t => t.id === oppTeamId);
+    const myPids = myTeam ? [myTeam.player1, myTeam.player2].filter(Boolean) : [];
+    const oppPids = oppTeam ? [oppTeam.player1, oppTeam.player2].filter(Boolean) : [];
     const isT1 = mr.team1Id === teamId;
-    const myPids = isT1 ? [myTeam?.player1, myTeam?.player2].filter(Boolean) : [myTeam?.player1, myTeam?.player2].filter(Boolean);
-    const oppPids = isT1 ? [oppTeam?.player1, oppTeam?.player2].filter(Boolean) : [oppTeam?.player1, oppTeam?.player2].filter(Boolean);
-    // Raw team IDs for score lookup
-    const t1Pids = [teams.find(t => t.id === mr.team1Id)?.player1, teams.find(t => t.id === mr.team1Id)?.player2].filter(Boolean);
-    const t2Pids = [teams.find(t => t.id === mr.team2Id)?.player1, teams.find(t => t.id === mr.team2Id)?.player2].filter(Boolean);
-    const topPids = isT1 ? t1Pids : t2Pids;
-    const botPids = isT1 ? t2Pids : t1Pids;
+    const topPids = isT1 ? myPids : oppPids;
+    const botPids = isT1 ? oppPids : myPids;
+    const topIsT1 = isT1;
 
-    const getScore = (pid, h) => wkScores[`w${mr.week}_p${pid}_h${h}`] || 0;
-    const sorted = hcps.map((h, i) => ({ idx: i, hcp: h })).sort((a, b) => a.hcp - b.hcp);
-    const getStrokesMap = (nh) => {
-      const map = {}; let rem = Math.abs(nh);
-      for (const h of sorted) { if (rem <= 0) break; map[h.idx] = (map[h.idx] || 0) + 1; rem--; }
-      for (const h of sorted) { if (rem <= 0) break; map[h.idx] = (map[h.idx] || 0) + 1; rem--; }
-      return map;
-    };
-    const getHcp = (pid) => {
-      const p = players.find(pl => pl.id === pid);
-      return p ? Math.round(p.handicapIndex || 0) : 0;
-    };
-    const getStrokes = (pid, h) => getStrokesMap(getHcp(pid))[h] || 0;
-    const getInitials = (pid) => {
-      const p = players.find(pl => pl.id === pid);
-      return p ? p.name.split(' ').map(n => n[0]).join('') : "?";
-    };
-
-    // Hole results from top team perspective
-    const holeResults = [];
-    for (let h = 0; h < 9; h++) {
-      let n1 = 0, n2 = 0;
-      topPids.forEach(pid => { n1 += getScore(pid, h) - getStrokes(pid, h); });
-      botPids.forEach(pid => { n2 += getScore(pid, h) - getStrokes(pid, h); });
-      holeResults.push(n1 < n2 ? 1 : n2 < n1 ? -1 : 0);
-    }
-
-    const gridLine = `1px solid ${K.bdr}20`;
-
-    const PlayerRow = ({ pid }) => (
-      <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
-        <div style={{ width: 32, flexShrink: 0, paddingLeft: 3, display: "flex", alignItems: "center", height: 28 }}>
-          <span style={{ fontSize: 10, color: K.t1, fontWeight: 800 }}>{getInitials(pid)}</span>
-          <span style={{ fontSize: 8, color: "#3b82f6", fontWeight: 700, marginLeft: 2 }}>{getHcp(pid)}</span>
+    const PlayerRow = ({ pid }) => {
+      const pl = players.find(p => p.id === pid);
+      const shortName = pl ? pl.name.split(" ").pop() : "?";
+      return (
+        <div style={{ display: "flex", alignItems: "center" }}>
+          <div style={{ width: 32, flexShrink: 0, fontSize: 9, color: K.t3, paddingLeft: 3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{shortName}</div>
+          {Array.from({ length: 9 }, (_, i) => {
+            const hole = i + 1;
+            const key = `w${mr.week}_p${pid}_h${hole}`;
+            const s = wkScores[key];
+            return <div key={i} style={{ flex: 1, display: "flex", justifyContent: "center" }}><MiniScoreCell score={s} par={pars[i]} /></div>;
+          })}
         </div>
-        {Array.from({ length: 9 }, (_, h) => {
-          const s = getScore(pid, h);
-          return <div key={h} style={{ flex: 1, height: 28, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? gridLine : "none" }}>
-            <MiniScoreCell score={s} par={pars[h]} size={11} />
-          </div>;
-        })}
-      </div>
-    );
+      );
+    };
 
-    const TeamRow = ({ pids, isTop }) => (
-      <div style={{ display: "flex", alignItems: "center", background: K.act + "08" }}>
-        <div style={{ width: 32, flexShrink: 0, fontSize: 7, color: K.act, fontWeight: 800, paddingLeft: 3, display: "flex", alignItems: "center", height: 22 }}>NET</div>
-        {Array.from({ length: 9 }, (_, h) => {
-          let tNet = 0;
-          pids.forEach(pid => { tNet += getScore(pid, h) - getStrokes(pid, h); });
-          const won = holeResults[h] === (isTop ? 1 : -1);
-          return <div key={h} style={{
-            flex: 1, textAlign: "center", fontSize: 10, fontWeight: 800,
-            color: K.t1, lineHeight: "22px", borderRight: won ? "none" : gridLine,
-            ...(won ? { background: K.bg, border: `1px solid ${K.act}`, borderRadius: 2, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
-          }}>{tNet}</div>;
-        })}
-      </div>
-    );
+    const TeamRow = ({ pids, isTop }) => {
+      const totals = Array.from({ length: 9 }, (_, i) => {
+        const hole = i + 1;
+        let sum = 0; let valid = false;
+        pids.forEach(pid => { const s = wkScores[`w${mr.week}_p${pid}_h${hole}`]; if (s > 0) { sum += s; valid = true; } });
+        return valid ? sum : null;
+      });
+      return (
+        <div style={{ display: "flex", alignItems: "center", background: K.acc + "10" }}>
+          <div style={{ width: 32, flexShrink: 0, fontSize: 8, color: K.acc, fontWeight: 800, paddingLeft: 3 }}>TEAM</div>
+          {totals.map((t, i) => (
+            <div key={i} style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+              <span style={{ fontSize: 10, fontWeight: 700, color: t !== null ? K.t1 : K.t3 + "30" }}>{t !== null ? t : "·"}</span>
+            </div>
+          ))}
+        </div>
+      );
+    };
 
     return (
       <div style={{ margin: "4px 0 2px", borderRadius: 6, overflow: "hidden", border: `1px solid ${K.bdr}30`, paddingBottom: 2 }}>
@@ -291,116 +560,154 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   const wltCol = { width: 22, textAlign: "center", fontFamily: "'League Spartan', sans-serif" };
   const wltDash = { width: 8, textAlign: "center", color: K.t3 };
 
+  // ── Toggle pills (only show once playoffs have started) ──
+  const tabs = [
+    { id: "standings", label: "Standings" },
+    ...(playoffsStarted ? [{ id: "bracket", label: "Playoff Bracket" }] : []),
+    ...(playoffsStarted && hasIndividualEvent ? [{ id: "individual", label: "Individual Event" }] : []),
+  ];
+
   return (
     <div style={{ padding: "0 2px" }}>
-      <div className="standings-grid" style={{ gap: LIST_GAP }}>
-        {standings.map((s, i) => {
-          const team = gt(s.teamId); if (!team) return null;
-          const mc = i === 0 ? K.gold : i === 1 ? K.silver : i === 2 ? K.bronze : K.logoBright;
-          const isExp = expanded === s.teamId;
-          const results = isExp ? getTeamResults(s.teamId) : [];
-          const curPos = i + 1;
-          const prevPos = prevPositionMap[s.teamId];
-          const posChange = (prevPos && latestLockedWeek > 0) ? prevPos - curPos : null;
+      {/* Toggle pills */}
+      {tabs.length > 1 && (
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+          <div style={{ display: "inline-flex", background: K.inp, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: 3 }}>
+            {tabs.map(t => (
+              <button key={t.id} onClick={() => setView(t.id)} style={{
+                padding: "7px 14px", borderRadius: 6, border: "none", cursor: "pointer",
+                background: view === t.id ? K.card : "transparent",
+                color: view === t.id ? K.t1 : K.t3,
+                fontSize: 11, fontWeight: 700, letterSpacing: .8,
+                boxShadow: view === t.id ? `0 1px 3px ${K.bdr}40` : "none",
+                transition: "all .15s",
+              }}>{t.label}</button>
+            ))}
+          </div>
+        </div>
+      )}
 
-          return (
-            <div key={s.teamId}>
-              <button onClick={() => handleExpand(s.teamId)} style={{
-                display: "flex", alignItems: "center", width: "100%", color: K.t1,
-                background: K.card, borderRadius: isExp ? `${CARD_RADIUS}px ${CARD_RADIUS}px 0 0` : CARD_RADIUS,
-                border: `1px solid ${i === 0 ? K.act + '30' : K.bdr}`,
-                borderBottom: isExp ? "none" : `1px solid ${i === 0 ? K.act + '30' : K.bdr}`,
-                padding: "10px 14px", cursor: "pointer",
-              }}>
-                <div style={{ width: 40, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
-                  <div style={{
-                    width: RANK_BADGE_SIZE, height: RANK_BADGE_SIZE, borderRadius: RANK_BADGE_RADIUS,
-                    background: i < 3 ? mc + "20" : K.logoBright + "20",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: RANK_BADGE_FONT, fontWeight: 800, color: mc,
-                    border: i < 3 ? `1.5px solid ${mc}40` : `1.5px solid ${K.logoBright}30`,
-                  }}>{curPos}</div>
-                  {posChange !== null && posChange !== 0 ? (
-                    <div style={{ fontSize: 10, fontWeight: 700, color: posChange > 0 ? K.matchGrn : K.red, display: "flex", alignItems: "baseline", gap: 1, marginLeft: 3, minWidth: 16, lineHeight: 1 }}>
-                      <span style={{ fontSize: 7, lineHeight: 1 }}>{posChange > 0 ? "▲" : "▼"}</span>
-                      <span style={{ lineHeight: 1 }}>{Math.abs(posChange)}</span>
-                    </div>
-                  ) : (
-                    <div style={{ minWidth: 16, marginLeft: 3 }} />
-                  )}
-                </div>
-                <div style={{ flex: 1, fontSize: NAME_SIZE, fontWeight: NAME_WEIGHT, letterSpacing: .5, textAlign: "left" }}>{lastNamesOnly(team.name)}</div>
-                <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 0 }}>
-                  {isRecord ? (<>
-                    <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.w}</div>
-                    <div style={{ ...wltDash, fontSize: NAME_SIZE, fontWeight: 800 }}>-</div>
-                    <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.l}</div>
-                    <div style={{ ...wltDash, fontSize: NAME_SIZE, fontWeight: 800 }}>-</div>
-                    <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.t}</div>
-                    <div style={{ fontSize: 12, fontWeight: 700, color: "#3b82f6", minWidth: 26, textAlign: "right", marginLeft: 6 }}>{s.hw}</div>
-                  </>) : (<>
-                    <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.w}</div>
-                    <div style={{ ...wltDash, fontSize: 11, color: K.t3 }}>-</div>
-                    <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.l}</div>
-                    <div style={{ ...wltDash, fontSize: 11, color: K.t3 }}>-</div>
-                    <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.t}</div>
-                    <div style={{ fontSize: HERO_NUM_SIZE, fontWeight: HERO_NUM_WEIGHT, color: K.t1, fontFamily: "'League Spartan', sans-serif", minWidth: 30, textAlign: "right", marginLeft: 6 }}>{s.points}</div>
-                  </>)}
-                </div>
-                <div style={{ width: 20, flexShrink: 0, textAlign: "right", color: K.t3, fontSize: CHEVRON_SIZE, marginLeft: 6 }}>{isExp ? "▾" : "›"}</div>
-              </button>
+      {/* Playoff Bracket view */}
+      {view === "bracket" && (
+        <PlayoffBracketView teams={teams} schedule={schedule} matchResults={matchResults} leagueConfig={leagueConfig} />
+      )}
 
-              {isExp && (
-                <div ref={expandedRef} style={{ background: K.inp, border: `1px solid ${i === 0 ? K.act + '30' : K.bdr}`, borderTop: "none", borderRadius: `0 0 ${CARD_RADIUS}px ${CARD_RADIUS}px`, padding: "8px 10px" }}>
-                  <div style={{ display: "flex", padding: "5px 8px", fontSize: 9, color: K.logoBright, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8 }}>
-                    <div style={{ width: 14, flexShrink: 0 }} />
-                    <div style={{ width: 24, flexShrink: 0 }}>Wk</div>
-                    <div style={{ width: 48, flexShrink: 0 }}>Date</div>
-                    <div style={{ flex: 1 }}>Opponent</div>
-                    <div style={{ width: 58, flexShrink: 0, textAlign: "right" }}>Result</div>
-                    <div style={{ width: 28, flexShrink: 0, textAlign: "right" }}>HW</div>
+      {/* Individual Event view */}
+      {view === "individual" && (
+        <IndividualEventView players={players} teams={teams} schedule={schedule} course={course} leagueConfig={leagueConfig} fetchWeekScores={fetchWeekScores} />
+      )}
+
+      {/* Regular standings */}
+      {view === "standings" && (
+        <div className="standings-grid" style={{ gap: LIST_GAP }}>
+          {standings.map((s, i) => {
+            const team = gt(s.teamId); if (!team) return null;
+            const mc = i === 0 ? K.gold : i === 1 ? K.silver : i === 2 ? K.bronze : K.logoBright;
+            const isExp = expanded === s.teamId;
+            const results = isExp ? getTeamResults(s.teamId) : [];
+            const curPos = i + 1;
+            const prevPos = prevPositionMap[s.teamId];
+            const posChange = (prevPos && latestLockedWeek > 0) ? prevPos - curPos : null;
+
+            return (
+              <div key={s.teamId}>
+                <button onClick={() => handleExpand(s.teamId)} style={{
+                  display: "flex", alignItems: "center", width: "100%", color: K.t1,
+                  background: K.card, borderRadius: isExp ? `${CARD_RADIUS}px ${CARD_RADIUS}px 0 0` : CARD_RADIUS,
+                  border: `1px solid ${i === 0 ? K.act + '30' : K.bdr}`,
+                  borderBottom: isExp ? "none" : `1px solid ${i === 0 ? K.act + '30' : K.bdr}`,
+                  padding: "10px 14px", cursor: "pointer",
+                }}>
+                  <div style={{ width: 40, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
+                    <div style={{
+                      width: RANK_BADGE_SIZE, height: RANK_BADGE_SIZE, borderRadius: RANK_BADGE_RADIUS,
+                      background: i < 3 ? mc + "20" : K.logoBright + "20",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: RANK_BADGE_FONT, fontWeight: 800, color: mc,
+                      border: i < 3 ? `1.5px solid ${mc}40` : `1.5px solid ${K.logoBright}30`,
+                    }}>{curPos}</div>
+                    {posChange !== null && posChange !== 0 ? (
+                      <div style={{ fontSize: 10, fontWeight: 700, color: posChange > 0 ? K.matchGrn : K.red, display: "flex", alignItems: "baseline", gap: 1, marginLeft: 3, minWidth: 16, lineHeight: 1 }}>
+                        <span style={{ fontSize: 7, lineHeight: 1 }}>{posChange > 0 ? "▲" : "▼"}</span>
+                        <span style={{ lineHeight: 1 }}>{Math.abs(posChange)}</span>
+                      </div>
+                    ) : (
+                      <div style={{ minWidth: 16, marginLeft: 3 }} />
+                    )}
                   </div>
-                  {results.length === 0 ? (
-                    <div style={{ padding: "10px 8px", fontSize: 12, color: K.t3, fontStyle: "italic" }}>No matches played yet</div>
-                  ) : results.map((r, ri) => {
-                    if (r.rainedOut) {
+                  <div style={{ flex: 1, fontSize: NAME_SIZE, fontWeight: NAME_WEIGHT, letterSpacing: .5, textAlign: "left" }}>{lastNamesOnly(team.name)}</div>
+                  <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 0 }}>
+                    {isRecord ? (<>
+                      <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.w}</div>
+                      <div style={{ ...wltDash, fontSize: NAME_SIZE, fontWeight: 800 }}>-</div>
+                      <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.l}</div>
+                      <div style={{ ...wltDash, fontSize: NAME_SIZE, fontWeight: 800 }}>-</div>
+                      <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.t}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: "#3b82f6", minWidth: 26, textAlign: "right", marginLeft: 6 }}>{s.hw}</div>
+                    </>) : (<>
+                      <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.w}</div>
+                      <div style={{ ...wltDash, fontSize: 11, color: K.t3 }}>-</div>
+                      <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.l}</div>
+                      <div style={{ ...wltDash, fontSize: 11, color: K.t3 }}>-</div>
+                      <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.t}</div>
+                      <div style={{ fontSize: HERO_NUM_SIZE, fontWeight: HERO_NUM_WEIGHT, color: K.t1, fontFamily: "'League Spartan', sans-serif", minWidth: 30, textAlign: "right", marginLeft: 6 }}>{s.points}</div>
+                    </>)}
+                  </div>
+                  <div style={{ width: 20, flexShrink: 0, textAlign: "right", color: K.t3, fontSize: CHEVRON_SIZE, marginLeft: 6 }}>{isExp ? "▾" : "›"}</div>
+                </button>
+
+                {isExp && (
+                  <div ref={expandedRef} style={{ background: K.inp, border: `1px solid ${i === 0 ? K.act + '30' : K.bdr}`, borderTop: "none", borderRadius: `0 0 ${CARD_RADIUS}px ${CARD_RADIUS}px`, padding: "8px 10px" }}>
+                    <div style={{ display: "flex", padding: "5px 8px", fontSize: 9, color: K.logoBright, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8 }}>
+                      <div style={{ width: 14, flexShrink: 0 }} />
+                      <div style={{ width: 24, flexShrink: 0 }}>Wk</div>
+                      <div style={{ width: 48, flexShrink: 0 }}>Date</div>
+                      <div style={{ flex: 1 }}>Opponent</div>
+                      <div style={{ width: 58, flexShrink: 0, textAlign: "right" }}>Result</div>
+                      <div style={{ width: 28, flexShrink: 0, textAlign: "right" }}>HW</div>
+                    </div>
+                    {results.length === 0 ? (
+                      <div style={{ padding: "10px 8px", fontSize: 12, color: K.t3, fontStyle: "italic" }}>No matches played yet</div>
+                    ) : results.map((r, ri) => {
+                      if (r.rainedOut) {
+                        return (
+                          <div key={ri} style={{ display: "flex", alignItems: "center", padding: "7px 8px", borderTop: `1px solid ${K.bdr}30`, fontSize: 12, opacity: 0.5 }}>
+                            <div style={{ width: 14, flexShrink: 0 }} />
+                            <div style={{ width: 24, flexShrink: 0, color: K.t3, fontSize: 11 }}>{r.week}</div>
+                            <div style={{ width: 48, flexShrink: 0, color: K.t3, fontSize: 11 }}>{r.date || "—"}</div>
+                            <div style={{ flex: 1, color: K.warn, fontWeight: 600 }}>RAIN OUT</div>
+                            <div style={{ width: 58, flexShrink: 0 }} />
+                            <div style={{ width: 28, flexShrink: 0 }} />
+                          </div>
+                        );
+                      }
+                      const resKey = `${s.teamId}_${r.week}`;
+                      const isResExp = expandedResult === resKey;
                       return (
-                        <div key={ri} style={{ display: "flex", alignItems: "center", padding: "7px 8px", borderTop: `1px solid ${K.bdr}30`, fontSize: 12, opacity: 0.5 }}>
-                          <div style={{ width: 14, flexShrink: 0 }} />
-                          <div style={{ width: 24, flexShrink: 0, color: K.t3, fontSize: 11 }}>{r.week}</div>
-                          <div style={{ width: 48, flexShrink: 0, color: K.t3, fontSize: 11 }}>{r.date || "—"}</div>
-                          <div style={{ flex: 1, color: K.warn, fontWeight: 600 }}>RAIN OUT</div>
-                          <div style={{ width: 58, flexShrink: 0 }} />
-                          <div style={{ width: 28, flexShrink: 0 }} />
+                        <div key={ri}>
+                          <button onClick={() => toggleResultExpand(s.teamId, r.week)} style={{ display: "flex", alignItems: "center", padding: "7px 8px", fontSize: 12, width: "100%", background: "transparent", border: "none", borderTop: `1px solid ${K.bdr}30`, cursor: "pointer", textAlign: "left" }}>
+                            <div style={{ width: 14, flexShrink: 0, color: K.t3, fontSize: 9 }}>{isResExp ? "▾" : "›"}</div>
+                            <div style={{ width: 24, flexShrink: 0, color: K.t3, fontSize: 11 }}>{r.week}</div>
+                            <div style={{ width: 48, flexShrink: 0, color: K.t3, fontSize: 11 }}>{r.date || "—"}</div>
+                            <div style={{ flex: 1, color: K.t2, fontWeight: 500 }}>{r.oppName}</div>
+                            <div style={{ width: 58, flexShrink: 0, textAlign: "right", fontWeight: 700, fontSize: 11, color: r.result === "W" ? K.matchGrn : r.result === "L" ? K.red : K.t2 }}>{r.resultDisplay}</div>
+                            <div style={{ width: 28, flexShrink: 0, textAlign: "right", color: "#3b82f6", fontWeight: 700 }}>{r.holesWon}</div>
+                          </button>
+                          {isResExp && (
+                            <div style={{ padding: "2px 4px 10px" }}>
+                              {renderMiniScorecard(s.teamId, r)}
+                            </div>
+                          )}
                         </div>
                       );
-                    }
-                    const resKey = `${s.teamId}_${r.week}`;
-                    const isResExp = expandedResult === resKey;
-                    return (
-                      <div key={ri}>
-                        <button onClick={() => toggleResultExpand(s.teamId, r.week)} style={{ display: "flex", alignItems: "center", padding: "7px 8px", fontSize: 12, width: "100%", background: "transparent", border: "none", borderTop: `1px solid ${K.bdr}30`, cursor: "pointer", textAlign: "left" }}>
-                          <div style={{ width: 14, flexShrink: 0, color: K.t3, fontSize: 9 }}>{isResExp ? "▾" : "›"}</div>
-                          <div style={{ width: 24, flexShrink: 0, color: K.t3, fontSize: 11 }}>{r.week}</div>
-                          <div style={{ width: 48, flexShrink: 0, color: K.t3, fontSize: 11 }}>{r.date || "—"}</div>
-                          <div style={{ flex: 1, color: K.t2, fontWeight: 500 }}>{r.oppName}</div>
-                          <div style={{ width: 58, flexShrink: 0, textAlign: "right", fontWeight: 700, fontSize: 11, color: r.result === "W" ? K.matchGrn : r.result === "L" ? K.red : K.t2 }}>{r.resultDisplay}</div>
-                          <div style={{ width: 28, flexShrink: 0, textAlign: "right", color: "#3b82f6", fontWeight: 700 }}>{r.holesWon}</div>
-                        </button>
-                        {isResExp && (
-                          <div style={{ padding: "2px 4px 10px" }}>
-                            {renderMiniScorecard(s.teamId, r)}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
