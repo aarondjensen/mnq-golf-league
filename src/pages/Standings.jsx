@@ -84,95 +84,227 @@ function buildStandings(teams, results, isRecord, tiebreaker) {
 //  PLAYOFF BRACKET VIEW
 // ════════════════════════════════════════════════════════════
 function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
-  const regWeeks = leagueConfig?.regularWeeks || 14;
   const playoffRounds = leagueConfig?.playoffRounds || [];
   const playoffWeeks = schedule.filter(wk => wk.isPlayoff === true && !wk.rainedOut).sort((a, b) => a.week - b.week);
+  const seedMap = useMemo(() => {
+    const pts = {};
+    teams.forEach(t => { pts[t.id] = 0; });
+    matchResults.forEach(r => {
+      if (pts[r.team1Id] !== undefined) pts[r.team1Id] += (r.team1Points || 0);
+      if (pts[r.team2Id] !== undefined) pts[r.team2Id] += (r.team2Points || 0);
+    });
+    const sorted = Object.entries(pts).sort((a, b) => b[1] - a[1]);
+    const map = {};
+    sorted.forEach(([id], i) => { map[id] = i + 1; });
+    return map;
+  }, [teams, matchResults]);
 
   const gn = (id) => lastNamesOnly(teams.find(t => t.id === id)?.name || "TBD");
+  const getSeed = (id) => seedMap[id] || "?";
 
   if (!playoffRounds.length) {
     return <EmptyState icon="trophy" title="No playoff bracket configured" subtitle="Commissioner can set up playoff rounds in Admin → Schedule → Edit Setup." />;
   }
 
+  // Build bracket data: for each round, get matches and results
+  const bracketData = playoffRounds.map((round, ri) => {
+    const roundWeek = playoffWeeks[ri];
+    const matches = roundWeek?.matches || [];
+    const results = roundWeek ? matchResults.filter(r => r.week === roundWeek.week) : [];
+    const isLocked = roundWeek?.locked === true;
+
+    return {
+      name: round.name || `Round ${ri + 1}`,
+      weekNum: roundWeek?.week,
+      date: roundWeek?.date,
+      isLocked,
+      matchups: matches.map((m, mi) => {
+        const res = results.find(r => r.team1Id === m.team1 && r.team2Id === m.team2);
+        const t1Pts = res?.team1Points || 0;
+        const t2Pts = res?.team2Points || 0;
+        return {
+          team1: m.team1, team2: m.team2,
+          seed1: getSeed(m.team1), seed2: getSeed(m.team2),
+          name1: gn(m.team1), name2: gn(m.team2),
+          t1Pts, t2Pts,
+          t1Won: res && t1Pts > t2Pts,
+          t2Won: res && t2Pts > t1Pts,
+          tied: res && t1Pts === t2Pts,
+          resultText: res?.matchResultText || "",
+          hasResult: !!res,
+        };
+      }),
+      // For unfilled rounds, show config labels
+      config: round.matchups || [],
+    };
+  });
+
+  // Determine if we should use horizontal bracket (desktop) or vertical stack (mobile)
+  const numRounds = bracketData.length;
+
+  // Helper to describe a config slot
+  const slotLabel = (mu, side) => {
+    const type = mu[side + "type"];
+    const val = mu[side];
+    if (type === "seed") return val ? `#${val} Seed` : "TBD";
+    if (val === "lowestWinner") return "Low Winner";
+    if (val === "nextLowestWinner") return "Next Low Winner";
+    if (val === "lowestSeed") return "Low Seed";
+    if (val === "nextLowestSeed") return "2nd Low Seed";
+    if (val?.startsWith("winner_")) return `Winner M${parseInt(val.split("_")[1]) + 1}`;
+    return "TBD";
+  };
+
+  // Matchup card component
+  const MatchupCard = ({ mu, showConfig, configMu }) => {
+    if (!mu && showConfig && configMu) {
+      // Unfilled — show config labels
+      return (
+        <div style={{ background: K.card, borderRadius: 8, border: `1px solid ${K.bdr}`, overflow: "hidden", width: "100%" }}>
+          <div style={{ display: "flex", alignItems: "center", padding: "8px 10px", borderBottom: `1px solid ${K.bdr}30` }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: K.t3, flex: 1 }}>{slotLabel(configMu, "s1")}</div>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "2px 10px", background: K.inp }}>
+            <span style={{ fontSize: 9, color: K.t3, fontWeight: 700 }}>VS</span>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", padding: "8px 10px" }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: K.t3, flex: 1 }}>{slotLabel(configMu, "s2")}</div>
+          </div>
+        </div>
+      );
+    }
+
+    if (!mu) return null;
+
+    return (
+      <div style={{ background: K.card, borderRadius: 8, border: `1px solid ${mu.hasResult ? (mu.t1Won || mu.t2Won ? K.matchGrn + "40" : K.bdr) : K.bdr}`, overflow: "hidden", width: "100%" }}>
+        {/* Team 1 */}
+        <div style={{
+          display: "flex", alignItems: "center", padding: "7px 10px",
+          background: mu.t1Won ? K.matchGrn + "12" : "transparent",
+          borderLeft: mu.t1Won ? `3px solid ${K.matchGrn}` : "3px solid transparent",
+        }}>
+          <div style={{
+            width: 18, height: 18, borderRadius: 5, flexShrink: 0, marginRight: 6,
+            background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 9, fontWeight: 800, color: K.logoBright,
+          }}>{mu.seed1}</div>
+          <div style={{ flex: 1, fontSize: 12, fontWeight: 700, color: mu.t1Won ? K.t1 : mu.t2Won ? K.t3 : K.t1 }}>
+            {mu.name1}
+          </div>
+          {mu.hasResult && <div style={{ fontSize: 13, fontWeight: 800, color: mu.t1Won ? K.matchGrn : K.t3, marginLeft: 6 }}>{mu.t1Pts}</div>}
+        </div>
+        {/* Divider */}
+        <div style={{ display: "flex", alignItems: "center", padding: "0 10px", background: K.inp, height: 20 }}>
+          <div style={{ flex: 1, height: 1, background: K.bdr + "40" }} />
+          <span style={{ fontSize: 9, fontWeight: 700, color: mu.hasResult ? K.acc : K.t3, padding: "0 8px", letterSpacing: 1 }}>
+            {mu.hasResult ? (mu.tied ? "TIED" : (mu.resultText || `${mu.t1Pts}-${mu.t2Pts}`)) : "VS"}
+          </span>
+          <div style={{ flex: 1, height: 1, background: K.bdr + "40" }} />
+        </div>
+        {/* Team 2 */}
+        <div style={{
+          display: "flex", alignItems: "center", padding: "7px 10px",
+          background: mu.t2Won ? K.matchGrn + "12" : "transparent",
+          borderLeft: mu.t2Won ? `3px solid ${K.matchGrn}` : "3px solid transparent",
+        }}>
+          <div style={{
+            width: 18, height: 18, borderRadius: 5, flexShrink: 0, marginRight: 6,
+            background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 9, fontWeight: 800, color: K.logoBright,
+          }}>{mu.seed2}</div>
+          <div style={{ flex: 1, fontSize: 12, fontWeight: 700, color: mu.t2Won ? K.t1 : mu.t1Won ? K.t3 : K.t1 }}>
+            {mu.name2}
+          </div>
+          {mu.hasResult && <div style={{ fontSize: 13, fontWeight: 800, color: mu.t2Won ? K.matchGrn : K.t3, marginLeft: 6 }}>{mu.t2Pts}</div>}
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div style={{ padding: "0 2px" }}>
-      {playoffRounds.map((round, ri) => {
-        const roundWeek = playoffWeeks[ri];
-        const roundResults = roundWeek ? matchResults.filter(r => r.week === roundWeek.week) : [];
-        const isLocked = roundWeek?.locked === true;
+      {/* Horizontal scrollable bracket */}
+      <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 8 }}>
+        <div style={{ display: "flex", gap: 12, minWidth: numRounds > 2 ? numRounds * 180 : "auto" }}>
+          {bracketData.map((round, ri) => {
+            const matchCount = Math.max(round.matchups.length, round.config.length);
+            return (
+              <div key={ri} style={{ flex: 1, minWidth: 160 }}>
+                {/* Round header */}
+                <div style={{ textAlign: "center", marginBottom: 8 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: K.warn, letterSpacing: 1 }}>
+                    {round.name}
+                  </div>
+                  <div style={{ fontSize: 10, color: K.t3 }}>
+                    {round.weekNum ? `Wk ${round.weekNum}` : ""}{round.date ? ` · ${round.date}` : ""}
+                  </div>
+                  {round.isLocked && <Pill color={K.grn} style={{ fontSize: 7, marginTop: 2 }}>Final</Pill>}
+                </div>
 
-        return (
-          <div key={ri} style={{ marginBottom: 16 }}>
-            {/* Round header */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: K.warn, letterSpacing: 1, flex: 1 }}>
-                {round.name || `Round ${ri + 1}`}
-              </div>
-              {roundWeek && <span style={{ fontSize: 11, color: K.t3 }}>Week {roundWeek.week} · {roundWeek.date || ""}</span>}
-              {isLocked && <Pill color={K.grn} style={{ fontSize: 7 }}>Final</Pill>}
-            </div>
-
-            {/* Matchups */}
-            {roundWeek?.matches?.length > 0 ? (
-              <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
-                {roundWeek.matches.map((m, mi) => {
-                  const res = roundResults.find(r => r.team1Id === m.team1 && r.team2Id === m.team2);
-                  const t1Pts = res?.team1Points || 0;
-                  const t2Pts = res?.team2Points || 0;
-                  const t1Won = res && t1Pts > t2Pts;
-                  const t2Won = res && t2Pts > t1Pts;
-                  const tied = res && t1Pts === t2Pts;
-                  const resultText = res?.matchResultText || (res ? `${t1Pts}-${t2Pts}` : "");
-
-                  return (
-                    <div key={mi} style={{ background: K.card, borderRadius: CARD_RADIUS, border: `1px solid ${K.bdr}`, overflow: "hidden" }}>
-                      {/* Team 1 */}
-                      <div style={{
-                        display: "flex", alignItems: "center", padding: "10px 14px",
-                        background: t1Won ? K.matchGrn + "15" : "transparent",
-                        borderLeft: t1Won ? `3px solid ${K.matchGrn}` : "3px solid transparent",
-                      }}>
-                        <div style={{ flex: 1, fontSize: 14, fontWeight: 700, color: t1Won ? K.t1 : t2Won ? K.t3 : K.t1 }}>
-                          {gn(m.team1)}
+                {/* Matchups in this round */}
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, justifyContent: "space-around", minHeight: matchCount > 0 ? matchCount * 90 : 80 }}>
+                  {matchCount > 0 ? (
+                    Array.from({ length: matchCount }, (_, mi) => {
+                      const mu = round.matchups[mi];
+                      const configMu = round.config[mi];
+                      return (
+                        <div key={mi} style={{ display: "flex", alignItems: "center" }}>
+                          <div style={{ flex: 1 }}>
+                            <MatchupCard mu={mu} showConfig={!mu} configMu={configMu} />
+                          </div>
+                          {/* Connector line to next round */}
+                          {ri < numRounds - 1 && (
+                            <div style={{ width: 12, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                              <div style={{ width: 12, height: 2, background: K.bdr + "60" }} />
+                            </div>
+                          )}
                         </div>
-                        {res && <div style={{ fontSize: 14, fontWeight: 800, color: t1Won ? K.matchGrn : K.t3 }}>{t1Pts}</div>}
-                      </div>
-                      {/* Divider with result */}
-                      <div style={{ display: "flex", alignItems: "center", padding: "0 14px", background: K.inp, height: 24 }}>
-                        <div style={{ flex: 1, height: 1, background: K.bdr + "40" }} />
-                        {res && (
-                          <span style={{ fontSize: 10, fontWeight: 700, color: K.acc, padding: "0 10px", letterSpacing: 1 }}>
-                            {tied ? "TIED" : resultText}
-                          </span>
-                        )}
-                        {!res && <span style={{ fontSize: 10, color: K.t3, padding: "0 10px" }}>VS</span>}
-                        <div style={{ flex: 1, height: 1, background: K.bdr + "40" }} />
-                      </div>
-                      {/* Team 2 */}
-                      <div style={{
-                        display: "flex", alignItems: "center", padding: "10px 14px",
-                        background: t2Won ? K.matchGrn + "15" : "transparent",
-                        borderLeft: t2Won ? `3px solid ${K.matchGrn}` : "3px solid transparent",
-                      }}>
-                        <div style={{ flex: 1, fontSize: 14, fontWeight: 700, color: t2Won ? K.t1 : t1Won ? K.t3 : K.t1 }}>
-                          {gn(m.team2)}
-                        </div>
-                        {res && <div style={{ fontSize: 14, fontWeight: 800, color: t2Won ? K.matchGrn : K.t3 }}>{t2Pts}</div>}
-                      </div>
+                      );
+                    })
+                  ) : (
+                    <div style={{ background: K.card, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: 16, textAlign: "center" }}>
+                      <div style={{ fontSize: 11, color: K.t3 }}>TBD</div>
                     </div>
-                  );
-                })}
-              </div>
-            ) : (
-              <div style={{ background: K.card, borderRadius: CARD_RADIUS, border: `1px solid ${K.bdr}`, padding: "16px", textAlign: "center" }}>
-                <div style={{ fontSize: 12, color: K.t3 }}>
-                  {round.matchups?.length > 0 ? "Matchups determined by standings — TBD" : "No matchups configured"}
+                  )}
                 </div>
               </div>
-            )}
-          </div>
-        );
-      })}
+            );
+          })}
+
+          {/* Champion column */}
+          {(() => {
+            const lastRound = bracketData[bracketData.length - 1];
+            const finalMatch = lastRound?.matchups[0];
+            const champion = finalMatch?.t1Won ? finalMatch.team1 : finalMatch?.t2Won ? finalMatch.team2 : null;
+
+            return (
+              <div style={{ minWidth: 120, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: K.gold, letterSpacing: 1, marginBottom: 8 }}>
+                  Champion
+                </div>
+                <div style={{
+                  background: champion ? K.gold + "15" : K.card,
+                  border: `2px solid ${champion ? K.gold + "50" : K.bdr}`,
+                  borderRadius: 10, padding: "14px 16px", textAlign: "center", width: "100%",
+                }}>
+                  {champion ? (
+                    <>
+                      <div style={{ fontSize: 22, marginBottom: 4 }}>🏆</div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: K.gold }}>{gn(champion)}</div>
+                      <div style={{ fontSize: 10, color: K.t3, marginTop: 2 }}>#{getSeed(champion)} Seed</div>
+                    </>
+                  ) : (
+                    <div style={{ fontSize: 12, color: K.t3 }}>TBD</div>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      </div>
     </div>
   );
 }

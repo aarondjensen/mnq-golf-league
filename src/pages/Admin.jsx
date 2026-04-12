@@ -687,7 +687,9 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                           <select value={mu.s1} onChange={e => updateMatchup(mi, "s1", e.target.value)} style={selectStyle}>
                             <option value="">—</option>
                             <option value="lowestWinner">Lowest winner</option>
-                            <option value="nextLowestWinner">Next lowest</option>
+                            <option value="lowestSeed">Lowest remaining seed</option>
+                            <option value="nextLowestWinner">Next lowest winner</option>
+                            <option value="nextLowestSeed">2nd lowest remaining seed</option>
                             {prevWinnerCount > 0 && Array.from({ length: prevWinnerCount }, (_, i) => (
                               <option key={i} value={`winner_${i}`}>Winner match {i + 1}</option>
                             ))}
@@ -707,7 +709,9 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                           <select value={mu.s2} onChange={e => updateMatchup(mi, "s2", e.target.value)} style={selectStyle}>
                             <option value="">—</option>
                             <option value="lowestWinner">Lowest winner</option>
-                            <option value="nextLowestWinner">Next lowest</option>
+                            <option value="lowestSeed">Lowest remaining seed</option>
+                            <option value="nextLowestWinner">Next lowest winner</option>
+                            <option value="nextLowestSeed">2nd lowest remaining seed</option>
                             {prevWinnerCount > 0 && Array.from({ length: prevWinnerCount }, (_, i) => (
                               <option key={i} value={`winner_${i}`}>Winner match {i + 1}</option>
                             ))}
@@ -721,6 +725,78 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 </Card>
               );
             })}
+          </div>
+          )}
+
+          {/* Bracket Preview */}
+          {cfg.playoffWeeks > 0 && (cfg.playoffRounds || []).some(r => r.matchups?.length > 0) && (
+          <div>
+            <SubLabel color={K.warn}>Bracket Preview</SubLabel>
+            <Card style={{ padding: 14, overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+              {(() => {
+                const rounds = cfg.playoffRounds || [];
+                const slotLabel = (mu, side) => {
+                  const type = mu[side + "type"];
+                  const val = mu[side];
+                  if (type === "seed") return val ? `#${val}` : "?";
+                  if (val === "lowestWinner") return "Low W";
+                  if (val === "nextLowestWinner") return "Next W";
+                  if (val === "lowestSeed") return "Low S";
+                  if (val === "nextLowestSeed") return "2nd S";
+                  if (val?.startsWith("winner_")) return `W-M${parseInt(val.split("_")[1]) + 1}`;
+                  return "?";
+                };
+
+                return (
+                  <div style={{ display: "flex", gap: 10, minWidth: rounds.length > 2 ? rounds.length * 140 + 100 : "auto" }}>
+                    {rounds.map((round, ri) => (
+                      <div key={ri} style={{ flex: 1, minWidth: 120 }}>
+                        <div style={{ textAlign: "center", marginBottom: 6 }}>
+                          <div style={{ fontSize: 10, fontWeight: 700, color: K.warn, letterSpacing: 1 }}>{round.name || `R${ri + 1}`}</div>
+                          <div style={{ fontSize: 9, color: K.t3 }}>Week {cfg.regularWeeks + ri + 1}</div>
+                        </div>
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, justifyContent: "space-around", minHeight: (round.matchups?.length || 1) * 60 }}>
+                          {(round.matchups || []).map((mu, mi) => (
+                            <div key={mi} style={{ display: "flex", alignItems: "center" }}>
+                              <div style={{ flex: 1, background: K.inp, borderRadius: 6, border: `1px solid ${K.bdr}`, overflow: "hidden" }}>
+                                <div style={{ display: "flex", alignItems: "center", padding: "5px 8px", borderBottom: `1px solid ${K.bdr}30` }}>
+                                  <div style={{ width: 18, height: 18, borderRadius: 4, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 800, color: K.logoBright, marginRight: 5, flexShrink: 0 }}>
+                                    {mu.s1type === "seed" ? (mu.s1 || "?") : "W"}
+                                  </div>
+                                  <div style={{ fontSize: 10, fontWeight: 600, color: K.t2 }}>{slotLabel(mu, "s1")}</div>
+                                </div>
+                                <div style={{ display: "flex", alignItems: "center", padding: "5px 8px" }}>
+                                  <div style={{ width: 18, height: 18, borderRadius: 4, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 800, color: K.logoBright, marginRight: 5, flexShrink: 0 }}>
+                                    {mu.s2type === "seed" ? (mu.s2 || "?") : "W"}
+                                  </div>
+                                  <div style={{ fontSize: 10, fontWeight: 600, color: K.t2 }}>{slotLabel(mu, "s2")}</div>
+                                </div>
+                              </div>
+                              {ri < rounds.length - 1 && (
+                                <div style={{ width: 10, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                                  <div style={{ width: 10, height: 2, background: K.bdr + "60" }} />
+                                </div>
+                              )}
+                            </div>
+                          ))}
+                          {(!round.matchups || round.matchups.length === 0) && (
+                            <div style={{ background: K.inp, borderRadius: 6, border: `1px solid ${K.bdr}`, padding: "10px", textAlign: "center", fontSize: 10, color: K.t3 }}>No matches</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {/* Champion */}
+                    <div style={{ minWidth: 70, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: K.gold, letterSpacing: 1, marginBottom: 4 }}>Champ</div>
+                      <div style={{ background: K.gold + "10", border: `1.5px solid ${K.gold}30`, borderRadius: 8, padding: "10px 8px", textAlign: "center", width: "100%" }}>
+                        <div style={{ fontSize: 16 }}>🏆</div>
+                        <div style={{ fontSize: 9, color: K.t3, marginTop: 2 }}>TBD</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </Card>
           </div>
           )}
 
@@ -843,10 +919,17 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
             return seedIdx >= 0 && seedIdx < seeds.length ? seeds[seedIdx] : null;
           } else if (type === "winner") {
             if (val === "lowestWinner") {
-              // Among prevWinners, find the one with the lowest ranking (highest seed index)
+              // Among prevWinners, find the one with the lowest ranking (highest seed number)
               const sorted = prevWinners.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => b.rank - a.rank);
               return sorted[0]?.id || null;
             } else if (val === "nextLowestWinner") {
+              const sorted = prevWinners.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => b.rank - a.rank);
+              return sorted[1]?.id || null;
+            } else if (val === "lowestSeed") {
+              // Among all remaining teams (prevWinners), find the lowest seed (highest seed number)
+              const sorted = prevWinners.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => b.rank - a.rank);
+              return sorted[0]?.id || null;
+            } else if (val === "nextLowestSeed") {
               const sorted = prevWinners.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => b.rank - a.rank);
               return sorted[1]?.id || null;
             } else if (val?.startsWith("winner_")) {
