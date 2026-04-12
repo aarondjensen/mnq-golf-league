@@ -147,6 +147,12 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
     const type = mu[side + "type"];
     const val = mu[side];
     if (type === "seed") return val ? `#${val} Seed` : "TBD";
+    if (type === "loser") {
+      if (val === "highestLoser") return "High Loser";
+      if (val === "nextHighestLoser") return "2nd Loser";
+      if (val?.startsWith("loser_")) return `Loser M${parseInt(val.split("_")[1]) + 1}`;
+      return "Loser TBD";
+    }
     if (val === "lowestWinner") return "Low Winner";
     if (val === "nextLowestWinner") return "Next Low Winner";
     if (val === "lowestSeed") return "Low Seed";
@@ -226,49 +232,81 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
 
   return (
     <div style={{ padding: "0 2px" }}>
-      {/* Horizontal scrollable bracket */}
       <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 8 }}>
-        <div style={{ display: "flex", gap: 12, minWidth: numRounds > 2 ? numRounds * 180 : "auto" }}>
+        <div style={{ display: "flex", minWidth: (numRounds + 1) * 175 }}>
           {bracketData.map((round, ri) => {
-            const matchCount = Math.max(round.matchups.length, round.config.length);
+            const matchCount = Math.max(round.matchups.length, round.config.length, 1);
+            // Each subsequent round's matchups should be spaced further apart
+            // to align with the midpoint of the pairs from the previous round
+            const cardH = 76; // approximate matchup card height
+            const firstRoundGap = 12;
+            // For round ri, the gap between matchups doubles each round
+            const gap = ri === 0 ? firstRoundGap : firstRoundGap + (cardH + firstRoundGap) * (Math.pow(2, ri) - 1);
+            const topPad = ri === 0 ? 0 : (gap - firstRoundGap) / 2;
+
             return (
-              <div key={ri} style={{ flex: 1, minWidth: 160 }}>
+              <div key={ri} style={{ display: "flex", flexDirection: "column", minWidth: 155 }}>
                 {/* Round header */}
-                <div style={{ textAlign: "center", marginBottom: 8 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: K.warn, letterSpacing: 1 }}>
-                    {round.name}
-                  </div>
-                  <div style={{ fontSize: 10, color: K.t3 }}>
+                <div style={{ textAlign: "center", marginBottom: 8, height: 36 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: K.warn, letterSpacing: 1 }}>{round.name}</div>
+                  <div style={{ fontSize: 9, color: K.t3 }}>
                     {round.weekNum ? `Wk ${round.weekNum}` : ""}{round.date ? ` · ${round.date}` : ""}
                   </div>
-                  {round.isLocked && <Pill color={K.grn} style={{ fontSize: 7, marginTop: 2 }}>Final</Pill>}
                 </div>
 
-                {/* Matchups in this round */}
-                <div style={{ display: "flex", flexDirection: "column", gap: 10, justifyContent: "space-around", minHeight: matchCount > 0 ? matchCount * 90 : 80 }}>
-                  {matchCount > 0 ? (
-                    Array.from({ length: matchCount }, (_, mi) => {
-                      const mu = round.matchups[mi];
-                      const configMu = round.config[mi];
-                      return (
-                        <div key={mi} style={{ display: "flex", alignItems: "center" }}>
+                {/* Matchups with converging spacing */}
+                <div style={{ display: "flex", flexDirection: "column", paddingTop: topPad }}>
+                  {Array.from({ length: matchCount }, (_, mi) => {
+                    const mu = round.matchups[mi];
+                    const configMu = round.config[mi];
+                    const isLast = mi === matchCount - 1;
+
+                    return (
+                      <div key={mi} style={{ marginBottom: isLast ? 0 : gap }}>
+                        <div style={{ display: "flex", alignItems: "center" }}>
+                          {/* Incoming connector from previous round */}
+                          {ri > 0 && (
+                            <div style={{ width: 16, flexShrink: 0, position: "relative", height: cardH }}>
+                              <div style={{ position: "absolute", top: "50%", left: 0, width: 16, height: 2, background: K.bdr + "60" }} />
+                            </div>
+                          )}
+                          {/* Card */}
                           <div style={{ flex: 1 }}>
                             <MatchupCard mu={mu} showConfig={!mu} configMu={configMu} />
                           </div>
-                          {/* Connector line to next round */}
+                          {/* Outgoing connector to next round */}
                           {ri < numRounds - 1 && (
-                            <div style={{ width: 12, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                              <div style={{ width: 12, height: 2, background: K.bdr + "60" }} />
+                            <div style={{ width: 16, flexShrink: 0, position: "relative", height: cardH }}>
+                              {/* Horizontal line from card to vertical */}
+                              <div style={{ position: "absolute", top: "50%", left: 0, width: 8, height: 2, background: K.bdr + "60" }} />
+                              {/* Vertical connector — top match goes down, bottom match goes up */}
+                              {(() => {
+                                const pairIdx = Math.floor(mi / 2);
+                                const isTop = mi % 2 === 0;
+                                const pairSize = (cardH + gap) / 2;
+                                if (isTop && mi + 1 < matchCount) {
+                                  // Top of pair — vertical line goes down
+                                  return <div style={{ position: "absolute", top: "50%", left: 8, width: 2, height: pairSize + 1, background: K.bdr + "60" }} />;
+                                } else if (!isTop) {
+                                  // Bottom of pair — vertical line goes up
+                                  return <div style={{ position: "absolute", bottom: "50%", left: 8, width: 2, height: pairSize + 1, background: K.bdr + "60" }} />;
+                                }
+                                return null;
+                              })()}
+                              {/* Horizontal line from vertical to next round */}
+                              {mi % 2 === 0 && mi + 1 < matchCount && (
+                                <div style={{ position: "absolute", top: `calc(50% + ${(cardH + gap) / 2}px)`, left: 8, width: 8, height: 2, background: K.bdr + "60" }} />
+                              )}
+                              {/* Single match in round — just horizontal */}
+                              {matchCount === 1 && (
+                                <div style={{ position: "absolute", top: "50%", left: 8, width: 8, height: 2, background: K.bdr + "60" }} />
+                              )}
                             </div>
                           )}
                         </div>
-                      );
-                    })
-                  ) : (
-                    <div style={{ background: K.card, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: 16, textAlign: "center" }}>
-                      <div style={{ fontSize: 11, color: K.t3 }}>TBD</div>
-                    </div>
-                  )}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -279,26 +317,39 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
             const lastRound = bracketData[bracketData.length - 1];
             const finalMatch = lastRound?.matchups[0];
             const champion = finalMatch?.t1Won ? finalMatch.team1 : finalMatch?.t2Won ? finalMatch.team2 : null;
+            // Center the champion vertically with the final round
+            const lastMatchCount = Math.max(lastRound?.matchups.length || 0, lastRound?.config.length || 0, 1);
+            const lastCardH = 76;
+            const lastGap = numRounds <= 1 ? 12 : 12 + (lastCardH + 12) * (Math.pow(2, numRounds - 1) - 1);
+            const lastTopPad = numRounds <= 1 ? 0 : (lastGap - 12) / 2;
+            const totalH = lastTopPad + lastMatchCount * lastCardH + (lastMatchCount - 1) * lastGap;
 
             return (
-              <div style={{ minWidth: 120, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center" }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: K.gold, letterSpacing: 1, marginBottom: 8 }}>
-                  Champion
-                </div>
-                <div style={{
-                  background: champion ? K.gold + "15" : K.card,
-                  border: `2px solid ${champion ? K.gold + "50" : K.bdr}`,
-                  borderRadius: 10, padding: "14px 16px", textAlign: "center", width: "100%",
-                }}>
-                  {champion ? (
-                    <>
-                      <div style={{ fontSize: 22, marginBottom: 4 }}>🏆</div>
-                      <div style={{ fontSize: 14, fontWeight: 800, color: K.gold }}>{gn(champion)}</div>
-                      <div style={{ fontSize: 10, color: K.t3, marginTop: 2 }}>#{getSeed(champion)} Seed</div>
-                    </>
-                  ) : (
-                    <div style={{ fontSize: 12, color: K.t3 }}>TBD</div>
-                  )}
+              <div style={{ minWidth: 110, display: "flex", flexDirection: "column" }}>
+                <div style={{ height: 36 }} />
+                <div style={{ flex: 1, display: "flex", alignItems: "center", paddingLeft: 0 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 0 }}>
+                    {/* Incoming line */}
+                    <div style={{ width: 16, height: 2, background: K.bdr + "60", flexShrink: 0 }} />
+                    <div style={{
+                      background: champion ? K.gold + "15" : K.card,
+                      border: `2px solid ${champion ? K.gold + "50" : K.bdr}`,
+                      borderRadius: 10, padding: "12px 14px", textAlign: "center", minWidth: 90,
+                    }}>
+                      {champion ? (
+                        <>
+                          <div style={{ fontSize: 18, marginBottom: 2 }}>🏆</div>
+                          <div style={{ fontSize: 13, fontWeight: 800, color: K.gold }}>{gn(champion)}</div>
+                          <div style={{ fontSize: 9, color: K.t3, marginTop: 2 }}>#{getSeed(champion)} Seed</div>
+                        </>
+                      ) : (
+                        <>
+                          <div style={{ fontSize: 18, marginBottom: 2 }}>🏆</div>
+                          <div style={{ fontSize: 11, color: K.t3 }}>TBD</div>
+                        </>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             );

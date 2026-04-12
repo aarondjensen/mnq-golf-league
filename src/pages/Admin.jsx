@@ -677,11 +677,21 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                         <select value={mu.s1type} onChange={e => updateMatchup(mi, "s1type", e.target.value)} style={{ ...selectStyle, flex: "none", width: 55 }}>
                           <option value="seed">Seed</option>
                           {ri > 0 && <option value="winner">Winner</option>}
+                          {ri > 0 && <option value="loser">Loser</option>}
                         </select>
                         {mu.s1type === "seed" ? (
                           <select value={mu.s1} onChange={e => updateMatchup(mi, "s1", parseInt(e.target.value) || "")} style={selectStyle}>
                             <option value="">—</option>
                             {seedOptions.map(s => <option key={s} value={s}>#{s}</option>)}
+                          </select>
+                        ) : mu.s1type === "loser" ? (
+                          <select value={mu.s1} onChange={e => updateMatchup(mi, "s1", e.target.value)} style={selectStyle}>
+                            <option value="">—</option>
+                            <option value="highestLoser">Highest seed loser</option>
+                            <option value="nextHighestLoser">2nd highest loser</option>
+                            {prevWinnerCount > 0 && Array.from({ length: prevWinnerCount }, (_, i) => (
+                              <option key={i} value={`loser_${i}`}>Loser match {i + 1}</option>
+                            ))}
                           </select>
                         ) : (
                           <select value={mu.s1} onChange={e => updateMatchup(mi, "s1", e.target.value)} style={selectStyle}>
@@ -699,11 +709,21 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                         <select value={mu.s2type} onChange={e => updateMatchup(mi, "s2type", e.target.value)} style={{ ...selectStyle, flex: "none", width: 55 }}>
                           <option value="seed">Seed</option>
                           {ri > 0 && <option value="winner">Winner</option>}
+                          {ri > 0 && <option value="loser">Loser</option>}
                         </select>
                         {mu.s2type === "seed" ? (
                           <select value={mu.s2} onChange={e => updateMatchup(mi, "s2", parseInt(e.target.value) || "")} style={selectStyle}>
                             <option value="">—</option>
                             {seedOptions.map(s => <option key={s} value={s}>#{s}</option>)}
+                          </select>
+                        ) : mu.s2type === "loser" ? (
+                          <select value={mu.s2} onChange={e => updateMatchup(mi, "s2", e.target.value)} style={selectStyle}>
+                            <option value="">—</option>
+                            <option value="highestLoser">Highest seed loser</option>
+                            <option value="nextHighestLoser">2nd highest loser</option>
+                            {prevWinnerCount > 0 && Array.from({ length: prevWinnerCount }, (_, i) => (
+                              <option key={i} value={`loser_${i}`}>Loser match {i + 1}</option>
+                            ))}
                           </select>
                         ) : (
                           <select value={mu.s2} onChange={e => updateMatchup(mi, "s2", e.target.value)} style={selectStyle}>
@@ -739,6 +759,12 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                   const type = mu[side + "type"];
                   const val = mu[side];
                   if (type === "seed") return val ? `#${val}` : "?";
+                  if (type === "loser") {
+                    if (val === "highestLoser") return "Hi L";
+                    if (val === "nextHighestLoser") return "2nd L";
+                    if (val?.startsWith("loser_")) return `L-M${parseInt(val.split("_")[1]) + 1}`;
+                    return "L ?";
+                  }
                   if (val === "lowestWinner") return "Low W";
                   if (val === "nextLowestWinner") return "Next W";
                   if (val === "lowestSeed") return "Low S";
@@ -760,14 +786,14 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                             <div key={mi} style={{ display: "flex", alignItems: "center" }}>
                               <div style={{ flex: 1, background: K.inp, borderRadius: 6, border: `1px solid ${K.bdr}`, overflow: "hidden" }}>
                                 <div style={{ display: "flex", alignItems: "center", padding: "5px 8px", borderBottom: `1px solid ${K.bdr}30` }}>
-                                  <div style={{ width: 18, height: 18, borderRadius: 4, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 800, color: K.logoBright, marginRight: 5, flexShrink: 0 }}>
-                                    {mu.s1type === "seed" ? (mu.s1 || "?") : "W"}
+                                  <div style={{ width: 18, height: 18, borderRadius: 4, background: mu.s1type === "loser" ? K.red + "20" : K.logoBright + "20", border: `1px solid ${mu.s1type === "loser" ? K.red + "30" : K.logoBright + "30"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 800, color: mu.s1type === "loser" ? K.red : K.logoBright, marginRight: 5, flexShrink: 0 }}>
+                                    {mu.s1type === "seed" ? (mu.s1 || "?") : mu.s1type === "loser" ? "L" : "W"}
                                   </div>
                                   <div style={{ fontSize: 10, fontWeight: 600, color: K.t2 }}>{slotLabel(mu, "s1")}</div>
                                 </div>
                                 <div style={{ display: "flex", alignItems: "center", padding: "5px 8px" }}>
-                                  <div style={{ width: 18, height: 18, borderRadius: 4, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 800, color: K.logoBright, marginRight: 5, flexShrink: 0 }}>
-                                    {mu.s2type === "seed" ? (mu.s2 || "?") : "W"}
+                                  <div style={{ width: 18, height: 18, borderRadius: 4, background: mu.s2type === "loser" ? K.red + "20" : K.logoBright + "20", border: `1px solid ${mu.s2type === "loser" ? K.red + "30" : K.logoBright + "30"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 8, fontWeight: 800, color: mu.s2type === "loser" ? K.red : K.logoBright, marginRight: 5, flexShrink: 0 }}>
+                                    {mu.s2type === "seed" ? (mu.s2 || "?") : mu.s2type === "loser" ? "L" : "W"}
                                   </div>
                                   <div style={{ fontSize: 10, fontWeight: 600, color: K.t2 }}>{slotLabel(mu, "s2")}</div>
                                 </div>
@@ -888,6 +914,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
         // Collect winners from previous playoff round if needed
         let prevWinners = [];
+        let prevLosers = [];
         if (playoffRound > 1) {
           const prevPlayoffWeek = schedule.find(s => s.week === regWeeks + playoffRound - 1);
           if (!prevPlayoffWeek || !prevPlayoffWeek.matches || prevPlayoffWeek.matches.length === 0) {
@@ -899,18 +926,19 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
             alert(`Previous playoff round (Week ${regWeeks + playoffRound - 1}) must be finalized first.`);
             return;
           }
-          // Get winners in match order
+          // Get winners and losers in match order
           prevPlayoffWeek.matches.forEach((m, mi) => {
             const r = prevResults.find(pr => pr.team1Id === m.team1 && pr.team2Id === m.team2);
             if (r) {
               const d = (r.team1Points || 0) - (r.team2Points || 0);
               // Tie goes to higher seed (team1 is always higher seed)
               prevWinners.push(d >= 0 ? r.team1Id : r.team2Id);
+              prevLosers.push(d >= 0 ? r.team2Id : r.team1Id);
             }
           });
         }
 
-        // Resolve "winner" references
+        // Resolve "winner", "loser", and "seed" references
         const resolveSlot = (mu, side) => {
           const type = mu[side + "type"];
           const val = mu[side];
@@ -919,14 +947,12 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
             return seedIdx >= 0 && seedIdx < seeds.length ? seeds[seedIdx] : null;
           } else if (type === "winner") {
             if (val === "lowestWinner") {
-              // Among prevWinners, find the one with the lowest ranking (highest seed number)
               const sorted = prevWinners.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => b.rank - a.rank);
               return sorted[0]?.id || null;
             } else if (val === "nextLowestWinner") {
               const sorted = prevWinners.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => b.rank - a.rank);
               return sorted[1]?.id || null;
             } else if (val === "lowestSeed") {
-              // Among all remaining teams (prevWinners), find the lowest seed (highest seed number)
               const sorted = prevWinners.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => b.rank - a.rank);
               return sorted[0]?.id || null;
             } else if (val === "nextLowestSeed") {
@@ -935,6 +961,18 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
             } else if (val?.startsWith("winner_")) {
               const idx = parseInt(val.split("_")[1]);
               return prevWinners[idx] || null;
+            }
+          } else if (type === "loser") {
+            if (val === "highestLoser") {
+              // Among losers, find the one with the best seed (lowest seed number)
+              const sorted = prevLosers.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => a.rank - b.rank);
+              return sorted[0]?.id || null;
+            } else if (val === "nextHighestLoser") {
+              const sorted = prevLosers.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => a.rank - b.rank);
+              return sorted[1]?.id || null;
+            } else if (val?.startsWith("loser_")) {
+              const idx = parseInt(val.split("_")[1]);
+              return prevLosers[idx] || null;
             }
           }
           return null;
