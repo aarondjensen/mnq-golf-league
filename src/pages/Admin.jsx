@@ -849,7 +849,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                                   )}
                                 </div>
                               </div>
-                            )) : <div style={{ background: K.inp, borderRadius: 4, border: `1px solid ${K.bdr}`, padding: 8, textAlign: "center", fontSize: 9, color: K.t3 }}>\u2014</div>}
+                            )) : <div style={{ background: K.inp, borderRadius: 4, border: `1px solid ${K.bdr}`, padding: 8, textAlign: "center", fontSize: 9, color: K.t3 }}>—</div>}
                           </div>
                         </div>
                       );
@@ -857,7 +857,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                     <div style={{ width: 50, flexShrink: 0, display: "flex", flexDirection: "column", alignItems: "center" }}>
                       <div style={{ height: 28 }} />
                       <div style={{ flex: 1, display: "flex", alignItems: "center" }}>
-                        <div style={{ display: "flex", alignItems: "center" }}><div style={{ width: 8, height: 2, background: K.bdr + "50" }} /><div style={{ background: K.gold + "10", border: `1.5px solid ${K.gold}30`, borderRadius: 6, padding: "6px 4px", textAlign: "center" }}><div style={{ fontSize: 14 }}>\u{1F3C6}</div></div></div>
+                        <div style={{ display: "flex", alignItems: "center" }}><div style={{ width: 8, height: 2, background: K.bdr + "50" }} /><div style={{ background: K.gold + "10", border: `1.5px solid ${K.gold}30`, borderRadius: 6, padding: "6px 4px", textAlign: "center" }}><div style={{ fontSize: 14 }}>🏆</div></div></div>
                       </div>
                     </div>
                   </div>
@@ -884,7 +884,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           )}
         </>)}
 
-        {/* \u2500\u2500 WEEKLY TAB \u2500\u2500 */}
+        {/* ── WEEKLY TAB ── */}
         {subTab === "weekly" && (<>
           {!schedule.length ? (
             <div style={{ textAlign: "center", padding: 30, color: K.t3, fontSize: 13 }}>No schedule yet. Generate one in the Setup tab.</div>
@@ -905,25 +905,25 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                     opacity: isRainedOut ? 0.5 : 1, gap: 8,
                   }}>
                     <div style={{ width: 26, fontSize: 14, fontWeight: 700, color: K.t1, flexShrink: 0 }}>{wk.week}</div>
-                    <div style={{ width: 52, fontSize: 12, fontWeight: 600, color: K.t1, flexShrink: 0 }}>{wk.date || "\u2014"}</div>
+                    <div style={{ width: 52, fontSize: 12, fontWeight: 600, color: K.t1, flexShrink: 0 }}>{wk.date || "—"}</div>
                     <div style={{ width: 42, flexShrink: 0 }}>
                       <Pill color={K.logoBright} style={{ fontSize: 8 }}>{side === 'front' ? 'FRONT' : 'BACK'}</Pill>
                     </div>
                     <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
-                      {isRainedOut ? "RAIN OUT" : isSeeded ? (isPlayoffWk ? "PLAYOFF \u2014 TBD" : "SEEDED \u2014 TBD") : wk.matches?.length ? (() => {
+                      {isRainedOut ? "RAIN OUT" : isSeeded ? (isPlayoffWk ? "PLAYOFF — TBD" : "SEEDED — TBD") : wk.matches?.length ? (() => {
                         const rrWeekCount = teams.length - 1;
                         const isSeededFilled = wk.week > rrWeekCount || wk.makeupFor;
                         if (isSeededFilled) {
                           return wk.matches.map(m => `#${seedMap[m.team1] || "?"}v#${seedMap[m.team2] || "?"}`).join("  ");
                         }
                         return `${wk.matches.length} MATCHES`;
-                      })() : "\u2014"}
+                      })() : "—"}
                     </div>
                     <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
                       {isFinalized && <Pill color={K.grn} style={{ fontSize: 7 }}>FINAL</Pill>}
                       {wk.makeupFor && <Pill color={K.teal} style={{ fontSize: 7 }}>MU</Pill>}
                     </div>
-                    <div style={{ color: K.t3, fontSize: 12, flexShrink: 0 }}>\u203A</div>
+                    <div style={{ color: K.t3, fontSize: 12, flexShrink: 0 }}>›</div>
                   </button>
                 );
               })}
