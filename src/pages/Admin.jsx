@@ -578,6 +578,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
         {/* ── SETUP TAB ── */}
         {subTab === "setup" && (<>
+          <div className="scoring-grid">
           <div>
             <SubLabel>Schedule</SubLabel>
             <Card style={{ padding: 14 }}>
