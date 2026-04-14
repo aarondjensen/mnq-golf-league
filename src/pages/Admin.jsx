@@ -866,7 +866,34 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         {subTab === "weekly" && (<>
           {!schedule.length ? (
             <div style={{ textAlign: "center", padding: 30, color: K.t3, fontSize: 13 }}>No schedule yet. Generate one in the Setup tab.</div>
-          ) : (
+          ) : (<>
+            {/* Shuffle button — only shows if no weeks are locked */}
+            {(() => {
+              const rrWeekCount = teams.length - 1;
+              const rrWeeks = schedule.filter(s => s.week <= rrWeekCount && !s.isPlayoff && !s.rainedOut && !s.makeupFor);
+              const anyLocked = schedule.some(s => s.locked);
+              if (anyLocked || rrWeeks.length < 2) return null;
+              const doShuffle = async () => {
+                if (!window.confirm("Shuffle the round-robin matchup order? This randomizes which week each matchup is played.")) return;
+                // Collect all RR matchups and shuffle
+                const matchups = rrWeeks.map(w => w.matches || []);
+                for (let i = matchups.length - 1; i > 0; i--) {
+                  const j = Math.floor(Math.random() * (i + 1));
+                  [matchups[i], matchups[j]] = [matchups[j], matchups[i]];
+                }
+                // Save back with shuffled matchups
+                for (let i = 0; i < rrWeeks.length; i++) {
+                  await saveWeekSchedule({ ...rrWeeks[i], matches: matchups[i] });
+                }
+              };
+              return (
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+                  <button onClick={doShuffle} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.acc, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 600 }}>
+                    Shuffle Schedule
+                  </button>
+                </div>
+              );
+            })()}
             <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
               {schedule.map(wk => {
                 const isPlayoffWk = wk.isPlayoff === true;
@@ -906,7 +933,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 );
               })}
             </div>
-          )}
+          </>)}
         </>)}
       </div>
     );
