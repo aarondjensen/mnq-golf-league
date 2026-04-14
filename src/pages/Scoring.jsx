@@ -191,7 +191,7 @@ function SharedScorecard({
           }
           const color = rs > 0 ? mGrn : rs < 0 ? K.red : K.t3;
           return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: variant === "allMatches" ? 12 : 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>
-            {rs > 0 ? <><span style={{ fontSize: variant === "allMatches" ? 12 : 14 }}>▲</span>{rs}</> : rs < 0 ? <><span style={{ fontSize: variant === "allMatches" ? 12 : 14 }}>▼</span>{Math.abs(rs)}</> : "—"}
+            {rs > 0 ? <><span style={{ fontSize: variant === "allMatches" ? 12 : 14 }}>▲</span>{rs}</> : rs < 0 ? <><span style={{ fontSize: variant === "allMatches" ? 12 : 14 }}>▼</span>{Math.abs(rs)}</> : <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: .5 }}>TIED</span>}
           </div>;
         })}
         {totStyle && <div style={{ width: tw, flexShrink: 0, height: 28 }} />}
@@ -1193,7 +1193,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const hasAnyStatus = holeStatuses.some(s => s !== null);
 
         return (<>
-          <button onClick={() => hasAnyStatus && !isAlreadyFinalized ? setShowScorecard(!showScorecard) : null} style={{ display: isAlreadyFinalized ? "none" : "flex", marginTop: 2, marginBottom: showScorecard ? 0 : 4, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: showScorecard ? "8px 8px 0 0" : 8, cursor: hasAnyStatus ? "pointer" : "default", padding: "4px 0", alignItems: "center" }}>
+          <div style={{ display: isAlreadyFinalized ? "none" : "flex", marginTop: 2, marginBottom: 4, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 8, padding: "4px 0", alignItems: "center" }}>
             {holeStatuses.map((st, i) => {
               const colBorderR = i < 8 ? { borderRight: `1px solid ${K.bdr}30` } : {};
               if (matchClinchHole !== null && i === matchClinchHole) {
@@ -1203,49 +1203,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               if (matchClinchHole !== null && i > matchClinchHole) return <div key={i} style={{ flex: 1, height: 24, ...colBorderR }} />;
               if (st === null) return <div key={i} style={{ flex: 1, height: 24, ...colBorderR }} />;
               const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "24px", ...colBorderR }}>{st > 0 ? <><span style={{ fontSize: 14 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 14 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
+              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "24px", ...colBorderR }}>{st > 0 ? <><span style={{ fontSize: 14 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 14 }}>▼</span>{Math.abs(st)}</> : <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: .5 }}>TIED</span>}</div>;
             })}
-          </button>
-          {showScorecard && !isAlreadyFinalized && (() => {
-            const scMyPids = isMyT1 ? t1Players : t2Players;
-            const scOppPids = isMyT1 ? t2Players : t1Players;
-            const scStatus = computeMatchStatus(scMyPids, scOppPids, getS, getStrokes, pars);
-            const sc = buildSC(scMyPids, scOppPids, scStatus.holeResults, scStatus.runningStatus, scStatus.clinchHole, scStatus.clinchText, "allMatches", false);
-
-            return (<>
-            <div onClick={() => setShowScorecard(false)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 400 }} />
-            <div onClick={() => setShowScorecard(false)} data-popup style={{ position: "fixed", inset: 0, zIndex: 450, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
-            <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "0 0 10px", width: "100%", maxWidth: 420, overflow: "hidden", overscrollBehavior: "contain" }}>
-              <sc.HoleRow />
-              <sc.ParRow />
-              <div style={{ padding: "0 4px" }}>
-                {scMyPids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
-                <sc.TeamNetRow pids={scMyPids} isTeam1Side={true} />
-                <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "3px 0" }} />
-                <div style={{ display: "flex", alignItems: "center", background: K.acc + "18", borderBottom: `2px solid ${K.bdr}40` }}>
-                  <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700, padding: "5px 0", borderRight: `1px solid ${K.bdr}25`, paddingLeft: 4, letterSpacing: .3 }}>MATCH</div>
-                  {holeStatuses.map((st, i) => {
-                    if (matchClinchHole !== null && i === matchClinchHole) {
-                      const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-                      return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color, fontWeight: 800, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none" }}>{clinchScoreText}</div>;
-                    }
-                    if (matchClinchHole !== null && i > matchClinchHole) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none" }} />;
-                    if (st === null) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none", color: K.t3 + "30" }}>—</div>;
-                    const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-                    return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none" }}>{st > 0 ? <><span style={{ fontSize: 15 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 15 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
-                  })}
-                </div>
-                <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "3px 0" }} />
-                {scOppPids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
-                <sc.TeamNetRow pids={scOppPids} isTeam1Side={false} />
-              </div>
-              <button onClick={() => setShowScorecard(false)} style={{ display: "block", width: "calc(100% - 20px)", margin: "10px auto 0", padding: "9px", background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.t2, fontSize: 13, fontWeight: 600, cursor: "pointer", letterSpacing: .4 }}>
-                Close
-              </button>
-            </div>
-            </div>
-            </>);
-          })()}
+          </div>
         </>);
       })()}
       {/* After signed: show inline scorecard. Before signed: show hole card + scoring UI */}
@@ -1372,6 +1332,69 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         </button>
       )}
       </>)}
+      {/* Full Scorecard button */}
+      {!isAlreadyFinalized && !justSigned && (
+        <button onClick={() => setShowScorecard(true)} style={{ width: "100%", padding: "7px 0", borderRadius: 8, marginTop: 4, cursor: "pointer", background: K.card, border: `1px solid ${K.bdr}60`, color: K.t2, fontSize: 12, fontWeight: 700, letterSpacing: .5 }}>
+          Full Scorecard
+        </button>
+      )}
+      {showScorecard && !isAlreadyFinalized && (() => {
+        const myTeamId = myTeam?.id || t1.id;
+        const isMyT1 = t1.id === myTeamId;
+        const scMyPids = isMyT1 ? t1Players : t2Players;
+        const scOppPids = isMyT1 ? t2Players : t1Players;
+        const scStatus = computeMatchStatus(scMyPids, scOppPids, getS, getStrokes, pars);
+        const sc = buildSC(scMyPids, scOppPids, scStatus.holeResults, scStatus.runningStatus, scStatus.clinchHole, scStatus.clinchText, "allMatches", false);
+        const holeStatuses = Array.from({ length: 9 }, (_, i) => {
+          let holesUp = 0, hasData = false;
+          for (let h = 0; h <= i; h++) {
+            let t1HN = 0, t2HN = 0, t1OK = true, t2OK = true;
+            t1Players.forEach(pid => { const s = getS(pid, h); if (s <= 0) t1OK = false; else t1HN += s - getStrokes(pid, h); });
+            t2Players.forEach(pid => { const s = getS(pid, h); if (s <= 0) t2OK = false; else t2HN += s - getStrokes(pid, h); });
+            if (t1OK && t2OK) { if (t1HN < t2HN) holesUp += isMyT1 ? 1 : -1; else if (t1HN > t2HN) holesUp += isMyT1 ? -1 : 1; hasData = true; } else { hasData = false; break; }
+          }
+          return hasData ? holesUp : null;
+        });
+        let matchClinchHole = null, clinchScoreText = null;
+        for (let h = 0; h < 9; h++) {
+          if (holeStatuses[h] === null) break;
+          const lead = Math.abs(holeStatuses[h]); const rem = 8 - h;
+          if (lead > rem) { matchClinchHole = h; clinchScoreText = rem > 0 ? `${lead}&${rem}` : `${lead}UP`; break; }
+        }
+        return (<>
+          <div onClick={() => setShowScorecard(false)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 400 }} />
+          <div onClick={() => setShowScorecard(false)} data-popup style={{ position: "fixed", inset: 0, zIndex: 450, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "0 0 10px", width: "100%", maxWidth: 420, overflow: "hidden", overscrollBehavior: "contain" }}>
+            <sc.HoleRow />
+            <sc.ParRow />
+            <div style={{ padding: "0 4px" }}>
+              {scMyPids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
+              <sc.TeamNetRow pids={scMyPids} isTeam1Side={true} />
+              <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "3px 0" }} />
+              <div style={{ display: "flex", alignItems: "center", background: K.acc + "18", borderBottom: `2px solid ${K.bdr}40` }}>
+                <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700, padding: "5px 0", borderRight: `1px solid ${K.bdr}25`, paddingLeft: 4, letterSpacing: .3 }}>MATCH</div>
+                {holeStatuses.map((st, i) => {
+                  if (matchClinchHole !== null && i === matchClinchHole) {
+                    const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
+                    return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color, fontWeight: 800, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none" }}>{clinchScoreText}</div>;
+                  }
+                  if (matchClinchHole !== null && i > matchClinchHole) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none" }} />;
+                  if (st === null) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none", color: K.t3 + "30" }}>—</div>;
+                  const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
+                  return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none" }}>{st > 0 ? <><span style={{ fontSize: 15 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 15 }}>▼</span>{Math.abs(st)}</> : <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: .5 }}>TIED</span>}</div>;
+                })}
+              </div>
+              <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "3px 0" }} />
+              {scOppPids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
+              <sc.TeamNetRow pids={scOppPids} isTeam1Side={false} />
+            </div>
+            <button onClick={() => setShowScorecard(false)} style={{ display: "block", width: "calc(100% - 20px)", margin: "10px auto 0", padding: "9px", background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.t2, fontSize: 13, fontWeight: 600, cursor: "pointer", letterSpacing: .4 }}>
+              Close
+            </button>
+          </div>
+          </div>
+        </>);
+      })()}
       {/* Finalize / Show Match Details buttons */}
       {allComplete && !showFinalize && !isAlreadyFinalized && (
         <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: "#3b82f615", border: `1.5px solid #3b82f650`, color: "#3b82f6", fontSize: 15, fontWeight: 700 }}>
