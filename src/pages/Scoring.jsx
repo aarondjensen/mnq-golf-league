@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { K, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
+import { K, FONTS, CSS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   SEASON_WEEKS, REGULAR_WEEKS, TEAMS_COUNT, getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap,
   lastNamesOnly, formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE } from "../theme";
 import { LEAGUE_ID } from "../firebase";
@@ -1193,7 +1193,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const hasAnyStatus = holeStatuses.some(s => s !== null);
 
         return (<>
-          <button onClick={() => setShowScorecard(!showScorecard)} style={{ display: isAlreadyFinalized || !hasAnyStatus ? "none" : "flex", marginTop: 6, marginBottom: showScorecard ? 0 : 8, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: showScorecard ? "8px 8px 0 0" : 8, cursor: "pointer", padding: "8px 0", alignItems: "center" }}>
+          <button onClick={() => hasAnyStatus && !isAlreadyFinalized ? setShowScorecard(!showScorecard) : null} style={{ display: isAlreadyFinalized ? "none" : "flex", marginTop: 6, marginBottom: showScorecard ? 0 : 8, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: showScorecard ? "8px 8px 0 0" : 8, cursor: hasAnyStatus ? "pointer" : "default", padding: "8px 0", alignItems: "center" }}>
             {holeStatuses.map((st, i) => {
               const colBorderR = i < 8 ? { borderRight: `1px solid ${K.bdr}30` } : {};
               if (matchClinchHole !== null && i === matchClinchHole) {
