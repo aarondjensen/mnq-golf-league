@@ -282,6 +282,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const [justSigned, setJustSigned] = useState(false); // prevents flash between sign and Firestore update
   const [showCtpPopup, setShowCtpPopup] = useState(false);
   const [ctpSelections, setCtpSelections] = useState({}); // { holeNum: { playerId, distance } }
+  const [commWeek, setCommWeek] = useState(null); // commissioner week override
+  const [commEditing, setCommEditing] = useState(false); // commissioner editing finalized match
   const initialJump = useRef(false);
   const matchGrn = K.matchGrn;
 
@@ -308,10 +310,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     return playable.length ? playable[playable.length - 1].week : 0;
   }, [schedule, matchResults, forceWeek]);
 
-  const week = currentWeek;
+  const week = commWeek || currentWeek;
   useEffect(() => { setLiveWeek(week); }, [week, setLiveWeek]);
   // Clear the forceWeek after it's been consumed
   useEffect(() => { if (forceWeek && onForceWeekUsed) onForceWeekUsed(); }, [forceWeek]);
+  // Reset commEditing when week changes
+  useEffect(() => { setCommEditing(false); }, [week]);
 
   const weekSch = schedule.find(s => s.week === week);
   const matches = weekSch?.matches || [];
@@ -441,7 +445,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const holeComplete = allP.length > 0 && allP.every(pid => getS(pid, curHole) > 0);
 
   const existingResult = (t1 && t2) ? matchResults.find(r => r.week === week && r.team1Id === t1.id && r.team2Id === t2.id) : null;
-  const isAlreadyFinalized = !!existingResult;
+  const isAlreadyFinalized = !!existingResult && !commEditing;
 
   // Clear justSigned once Firestore confirms the result
   useEffect(() => {
@@ -552,6 +556,22 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             </button>
           </div>
         </div>
+
+        {/* Commissioner week picker in All Matches */}
+        {isComm && (() => {
+          const playableWeeks = schedule.filter(wk => !wk.rainedOut && wk.matches && wk.matches.length > 0).map(wk => wk.week);
+          if (playableWeeks.length <= 1) return null;
+          return (
+            <div style={{ display: "flex", gap: 3, marginBottom: 8, flexWrap: "wrap", justifyContent: "center" }}>
+              {playableWeeks.map(w => {
+                const isCur = w === week;
+                const wkSch = schedule.find(s => s.week === w);
+                const isLocked = wkSch?.locked === true;
+                return <button key={w} onClick={() => { setCommWeek(w === currentWeek ? null : w); setExpandedMatch(null); }} style={{ minWidth: 28, padding: "4px 6px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer", border: isCur ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}`, background: isCur ? K.act + "20" : K.inp, color: isCur ? K.act : isLocked ? K.t3 : K.t2 }}>{w}</button>;
+              })}
+            </div>
+          );
+        })()}
 
         <div style={{ marginBottom: 10 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1.5 }}>Week {week}</div>
@@ -1144,10 +1164,30 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           </div>
         </div>
       )}
+      {/* Commissioner week picker */}
+      {isComm && !activeMatch && (() => {
+        const playableWeeks = schedule.filter(wk => !wk.rainedOut && wk.matches && wk.matches.length > 0).map(wk => wk.week);
+        if (playableWeeks.length <= 1) return null;
+        return (
+          <div style={{ display: "flex", gap: 3, marginBottom: 8, flexWrap: "wrap", justifyContent: "center" }}>
+            {playableWeeks.map(w => {
+              const isCur = w === week;
+              const wkSch = schedule.find(s => s.week === w);
+              const isLocked = wkSch?.locked === true;
+              return <button key={w} onClick={() => { setCommWeek(w === currentWeek ? null : w); setCommEditing(false); setCurHole(0); setShowFinalize(false); setActiveMatch(null); }} style={{ minWidth: 28, padding: "4px 6px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer", border: isCur ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}`, background: isCur ? K.act + "20" : K.inp, color: isCur ? K.act : isLocked ? K.t3 : K.t2 }}>{w}</button>;
+            })}
+          </div>
+        );
+      })()}
       {/* Status banners */}
-      {isWeekLocked && (
+      {isWeekLocked && !commEditing && (
         <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 6, fontSize: 13, color: K.warn, fontWeight: 700, textAlign: "center" }}>
           Week {week} is locked — scores are read-only
+        </div>
+      )}
+      {commEditing && (
+        <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 6, fontSize: 13, color: K.warn, fontWeight: 700, textAlign: "center" }}>
+          Editing scores — Week {week}
         </div>
       )}
       {!isAlreadyFinalized && (
@@ -1292,6 +1332,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 </button>
               </div>
             )}
+
+            {isComm && !commEditing && (
+              <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 8, marginTop: 8, background: K.warn + "15", border: `1px solid ${K.warn}40`, color: K.warn, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                Edit Scores
+              </button>
+            )}
           </div>
         );
       })() : (<>
@@ -1373,10 +1419,20 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       )}
       </>)}
       {/* Finalize / Show Match Details buttons */}
-      {allComplete && !showFinalize && !isAlreadyFinalized && (
+      {allComplete && !showFinalize && !isAlreadyFinalized && !commEditing && (
         <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: "#3b82f615", border: `1.5px solid #3b82f650`, color: "#3b82f6", fontSize: 15, fontWeight: 700 }}>
           All Holes Complete — Sign Scorecard
         </button>
+      )}
+      {commEditing && (
+        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+          <button onClick={async () => { await finalizeMatch(); setCommEditing(false); setToast("Scores updated & re-signed"); setTimeout(() => setToast(null), 2500); }} disabled={!allComplete} style={{ flex: 1, padding: 10, borderRadius: 10, cursor: allComplete ? "pointer" : "default", background: allComplete ? K.warn : K.inp, border: allComplete ? "none" : `1px solid ${K.bdr}`, color: allComplete ? K.bg : K.t3, fontSize: 13, fontWeight: 800, opacity: allComplete ? 1 : 0.5 }}>
+            Save & Re-sign
+          </button>
+          <button onClick={() => setCommEditing(false)} style={{ padding: "10px 16px", borderRadius: 10, cursor: "pointer", background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 13, fontWeight: 700 }}>
+            Cancel
+          </button>
+        </div>
       )}
 
       {/* ═══ Finalize Popup ═══ */}
@@ -1482,7 +1538,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       <div style={{ background: K.warn + "15", border: `1px solid ${K.warn}40`, borderRadius: 10, padding: 12, marginBottom: 6 }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: K.t1, marginBottom: 10 }}>This will allow score edits. Continue?</div>
                         <div style={{ display: "flex", gap: 8 }}>
-                          <button onClick={() => { setShowEditConfirm(false); setShowFinalize(false); }} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.warn, border: "none", color: K.bg, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                          <button onClick={() => { setCommEditing(true); setShowEditConfirm(false); setShowFinalize(false); }} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.warn, border: "none", color: K.bg, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
                             Yes
                           </button>
                           <button onClick={() => setShowEditConfirm(false)} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
