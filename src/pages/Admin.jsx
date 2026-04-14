@@ -68,7 +68,7 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, members, save
   const inactivePlayers = players.filter(p => p.status === "inactive").sort((a, b) => a.name.localeCompare(b.name));
 
   const rowStyle = { display: "flex", alignItems: "center", background: K.card, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: "8px 10px", gap: 8 };
-  const inputStyle = { padding: "8px 10px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14, width: "100%" };
+  const inputStyle = { padding: "8px 10px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 16, width: "100%" };
 
   /* ── Edit Card (shared for new + existing) ── */
   const EditCard = ({ isNew }) => {
@@ -82,8 +82,8 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, members, save
           <input ref={nameRef} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Player name" style={{ ...inputStyle, padding: "7px 10px", fontWeight: 600 }} />
           <button onClick={() => { setEd(null); setOrig(null); }} style={{ background: "none", border: "none", color: K.t3, fontSize: 15, cursor: "pointer", padding: "2px 4px", lineHeight: 1, flexShrink: 0 }}>✕</button>
         </div>
-        {/* Row 2: Tee box + Commissioner */}
-        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+        {/* Row 2: Tee box + Commissioner + Deactivate */}
+        <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
           <div style={{ display: "flex", gap: 4, flex: 1 }}>
             {teeBoxes.map(t => {
               const sel = f.teeBox === t.name;
@@ -94,21 +94,19 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, members, save
             })}
           </div>
           {!isNew && member && (
-            <button onClick={() => toggleComm(playerId)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 6, border: `1px solid ${commStatus ? K.warn + "40" : K.bdr}`, background: commStatus ? K.warn + "12" : K.inp, cursor: "pointer", flexShrink: 0 }}>
-              <div style={{ width: 28, height: 16, borderRadius: 8, background: commStatus ? K.warn : K.bdr, position: "relative", transition: "background .2s" }}>
-                <div style={{ width: 12, height: 12, borderRadius: 6, background: "#fff", position: "absolute", top: 2, left: commStatus ? 14 : 2, transition: "left .2s" }} />
+            <button onClick={() => toggleComm(playerId)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 8px", borderRadius: 6, border: `1px solid ${commStatus ? K.warn + "40" : K.bdr}`, background: commStatus ? K.warn + "12" : K.inp, cursor: "pointer", flexShrink: 0 }}>
+              <div style={{ width: 26, height: 14, borderRadius: 7, background: commStatus ? K.warn : K.bdr, position: "relative", transition: "background .2s" }}>
+                <div style={{ width: 10, height: 10, borderRadius: 5, background: "#fff", position: "absolute", top: 2, left: commStatus ? 14 : 2, transition: "left .2s" }} />
               </div>
-              <span style={{ fontSize: 10, color: commStatus ? K.warn : K.t3, fontWeight: 600 }}>Comm</span>
+              <span style={{ fontSize: 9, color: commStatus ? K.warn : K.t3, fontWeight: 700 }}>Comm</span>
             </button>
           )}
-        </div>
-        {/* Row 3: Save + Deactivate */}
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={isDirty ? save : undefined} style={{ flex: 1, padding: "8px 0", borderRadius: 6, background: isDirty ? K.act : K.inp, border: isDirty ? "none" : `1px solid ${K.bdr}`, color: isDirty ? K.bg : K.t3, fontSize: 12, fontWeight: 700, cursor: isDirty ? "pointer" : "default", letterSpacing: .5, transition: "all .2s" }}>{isDirty ? "Save" : "Saved"}</button>
           {!isNew && (
-            <button onClick={() => { if (confirm(`Deactivate ${f.name}?`)) { toggleStatus(players.find(p => p.id === ed)); setEd(null); setOrig(null); } }} style={{ padding: "8px 14px", borderRadius: 6, border: `1px solid ${K.red}30`, background: K.red + "10", color: K.red, fontSize: 12, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>Deactivate</button>
+            <button onClick={() => { if (confirm(`Deactivate ${f.name}?`)) { toggleStatus(players.find(p => p.id === ed)); setEd(null); setOrig(null); } }} style={{ padding: "5px 8px", borderRadius: 6, border: `1px solid ${K.red}30`, background: K.red + "10", color: K.red, fontSize: 9, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>Deactivate</button>
           )}
         </div>
+        {/* Row 3: Save */}
+        <button onClick={isDirty ? save : undefined} style={{ width: "100%", padding: "8px 0", borderRadius: 6, background: isDirty ? K.act : K.inp, border: isDirty ? "none" : `1px solid ${K.bdr}`, color: isDirty ? K.bg : K.t3, fontSize: 12, fontWeight: 700, cursor: isDirty ? "pointer" : "default", letterSpacing: .5, transition: "all .2s" }}>{isDirty ? "Save" : "Saved"}</button>
       </Card>
     );
   };

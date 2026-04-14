@@ -149,8 +149,8 @@ export default function GolfLeagueApp() {
       }
 
       if (pullingRef.current) {
-        if (diff <= 5) {
-          // User reversed direction — cancel pull
+        if (diff <= 0) {
+          // User reversed past origin — cancel pull
           pullingRef.current = false;
           pullYRef.current = 0;
           setPullY(0);
@@ -162,14 +162,12 @@ export default function GolfLeagueApp() {
           setPullY(val);
         }
       } else if (diff > 10 && atTop) {
-        // Engage pull — reset start to current position for clean delta
-        touchStartY.current = e.touches[0].clientY;
+        // Engage pull — keep original touchStartY so diff grows naturally
         pullingRef.current = true;
         e.preventDefault();
-        pullYRef.current = 0;
-        setPullY(0);
-      } else if (diff < -5 && !atTop) {
-        // User is scrolling up through content — don't interfere, reset start
+      } else if (!atTop) {
+        // User is scrolling through content — continuously reset start so
+        // pull doesn't falsely engage when they reach the top
         touchStartY.current = e.touches[0].clientY;
       }
     };
