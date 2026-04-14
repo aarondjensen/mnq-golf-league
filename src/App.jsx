@@ -55,6 +55,7 @@ export default function GolfLeagueApp() {
 
   const [showMore, setShowMore] = useState(false);
   const [impersonating, setImpersonating] = useState(null);
+  const [commMode, setCommMode] = useState(false);
   const [showPlayerPicker, setShowPlayerPicker] = useState(false);
   const [openAllMatches, setOpenAllMatches] = useState(false);
   const [forceWeek, setForceWeek] = useState(null);
@@ -452,8 +453,11 @@ export default function GolfLeagueApp() {
     });
   }, [schedule, leagueConfig]);
 
-  // When commissioner impersonates a player, effectiveUser overrides leagueUser for scoring/schedule
-  const effectiveUser = impersonating
+  // Clear impersonation when commish mode is turned off
+  useEffect(() => { if (!commMode) setImpersonating(null); }, [commMode]);
+
+  // When commissioner impersonates a player in commish mode, effectiveUser overrides leagueUser
+  const effectiveUser = commMode && impersonating
     ? { ...leagueUser, playerId: impersonating.playerId, name: impersonating.name }
     : leagueUser;
 
@@ -558,16 +562,25 @@ export default function GolfLeagueApp() {
       {/* Header */}
       <div className="app-header">
         <div style={{ maxWidth: 900, width: "100%", margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: "0 14px" }}>
-          {/* Left: Commissioner Switch Player */}
-          <div style={{ position: "absolute", left: 14, display: "flex", alignItems: "center", gap: 6 }}>
+          {/* Left: Commissioner controls */}
+          <div style={{ position: "absolute", left: 14, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3 }}>
             {isComm && (
-              <button onClick={() => setShowPlayerPicker(true)} style={{ background: impersonating ? K.teal + "15" : "none", border: `1px solid ${impersonating ? K.teal + "40" : K.bdr}`, borderRadius: 8, padding: "6px 10px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
-                <div style={{ textAlign: "left", lineHeight: 1.2 }}>
-                  <div style={{ fontSize: 11, color: impersonating ? K.teal : K.t3, fontWeight: 600 }}>Switch</div>
-                  <div style={{ fontSize: 11, color: impersonating ? K.teal : K.t3, fontWeight: 700 }}>Player</div>
-                </div>
-                <span style={{ fontSize: 10, color: K.t3 }}>▾</span>
-              </button>
+              <>
+                <button onClick={() => setCommMode(!commMode)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 8px", borderRadius: 6, border: `1px solid ${commMode ? K.warn + "50" : K.bdr}`, background: commMode ? K.warn + "15" : "none", cursor: "pointer" }}>
+                  <div style={{ width: 22, height: 12, borderRadius: 6, background: commMode ? K.warn : K.bdr, position: "relative", transition: "background .2s" }}>
+                    <div style={{ width: 8, height: 8, borderRadius: 4, background: "#fff", position: "absolute", top: 2, left: commMode ? 12 : 2, transition: "left .2s" }} />
+                  </div>
+                  <span style={{ fontSize: 9, fontWeight: 700, color: commMode ? K.warn : K.t3, letterSpacing: .3 }}>Commish</span>
+                </button>
+                {commMode && (
+                  <button onClick={() => setShowPlayerPicker(true)} style={{ background: impersonating ? K.teal + "15" : "none", border: `1px solid ${impersonating ? K.teal + "40" : K.bdr}`, borderRadius: 6, padding: "3px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                    <div style={{ fontSize: 9, color: impersonating ? K.teal : K.t3, fontWeight: 700 }}>
+                      {impersonating ? impersonating.name.split(' ').pop() : "Switch Player"}
+                    </div>
+                    <span style={{ fontSize: 8, color: K.t3 }}>▾</span>
+                  </button>
+                )}
+              </>
             )}
           </div>
           <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
