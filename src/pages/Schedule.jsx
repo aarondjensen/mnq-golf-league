@@ -533,7 +533,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           Edit Scores
         </button>
       )}
-    </>;
+    </>);
   };
 
   // ── Full week view ──
