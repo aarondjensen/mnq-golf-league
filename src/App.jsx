@@ -54,6 +54,7 @@ export default function GolfLeagueApp() {
   const [impersonating, setImpersonating] = useState(null);
   const [showPlayerPicker, setShowPlayerPicker] = useState(false);
   const [openAllMatches, setOpenAllMatches] = useState(false);
+  const [forceWeek, setForceWeek] = useState(null);
   const [darkMode, setDarkMode] = useState(() => {
     try { return localStorage.getItem("mnq_theme") !== "light"; } catch { return true; }
   });
@@ -326,8 +327,8 @@ export default function GolfLeagueApp() {
   const deleteWeekSchedule = useCallback(async (id) => await db.deleteDoc("league_schedule", id), []);
 
   const resetSeasonData = useCallback(async () => {
-    const seasonFilter = [...LF, { field: "season", op: "==", value: CURRENT_SEASON }];
-    await db.batchDelete("league_hole_scores", seasonFilter);
+    // Delete ALL hole scores (across all seasons) so handicap history is clean
+    await db.batchDelete("league_hole_scores", LF);
     await db.batchDelete("league_match_results", LF);
     await db.batchDelete("league_ctp", LF);
     // Unlock all schedule weeks
@@ -492,7 +493,7 @@ export default function GolfLeagueApp() {
 
       {/* Finalize week banner — commish only */}
       {weekToFinalize && (
-        <button onClick={() => { setOpenAllMatches(true); setTab("scoring"); }} style={{
+        <button onClick={() => { setForceWeek(weekToFinalize); setOpenAllMatches(true); setTab("scoring"); }} style={{
           display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
           width: "100%", maxWidth: 900, margin: "0 auto",
           padding: "8px 14px", background: K.warn + "18", border: "none",
@@ -532,7 +533,7 @@ export default function GolfLeagueApp() {
           })()}
           <div className="main-content fi" key={tab}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} />}
-          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} setPopupOpen={setPopupOpen} />}
+          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} />}
           {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} />}
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
