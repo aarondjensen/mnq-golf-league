@@ -152,7 +152,6 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, members, save
 function AdminTeams({ teams, saveTeam, players, onBack }) {
   const activePlayers = players.filter(p => p.status !== "inactive").sort((a, b) => a.name.localeCompare(b.name));
 
-  // Build team name from two player IDs
   const buildName = (p1Id, p2Id) => {
     const p1 = players.find(p => p.id === p1Id);
     const p2 = players.find(p => p.id === p2Id);
@@ -165,40 +164,61 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
     return `${short(p1)}/${short(p2)}`;
   };
 
-  // Initialize 10 rows from existing teams
   const [rows, setRows] = useState(() => {
     const r = [];
     for (let i = 0; i < TEAMS_COUNT; i++) {
       const t = teams[i];
-      r.push({
-        id: t?.id || `${LEAGUE_ID}_t${i + 1}`,
-        name: t?.name || "",
-        player1: t?.player1 || "",
-        player2: t?.player2 || "",
-      });
+      r.push({ id: t?.id || `${LEAGUE_ID}_t${i + 1}`, name: t?.name || "", player1: t?.player1 || "", player2: t?.player2 || "" });
     }
     return r;
   });
 
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [dragPlayer, setDragPlayer] = useState(null); // { playerId, source: { type: "pool" } | { type: "slot", teamIdx, slot } }
+  const dragRef = useRef(null);
 
-  // Get all currently assigned player IDs (to prevent double-assignment)
   const assignedIds = rows.flatMap(r => [r.player1, r.player2]).filter(Boolean);
+  const unassigned = activePlayers.filter(p => !assignedIds.includes(p.id));
 
-  // Available players for a dropdown: unassigned + the current selection
-  const avail = (currentId) => activePlayers.filter(p => !assignedIds.includes(p.id) || p.id === currentId);
+  const shortName = (p) => {
+    if (!p) return "?";
+    const parts = p.name.split(' ');
+    return parts.length > 1 ? `${parts[0][0]}. ${parts[parts.length - 1]}` : p.name;
+  };
 
-  const updateRow = (idx, field, value) => {
+  const placePlayer = (playerId, teamIdx, slot) => {
     setRows(prev => {
-      const next = [...prev];
-      next[idx] = { ...next[idx], [field]: value };
-      // Auto-update team name when players change
-      const p1 = field === "player1" ? value : next[idx].player1;
-      const p2 = field === "player2" ? value : next[idx].player2;
-      if (field === "player1" || field === "player2") {
-        next[idx].name = buildName(p1, p2);
+      const next = prev.map(r => ({ ...r }));
+      // Remove player from any existing slot
+      next.forEach(r => {
+        if (r.player1 === playerId) r.player1 = "";
+        if (r.player2 === playerId) r.player2 = "";
+      });
+      // If the target slot is occupied, swap: put the displaced player where the dragged one came from
+      const displaced = next[teamIdx][slot];
+      if (displaced && dragRef.current?.source?.type === "slot") {
+        const src = dragRef.current.source;
+        next[src.teamIdx][src.slot] = displaced;
+        const sp1 = src.slot === "player1" ? displaced : next[src.teamIdx].player1;
+        const sp2 = src.slot === "player2" ? displaced : next[src.teamIdx].player2;
+        next[src.teamIdx].name = buildName(sp1, sp2);
       }
+      next[teamIdx][slot] = playerId;
+      next[teamIdx].name = buildName(
+        slot === "player1" ? playerId : next[teamIdx].player1,
+        slot === "player2" ? playerId : next[teamIdx].player2,
+      );
+      return next;
+    });
+    setDirty(true);
+  };
+
+  const removeFromSlot = (teamIdx, slot) => {
+    setRows(prev => {
+      const next = prev.map(r => ({ ...r }));
+      next[teamIdx][slot] = "";
+      next[teamIdx].name = buildName(next[teamIdx].player1, next[teamIdx].player2);
       return next;
     });
     setDirty(true);
@@ -215,21 +235,113 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
     setDirty(false);
   };
 
-  // Short display name: "A. Jensen", "S. Rhoades"
-  const shortName = (p) => {
-    if (!p) return "?";
-    const parts = p.name.split(' ');
-    return parts.length > 1 ? `${parts[0][0]}. ${parts[parts.length - 1]}` : p.name;
-  };
-
-  const selectStyle = { flex: 1, padding: "8px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13 };
-
   const handleBack = async () => {
     if (dirty) {
       const choice = window.confirm("You have unsaved changes. Save before leaving?");
       if (choice) await saveAll();
     }
     onBack();
+  };
+
+  // Find drop target from coordinates
+  const findSlotTarget = (x, y) => {
+    const els = document.querySelectorAll("[data-team-slot]");
+    for (const el of els) {
+      const r = el.getBoundingClientRect();
+      if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) {
+        const [ti, sl] = el.dataset.teamSlot.split("-");
+        return { teamIdx: parseInt(ti), slot: sl };
+      }
+    }
+    return null;
+  };
+
+  // Drag chip component
+  const PlayerChip = ({ playerId, source, style: extraStyle }) => {
+    const p = players.find(pl => pl.id === playerId);
+    if (!p) return null;
+    const isDragging = dragPlayer?.playerId === playerId;
+    return (
+      <div
+        style={{
+          display: "inline-flex", alignItems: "center", gap: 4,
+          padding: "5px 10px", borderRadius: 6,
+          background: isDragging ? K.act + "20" : K.card,
+          border: `1px solid ${isDragging ? K.act : K.bdr}`,
+          fontSize: 12, fontWeight: 600, color: K.t1,
+          cursor: "grab", userSelect: "none",
+          opacity: isDragging ? .5 : 1,
+          transition: "opacity .1s",
+          ...extraStyle,
+        }}
+        onMouseDown={(e) => {
+          e.preventDefault();
+          const info = { playerId, source };
+          dragRef.current = info;
+          setDragPlayer(info);
+          const onMove = (ev) => { dragRef.current = { ...dragRef.current, curX: ev.clientX, curY: ev.clientY }; };
+          const onUp = (ev) => {
+            document.removeEventListener("mousemove", onMove);
+            document.removeEventListener("mouseup", onUp);
+            const target = findSlotTarget(ev.clientX, ev.clientY);
+            if (target) placePlayer(playerId, target.teamIdx, target.slot);
+            dragRef.current = null;
+            setDragPlayer(null);
+          };
+          document.addEventListener("mousemove", onMove);
+          document.addEventListener("mouseup", onUp);
+        }}
+        onTouchStart={(e) => {
+          const touch = e.touches[0];
+          const info = { playerId, source };
+          dragRef.current = info;
+          setDragPlayer(info);
+          if (navigator.vibrate) navigator.vibrate(15);
+          const onMove = (ev) => { ev.preventDefault(); };
+          const onEnd = (ev) => {
+            document.removeEventListener("touchmove", onMove);
+            document.removeEventListener("touchend", onEnd);
+            const t = ev.changedTouches[0];
+            const target = findSlotTarget(t.clientX, t.clientY);
+            if (target) placePlayer(playerId, target.teamIdx, target.slot);
+            dragRef.current = null;
+            setDragPlayer(null);
+          };
+          document.addEventListener("touchmove", onMove, { passive: false });
+          document.addEventListener("touchend", onEnd);
+        }}
+      >
+        <span style={{ fontSize: 10, color: K.t3 }}>{p.handicapIndex}</span>
+        <span>{shortName(p)}</span>
+      </div>
+    );
+  };
+
+  // Slot in team row
+  const Slot = ({ teamIdx, slot, playerId }) => {
+    const isEmpty = !playerId;
+    const isDropTarget = !!dragPlayer;
+    return (
+      <div
+        data-team-slot={`${teamIdx}-${slot}`}
+        style={{
+          flex: 1, minHeight: 36, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center",
+          background: isDropTarget ? K.act + "08" : K.inp,
+          border: `1.5px dashed ${isDropTarget ? K.act + "50" : isEmpty ? K.bdr + "80" : "transparent"}`,
+          ...(isEmpty ? {} : { border: `1px solid ${K.bdr}`, background: K.card }),
+          transition: "all .15s",
+        }}
+      >
+        {isEmpty ? (
+          <span style={{ fontSize: 10, color: K.t3 + "80" }}>Drop here</span>
+        ) : (
+          <div style={{ display: "flex", alignItems: "center", gap: 4, width: "100%" }}>
+            <PlayerChip playerId={playerId} source={{ type: "slot", teamIdx, slot }} style={{ flex: 1, borderRadius: 4, border: "none", background: "transparent", padding: "4px 6px" }} />
+            <button onClick={() => removeFromSlot(teamIdx, slot)} style={{ background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", padding: "2px 4px", flexShrink: 0, lineHeight: 1 }}>✕</button>
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -240,8 +352,18 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
         <button onClick={saveAll} style={{ background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: 13, padding: "7px 16px", cursor: dirty ? "pointer" : "default", fontWeight: 600, letterSpacing: .4, transition: "all .2s" }}>{saving ? "Saving..." : dirty ? "Save All" : "Saved"}</button>
       </div>
 
+      {/* Unassigned player pool */}
+      {unassigned.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 10, fontWeight: 600, color: K.t3, letterSpacing: 1, marginBottom: 6 }}>Unassigned ({unassigned.length})</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {unassigned.map(p => <PlayerChip key={p.id} playerId={p.id} source={{ type: "pool" }} />)}
+          </div>
+        </div>
+      )}
+
       {/* Header row */}
-      <div style={{ display: "flex", gap: 8, padding: "0 4px 6px", fontSize: 10, fontWeight: 600, color: K.t3, textTransform: "uppercase", letterSpacing: 1 }}>
+      <div style={{ display: "flex", gap: 6, padding: "0 4px 6px", fontSize: 10, fontWeight: 600, color: K.t3, letterSpacing: 1 }}>
         <div style={{ width: 24 }}>#</div>
         <div style={{ flex: 1 }}>Player 1</div>
         <div style={{ flex: 1 }}>Player 2</div>
@@ -249,16 +371,10 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
 
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
         {rows.map((r, i) => (
-          <div key={i} style={{ display: "flex", gap: 8, alignItems: "center", background: K.card, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: "8px 8px" }}>
+          <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", background: K.card, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: "6px 8px" }}>
             <div style={{ width: 24, fontSize: 13, fontWeight: 700, color: K.t3, textAlign: "center", flexShrink: 0 }}>{i + 1}</div>
-            <select value={r.player1} onChange={e => updateRow(i, "player1", e.target.value)} style={selectStyle}>
-              <option value="">— Select —</option>
-              {avail(r.player1).map(p => <option key={p.id} value={p.id}>{shortName(p)}</option>)}
-            </select>
-            <select value={r.player2} onChange={e => updateRow(i, "player2", e.target.value)} style={selectStyle}>
-              <option value="">— Select —</option>
-              {avail(r.player2).map(p => <option key={p.id} value={p.id}>{shortName(p)}</option>)}
-            </select>
+            <Slot teamIdx={i} slot="player1" playerId={r.player1} />
+            <Slot teamIdx={i} slot="player2" playerId={r.player2} />
           </div>
         ))}
       </div>
