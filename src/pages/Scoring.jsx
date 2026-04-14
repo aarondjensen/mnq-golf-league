@@ -1260,6 +1260,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 <button onClick={attestMatch} style={{ width: "100%", padding: "14px", borderRadius: 12, background: "#3b82f6", border: "none", color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
                   Attest Scorecard
                 </button>
+                {signedByPlayerId && playerMap[signedByPlayerId] && (
+                  <div style={{ textAlign: "center", marginTop: 6, fontSize: 11, color: K.t3, fontWeight: 600 }}>
+                    Signed by {playerMap[signedByPlayerId].name}
+                  </div>
+                )}
               </div>
             )}
           </div>
