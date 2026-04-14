@@ -39,9 +39,12 @@ export default function AdminView(props) {
 function AdminPlayers({ players, savePlayer, deletePlayer, course, members, saveMember, onBack }) {
   const [ed, setEd] = useState(null);
   const [f, setF] = useState({ name: "", handicapIndex: "", teeBox: "Blue" });
+  const [orig, setOrig] = useState(null); // snapshot for dirty detection
   const [showInactive, setShowInactive] = useState(false);
   const nameRef = useCallback(node => { if (node) setTimeout(() => node.focus(), 50); }, [ed]);
-  const tees = course?.teeBoxes?.map(t => t.name) || ["Blue", "Black", "White"];
+  const teeBoxes = course?.teeBoxes || [{ name: "White", color: "#e2e8f0", slope: 113, rating: 67 }];
+  const teeColor = (name) => (teeBoxes.find(t => t.name === name) || {}).color || K.bdr;
+  const isWhiteTee = (name) => { const c = teeColor(name).toLowerCase(); return c === "#fff" || c === "#ffffff" || c === "#e2e8f0" || c === "white"; };
 
   const getMember = (playerId) => (members || []).find(m => m.playerId === playerId);
   const isComm = (playerId) => getMember(playerId)?.isCommissioner === true;
@@ -50,13 +53,16 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, members, save
     if (!member) return;
     await saveMember({ ...member, isCommissioner: !member.isCommissioner });
   };
+
+  const isDirty = orig && (f.name !== orig.name || f.teeBox !== orig.teeBox || (ed === "new"));
   const save = async () => {
     if (!f.name.trim()) return;
     const id = ed === "new" ? `${LEAGUE_ID}_p${Date.now()}` : ed;
     await savePlayer({ id, name: f.name.trim(), handicapIndex: parseFloat(f.handicapIndex) || 0, teeBox: f.teeBox, status: f.status || "active" });
-    setEd(null);
+    setEd(null); setOrig(null);
   };
   const toggleStatus = async (p) => { await savePlayer({ ...p, status: p.status === "inactive" ? "active" : "inactive" }); };
+  const startEdit = (vals) => { setF(vals); setOrig({ ...vals }); };
 
   const activePlayers = players.filter(p => p.status !== "inactive").sort((a, b) => a.name.localeCompare(b.name));
   const inactivePlayers = players.filter(p => p.status === "inactive").sort((a, b) => a.name.localeCompare(b.name));
@@ -70,10 +76,10 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, members, save
     const member = playerId ? getMember(playerId) : null;
     const commStatus = playerId ? isComm(playerId) : false;
     return (
-      <Card style={{ padding: 14, marginBottom: 8, border: `1.5px solid ${K.act}` }}>
+      <Card style={{ padding: 14, marginBottom: 8 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: K.t1 }}>{isNew ? "New Player" : "Edit Player"}</div>
-          <button onClick={() => setEd(null)} style={{ background: "none", border: "none", color: K.t3, fontSize: 16, cursor: "pointer", padding: "2px 6px", lineHeight: 1 }}>✕</button>
+          <button onClick={() => { setEd(null); setOrig(null); }} style={{ background: "none", border: "none", color: K.t3, fontSize: 16, cursor: "pointer", padding: "2px 6px", lineHeight: 1 }}>✕</button>
         </div>
         {/* Name */}
         <div style={{ marginBottom: 10 }}>
@@ -84,9 +90,13 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, members, save
         <div style={{ marginBottom: 10 }}>
           <div style={{ fontSize: 10, color: K.t3, marginBottom: 3, fontWeight: 600, letterSpacing: 1 }}>Tee Box</div>
           <div style={{ display: "flex", gap: 6 }}>
-            {tees.map(t => (
-              <button key={t} onClick={() => setF({ ...f, teeBox: t })} style={{ flex: 1, padding: "7px 0", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: f.teeBox === t ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}`, background: f.teeBox === t ? K.act + "20" : K.inp, color: f.teeBox === t ? K.act : K.t2 }}>{t}</button>
-            ))}
+            {teeBoxes.map(t => {
+              const sel = f.teeBox === t.name;
+              const white = isWhiteTee(t.name);
+              return (
+                <button key={t.name} onClick={() => setF({ ...f, teeBox: t.name })} style={{ flex: 1, padding: "7px 0", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: sel ? `1.5px solid ${white ? K.t3 : t.color}` : `1px solid ${K.bdr}`, background: sel ? (white ? K.t3 + "30" : t.color + "20") : K.inp, color: sel ? (white ? "#fff" : t.color) : K.t2 }}>{t.name}</button>
+              );
+            })}
           </div>
         </div>
         {/* Commissioner toggle (only if member is linked) */}
@@ -105,11 +115,11 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, members, save
         {!isNew && (
           <div style={{ marginBottom: 14 }}>
             <div style={{ fontSize: 10, color: K.t3, marginBottom: 3, fontWeight: 600, letterSpacing: 1 }}>Status</div>
-            <button onClick={() => { if (confirm(`Deactivate ${f.name}?`)) { toggleStatus(players.find(p => p.id === ed)); setEd(null); } }} style={{ width: "100%", padding: "8px 0", borderRadius: 6, border: `1px solid ${K.red}30`, background: K.red + "10", color: K.red, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Deactivate Player</button>
+            <button onClick={() => { if (confirm(`Deactivate ${f.name}?`)) { toggleStatus(players.find(p => p.id === ed)); setEd(null); setOrig(null); } }} style={{ width: "100%", padding: "8px 0", borderRadius: 6, border: `1px solid ${K.red}30`, background: K.red + "10", color: K.red, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Deactivate Player</button>
           </div>
         )}
         {/* Save */}
-        <button onClick={save} style={{ width: "100%", padding: "10px 0", borderRadius: 8, background: K.act, border: "none", color: K.bg, fontSize: 13, fontWeight: 700, cursor: "pointer", letterSpacing: .5 }}>Save</button>
+        <button onClick={isDirty ? save : undefined} style={{ width: "100%", padding: "10px 0", borderRadius: 8, background: isDirty ? K.act : K.inp, border: isDirty ? "none" : `1px solid ${K.bdr}`, color: isDirty ? K.bg : K.t3, fontSize: 13, fontWeight: 700, cursor: isDirty ? "pointer" : "default", letterSpacing: .5, transition: "all .2s" }}>{isDirty ? "Save" : "Saved"}</button>
       </Card>
     );
   };
@@ -127,7 +137,7 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, members, save
           <button onClick={() => { if (confirm(`Permanently delete ${p.name}? This cannot be undone.`)) deletePlayer(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.red, fontSize: 10, padding: "4px 8px", cursor: "pointer", fontWeight: 600 }}>Delete</button>
         </div>
       ) : (
-        <button onClick={() => { setF({ name: p.name, handicapIndex: String(p.handicapIndex ?? ""), teeBox: p.teeBox || "Blue", status: p.status || "active" }); setEd(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.acc, fontSize: 10, padding: "5px 10px", cursor: "pointer", fontWeight: 600 }}>Edit</button>
+        <button onClick={() => { startEdit({ name: p.name, handicapIndex: String(p.handicapIndex ?? ""), teeBox: p.teeBox || teeBoxes[0]?.name || "White", status: p.status || "active" }); setEd(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.acc, fontSize: 10, padding: "5px 10px", cursor: "pointer", fontWeight: 600 }}>Edit</button>
       )}
     </div>
   );
@@ -136,7 +146,7 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, members, save
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Players ({activePlayers.length} active)</span>
-        <button onClick={() => { setF({ name: "", handicapIndex: "", teeBox: "Blue", status: "active" }); setEd("new"); }} style={{ background: K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 700 }}>+ Add</button>
+        <button onClick={() => { startEdit({ name: "", handicapIndex: "", teeBox: teeBoxes[0]?.name || "White", status: "active" }); setEd("new"); }} style={{ background: K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 700 }}>+ Add</button>
       </div>
       {ed === "new" && <EditCard isNew />}
       {/* Column header */}
