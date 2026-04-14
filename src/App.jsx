@@ -327,8 +327,8 @@ export default function GolfLeagueApp() {
   const deleteWeekSchedule = useCallback(async (id) => await db.deleteDoc("league_schedule", id), []);
 
   const resetSeasonData = useCallback(async () => {
-    // Delete ALL hole scores (across all seasons) so handicap history is clean
-    await db.batchDelete("league_hole_scores", LF);
+    const seasonFilter = [...LF, { field: "season", op: "==", value: CURRENT_SEASON }];
+    await db.batchDelete("league_hole_scores", seasonFilter);
     await db.batchDelete("league_match_results", LF);
     await db.batchDelete("league_ctp", LF);
     // Unlock all schedule weeks
@@ -338,6 +338,22 @@ export default function GolfLeagueApp() {
     setHoleScores({});
     setMatchResults([]);
   }, [schedule]);
+
+  // Import historical scores from a [name, week, hole, score] array
+  const importHistoricalScores = useCallback(async (data, season) => {
+    // Build name → id map
+    const nameMap = {};
+    players.forEach(p => { nameMap[p.name] = p.id; });
+    let imported = 0, skipped = 0;
+    for (const [name, week, hole, score] of data) {
+      const playerId = nameMap[name];
+      if (!playerId) { skipped++; continue; }
+      const id = `${LEAGUE_ID}_s${season}_w${week}_p${playerId}_h${hole}`;
+      await db.upsert("league_hole_scores", { id, league_id: LEAGUE_ID, season, week, player_id: playerId, hole, score, ts: Date.now() });
+      imported++;
+    }
+    return { imported, skipped };
+  }, [players]);
 
   // Save handlers for rarely-changing data: write + refresh local state
   const saveCourseData = useCallback(async (c) => {
@@ -538,7 +554,7 @@ export default function GolfLeagueApp() {
           {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} />}
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
           {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} isComm={isComm} saveCtp={saveCtp} />}
-          {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} resetSeasonData={resetSeasonData} />}
+          {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} resetSeasonData={resetSeasonData} importHistoricalScores={importHistoricalScores} />}
           </div>
         </div>
       </div>

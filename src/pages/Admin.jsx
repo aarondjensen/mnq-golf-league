@@ -24,7 +24,7 @@ export default function AdminView(props) {
   if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} onBack={() => setSec(null)} />;
   if (sec === "scoring") return <AdminScoring scoring={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
   if (sec === "members") return <AdminMembers members={members} saveMember={saveMember} deleteMember={deleteMember} players={players} onBack={() => setSec(null)} />;
-  if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} resetSeasonData={props.resetSeasonData} onBack={() => setSec(null)} />;
+  if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} resetSeasonData={props.resetSeasonData} importHistoricalScores={props.importHistoricalScores} onBack={() => setSec(null)} />;
 
   return (
     <div><SectionTitle>Commissioner Dashboard</SectionTitle>
@@ -1875,10 +1875,12 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
 }
 
 
-function AdminConfig({ config, saveLeagueConfig, resetSeasonData, onBack }) {
+function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoricalScores, onBack }) {
   const [lc, setLc] = useState({ ...config });
   const [dirty, setDirty] = useState(false);
   const [resetting, setResetting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState(null);
   const save = async () => { await saveLeagueConfig(lc); setDirty(false); };
 
   const handleBack = async () => {
@@ -1895,6 +1897,21 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, onBack }) {
     setResetting(true);
     await resetSeasonData();
     setResetting(false);
+  };
+
+  const handleImport2025 = async () => {
+    if (!window.confirm("Import 2025 season historical scores?\n\nThis will write 2,556 hole scores for 20 players across 15 weeks. Existing 2025 scores will be overwritten.")) return;
+    setImporting(true);
+    setImportResult(null);
+    try {
+      const { default: IMPORT_2025 } = await import("./import2025Data.js");
+      const result = await importHistoricalScores(IMPORT_2025, 2025);
+      setImportResult(result);
+    } catch (e) {
+      console.error("Import error:", e);
+      setImportResult({ error: e.message });
+    }
+    setImporting(false);
   };
 
   return (
@@ -1920,6 +1937,22 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, onBack }) {
               {resetting ? "Resetting..." : "Reset Season Data"}
             </button>
           </Card>
+
+          {importHistoricalScores && (
+          <Card style={{ padding: 14, border: `1px solid ${K.warn}30`, marginTop: 8 }}>
+            <div style={{ fontSize: 12, color: K.t2, marginBottom: 10, lineHeight: 1.5 }}>
+              Import 2025 season scores from historical spreadsheet data. This writes hole-by-hole scores for handicap calculation.
+            </div>
+            <button onClick={handleImport2025} disabled={importing} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 13, fontWeight: 700, cursor: importing ? "default" : "pointer", opacity: importing ? 0.6 : 1 }}>
+              {importing ? "Importing..." : "Import 2025 Scores"}
+            </button>
+            {importResult && (
+              <div style={{ fontSize: 11, color: importResult.error ? K.red : K.grn, marginTop: 8, textAlign: "center", fontWeight: 600 }}>
+                {importResult.error ? `Error: ${importResult.error}` : `Done! ${importResult.imported} scores imported, ${importResult.skipped} skipped`}
+              </div>
+            )}
+          </Card>
+          )}
         </div>
       )}
     </div>
