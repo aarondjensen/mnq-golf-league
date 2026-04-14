@@ -24,7 +24,7 @@ export default function AdminView(props) {
   if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} onBack={() => setSec(null)} />;
   if (sec === "scoring") return <AdminScoring scoring={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
   if (sec === "members") return <AdminMembers members={members} saveMember={saveMember} deleteMember={deleteMember} players={players} onBack={() => setSec(null)} />;
-  if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} resetSeasonData={props.resetSeasonData} importHistoricalScores={props.importHistoricalScores} onBack={() => setSec(null)} />;
+  if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} resetSeasonData={props.resetSeasonData} importHistoricalScores={props.importHistoricalScores} recalcHandicaps={props.recalcHandicaps} onBack={() => setSec(null)} />;
 
   return (
     <div><SectionTitle>Commissioner Dashboard</SectionTitle>
@@ -1875,12 +1875,14 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
 }
 
 
-function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoricalScores, onBack }) {
+function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoricalScores, recalcHandicaps, onBack }) {
   const [lc, setLc] = useState({ ...config });
   const [dirty, setDirty] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState(null);
+  const [recalcing, setRecalcing] = useState(false);
+  const [recalcResult, setRecalcResult] = useState(null);
   const save = async () => { await saveLeagueConfig(lc); setDirty(false); };
 
   const handleBack = async () => {
@@ -1949,6 +1951,27 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
             {importResult && (
               <div style={{ fontSize: 11, color: importResult.error ? K.red : K.grn, marginTop: 8, textAlign: "center", fontWeight: 600 }}>
                 {importResult.error ? `Error: ${importResult.error}` : `Done! ${importResult.imported} scores imported, ${importResult.skipped} skipped`}
+              </div>
+            )}
+          </Card>
+          )}
+
+          {recalcHandicaps && (
+          <Card style={{ padding: 14, border: `1px solid ${K.teal}30`, marginTop: 8 }}>
+            <div style={{ fontSize: 12, color: K.t2, marginBottom: 10, lineHeight: 1.5 }}>
+              Recalculate all player handicaps from historical scores. This happens automatically after each week is finalized, but you can trigger it manually here.
+            </div>
+            <button onClick={async () => {
+              setRecalcing(true); setRecalcResult(null);
+              try { const n = await recalcHandicaps(); setRecalcResult({ updated: n }); }
+              catch (e) { setRecalcResult({ error: e.message }); }
+              setRecalcing(false);
+            }} disabled={recalcing} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.teal + "15", border: `1.5px solid ${K.teal}50`, color: K.teal, fontSize: 13, fontWeight: 700, cursor: recalcing ? "default" : "pointer", opacity: recalcing ? 0.6 : 1 }}>
+              {recalcing ? "Recalculating..." : "Recalc Handicaps"}
+            </button>
+            {recalcResult && (
+              <div style={{ fontSize: 11, color: recalcResult.error ? K.red : K.grn, marginTop: 8, textAlign: "center", fontWeight: 600 }}>
+                {recalcResult.error ? `Error: ${recalcResult.error}` : `Done! ${recalcResult.updated} player(s) updated`}
               </div>
             )}
           </Card>
