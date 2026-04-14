@@ -502,6 +502,28 @@ export default function GolfLeagueApp() {
 
   const bannerGrn = K.matchGrn;
 
+  // Show Live Scoring button only on match days between 4-8pm ET
+  const showLiveBtn = useMemo(() => {
+    if (!schedule.length) return false;
+    const now = new Date();
+    // Convert to ET
+    const et = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const etHour = et.getHours();
+    if (etHour < 16 || etHour >= 20) return false; // outside 4-8pm ET
+    // Check if today matches any non-rained-out schedule date
+    const year = leagueConfig?.year || new Date().getFullYear();
+    const todayStr = et.toLocaleDateString("en-US", { month: "short", day: "numeric" }); // e.g. "May 13"
+    return schedule.some(wk => {
+      if (wk.rainedOut || !wk.matches || wk.matches.length === 0) return false;
+      if (!wk.date) return false;
+      // Normalize both to "Mon D" format for comparison
+      const wkDate = new Date(`${wk.date}, ${year}`);
+      if (isNaN(wkDate.getTime())) return false;
+      const wkStr = wkDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      return wkStr === todayStr;
+    });
+  }, [schedule, leagueConfig]);
+
   // Suspense fallback for lazy-loaded tabs
   const TabFallback = <div style={{ textAlign: "center", padding: 40, color: K.t3, fontSize: 13 }} className="pu">Loading...</div>;
 
@@ -551,8 +573,9 @@ export default function GolfLeagueApp() {
             )}
           </div>
           <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
-          {/* Right: Live Scoring button */}
+          {/* Right: Live Scoring button — only on match days 4-8pm ET */}
           <div style={{ position: "absolute", right: 14, display: "flex", alignItems: "center" }}>
+            {showLiveBtn && (
             <button onClick={() => setTab("scoring")} style={{
               background: tab === "scoring" ? bannerGrn : "transparent",
               border: `1.5px solid ${tab === "scoring" ? bannerGrn : bannerGrn + "50"}`,
@@ -562,6 +585,7 @@ export default function GolfLeagueApp() {
             }}>
               Live<br/>Scoring
             </button>
+            )}
           </div>
         </div>
       </div>
