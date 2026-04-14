@@ -341,18 +341,27 @@ export default function GolfLeagueApp() {
 
   // Import historical scores from a [name, week, hole, score] array
   const importHistoricalScores = useCallback(async (data, season) => {
-    // Build name → id map
+    // Build name → id map (case-insensitive, trimmed)
     const nameMap = {};
-    players.forEach(p => { nameMap[p.name] = p.id; });
-    let imported = 0, skipped = 0;
+    players.forEach(p => { nameMap[p.name.trim().toLowerCase()] = p.id; });
+    
+    // Build all docs first
+    const docs = [];
+    let skipped = 0;
     for (const [name, week, hole, score] of data) {
-      const playerId = nameMap[name];
+      const playerId = nameMap[name.trim().toLowerCase()];
       if (!playerId) { skipped++; continue; }
       const id = `${LEAGUE_ID}_s${season}_w${week}_p${playerId}_h${hole}`;
-      await db.upsert("league_hole_scores", { id, league_id: LEAGUE_ID, season, week, player_id: playerId, hole, score, ts: Date.now() });
-      imported++;
+      docs.push({ id, league_id: LEAGUE_ID, season, week, player_id: playerId, hole, score, ts: Date.now() });
     }
-    return { imported, skipped };
+    
+    // Write in batches of 490
+    for (let i = 0; i < docs.length; i += 490) {
+      const batch = docs.slice(i, i + 490);
+      await Promise.all(batch.map(d => db.upsert("league_hole_scores", d)));
+    }
+    
+    return { imported: docs.length, skipped };
   }, [players]);
 
   // Save handlers for rarely-changing data: write + refresh local state
