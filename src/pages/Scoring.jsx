@@ -139,7 +139,7 @@ function SharedScorecard({
     const isAM = variant === "allMatches";
     return (
       <div style={{ display: "flex", ...(isAM ? { alignItems: "center", background: K.act + "0c" } : {}) }}>
-        <div style={{ ...lblStyle, height: isAM ? 28 : 34, fontSize: 9, fontWeight: 800 }}>{isAM ? "NET" : "TEAM"}</div>
+        <div style={{ ...lblStyle, height: isAM ? 28 : 38, fontSize: 9, fontWeight: 800 }}>{isAM ? "NET" : "TEAM"}</div>
         {Array.from({ length: 9 }, (_, h) => {
           let tNet = 0; let ok = true;
           pids.forEach(pid => { const s = getScore(pid, h); if (s <= 0) ok = false; else tNet += s - getStrokes(pid, h); });
@@ -147,7 +147,6 @@ function SharedScorecard({
           const won = holeResults && holeResults[h] === (isTeam1Side ? 1 : -1);
 
           if (isAM) {
-            // All Matches style: gold border on the cell itself, bg swap, remove borderRight
             return <div key={h} style={{
               flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800,
               color: !ok ? K.t3 + "30" : K.t1, lineHeight: "22px",
@@ -156,22 +155,16 @@ function SharedScorecard({
             }}>{ok ? tNet : "\u00B7"}</div>;
           }
 
-          // Full/compact style: gold background cell + inner 26x26 bordered box
           return <div key={h} style={{
-            flex: 1, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
-            borderRight: h < 8 ? colBdr : "none",
+            flex: 1, height: 38, display: "flex", alignItems: "center", justifyContent: "center",
+            borderRight: h < 8 ? gridLine : "none",
             background: won ? K.act + "18" : "transparent",
+            ...(won ? { borderTop: `1.5px solid ${K.act}`, borderBottom: `1.5px solid ${K.act}` } : {}),
           }}>
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "center",
-              width: 26, height: 26, borderRadius: 3,
-              border: won ? `1.5px solid ${K.act}` : "none",
-            }}>
-              <span style={{ fontSize: 15, fontWeight: 800, color: K.t2 }}>{ok ? tNet : "·"}</span>
-            </div>
+            <span style={{ fontSize: scoreSize, fontWeight: 800, color: ok ? K.t1 : K.t3 + "30" }}>{ok ? tNet : "·"}</span>
           </div>;
         })}
-        {totStyle && <div style={{ ...totStyle, height: 34 }}><span style={{ fontSize: 14, fontWeight: 800, color: K.t1 }}>{isNaN(netTotal) ? "" : netTotal}</span></div>}
+        {totStyle && <div style={{ ...totStyle, height: 38 }}><span style={{ fontSize: 14, fontWeight: 800, color: K.t1 }}>{isNaN(netTotal) ? "" : netTotal}</span></div>}
       </div>
     );
   };
