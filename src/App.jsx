@@ -365,6 +365,30 @@ export default function GolfLeagueApp() {
     return { imported: docs.length, skipped };
   }, [players]);
 
+  // Recalculate all player handicaps from historical scores and update their profiles
+  const recalcHandicaps = useCallback(async () => {
+    const allScores = await fetchAllScores();
+    const par = courseData ? (courseData.frontPars || []).reduce((a, b) => a + b, 0) : 36;
+    const recentN = scoringRules.hcpRecentCount || 8;
+    const bestN = scoringRules.hcpBestCount || 6;
+    let updated = 0;
+    for (const p of players) {
+      const rounds = allScores[p.id] || [];
+      if (!rounds.length) continue;
+      const recent = rounds.slice(-recentN);
+      const sorted = [...recent].sort((a, b) => a.gross - b.gross);
+      const best = sorted.slice(0, Math.min(bestN, sorted.length));
+      const avg = best.length ? best.reduce((a, b) => a + b.gross, 0) / best.length : null;
+      const newHcp = avg !== null ? Math.round(avg - par) : null;
+      if (newHcp !== null && newHcp !== p.handicapIndex) {
+        await savePlayer({ ...p, handicapIndex: newHcp });
+        updated++;
+      }
+    }
+    console.log(`Handicaps recalculated: ${updated} players updated`);
+    return updated;
+  }, [players, courseData, scoringRules, fetchAllScores, savePlayer]);
+
   // Save handlers for rarely-changing data: write + refresh local state
   const saveCourseData = useCallback(async (c) => {
     const data = { ...c, id: `${LEAGUE_ID}_course`, league_id: LEAGUE_ID };
@@ -559,7 +583,7 @@ export default function GolfLeagueApp() {
           })()}
           <div className="main-content fi" key={tab}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} />}
-          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} />}
+          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} recalcHandicaps={recalcHandicaps} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} />}
           {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} />}
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}

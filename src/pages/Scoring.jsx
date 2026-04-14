@@ -259,7 +259,7 @@ function computeMatchStatus(t1Pids, t2Pids, getScore, getStrokes, pars) {
 // ═══════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
-export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule, openAllMatches, onAllMatchesOpened, setPopupOpen }) {
+export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule, openAllMatches, onAllMatchesOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
   const [showAllMatches, setShowAllMatches] = useState(false);
@@ -298,6 +298,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   }, [players]);
 
   const currentWeek = useMemo(() => {
+    if (forceWeek) return forceWeek;
     for (const wk of schedule) {
       if (wk.rainedOut) continue;
       if (!wk.matches || wk.matches.length === 0) continue;
@@ -305,10 +306,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     }
     const playable = schedule.filter(wk => !wk.rainedOut && wk.matches && wk.matches.length > 0);
     return playable.length ? playable[playable.length - 1].week : 0;
-  }, [schedule, matchResults]);
+  }, [schedule, matchResults, forceWeek]);
 
   const week = currentWeek;
   useEffect(() => { setLiveWeek(week); }, [week, setLiveWeek]);
+  // Clear the forceWeek after it's been consumed
+  useEffect(() => { if (forceWeek && onForceWeekUsed) onForceWeekUsed(); }, [forceWeek]);
 
   const weekSch = schedule.find(s => s.week === week);
   const matches = weekSch?.matches || [];
@@ -811,7 +814,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                         makeupFor: weekSch.week,
                       });
                     } else {
-                      // Seeded or Playoff: shift all future weeks up by 1
+                      // Seeded or Playoff: shift future weeks up by 1, put rained-out matchups in next slot
                       const futureWeeks = schedule.filter(s => s.week > weekSch.week && !s.rainedOut).sort((a, b) => b.week - a.week);
                       for (const fw of futureWeeks) {
                         const newNum = fw.week + 1;
@@ -824,28 +827,24 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                         await saveWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newNum}`, week: newNum, date: newDate });
                       }
 
-                      // Add makeup week at end of season
-                      const allWeekNums = schedule.map(s => s.week);
-                      const maxWeek = Math.max(...allWeekNums, 0);
-                      const makeupWeekNum = maxWeek + 1;
-                      const lastWeekData = schedule.find(s => s.week === maxWeek);
-                      let makeupDate = "";
-                      const lastParsed = parseDate(lastWeekData?.date);
-                      if (lastParsed) {
-                        lastParsed.setDate(lastParsed.getDate() + 14);
-                        makeupDate = fmtDate(lastParsed);
+                      // Write the rained-out week's matchups into the next week slot
+                      const nextWeekNum = weekSch.week + 1;
+                      let nextDate = weekSch.date || "";
+                      const wkParsed = parseDate(weekSch.date);
+                      if (wkParsed) {
+                        wkParsed.setDate(wkParsed.getDate() + 7);
+                        nextDate = fmtDate(wkParsed);
                       }
-                      const makeupSide = lastWeekData?.side === 'front' ? 'back' : 'front';
+                      const nextSide = weekSch.side === 'front' ? 'back' : 'front';
 
                       await saveWeekSchedule({
-                        id: `${LEAGUE_ID}_w${makeupWeekNum}`,
-                        week: makeupWeekNum,
+                        id: `${LEAGUE_ID}_w${nextWeekNum}`,
+                        week: nextWeekNum,
                         matches: [...(weekSch.matches || [])],
-                        side: weekSch.side || makeupSide,
-                        date: makeupDate,
-                        makeupFor: weekSch.week,
+                        side: nextSide,
+                        date: nextDate,
                         isPlayoff: weekSch.isPlayoff || false,
-                        seeded: weekSch.seeded || false,
+                        seeded: false,
                       });
                     }
 
@@ -898,6 +897,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             }
             // Lock the week
             await saveWeekSchedule({ ...weekSch, locked: true });
+            // Auto-recalculate all handicaps from updated scores
+            if (recalcHandicaps) recalcHandicaps();
             setShowCtpPopup(false);
             setToast("Week " + week + " finalized");
             setTimeout(() => {
