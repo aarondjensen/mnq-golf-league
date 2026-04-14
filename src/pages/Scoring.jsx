@@ -452,8 +452,16 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const isTheSigner = leagueUser.playerId === signedByPlayerId;
   const isOnFinalizingTeam = myTeam && (finalizedByTeamId === myTeam.id || isTheSigner);
   const isOnOpposingTeam = myTeam && !isOnFinalizingTeam && (myTeam.id === (t1?.id) || myTeam.id === (t2?.id));
-  const needsAttestation = isAlreadyFinalized && !isAttested && isOnOpposingTeam;
-  const scoresLocked = (isWeekLocked && !isComm) || (isAttested && !isComm);
+
+  // Multi-player attestation: all 3 non-signing players must attest
+  const attestedBy = existingResult?.attestedBy || [];
+  const allMatchPids = [...t1Players, ...t2Players];
+  const nonSignerPids = allMatchPids.filter(pid => pid !== signedByPlayerId);
+  const isFullyAttested = isAlreadyFinalized && nonSignerPids.length > 0 && nonSignerPids.every(pid => attestedBy.includes(pid));
+  const iHaveAttested = attestedBy.includes(leagueUser.playerId);
+  const isInThisMatch = allMatchPids.includes(leagueUser.playerId);
+  const needsAttestation = isAlreadyFinalized && !isFullyAttested && isInThisMatch && !isTheSigner && !iHaveAttested;
+  const scoresLocked = (isWeekLocked && !isComm) || (isFullyAttested && !isComm);
 
   const guardedSaveScore = (w, pid, h, val) => {
     if (scoresLocked) {
@@ -597,6 +605,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             const isSigned = isFinalOrSigned && res && !res.attested;
             const signerIsRawT1 = isSigned && res.finalizedByTeamId === rawT1.id;
             const signerIsRawT2 = isSigned && res.finalizedByTeamId === rawT2.id;
+            const resAttestedBy = res?.attestedBy || [];
+            const resAllPids = [...mT1Pids, ...mT2Pids];
+            const resNonSigners = resAllPids.filter(pid => pid !== res?.signedByPlayerId);
+            const resAttestedCount = resNonSigners.filter(pid => resAttestedBy.includes(pid)).length;
             const attestNeededDispT1 = isSigned && (
               (swapped && signerIsRawT1) || (!swapped && signerIsRawT2)
             );
@@ -612,7 +624,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               centerColor = (res.matchResultText === "TIED" || score1 === score2) ? K.t3 : K.matchGrn;
               if (res.attested) { progressLabel = "FINAL"; progressColor = K.grn; }
               else {
-                progressLabel = attestNeededDispT1 ? "‹ ATTEST" : "ATTEST ›";
+                progressLabel = `${resAttestedCount}/${resNonSigners.length} ATTEST`;
                 progressColor = "#3b82f6";
               }
             } else if (thru > 0) {
@@ -1074,15 +1086,16 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   const attestMatch = async () => {
     if (!existingResult) return;
+    const newAttestedBy = [...new Set([...attestedBy, leagueUser.playerId])];
+    const allDone = nonSignerPids.every(pid => newAttestedBy.includes(pid));
     await saveMatchResult({
       ...existingResult,
-      attested: true,
-      attestedByTeamId: myTeam?.id || null,
-      attestedByPlayerId: leagueUser.playerId || null,
+      attestedBy: newAttestedBy,
+      attested: allDone,
     });
     setShowFinalize(false);
     setShowEditConfirm(false);
-    setToast("Scorecard attested ✓");
+    setToast(allDone ? "Scorecard fully attested ✓" : "Attestation recorded ✓");
     setTimeout(() => setToast(null), 2000);
   };
 
@@ -1218,7 +1231,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
         return (
           <div style={{ marginBottom: 6, position: "relative" }}>
-            {isAttested && (
+            {isFullyAttested && (
               <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", zIndex: 2, overflow: "hidden" }}>
                 <div style={{ fontSize: "clamp(70px, 22vw, 120px)", fontWeight: 900, color: K.t3 + "20", letterSpacing: "clamp(12px, 4vw, 24px)", textTransform: "uppercase", userSelect: "none", whiteSpace: "nowrap", transform: "rotate(-18deg)" }}>FINAL</div>
               </div>
@@ -1238,35 +1251,64 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <scComp.TeamNetRow pids={sc.oppPids} isTeam1Side={false} />
             </div>
 
-            {isAlreadyFinalized && !isAttested && !isWeekLocked && !needsAttestation && (
-              <>
-                <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginTop: 8, fontSize: 13, color: K.warn, fontWeight: 700, textAlign: "center" }}>
-                  Scorecard signed — awaiting opponent attestation
-                </div>
-                {isOnFinalizingTeam && existingResult?.id && (
-                  <button onClick={() => {
-                    if (window.confirm("Unsign this scorecard? You'll be able to edit scores and re-sign.")) {
-                      deleteMatchResult(existingResult.id);
-                    }
-                  }} style={{ width: "100%", padding: "8px 0", borderRadius: 8, marginTop: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
-                    Unsign & Edit
-                  </button>
-                )}
-              </>
-            )}
-
-            {needsAttestation && (
-              <div style={{ marginTop: 12 }}>
-                <button onClick={attestMatch} style={{ width: "100%", padding: "14px", borderRadius: 12, background: "#3b82f6", border: "none", color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
-                  Attest Scorecard
-                </button>
-                {signedByPlayerId && playerMap[signedByPlayerId] && (
-                  <div style={{ textAlign: "center", marginTop: 6, fontSize: 11, color: K.t3, fontWeight: 600 }}>
-                    Signed by {playerMap[signedByPlayerId].name}
+            {/* Attestation status + actions */}
+            {isAlreadyFinalized && !isFullyAttested && !isWeekLocked && (() => {
+              const attestCount = attestedBy.length;
+              const needed = nonSignerPids.length;
+              const statusText = `${attestCount} of ${needed} attested`;
+              return (
+                <div style={{ marginTop: 8 }}>
+                  {/* Attestation progress */}
+                  <div style={{ display: "flex", gap: 4, marginBottom: 6, flexWrap: "wrap", justifyContent: "center" }}>
+                    {nonSignerPids.map(pid => {
+                      const pl = playerMap[pid];
+                      const done = attestedBy.includes(pid);
+                      const lastName = pl ? pl.name.split(' ').pop() : "?";
+                      return (
+                        <div key={pid} style={{ fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 4, background: done ? K.grn + "18" : K.inp, border: `1px solid ${done ? K.grn + "40" : K.bdr}`, color: done ? K.grn : K.t3 }}>
+                          {done ? "✓ " : ""}{lastName}
+                        </div>
+                      );
+                    })}
                   </div>
-                )}
-              </div>
-            )}
+                  <div style={{ textAlign: "center", fontSize: 11, color: K.warn, fontWeight: 600, marginBottom: 6 }}>
+                    {statusText}
+                  </div>
+
+                  {/* Attest button — for non-signers who haven't attested yet */}
+                  {needsAttestation && (
+                    <>
+                      <button onClick={attestMatch} style={{ width: "100%", padding: "12px", borderRadius: 10, background: "#3b82f6", border: "none", color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>
+                        Attest Scorecard
+                      </button>
+                      {signedByPlayerId && playerMap[signedByPlayerId] && (
+                        <div style={{ textAlign: "center", marginTop: 5, fontSize: 11, color: K.t3, fontWeight: 600 }}>
+                          Signed by {playerMap[signedByPlayerId].name}
+                        </div>
+                      )}
+                    </>
+                  )}
+
+                  {/* Already attested but waiting for others */}
+                  {iHaveAttested && !isFullyAttested && (
+                    <div style={{ textAlign: "center", fontSize: 12, color: K.t3, fontWeight: 600, padding: "6px 0" }}>
+                      You attested — waiting for others
+                    </div>
+                  )}
+
+                  {/* Unsign button — any of the 4 players can unsign before fully attested */}
+                  {isInThisMatch && existingResult?.id && (
+                    <button onClick={() => {
+                      if (window.confirm("Unsign this scorecard? All attestations will be reset and scores can be edited.")) {
+                        deleteMatchResult(existingResult.id);
+                      }
+                    }} style={{ width: "100%", padding: "7px 0", borderRadius: 8, marginTop: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                      Unsign & Edit
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         );
       })() : (<>
