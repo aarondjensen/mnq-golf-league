@@ -1,14 +1,17 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "./firebase";
-import { K, FONTS, CSS, I, DEFAULT_SCORING, SEASON_WEEKS, applyTheme, getCSS, lastNamesOnly } from "./theme";
+import { K, I, DEFAULT_SCORING, SEASON_WEEKS, applyTheme, getCSS, lastNamesOnly } from "./theme";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
-import StandingsView from "./pages/Standings";
-import LiveScoringView from "./pages/Scoring";
-import ScheduleView from "./pages/Schedule";
-import PlayersView from "./pages/Players";
-import StatsView from "./pages/Stats";
-import CTPView from "./pages/CTP";
-import AdminView from "./pages/Admin";
+
+// Fix #2: Lazy-load page components — Vite will code-split each into its own chunk.
+// Only the active tab's code is downloaded and parsed on navigation.
+const StandingsView = lazy(() => import("./pages/Standings"));
+const LiveScoringView = lazy(() => import("./pages/Scoring"));
+const ScheduleView = lazy(() => import("./pages/Schedule"));
+const PlayersView = lazy(() => import("./pages/Players"));
+const StatsView = lazy(() => import("./pages/Stats"));
+const CTPView = lazy(() => import("./pages/CTP"));
+const AdminView = lazy(() => import("./pages/Admin"));
 
 
 export default function GolfLeagueApp() {
@@ -72,6 +75,20 @@ export default function GolfLeagueApp() {
   const [popupOpen, setPopupOpen] = useState(false);
   const popupOpenRef = useRef(false);
   useEffect(() => { popupOpenRef.current = popupOpen; }, [popupOpen]);
+
+  // Fix #5: Inject dynamic CSS via useEffect instead of inline <style> in JSX.
+  // This runs once on mount and only re-runs when darkMode changes (theme toggle),
+  // instead of React diffing ~2KB of CSS text on every single re-render.
+  useEffect(() => {
+    let styleEl = document.getElementById("mnq-dynamic-css");
+    if (!styleEl) {
+      styleEl = document.createElement("style");
+      styleEl.id = "mnq-dynamic-css";
+      document.head.appendChild(styleEl);
+    }
+    styleEl.textContent = getCSS(K);
+    return () => {}; // leave style in place — it's needed even after unmount during auth screens
+  }, [darkMode]);
 
   const toggleTheme = () => {
     const newMode = darkMode ? "light" : "dark";
@@ -341,7 +358,7 @@ export default function GolfLeagueApp() {
 
   // Import historical scores from a [name, week, hole, score] array
   const importHistoricalScores = useCallback(async (data) => {
-    // Build name → id map (case-insensitive, trimmed)
+    // Build name -> id map (case-insensitive, trimmed)
     const nameMap = {};
     players.forEach(p => { nameMap[p.name.trim().toLowerCase()] = p.id; });
     
@@ -481,6 +498,9 @@ export default function GolfLeagueApp() {
 
   const bannerGrn = K.matchGrn;
 
+  // Suspense fallback for lazy-loaded tabs
+  const TabFallback = <div style={{ textAlign: "center", padding: 40, color: K.t3, fontSize: 13 }} className="pu">Loading...</div>;
+
   return (
     <div className="app-shell">
       {/* Pull-to-refresh indicator */}
@@ -508,7 +528,8 @@ export default function GolfLeagueApp() {
           </div>
         </div>
       )}
-      <link href={FONTS} rel="stylesheet" /><style>{getCSS(K)}</style>
+      {/* Fix #1: Removed <link href={FONTS}> — now in index.html <head> with preconnect */}
+      {/* Fix #5: Removed <style>{getCSS(K)}</style> — now injected via useEffect above */}
 
       {/* Header */}
       <div className="app-header">
@@ -566,7 +587,8 @@ export default function GolfLeagueApp() {
                 {/* Left: Tee time + Front/Back */}
                 <div style={{ width: 80, flexShrink: 0, textAlign: "left", lineHeight: 1.3, padding: "6px 0" }}>
                   <div style={{ fontSize: 17, fontWeight: 800, color: K.act, letterSpacing: .5 }}>{upcomingBanner.teeTime}</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#3b82f6", letterSpacing: .5, textTransform: "uppercase" }}>{upcomingBanner.side === 'front' ? 'FRONT 9' : 'BACK 9'}</div>
+                  {/* UX fix: was hardcoded #3b82f6, now uses K.logoBright for theme consistency */}
+                  <div style={{ fontSize: 12, fontWeight: 700, color: K.logoBright, letterSpacing: .5, textTransform: "uppercase" }}>{upcomingBanner.side === 'front' ? 'FRONT 9' : 'BACK 9'}</div>
                 </div>
                 {/* Center: Date + Week */}
                 <div style={{ flex: 1, textAlign: "center", lineHeight: 1.3 }}>
@@ -582,6 +604,8 @@ export default function GolfLeagueApp() {
             );
           })()}
           <div className="main-content fi" key={tab}>
+          {/* Fix #2: Wrap lazy-loaded tabs in Suspense */}
+          <Suspense fallback={TabFallback}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} />}
           {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} recalcHandicaps={recalcHandicaps} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} />}
@@ -589,6 +613,7 @@ export default function GolfLeagueApp() {
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
           {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} isComm={isComm} saveCtp={saveCtp} />}
           {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} resetSeasonData={resetSeasonData} importHistoricalScores={importHistoricalScores} recalcHandicaps={recalcHandicaps} />}
+          </Suspense>
           </div>
         </div>
       </div>

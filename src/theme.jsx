@@ -123,7 +123,8 @@ export const getCSS = (k) => `
 
 export const FONTS = "https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700;800&display=swap";
 
-export const CSS = getCSS(K);
+// NOTE: Removed stale `export const CSS = getCSS(K)` — it captured the theme at module-load
+// time and never updated on dark/light toggle. Use getCSS(K) directly where needed.
 
 // ── SVG Icons (Lucide-style, stroke-based) ──
 export const I = {
@@ -141,6 +142,84 @@ export const I = {
   arrowLeft: (s = 14, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>,
   ellipsis: (s = 18, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1" fill={c}/><circle cx="5" cy="12" r="1" fill={c}/><circle cx="19" cy="12" r="1" fill={c}/></svg>,
 };
+
+// ══════════════════════════════════════════════════════════════
+//  SHARED SCORE CELL COMPONENTS (Fix #4 — extracted from 3 files)
+// ══════════════════════════════════════════════════════════════
+
+// Full ScoreCell with stroke dots — used in Scoring.jsx live scorecard
+export function ScoreCell({ score, par, strokes, size = 13, color: colorOverride }) {
+  if (!score || score <= 0) return <span style={{ color: K.t3 + "30", fontSize: size }}>·</span>;
+  const diff = score - par;
+  const s = size;
+  const sh = s + 8;
+  const bc = colorOverride || K.t2;
+  const textColor = colorOverride || undefined;
+  const dotH = 10;
+
+  let border = null;
+  if (diff <= -2) {
+    border = (
+      <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: sh - 6, height: sh - 6, borderRadius: "50%", border: `1px solid ${bc}` }} />
+      </div>
+    );
+  } else if (diff === -1) {
+    border = <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}` }} />;
+  } else if (diff === 1) {
+    border = <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}` }} />;
+  } else if (diff >= 2) {
+    border = (
+      <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: sh - 6, height: sh - 6, borderRadius: 2, border: `1px solid ${bc}` }} />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", height: dotH + sh, justifyContent: "flex-end" }}>
+      <div style={{ height: dotH, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+        {strokes > 0 && <span style={{ color: colorOverride || "#3b82f6", fontSize: 10, fontWeight: 900, letterSpacing: 1, lineHeight: 1 }}>{"•".repeat(strokes)}</span>}
+      </div>
+      <div style={{ position: "relative", width: sh, height: sh, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {border}
+        <span style={{ position: "relative", zIndex: 1, fontSize: s, fontWeight: 700, lineHeight: 1, transform: "translateY(0.5px)", ...(textColor ? { color: textColor } : {}) }}>{score}</span>
+      </div>
+    </div>
+  );
+}
+
+// Compact MiniScoreCell — used in Standings.jsx and Schedule.jsx scorecard expansions
+export function MiniScoreCell({ score, par, strokes, size = 11 }) {
+  if (!score || score <= 0) return <span style={{ color: K.t3 + "30", fontSize: size }}>·</span>;
+  const diff = score - par;
+  const sh = size + 6;
+  const bc = K.t2;
+  let border = null;
+  if (diff <= -2) {
+    border = (
+      <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: sh - 5, height: sh - 5, borderRadius: "50%", border: `1px solid ${bc}` }} />
+      </div>
+    );
+  } else if (diff === -1) {
+    border = <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}` }} />;
+  } else if (diff === 1) {
+    border = <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: 2, border: `1.5px solid ${bc}` }} />;
+  } else if (diff >= 2) {
+    border = (
+      <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: 2, border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <div style={{ width: sh - 5, height: sh - 5, borderRadius: 1, border: `1px solid ${bc}` }} />
+      </div>
+    );
+  }
+  return (
+    <div style={{ position: "relative", width: sh, height: sh, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {border}
+      <span style={{ position: "relative", zIndex: 1, fontSize: size, fontWeight: 700, lineHeight: 1 }}>{score}</span>
+    </div>
+  );
+}
 
 // ── Shared UI components ──
 export const Pill = ({ children, color = K.acc, style, ...rest }) => (
