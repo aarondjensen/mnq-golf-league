@@ -1,10 +1,11 @@
 import { useState } from "react";
 import { LEAGUE_ID } from "../firebase";
-import { K, Pill } from "../theme";
+import { K, FONTS, getCSS, Pill } from "../theme";
 
 export function LoadingScreen() {
   return (
     <div style={{ minHeight: "100vh", background: K.bg, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
+      <link href={FONTS} rel="stylesheet" /><style>{getCSS(K)}</style>
       <div style={{ fontSize: 52 }}><img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ width: 220, objectFit: "contain" }} /></div>
       <div className="pu" style={{ fontFamily: "'League Spartan', sans-serif", color: K.t3, fontSize: 13 }}>Loading...</div>
     </div>
@@ -29,6 +30,7 @@ export function AuthScreen({ onGoogle, onEmail }) {
 
   return (
     <div style={{ minHeight: "100vh", background: K.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'League Spartan', sans-serif" }}>
+      <link href={FONTS} rel="stylesheet" /><style>{getCSS(K)}</style>
       <div style={{ width: 340, textAlign: "center" }} className="fi">
         <img src="/MnQ_logo_transparent_bg.png" alt="Maize-N-Que Golf" style={{ width: 280, objectFit: "contain", marginBottom: 8 }} />
         <div style={{ color: K.t3, fontSize: 12, marginBottom: 32 }}>Sign in to continue</div>
@@ -91,6 +93,7 @@ export function JoinScreen({ authUser, members, players, saveMember, doSignOut, 
 
   return (
     <div style={{ minHeight: "100vh", background: K.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'League Spartan', sans-serif" }}>
+      <link href={FONTS} rel="stylesheet" /><style>{getCSS(K)}</style>
       <div style={{ width: 340, textAlign: "center" }} className="fi">
         <img src="/MnQ_logo_transparent_bg.png" alt="Maize-N-Que Golf" style={{ width: 240, objectFit: "contain", marginBottom: 8 }} />
         <div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 24, color: K.acc, letterSpacing: 1, marginBottom: 4 }}>{title}</div>
@@ -126,3 +129,5 @@ export function JoinScreen({ authUser, members, players, saveMember, doSignOut, 
     </div>
   );
 }
+
+

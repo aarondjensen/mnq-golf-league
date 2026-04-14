@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { K, FONTS, CSS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
+import { K, FONTS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   SEASON_WEEKS, REGULAR_WEEKS, TEAMS_COUNT, getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap,
   lastNamesOnly, formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE } from "../theme";
 import { LEAGUE_ID } from "../firebase";
@@ -1604,13 +1604,16 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
   }
   return (
     <Card style={{ marginBottom: 4, padding: "10px 12px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8, minWidth: 0 }}>
-        <span style={{ fontSize: 16, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flexShrink: 1, minWidth: 0 }}>{pl.name}</span>
-        <span style={{ fontSize: 12, fontWeight: 600, color: K.t1, flexShrink: 0 }}>({nh})</span>
-        {strokes > 0 && <span style={{ color: "#3b82f6", fontSize: 16, letterSpacing: 1, flexShrink: 0, lineHeight: 1 }}>{"●".repeat(strokes)}</span>}
-        <div style={{ flex: 1 }} />
-        {run.thru > 0 && <span style={{ fontSize: 11, color: K.t3, flexShrink: 0, whiteSpace: "nowrap" }}>Net: <strong style={{ color: run.netVsPar < 0 ? K.red : run.netVsPar === 0 ? K.t3 : K.t1 }}>{run.netVsPar > 0 ? "+" + run.netVsPar : run.netVsPar === 0 ? "E" : run.netVsPar}</strong> thru {run.thru}</span>}
-        {absentBtn}
+      <div style={{ marginBottom: 6 }}>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 2 }}>
+          <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.1 }}>{pl.name}</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: K.t2 }}>({nh})</span>
+          {strokes > 0 && <span style={{ color: "#3b82f6", fontSize: 14, letterSpacing: 1, lineHeight: 1 }}>{"●".repeat(strokes)}</span>}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+          {run.thru > 0 ? <span style={{ fontSize: 11, color: K.t3 }}>Net: <strong style={{ color: run.netVsPar < 0 ? K.red : run.netVsPar === 0 ? K.t3 : K.t1 }}>{run.netVsPar > 0 ? "+" + run.netVsPar : run.netVsPar === 0 ? "E" : run.netVsPar}</strong> thru {run.thru}</span> : <span />}
+          {absentBtn}
+        </div>
       </div>
       <div style={{ display: "flex", gap: 3 }}>
         {btns.map(btn => {
