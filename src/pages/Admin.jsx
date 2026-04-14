@@ -76,50 +76,39 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, members, save
     const member = playerId ? getMember(playerId) : null;
     const commStatus = playerId ? isComm(playerId) : false;
     return (
-      <Card style={{ padding: 14, marginBottom: 8 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: K.t1 }}>{isNew ? "New Player" : "Edit Player"}</div>
-          <button onClick={() => { setEd(null); setOrig(null); }} style={{ background: "none", border: "none", color: K.t3, fontSize: 16, cursor: "pointer", padding: "2px 6px", lineHeight: 1 }}>✕</button>
+      <Card style={{ padding: "10px 12px", marginBottom: 8 }}>
+        {/* Row 1: Name input + close */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+          <input ref={nameRef} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Player name" style={{ ...inputStyle, padding: "7px 10px", fontWeight: 600 }} />
+          <button onClick={() => { setEd(null); setOrig(null); }} style={{ background: "none", border: "none", color: K.t3, fontSize: 15, cursor: "pointer", padding: "2px 4px", lineHeight: 1, flexShrink: 0 }}>✕</button>
         </div>
-        {/* Name */}
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 10, color: K.t3, marginBottom: 3, fontWeight: 600, letterSpacing: 1 }}>Name</div>
-          <input ref={nameRef} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Player name" style={inputStyle} />
-        </div>
-        {/* Tee Box */}
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 10, color: K.t3, marginBottom: 3, fontWeight: 600, letterSpacing: 1 }}>Tee Box</div>
-          <div style={{ display: "flex", gap: 6 }}>
+        {/* Row 2: Tee box + Commissioner */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+          <div style={{ display: "flex", gap: 4, flex: 1 }}>
             {teeBoxes.map(t => {
               const sel = f.teeBox === t.name;
               const white = isWhiteTee(t.name);
               return (
-                <button key={t.name} onClick={() => setF({ ...f, teeBox: t.name })} style={{ flex: 1, padding: "7px 0", borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: "pointer", border: sel ? `1.5px solid ${white ? K.t3 : t.color}` : `1px solid ${K.bdr}`, background: sel ? (white ? K.t3 + "30" : t.color + "20") : K.inp, color: sel ? (white ? "#fff" : t.color) : K.t2 }}>{t.name}</button>
+                <button key={t.name} onClick={() => setF({ ...f, teeBox: t.name })} style={{ flex: 1, padding: "6px 0", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", border: sel ? `1.5px solid ${white ? K.t3 : t.color}` : `1px solid ${K.bdr}`, background: sel ? (white ? K.t3 + "30" : t.color + "20") : K.inp, color: sel ? (white ? "#fff" : t.color) : K.t2 }}>{t.name}</button>
               );
             })}
           </div>
-        </div>
-        {/* Commissioner toggle (only if member is linked) */}
-        {!isNew && member && (
-          <div style={{ marginBottom: 10 }}>
-            <div style={{ fontSize: 10, color: K.t3, marginBottom: 3, fontWeight: 600, letterSpacing: 1 }}>Commissioner</div>
-            <button onClick={() => toggleComm(playerId)} style={{ display: "flex", alignItems: "center", gap: 8, width: "100%", padding: "8px 10px", borderRadius: 6, border: `1px solid ${commStatus ? K.warn + "40" : K.bdr}`, background: commStatus ? K.warn + "12" : K.inp, cursor: "pointer" }}>
-              <div style={{ width: 32, height: 18, borderRadius: 9, background: commStatus ? K.warn : K.bdr, position: "relative", transition: "background .2s", flexShrink: 0 }}>
-                <div style={{ width: 14, height: 14, borderRadius: 7, background: "#fff", position: "absolute", top: 2, left: commStatus ? 16 : 2, transition: "left .2s" }} />
+          {!isNew && member && (
+            <button onClick={() => toggleComm(playerId)} style={{ display: "flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 6, border: `1px solid ${commStatus ? K.warn + "40" : K.bdr}`, background: commStatus ? K.warn + "12" : K.inp, cursor: "pointer", flexShrink: 0 }}>
+              <div style={{ width: 28, height: 16, borderRadius: 8, background: commStatus ? K.warn : K.bdr, position: "relative", transition: "background .2s" }}>
+                <div style={{ width: 12, height: 12, borderRadius: 6, background: "#fff", position: "absolute", top: 2, left: commStatus ? 14 : 2, transition: "left .2s" }} />
               </div>
-              <span style={{ fontSize: 12, color: commStatus ? K.warn : K.t3, fontWeight: 600 }}>{commStatus ? "Commissioner" : "Not a commissioner"}</span>
+              <span style={{ fontSize: 10, color: commStatus ? K.warn : K.t3, fontWeight: 600 }}>Comm</span>
             </button>
-          </div>
-        )}
-        {/* Deactivate (only for existing active players) */}
-        {!isNew && (
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 10, color: K.t3, marginBottom: 3, fontWeight: 600, letterSpacing: 1 }}>Status</div>
-            <button onClick={() => { if (confirm(`Deactivate ${f.name}?`)) { toggleStatus(players.find(p => p.id === ed)); setEd(null); setOrig(null); } }} style={{ width: "100%", padding: "8px 0", borderRadius: 6, border: `1px solid ${K.red}30`, background: K.red + "10", color: K.red, fontSize: 12, fontWeight: 600, cursor: "pointer" }}>Deactivate Player</button>
-          </div>
-        )}
-        {/* Save */}
-        <button onClick={isDirty ? save : undefined} style={{ width: "100%", padding: "10px 0", borderRadius: 8, background: isDirty ? K.act : K.inp, border: isDirty ? "none" : `1px solid ${K.bdr}`, color: isDirty ? K.bg : K.t3, fontSize: 13, fontWeight: 700, cursor: isDirty ? "pointer" : "default", letterSpacing: .5, transition: "all .2s" }}>{isDirty ? "Save" : "Saved"}</button>
+          )}
+        </div>
+        {/* Row 3: Save + Deactivate */}
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={isDirty ? save : undefined} style={{ flex: 1, padding: "8px 0", borderRadius: 6, background: isDirty ? K.act : K.inp, border: isDirty ? "none" : `1px solid ${K.bdr}`, color: isDirty ? K.bg : K.t3, fontSize: 12, fontWeight: 700, cursor: isDirty ? "pointer" : "default", letterSpacing: .5, transition: "all .2s" }}>{isDirty ? "Save" : "Saved"}</button>
+          {!isNew && (
+            <button onClick={() => { if (confirm(`Deactivate ${f.name}?`)) { toggleStatus(players.find(p => p.id === ed)); setEd(null); setOrig(null); } }} style={{ padding: "8px 14px", borderRadius: 6, border: `1px solid ${K.red}30`, background: K.red + "10", color: K.red, fontSize: 12, fontWeight: 600, cursor: "pointer", flexShrink: 0 }}>Deactivate</button>
+          )}
+        </div>
       </Card>
     );
   };
