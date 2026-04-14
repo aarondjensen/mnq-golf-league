@@ -1899,13 +1899,13 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
     setResetting(false);
   };
 
-  const handleImport2025 = async () => {
-    if (!window.confirm("Import 2025 season historical scores?\n\nThis will write 2,556 hole scores for 20 players across 15 weeks. Existing 2025 scores will be overwritten.")) return;
+  const handleImportHistorical = async () => {
+    if (!window.confirm("Import 2023 + 2024 + 2025 historical scores?\n\nThis will write ~7,500 hole scores across 45 weeks (3 seasons). Existing historical scores will be overwritten.")) return;
     setImporting(true);
     setImportResult(null);
     try {
-      const { default: IMPORT_2025 } = await import("./import2025Data.js");
-      const result = await importHistoricalScores(IMPORT_2025, 2025);
+      const { default: IMPORT_HISTORICAL } = await import("./importHistoricalData.js");
+      const result = await importHistoricalScores(IMPORT_HISTORICAL);
       setImportResult(result);
     } catch (e) {
       console.error("Import error:", e);
@@ -1941,10 +1941,10 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
           {importHistoricalScores && (
           <Card style={{ padding: 14, border: `1px solid ${K.warn}30`, marginTop: 8 }}>
             <div style={{ fontSize: 12, color: K.t2, marginBottom: 10, lineHeight: 1.5 }}>
-              Import 2025 season scores from historical spreadsheet data. This writes hole-by-hole scores for handicap calculation.
+              Import 2023–2025 season scores from historical spreadsheet data. This writes hole-by-hole scores for handicap calculation.
             </div>
-            <button onClick={handleImport2025} disabled={importing} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 13, fontWeight: 700, cursor: importing ? "default" : "pointer", opacity: importing ? 0.6 : 1 }}>
-              {importing ? "Importing..." : "Import 2025 Scores"}
+            <button onClick={handleImportHistorical} disabled={importing} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 13, fontWeight: 700, cursor: importing ? "default" : "pointer", opacity: importing ? 0.6 : 1 }}>
+              {importing ? "Importing..." : "Import Historical Scores (2023–2025)"}
             </button>
             {importResult && (
               <div style={{ fontSize: 11, color: importResult.error ? K.red : K.grn, marginTop: 8, textAlign: "center", fontWeight: 600 }}>
