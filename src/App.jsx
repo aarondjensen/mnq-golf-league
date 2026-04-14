@@ -432,6 +432,25 @@ export default function GolfLeagueApp() {
   const isComm = leagueUser?.isCommissioner === true;
   const activePlayers = useMemo(() => players.filter(p => p.status !== "inactive"), [players]);
 
+  // Show Live Scoring button only on match days between 4-8pm ET
+  const showLiveBtn = useMemo(() => {
+    if (!schedule.length) return false;
+    const now = new Date();
+    const et = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
+    const etHour = et.getHours();
+    if (etHour < 16 || etHour >= 20) return false;
+    const year = leagueConfig?.year || new Date().getFullYear();
+    const todayStr = et.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+    return schedule.some(wk => {
+      if (wk.rainedOut || !wk.matches || wk.matches.length === 0) return false;
+      if (!wk.date) return false;
+      const wkDate = new Date(`${wk.date}, ${year}`);
+      if (isNaN(wkDate.getTime())) return false;
+      const wkStr = wkDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+      return wkStr === todayStr;
+    });
+  }, [schedule, leagueConfig]);
+
   // When commissioner impersonates a player, effectiveUser overrides leagueUser for scoring/schedule
   const effectiveUser = impersonating
     ? { ...leagueUser, playerId: impersonating.playerId, name: impersonating.name }
@@ -501,28 +520,6 @@ export default function GolfLeagueApp() {
   })();
 
   const bannerGrn = K.matchGrn;
-
-  // Show Live Scoring button only on match days between 4-8pm ET
-  const showLiveBtn = useMemo(() => {
-    if (!schedule.length) return false;
-    const now = new Date();
-    // Convert to ET
-    const et = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-    const etHour = et.getHours();
-    if (etHour < 16 || etHour >= 20) return false; // outside 4-8pm ET
-    // Check if today matches any non-rained-out schedule date
-    const year = leagueConfig?.year || new Date().getFullYear();
-    const todayStr = et.toLocaleDateString("en-US", { month: "short", day: "numeric" }); // e.g. "May 13"
-    return schedule.some(wk => {
-      if (wk.rainedOut || !wk.matches || wk.matches.length === 0) return false;
-      if (!wk.date) return false;
-      // Normalize both to "Mon D" format for comparison
-      const wkDate = new Date(`${wk.date}, ${year}`);
-      if (isNaN(wkDate.getTime())) return false;
-      const wkStr = wkDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      return wkStr === todayStr;
-    });
-  }, [schedule, leagueConfig]);
 
   // Suspense fallback for lazy-loaded tabs
   const TabFallback = <div style={{ textAlign: "center", padding: 40, color: K.t3, fontSize: 13 }} className="pu">Loading...</div>;
