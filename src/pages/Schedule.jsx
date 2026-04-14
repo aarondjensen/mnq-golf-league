@@ -514,7 +514,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const botPids = isMyT2 ? t1Pids : t2Pids;
     const topIsT1 = isMyT2 ? false : true;
 
-    return (
+    return (<>
       <div style={{ margin: "4px 0 2px", borderRadius: 6, overflow: "hidden", border: `1px solid ${K.bdr}30` }}>
         <div style={{ display: "flex", background: K.acc, padding: "0" }}>
           <div style={{ width: 32, flexShrink: 0, fontSize: 7, color: K.bg, fontWeight: 800, paddingLeft: 3, opacity: .8, display: "flex", alignItems: "center", height: 20 }}>HOLE</div>
