@@ -7,7 +7,7 @@ import { LEAGUE_ID } from "../firebase";
 // ═══════════════════════════════════════════════════════════════
 //  ScoreCell — golf scorecard notation (circles, squares, dots)
 // ═══════════════════════════════════════════════════════════════
-function ScoreCell({ score, par, strokes, size = 13, color: colorOverride }) {
+export function ScoreCell({ score, par, strokes, size = 13, color: colorOverride }) {
   if (!score || score <= 0) return <span style={{ color: K.t3 + "30", fontSize: size }}>·</span>;
   const diff = score - par;
   const s = size;
@@ -55,10 +55,10 @@ function ScoreCell({ score, par, strokes, size = 13, color: colorOverride }) {
 // ═══════════════════════════════════════════════════════════════
 
 // Shared style constants (created once, reused across renders)
-const GRID_LINE_STYLE = (bdr) => `1px solid ${bdr}25`;
-const COL_BDR_STYLE = (bdr) => `1px solid ${bdr}30`;
+export const GRID_LINE_STYLE = (bdr) => `1px solid ${bdr}25`;
+export const COL_BDR_STYLE = (bdr) => `1px solid ${bdr}30`;
 
-function SharedScorecard({
+export function SharedScorecard({
   pars, side, hcps,
   team1Pids, team2Pids,        // player ID arrays
   getScore,                     // (pid, hole) => score
@@ -87,23 +87,20 @@ function SharedScorecard({
   const scoreSize = variant === "compact" ? 13 : 15;
   const parTotal = pars.reduce((a, b) => a + b, 0);
 
-  // Header row style depends on variant
-  const useAccHeader = variant !== "compact";
-
   const HoleRow = () => (
-    <div style={{ display: "flex", background: useAccHeader ? K.acc : K.inp, borderRadius: variant === "allMatches" ? "6px 6px 0 0" : useAccHeader ? "10px 10px 0 0" : undefined, borderBottom: !useAccHeader ? colBdr : undefined }}>
-      <div style={{ ...lblStyle, height: useAccHeader ? 28 : 24, color: useAccHeader ? K.bg : K.t3, opacity: useAccHeader ? .8 : 1, borderRight: "none", fontWeight: 800, fontSize: 10 }}>HOLE</div>
+    <div style={{ display: "flex", background: K.acc, borderRadius: variant === "allMatches" ? "6px 6px 0 0" : "10px 10px 0 0" }}>
+      <div style={{ ...lblStyle, height: 28, color: K.bg, opacity: .8, borderRight: "none", fontWeight: 800, fontSize: 10 }}>HOLE</div>
       {Array.from({ length: 9 }, (_, i) => (
-        <div key={i} style={{ flex: 1, height: useAccHeader ? 28 : 24, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <span style={{ fontSize: useAccHeader ? 12 : 12, fontWeight: useAccHeader ? 800 : 700, color: useAccHeader ? K.bg : K.t3 }}>{side === 'front' ? i + 1 : i + 10}</span>
+        <div key={i} style={{ flex: 1, height: 28, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ fontSize: 12, fontWeight: 800, color: K.bg }}>{side === 'front' ? i + 1 : i + 10}</span>
         </div>
       ))}
-      {totStyle && <div style={{ ...totStyle, height: useAccHeader ? 28 : 24, borderLeft: "none" }}><span style={{ fontSize: 10, fontWeight: 700, color: useAccHeader ? K.bg : K.t3 }}>TOT</span></div>}
+      {totStyle && <div style={{ ...totStyle, height: 28, borderLeft: "none" }}><span style={{ fontSize: 10, fontWeight: 700, color: K.bg }}>TOT</span></div>}
     </div>
   );
 
   const ParRow = () => (
-    <div style={{ display: "flex", borderBottom: gridLine, background: useAccHeader ? K.acc + "18" : undefined }}>
+    <div style={{ display: "flex", borderBottom: gridLine, background: K.acc + "18" }}>
       <div style={{ ...lblStyle, height: variant === "allMatches" ? 26 : 22 }}>PAR</div>
       {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 11, color: K.t2, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", height: variant === "allMatches" ? 26 : 22, borderRight: i < 8 ? gridLine : "none" }}>{p}</div>)}
       {totStyle && <div style={{ ...totStyle, height: 22 }}><span style={{ fontSize: 11, fontWeight: 700, color: K.t3 }}>{parTotal}</span></div>}
@@ -158,10 +155,14 @@ function SharedScorecard({
           return <div key={h} style={{
             flex: 1, height: 38, display: "flex", alignItems: "center", justifyContent: "center",
             borderRight: h < 8 ? gridLine : "none",
-            background: won ? K.act + "18" : "transparent",
-            ...(won ? { borderTop: `1.5px solid ${K.act}`, borderBottom: `1.5px solid ${K.act}` } : {}),
           }}>
-            <span style={{ fontSize: scoreSize, fontWeight: 800, color: ok ? K.t1 : K.t3 + "30" }}>{ok ? tNet : "·"}</span>
+            {won ? (
+              <div style={{ width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 3, border: `1.5px solid ${K.act}`, background: K.act + "18" }}>
+                <span style={{ fontSize: scoreSize, fontWeight: 800, color: K.t1 }}>{ok ? tNet : "·"}</span>
+              </div>
+            ) : (
+              <span style={{ fontSize: scoreSize, fontWeight: 800, color: ok ? K.t1 : K.t3 + "30" }}>{ok ? tNet : "·"}</span>
+            )}
           </div>;
         })}
         {totStyle && <div style={{ ...totStyle, height: 38 }}><span style={{ fontSize: 14, fontWeight: 800, color: K.t1 }}>{isNaN(netTotal) ? "" : netTotal}</span></div>}
@@ -177,10 +178,15 @@ function SharedScorecard({
         <div style={{ ...lblStyle, height: 28, fontSize: 8, fontWeight: 800, color: K.t2 }}>MATCH</div>
         {runningStatus.map((rs, i) => {
           const colBorderR = i < 8 ? { borderRight: gridLine } : {};
+          const isClinch = clinchHole !== null && i === clinchHole;
           if (clinchHole !== null && i > clinchHole) return <div key={i} style={{ flex: 1, height: 28, ...colBorderR }} />;
-          if (clinchHole !== null && i === clinchHole) {
+          if (isClinch) {
             const color = rs > 0 ? mGrn : rs < 0 ? K.red : K.t3;
-            return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: variant === "allMatches" ? 12 : 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>{clinchText}</div>;
+            return <div key={i} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", height: 28, ...colBorderR }}>
+              <div style={{ border: `1.5px solid ${color}`, borderRadius: 4, padding: "0 3px", lineHeight: "22px" }}>
+                <span style={{ fontSize: variant === "allMatches" ? 12 : 14, fontWeight: 800, color }}>{clinchText}</span>
+              </div>
+            </div>;
           }
           const color = rs > 0 ? mGrn : rs < 0 ? K.red : K.t3;
           return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: variant === "allMatches" ? 12 : 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>
@@ -252,7 +258,7 @@ function computeMatchStatus(t1Pids, t2Pids, getScore, getStrokes, pars) {
 // ═══════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
-export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule, openAllMatches, onAllMatchesOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps }) {
+export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule, openAllMatches, onAllMatchesOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
   const [showAllMatches, setShowAllMatches] = useState(false);
@@ -603,15 +609,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
             if (isFinalOrSigned) {
               centerText = res.matchResultText || `${score1}-${score2}`;
-              centerColor = (res.matchResultText === "TIED" || score1 === score2) ? K.t3 : K.t1;
+              centerColor = (res.matchResultText === "TIED" || score1 === score2) ? K.t3 : K.matchGrn;
               if (res.attested) { progressLabel = "FINAL"; progressColor = K.grn; }
               else {
                 progressLabel = attestNeededDispT1 ? "‹ ATTEST" : "ATTEST ›";
                 progressColor = "#3b82f6";
               }
             } else if (thru > 0) {
-              if (dispCum > 0) { centerText = dispCum + "UP"; centerColor = K.matchGrn; }
-              else if (dispCum < 0) { centerText = Math.abs(dispCum) + "UP"; centerColor = K.matchGrn; }
+              if (dispCum > 0) { centerText = dispCum + "UP"; centerColor = K.t1; }
+              else if (dispCum < 0) { centerText = Math.abs(dispCum) + "UP"; centerColor = K.t1; }
               else { centerText = "AS"; centerColor = K.t3; }
               progressLabel = "Thru " + thru;
             } else {
@@ -717,7 +723,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     getInitials: amGetInitials, isAbsent: amIsAbsent,
                     holeResults: dispHoleResults, runningStatus: dispRunning,
                     clinchHole: dispClinchHole, clinchText: dispClinchText,
-                    variant: "allMatches", matchGrn,
+                    variant: "allMatches", showTotals: true, matchGrn,
                   });
 
                   return (
@@ -1233,9 +1239,20 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             </div>
 
             {isAlreadyFinalized && !isAttested && !isWeekLocked && !needsAttestation && (
-              <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginTop: 8, fontSize: 13, color: K.warn, fontWeight: 700, textAlign: "center" }}>
-                Scorecard signed — awaiting opponent attestation
-              </div>
+              <>
+                <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginTop: 8, fontSize: 13, color: K.warn, fontWeight: 700, textAlign: "center" }}>
+                  Scorecard signed — awaiting opponent attestation
+                </div>
+                {isOnFinalizingTeam && existingResult?.id && (
+                  <button onClick={() => {
+                    if (window.confirm("Unsign this scorecard? You'll be able to edit scores and re-sign.")) {
+                      deleteMatchResult(existingResult.id);
+                    }
+                  }} style={{ width: "100%", padding: "8px 0", borderRadius: 8, marginTop: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                    Unsign & Edit
+                  </button>
+                )}
+              </>
             )}
 
             {needsAttestation && (
@@ -1337,7 +1354,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const scMyPids = isMyT1 ? t1Players : t2Players;
         const scOppPids = isMyT1 ? t2Players : t1Players;
         const scStatus = computeMatchStatus(scMyPids, scOppPids, getS, getStrokes, pars);
-        const sc = buildSC(scMyPids, scOppPids, scStatus.holeResults, scStatus.runningStatus, scStatus.clinchHole, scStatus.clinchText, "allMatches", false);
+        const sc = buildSC(scMyPids, scOppPids, scStatus.holeResults, scStatus.runningStatus, scStatus.clinchHole, scStatus.clinchText, "allMatches", true);
         const holeStatuses = Array.from({ length: 9 }, (_, i) => {
           let holesUp = 0, hasData = false;
           for (let h = 0; h <= i; h++) {

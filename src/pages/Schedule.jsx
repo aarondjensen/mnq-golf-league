@@ -1,38 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
 import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, REGULAR_WEEKS, LIST_GAP, CARD_RADIUS, NAME_SIZE, HERO_NUM_SIZE, CHEVRON_SIZE } from "../theme";
 import { LEAGUE_ID } from "../firebase";
-
-// Mini ScoreCell for schedule scorecard expansion
-function MiniScoreCell({ score, par, strokes, size = 11 }) {
-  if (!score || score <= 0) return <span style={{ color: K.t3 + "30", fontSize: size }}>·</span>;
-  const diff = score - par;
-  const sh = size + 6;
-  const bc = K.t2;
-  let border = null;
-  if (diff <= -2) {
-    border = (
-      <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ width: sh - 5, height: sh - 5, borderRadius: "50%", border: `1px solid ${bc}` }} />
-      </div>
-    );
-  } else if (diff === -1) {
-    border = <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}` }} />;
-  } else if (diff === 1) {
-    border = <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: 2, border: `1.5px solid ${bc}` }} />;
-  } else if (diff >= 2) {
-    border = (
-      <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: 2, border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ width: sh - 5, height: sh - 5, borderRadius: 1, border: `1px solid ${bc}` }} />
-      </div>
-    );
-  }
-  return (
-    <div style={{ position: "relative", width: sh, height: sh, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      {border}
-      <span style={{ position: "relative", zIndex: 1, fontSize: size, fontWeight: 700, lineHeight: 1 }}>{score}</span>
-    </div>
-  );
-}
+import { SharedScorecard } from "./Scoring";
 
 export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen }) {
   const [showAll, setShowAll] = useState(false);
@@ -444,28 +413,25 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const wkScores = matchScores[wk.week];
     if (!wkScores) return <div style={{ padding: 10, textAlign: "center", color: K.t3, fontSize: 11 }} className="pu">Loading scores...</div>;
 
-    const t1Pids = [teams.find(t => t.id === m.team1)?.player1, teams.find(t => t.id === m.team1)?.player2].filter(Boolean);
-    const t2Pids = [teams.find(t => t.id === m.team2)?.player1, teams.find(t => t.id === m.team2)?.player2].filter(Boolean);
+    const t1 = teams.find(t => t.id === m.team1);
+    const t2 = teams.find(t => t.id === m.team2);
+    const t1Pids = [t1?.player1, t1?.player2].filter(Boolean);
+    const t2Pids = [t2?.player1, t2?.player2].filter(Boolean);
 
     const getScore = (pid, h) => wkScores[`w${wk.week}_p${pid}_h${h}`] || 0;
     const sorted = hcps.map((h, i) => ({ idx: i, hcp: h })).sort((a, b) => a.hcp - b.hcp);
     const getStrokesMap = (nh) => {
-      const map = {}; let rem = Math.abs(nh);
-      for (const h of sorted) { if (rem <= 0) break; map[h.idx] = (map[h.idx] || 0) + 1; rem--; }
-      for (const h of sorted) { if (rem <= 0) break; map[h.idx] = (map[h.idx] || 0) + 1; rem--; }
-      return map;
+      const mp = {}; let rem = Math.abs(nh);
+      for (const h of sorted) { if (rem <= 0) break; mp[h.idx] = (mp[h.idx] || 0) + 1; rem--; }
+      for (const h of sorted) { if (rem <= 0) break; mp[h.idx] = (mp[h.idx] || 0) + 1; rem--; }
+      return mp;
     };
-    const getHcp = (pid) => {
-      const p = players.find(pl => pl.id === pid);
-      return p ? Math.round(p.handicapIndex || 0) : 0;
-    };
+    const getHcp = (pid) => { const p = players.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
     const getStrokes = (pid, h) => getStrokesMap(getHcp(pid))[h] || 0;
-    const getInitials = (pid) => {
-      const p = players.find(pl => pl.id === pid);
-      return p ? p.name.split(' ').map(n => n[0]).join('') : "?";
-    };
+    const getInitials = (pid) => { const p = players.find(pl => pl.id === pid); return p ? p.name.split(' ').map(n => n[0]).join('') : "?"; };
+    const isAbsent = (pid) => wkScores[`w${wk.week}_p${pid}_habsent`] === 1;
 
-    // Compute hole results
+    // Compute hole results + running status
     const holeResults = [];
     for (let h = 0; h < 9; h++) {
       let n1 = 0, n2 = 0;
@@ -473,60 +439,40 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       t2Pids.forEach(pid => { n2 += getScore(pid, h) - getStrokes(pid, h); });
       holeResults.push(n1 < n2 ? 1 : n2 < n1 ? -1 : 0);
     }
-
-    const gridLine = `1px solid ${K.bdr}20`;
-
-    const PlayerRow = ({ pid }) => (
-      <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
-        <div style={{ width: 32, flexShrink: 0, paddingLeft: 3, display: "flex", alignItems: "center", height: 28 }}>
-          <span style={{ fontSize: 10, color: K.t1, fontWeight: 800 }}>{getInitials(pid)}</span>
-          <span style={{ fontSize: 8, color: "#3b82f6", fontWeight: 700, marginLeft: 2 }}>{getHcp(pid)}</span>
-        </div>
-        {Array.from({ length: 9 }, (_, h) => {
-          const s = getScore(pid, h);
-          return <div key={h} style={{ flex: 1, height: 28, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? gridLine : "none" }}>
-            <MiniScoreCell score={s} par={pars[h]} strokes={getStrokes(pid, h)} size={11} />
-          </div>;
-        })}
-      </div>
-    );
-
-    const TeamRow = ({ pids, isT1 }) => (
-      <div style={{ display: "flex", alignItems: "center", background: K.act + "08" }}>
-        <div style={{ width: 32, flexShrink: 0, fontSize: 7, color: K.act, fontWeight: 800, paddingLeft: 3, display: "flex", alignItems: "center", height: 22 }}>NET</div>
-        {Array.from({ length: 9 }, (_, h) => {
-          let tNet = 0;
-          pids.forEach(pid => { tNet += getScore(pid, h) - getStrokes(pid, h); });
-          const won = holeResults[h] === (isT1 ? 1 : -1);
-          return <div key={h} style={{
-            flex: 1, textAlign: "center", fontSize: 10, fontWeight: 800,
-            color: K.t1, lineHeight: "22px", borderRight: won ? "none" : gridLine,
-            ...(won ? { background: K.bg, border: `1px solid ${K.act}`, borderRadius: 2, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
-          }}>{tNet}</div>;
-        })}
-      </div>
-    );
+    const runningStatus = []; let cum = 0;
+    holeResults.forEach(r => { cum += r; runningStatus.push(cum); });
+    let clinchHole = null, clinchText = null;
+    for (let h = 0; h < 9; h++) {
+      const lead = Math.abs(runningStatus[h]); const rem = 8 - h;
+      if (lead > rem) { clinchHole = h; clinchText = rem > 0 ? `${lead}&${rem}` : `${lead}UP`; break; }
+    }
 
     // Swap so user's team is on top
-    const isMyT1 = myTeam && m.team1 === myTeam.id;
     const isMyT2 = myTeam && m.team2 === myTeam.id;
-    const topPids = isMyT2 ? t2Pids : t1Pids;
-    const botPids = isMyT2 ? t1Pids : t2Pids;
-    const topIsT1 = isMyT2 ? false : true;
+    const dispT1Pids = isMyT2 ? t2Pids : t1Pids;
+    const dispT2Pids = isMyT2 ? t1Pids : t2Pids;
+    const dispHR = isMyT2 ? holeResults.map(r => -r) : holeResults;
+    const dispRS = isMyT2 ? runningStatus.map(r => -r) : runningStatus;
+    const dispCH = clinchHole;
+    const dispCT = clinchText;
+
+    const sc = SharedScorecard({
+      pars, side, hcps, team1Pids: dispT1Pids, team2Pids: dispT2Pids,
+      getScore, getStrokes, getHcp, getInitials, isAbsent,
+      holeResults: dispHR, runningStatus: dispRS,
+      clinchHole: dispCH, clinchText: dispCT,
+      variant: "allMatches", showTotals: true, matchGrn: K.matchGrn,
+    });
 
     return (<>
-      <div style={{ margin: "4px 0 2px", borderRadius: 6, overflow: "hidden", border: `1px solid ${K.bdr}30` }}>
-        <div style={{ display: "flex", background: K.acc, padding: "0" }}>
-          <div style={{ width: 32, flexShrink: 0, fontSize: 7, color: K.bg, fontWeight: 800, paddingLeft: 3, opacity: .8, display: "flex", alignItems: "center", height: 20 }}>HOLE</div>
-          {Array.from({ length: 9 }, (_, i) => (
-            <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 10, color: K.bg, fontWeight: 800, lineHeight: "20px" }}>{side === 'front' ? i + 1 : i + 10}</div>
-          ))}
-        </div>
-        {topPids.map(pid => <PlayerRow key={pid} pid={pid} />)}
-        <TeamRow pids={topPids} isT1={topIsT1} />
-        <div style={{ height: 1, background: K.bdr + "40" }} />
-        {botPids.map(pid => <PlayerRow key={pid} pid={pid} />)}
-        <TeamRow pids={botPids} isT1={!topIsT1} />
+      <div style={{ margin: "4px 0 2px" }}>
+        <sc.HoleRow />
+        <sc.ParRow />
+        {dispT1Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
+        <sc.TeamNetRow pids={dispT1Pids} isTeam1Side={true} />
+        <sc.MatchRow />
+        {dispT2Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
+        <sc.TeamNetRow pids={dispT2Pids} isTeam1Side={false} />
       </div>
       {isComm && saveScore && (
         <button onClick={() => openEditScores(wk, m, res)} style={{ width: "100%", padding: "6px 0", marginTop: 4, borderRadius: 6, background: K.warn + "15", border: `1px solid ${K.warn}40`, color: K.warn, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
