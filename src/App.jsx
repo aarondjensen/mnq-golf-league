@@ -108,6 +108,8 @@ export default function GolfLeagueApp() {
     if (refreshing) return;
     const getScrollEl = () => appBodyRef.current || document.querySelector('.app-body');
     let activeScrollEl = null;
+    let insidePopup = false;
+    let popupScrollEl = null;
     const findScrollEl = (target) => {
       let el = target;
       while (el) {
@@ -117,44 +119,42 @@ export default function GolfLeagueApp() {
       }
       return getScrollEl();
     };
+    const findPopupScroll = (target) => {
+      let el = target;
+      while (el) {
+        if (el.hasAttribute && el.hasAttribute('data-popup-scroll')) return el;
+        if (el.hasAttribute && el.hasAttribute('data-popup')) return null;
+        el = el.parentElement;
+      }
+      return null;
+    };
     const handleStart = (e) => {
       activeScrollEl = findScrollEl(e.target);
-      // If inside popup (null) OR if inside a popup with scrollable content, check scroll
-      if (activeScrollEl === null) {
-        // Inside popup — check if the popup itself has a scrollable container
-        let el = e.target;
-        while (el) {
-          if (el.hasAttribute && el.hasAttribute('data-popup-scroll')) {
-            // This popup has scrollable content — only allow pull if at top
-            if (el.scrollTop > 0) {
-              touchStartY.current = 0;
-              return;
-            }
-            break;
-          }
-          if (el.hasAttribute && el.hasAttribute('data-popup')) break;
-          el = el.parentElement;
-        }
-        // Non-scrollable popup or at top — allow pull
-        touchStartY.current = e.touches[0].clientY;
-      } else if (activeScrollEl.scrollTop <= 0) {
-        touchStartY.current = e.touches[0].clientY;
-      } else {
-        touchStartY.current = 0;
-      }
+      insidePopup = activeScrollEl === null;
+      popupScrollEl = insidePopup ? findPopupScroll(e.target) : null;
+      // Always record start Y — we check scrollTop dynamically in handleMove
+      touchStartY.current = e.touches[0].clientY;
       pullingRef.current = false;
     };
     const handleMove = (e) => {
       if (!touchStartY.current) return;
       const diff = e.touches[0].clientY - touchStartY.current;
-      const atTop = activeScrollEl === null || activeScrollEl.scrollTop <= 0;
+
+      // Determine if the relevant scroll container is at the top right now
+      let atTop;
+      if (insidePopup) {
+        atTop = popupScrollEl ? popupScrollEl.scrollTop <= 0 : true;
+      } else {
+        atTop = activeScrollEl ? activeScrollEl.scrollTop <= 0 : true;
+      }
 
       if (pullingRef.current) {
         if (diff <= 5) {
+          // User reversed direction — cancel pull
           pullingRef.current = false;
           pullYRef.current = 0;
           setPullY(0);
-          touchStartY.current = 0;
+          touchStartY.current = e.touches[0].clientY;
         } else {
           e.preventDefault();
           const val = Math.min(diff * 0.4, 120);
@@ -162,16 +162,22 @@ export default function GolfLeagueApp() {
           setPullY(val);
         }
       } else if (diff > 10 && atTop) {
+        // Engage pull — reset start to current position for clean delta
         touchStartY.current = e.touches[0].clientY;
         pullingRef.current = true;
         e.preventDefault();
         pullYRef.current = 0;
         setPullY(0);
+      } else if (diff < -5 && !atTop) {
+        // User is scrolling up through content — don't interfere, reset start
+        touchStartY.current = e.touches[0].clientY;
       }
     };
     const handleEnd = () => {
       pullingRef.current = false;
       activeScrollEl = null;
+      insidePopup = false;
+      popupScrollEl = null;
       if (pullYRef.current >= PULL_THRESHOLD) {
         setPullY(PULL_THRESHOLD); pullYRef.current = PULL_THRESHOLD;
         setRefreshing(true);
