@@ -658,8 +658,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     return map;
   }, [teams, matchResults]);
 
-  // ── Setup wizard ──
-  if (step === "setup" || step === "view" || step === "playoff") {
+  // ── Tab layout (setup / weekly / playoff) ──
+  if (editWeek === null && (step === "setup" || step === "view" || step === "playoff")) {
     // Sub-tab within the schedule section
     const subTab = step === "setup" ? "setup" : step === "playoff" ? "playoff" : "weekly";
     const setSubTab = (t) => setStep(t === "weekly" ? "view" : t);
@@ -1055,7 +1055,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     );
   }
 
-  // ── Week detail / edit view ──
+  // ── Week detail must be checked first — it takes priority over tabs ──
   if (editWeek !== null) {
     const wk = localWk || schedule.find(s => s.week === editWeek);
     if (!wk) { setEditWeek(null); return null; }
