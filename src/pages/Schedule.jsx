@@ -1,5 +1,6 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, REGULAR_WEEKS, LIST_GAP, CARD_RADIUS, NAME_SIZE, HERO_NUM_SIZE, CHEVRON_SIZE } from "../theme";
+import { LEAGUE_ID } from "../firebase";
 
 // Mini ScoreCell for schedule scorecard expansion
 function MiniScoreCell({ score, par, strokes, size = 11 }) {
@@ -33,12 +34,20 @@ function MiniScoreCell({ score, par, strokes, size = 11 }) {
   );
 }
 
-export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, scoringRules }) {
+export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen }) {
   const [showAll, setShowAll] = useState(false);
   const [myOnly, setMyOnly] = useState(true);
   const [expandedWeeks, setExpandedWeeks] = useState({});
   const [expandedMatchKey, setExpandedMatchKey] = useState(null); // "week_mi"
   const [matchScores, setMatchScores] = useState({}); // { week: { key: score } }
+  const [editingMatch, setEditingMatch] = useState(null); // { wk, m, res }
+  const [editScores, setEditScores] = useState({}); // { "pid_h": score }
+  const [saving, setSaving] = useState(false);
+
+  // Notify parent when edit popup is open
+  useEffect(() => {
+    if (setPopupOpen) setPopupOpen(!!editingMatch);
+  }, [editingMatch, setPopupOpen]);
 
   const toggleWeek = (weekNum) => {
     setExpandedWeeks(prev => ({ ...prev, [weekNum]: !prev[weekNum] }));
@@ -57,6 +66,131 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       setMatchScores(prev => ({ ...prev, [weekNum]: scores }));
     }
   }, [expandedMatchKey, matchScores, fetchWeekScores]);
+
+  // ── Commissioner score editing ──
+  const openEditScores = (wk, m, res) => {
+    const wkScores = matchScores[wk.week] || {};
+    const t1 = teams.find(t => t.id === m.team1);
+    const t2 = teams.find(t => t.id === m.team2);
+    const allPids = [t1?.player1, t1?.player2, t2?.player1, t2?.player2].filter(Boolean);
+    const initial = {};
+    allPids.forEach(pid => {
+      for (let h = 0; h < 9; h++) {
+        initial[`${pid}_${h}`] = wkScores[`w${wk.week}_p${pid}_h${h}`] || 0;
+      }
+    });
+    setEditScores(initial);
+    setEditingMatch({ wk, m, res });
+  };
+
+  const saveEditedScores = async () => {
+    if (!editingMatch || !saveScore || !saveMatchResult) return;
+    setSaving(true);
+    const { wk, m, res } = editingMatch;
+    const weekNum = wk.week;
+    const side = wk.side || getWeekSide(weekNum);
+    const pars = course ? (side === 'front' ? course.frontPars : course.backPars) : [4,4,4,3,5,4,4,3,5];
+    const hcps = course ? (side === 'front' ? course.frontHcps : course.backHcps) : [1,3,5,7,9,11,13,15,17];
+    const t1 = teams.find(t => t.id === m.team1);
+    const t2 = teams.find(t => t.id === m.team2);
+    const t1Pids = [t1?.player1, t1?.player2].filter(Boolean);
+    const t2Pids = [t2?.player1, t2?.player2].filter(Boolean);
+    const allPids = [...t1Pids, ...t2Pids];
+
+    // Save each changed score
+    const oldScores = matchScores[weekNum] || {};
+    for (const pid of allPids) {
+      for (let h = 0; h < 9; h++) {
+        const newVal = editScores[`${pid}_${h}`] || 0;
+        const oldVal = oldScores[`w${weekNum}_p${pid}_h${h}`] || 0;
+        if (newVal !== oldVal) await saveScore(weekNum, pid, h, newVal);
+      }
+    }
+
+    // Recalculate match result
+    const sorted = hcps.map((h, i) => ({ idx: i, hcp: h })).sort((a, b) => a.hcp - b.hcp);
+    const getStrokesMap = (nh) => {
+      const mp = {}; let rem = Math.abs(nh);
+      for (const h of sorted) { if (rem <= 0) break; mp[h.idx] = (mp[h.idx] || 0) + 1; rem--; }
+      for (const h of sorted) { if (rem <= 0) break; mp[h.idx] = (mp[h.idx] || 0) + 1; rem--; }
+      return mp;
+    };
+    const getHcp = (pid) => { const p = players.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
+    const getStr = (pid, h) => getStrokesMap(getHcp(pid))[h] || 0;
+    const getS = (pid, h) => editScores[`${pid}_${h}`] || 0;
+
+    const getNet = (pids) => { let net = 0; pids.forEach(pid => { for (let h = 0; h < 9; h++) net += getS(pid, h) - getStr(pid, h); }); return net; };
+    const getGross = (pids) => { let g = 0; pids.forEach(pid => { for (let h = 0; h < 9; h++) g += getS(pid, h); }); return g; };
+    const t1Net = getNet(t1Pids), t2Net = getNet(t2Pids);
+    const t1Gross = getGross(t1Pids), t2Gross = getGross(t2Pids);
+
+    const isPlayoff = weekNum > (leagueConfig?.regularWeeks || REGULAR_WEEKS);
+    const sr = isPlayoff
+      ? { mw: scoringRules.playoffMatchWin, mt: scoringRules.playoffMatchTie, ml: scoringRules.playoffMatchLoss, bw: scoringRules.playoffBonusWin, bt: scoringRules.playoffBonusTie, bl: scoringRules.playoffBonusLoss }
+      : { mw: scoringRules.matchWin, mt: scoringRules.matchTie, ml: scoringRules.matchLoss, bw: scoringRules.totalNetBonusWin, bt: scoringRules.totalNetBonusTie, bl: scoringRules.totalNetBonusLoss };
+
+    let t1Pts = 0, t2Pts = 0;
+    const scoringFormat = leagueConfig?.scoringFormat || "lowHighBonus";
+    if (scoringFormat === "teamNetTotal") {
+      if (t1Net < t2Net) { t1Pts = sr.mw; t2Pts = sr.ml; } else if (t1Net > t2Net) { t1Pts = sr.ml; t2Pts = sr.mw; } else { t1Pts = sr.mt; t2Pts = sr.mt; }
+    } else {
+      const t1s = [...t1Pids].sort((a, b) => getHcp(a) - getHcp(b));
+      const t2s = [...t2Pids].sort((a, b) => getHcp(a) - getHcp(b));
+      const pNet = (pid) => { let n = 0; for (let h = 0; h < 9; h++) n += getS(pid, h) - getStr(pid, h); return n; };
+      const t1L = pNet(t1s[0]), t2L = pNet(t2s[0]), t1H = pNet(t1s[1]), t2H = pNet(t2s[1]);
+      if (t1L < t2L) { t1Pts += sr.mw; t2Pts += sr.ml; } else if (t1L > t2L) { t1Pts += sr.ml; t2Pts += sr.mw; } else { t1Pts += sr.mt; t2Pts += sr.mt; }
+      if (t1H < t2H) { t1Pts += sr.mw; t2Pts += sr.ml; } else if (t1H > t2H) { t1Pts += sr.ml; t2Pts += sr.mw; } else { t1Pts += sr.mt; t2Pts += sr.mt; }
+      const bonusType = leagueConfig?.bonusType || "teamNetTotal";
+      let b1, b2;
+      if (bonusType === "lowestNet") { b1 = Math.min(pNet(t1s[0]), pNet(t1s[1])); b2 = Math.min(pNet(t2s[0]), pNet(t2s[1])); }
+      else if (bonusType === "totalGross") { b1 = t1Gross; b2 = t2Gross; }
+      else { b1 = t1Net; b2 = t2Net; }
+      if (b1 < b2) { t1Pts += sr.bw; t2Pts += sr.bl; } else if (b1 > b2) { t1Pts += sr.bl; t2Pts += sr.bw; } else { t1Pts += sr.bt; t2Pts += sr.bt; }
+    }
+
+    let hw1 = 0, hw2 = 0;
+    const holeResults = [];
+    for (let h = 0; h < 9; h++) {
+      let n1 = 0, n2 = 0;
+      t1Pids.forEach(pid => { n1 += getS(pid, h) - getStr(pid, h); });
+      t2Pids.forEach(pid => { n2 += getS(pid, h) - getStr(pid, h); });
+      if (n1 < n2) { hw1++; holeResults.push(1); } else if (n2 < n1) { hw2++; holeResults.push(-1); } else { holeResults.push(0); }
+    }
+    const runningStatus = []; let cum = 0;
+    holeResults.forEach(r => { cum += r; runningStatus.push(cum); });
+
+    let matchEndHole = 8, matchMargin = Math.abs(runningStatus[8]);
+    for (let h = 0; h < 9; h++) {
+      const lead = Math.abs(runningStatus[h]); const rem = 8 - h;
+      if (lead > rem) { matchEndHole = h; matchMargin = lead; break; }
+    }
+    const finalStatus = runningStatus[8];
+    const holesRemaining = 8 - matchEndHole;
+    let matchResultText;
+    if (finalStatus === 0) matchResultText = "TIED";
+    else if (holesRemaining > 0) matchResultText = `${matchMargin}&${holesRemaining}`;
+    else matchResultText = `${Math.abs(finalStatus)}UP`;
+
+    await saveMatchResult({
+      id: `${LEAGUE_ID}_w${weekNum}_${t1.id}_${t2.id}`, week: weekNum,
+      team1Id: t1.id, team2Id: t2.id,
+      team1Points: t1Pts, team2Points: t2Pts,
+      t1Total: t1Net, t2Total: t2Net,
+      t1HolesWon: hw1, t2HolesWon: hw2,
+      matchResultText,
+      matchWinnerId: finalStatus > 0 ? t1.id : finalStatus < 0 ? t2.id : null,
+      finalizedByTeamId: res?.finalizedByTeamId || null,
+      signedByPlayerId: leagueUser?.playerId || null,
+      attested: res?.attested || false,
+    });
+
+    // Update local cache
+    const updatedScores = { ...(matchScores[weekNum] || {}) };
+    allPids.forEach(pid => { for (let h = 0; h < 9; h++) updatedScores[`w${weekNum}_p${pid}_h${h}`] = editScores[`${pid}_${h}`] || 0; });
+    setMatchScores(prev => ({ ...prev, [weekNum]: updatedScores }));
+    setSaving(false);
+    setEditingMatch(null);
+  };
 
   const displayNames = useMemo(() => {
     const lastNames = {};
@@ -394,7 +528,12 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         {botPids.map(pid => <PlayerRow key={pid} pid={pid} />)}
         <TeamRow pids={botPids} isT1={!topIsT1} />
       </div>
-    );
+      {isComm && saveScore && (
+        <button onClick={() => openEditScores(wk, m, res)} style={{ width: "100%", padding: "6px 0", marginTop: 4, borderRadius: 6, background: K.warn + "15", border: `1px solid ${K.warn}40`, color: K.warn, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+          Edit Scores
+        </button>
+      )}
+    </>;
   };
 
   // ── Full week view ──
@@ -624,6 +763,89 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       {weeksToShow.upcoming.length === 0 && weeksToShow.complete.length === 0 && (
         <EmptyState icon="calendar" title="No matches to show" />
       )}
+
+      {/* ═══ Commissioner Edit Scores Popup ═══ */}
+      {editingMatch && (() => {
+        const { wk, m, res } = editingMatch;
+        const side = wk.side || getWeekSide(wk.week);
+        const pars = course ? (side === 'front' ? course.frontPars : course.backPars) : [4,4,4,3,5,4,4,3,5];
+        const t1 = teams.find(t => t.id === m.team1);
+        const t2 = teams.find(t => t.id === m.team2);
+        const t1Pids = [t1?.player1, t1?.player2].filter(Boolean);
+        const t2Pids = [t2?.player1, t2?.player2].filter(Boolean);
+        const allPids = [...t1Pids, ...t2Pids];
+        const getName = (pid) => { const p = players.find(pl => pl.id === pid); return p ? p.name.split(' ').pop() : "?"; };
+        const getHcp = (pid) => { const p = players.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
+        const setS = (pid, h, val) => setEditScores(prev => ({ ...prev, [`${pid}_${h}`]: val }));
+        const getS = (pid, h) => editScores[`${pid}_${h}`] || 0;
+        const allFilled = allPids.every(pid => { for (let h = 0; h < 9; h++) if (getS(pid, h) <= 0) return false; return true; });
+
+        return (<>
+          <div onClick={() => setEditingMatch(null)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 500 }} />
+          <div data-popup style={{ position: "fixed", inset: 0, zIndex: 550, display: "flex", alignItems: "center", justifyContent: "center", padding: 10 }}>
+            <div onClick={e => e.stopPropagation()} data-popup-scroll style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "14px 10px", width: "100%", maxWidth: 420, maxHeight: "85vh", overflowY: "auto", overscrollBehavior: "contain" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>Edit Scores — Week {wk.week}</div>
+                <button onClick={() => setEditingMatch(null)} style={{ background: "none", border: "none", color: K.t3, fontSize: 16, cursor: "pointer" }}>✕</button>
+              </div>
+              {/* Hole header */}
+              <div style={{ display: "flex", marginBottom: 2 }}>
+                <div style={{ width: 56, flexShrink: 0 }} />
+                {Array.from({ length: 9 }, (_, i) => (
+                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, fontWeight: 700, color: K.t3 }}>{side === 'front' ? i + 1 : i + 10}</div>
+                ))}
+              </div>
+              {/* Par row */}
+              <div style={{ display: "flex", marginBottom: 6 }}>
+                <div style={{ width: 56, flexShrink: 0, fontSize: 9, fontWeight: 700, color: K.t3, paddingLeft: 2 }}>Par</div>
+                {pars.map((p, i) => (
+                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 600, color: K.t2 }}>{p}</div>
+                ))}
+              </div>
+              {/* Player score rows */}
+              {[...t1Pids, null, ...t2Pids].map((pid, idx) => {
+                if (pid === null) return <div key="sep" style={{ height: 1, background: K.bdr + "40", margin: "4px 0" }} />;
+                return (
+                  <div key={pid} style={{ display: "flex", alignItems: "center", marginBottom: 3 }}>
+                    <div style={{ width: 56, flexShrink: 0, fontSize: 10, fontWeight: 700, color: K.t1, paddingLeft: 2, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+                      {getName(pid)} <span style={{ fontSize: 8, color: K.t3 }}>({getHcp(pid)})</span>
+                    </div>
+                    {Array.from({ length: 9 }, (_, h) => {
+                      const val = getS(pid, h);
+                      const par = pars[h];
+                      const diff = val > 0 ? val - par : 0;
+                      const color = val <= 0 ? K.t3 : diff < 0 ? K.red : diff === 0 ? K.t1 : K.t1;
+                      return (
+                        <div key={h} style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+                          <input
+                            type="number"
+                            value={val || ""}
+                            onChange={e => setS(pid, h, parseInt(e.target.value) || 0)}
+                            style={{
+                              width: "100%", maxWidth: 30, height: 28, textAlign: "center", fontSize: 13, fontWeight: 700,
+                              background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 4, color,
+                              padding: 0, outline: "none",
+                            }}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+              {/* Save / Cancel */}
+              <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                <button onClick={saveEditedScores} disabled={!allFilled || saving} style={{ flex: 1, padding: 10, borderRadius: 8, background: allFilled && !saving ? K.warn : K.inp, border: allFilled && !saving ? "none" : `1px solid ${K.bdr}`, color: allFilled && !saving ? K.bg : K.t3, fontSize: 13, fontWeight: 700, cursor: allFilled && !saving ? "pointer" : "default" }}>
+                  {saving ? "Saving..." : "Save & Re-sign"}
+                </button>
+                <button onClick={() => setEditingMatch(null)} style={{ padding: "10px 16px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </>);
+      })()}
     </div>
   );
 }

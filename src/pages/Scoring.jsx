@@ -282,8 +282,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const [justSigned, setJustSigned] = useState(false); // prevents flash between sign and Firestore update
   const [showCtpPopup, setShowCtpPopup] = useState(false);
   const [ctpSelections, setCtpSelections] = useState({}); // { holeNum: { playerId, distance } }
-  const [commWeek, setCommWeek] = useState(null); // commissioner week override
-  const [commEditing, setCommEditing] = useState(false); // commissioner editing finalized match
   const initialJump = useRef(false);
   const matchGrn = K.matchGrn;
 
@@ -310,12 +308,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     return playable.length ? playable[playable.length - 1].week : 0;
   }, [schedule, matchResults, forceWeek]);
 
-  const week = commWeek || currentWeek;
+  const week = currentWeek;
   useEffect(() => { setLiveWeek(week); }, [week, setLiveWeek]);
   // Clear the forceWeek after it's been consumed
   useEffect(() => { if (forceWeek && onForceWeekUsed) onForceWeekUsed(); }, [forceWeek]);
-  // Reset commEditing when week changes
-  useEffect(() => { setCommEditing(false); }, [week]);
 
   const weekSch = schedule.find(s => s.week === week);
   const matches = weekSch?.matches || [];
@@ -445,7 +441,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const holeComplete = allP.length > 0 && allP.every(pid => getS(pid, curHole) > 0);
 
   const existingResult = (t1 && t2) ? matchResults.find(r => r.week === week && r.team1Id === t1.id && r.team2Id === t2.id) : null;
-  const isAlreadyFinalized = !!existingResult && !commEditing;
+  const isAlreadyFinalized = !!existingResult;
 
   // Clear justSigned once Firestore confirms the result
   useEffect(() => {
@@ -556,22 +552,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             </button>
           </div>
         </div>
-
-        {/* Commissioner week picker in All Matches */}
-        {isComm && (() => {
-          const playableWeeks = schedule.filter(wk => !wk.rainedOut && wk.matches && wk.matches.length > 0).map(wk => wk.week);
-          if (playableWeeks.length <= 1) return null;
-          return (
-            <div style={{ display: "flex", gap: 3, marginBottom: 8, flexWrap: "wrap", justifyContent: "center" }}>
-              {playableWeeks.map(w => {
-                const isCur = w === week;
-                const wkSch = schedule.find(s => s.week === w);
-                const isLocked = wkSch?.locked === true;
-                return <button key={w} onClick={() => { setCommWeek(w === currentWeek ? null : w); setExpandedMatch(null); }} style={{ minWidth: 28, padding: "4px 6px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer", border: isCur ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}`, background: isCur ? K.act + "20" : K.inp, color: isCur ? K.act : isLocked ? K.t3 : K.t2 }}>{w}</button>;
-              })}
-            </div>
-          );
-        })()}
 
         <div style={{ marginBottom: 10 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1.5 }}>Week {week}</div>
@@ -1153,48 +1133,28 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         </div>
       )}
       {!activeMatch && (
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
-          <div style={{ display: "flex", background: K.inp, borderRadius: 20, border: `1px solid ${K.bdr}`, padding: 3 }}>
-            <button style={{ padding: "6px 16px", borderRadius: 17, cursor: "default", fontSize: 12, fontWeight: 700, border: "none", background: K.acc, color: K.bg, transition: "all .2s" }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}>
+          <div style={{ display: "flex", background: K.inp, borderRadius: 20, border: `1px solid ${K.bdr}`, padding: 2 }}>
+            <button style={{ padding: "4px 14px", borderRadius: 17, cursor: "default", fontSize: 11, fontWeight: 700, border: "none", background: K.acc, color: K.bg, transition: "all .2s" }}>
               My Match
             </button>
-            <button onClick={() => setShowAllMatches(true)} style={{ padding: "6px 16px", borderRadius: 17, cursor: "pointer", fontSize: 12, fontWeight: 700, border: "none", background: "transparent", color: K.t3, transition: "all .2s" }}>
+            <button onClick={() => setShowAllMatches(true)} style={{ padding: "4px 14px", borderRadius: 17, cursor: "pointer", fontSize: 11, fontWeight: 700, border: "none", background: "transparent", color: K.t3, transition: "all .2s" }}>
               All Matches
             </button>
           </div>
         </div>
       )}
-      {/* Commissioner week picker */}
-      {isComm && !activeMatch && (() => {
-        const playableWeeks = schedule.filter(wk => !wk.rainedOut && wk.matches && wk.matches.length > 0).map(wk => wk.week);
-        if (playableWeeks.length <= 1) return null;
-        return (
-          <div style={{ display: "flex", gap: 3, marginBottom: 8, flexWrap: "wrap", justifyContent: "center" }}>
-            {playableWeeks.map(w => {
-              const isCur = w === week;
-              const wkSch = schedule.find(s => s.week === w);
-              const isLocked = wkSch?.locked === true;
-              return <button key={w} onClick={() => { setCommWeek(w === currentWeek ? null : w); setCommEditing(false); setCurHole(0); setShowFinalize(false); setActiveMatch(null); }} style={{ minWidth: 28, padding: "4px 6px", borderRadius: 6, fontSize: 11, fontWeight: 700, cursor: "pointer", border: isCur ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}`, background: isCur ? K.act + "20" : K.inp, color: isCur ? K.act : isLocked ? K.t3 : K.t2 }}>{w}</button>;
-            })}
-          </div>
-        );
-      })()}
       {/* Status banners */}
-      {isWeekLocked && !commEditing && (
-        <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 6, fontSize: 13, color: K.warn, fontWeight: 700, textAlign: "center" }}>
+      {isWeekLocked && (
+        <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 4, fontSize: 13, color: K.warn, fontWeight: 700, textAlign: "center" }}>
           Week {week} is locked — scores are read-only
         </div>
       )}
-      {commEditing && (
-        <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 6, fontSize: 13, color: K.warn, fontWeight: 700, textAlign: "center" }}>
-          Editing scores — Week {week}
-        </div>
-      )}
       {!isAlreadyFinalized && (
-      <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
+      <div style={{ display: "flex", gap: 3, marginBottom: 2 }}>
         {Array.from({ length: 9 }, (_, i) => {
           const cur = i === curHole; const done = allP.every(pid => getS(pid, i) > 0);
-          return <button key={i} onClick={() => { setCurHole(i); setEditing(i < currentHoleIdx); }} style={{ flex: 1, height: 38, borderRadius: done || cur ? 10 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 16, fontWeight: 700, cursor: "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{side === 'front' ? i + 1 : i + 10}</button>;
+          return <button key={i} onClick={() => { setCurHole(i); setEditing(i < currentHoleIdx); }} style={{ flex: 1, height: 32, borderRadius: done || cur ? 8 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 15, fontWeight: 700, cursor: "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{side === 'front' ? i + 1 : i + 10}</button>;
         })}
       </div>
       )}
@@ -1233,17 +1193,17 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const hasAnyStatus = holeStatuses.some(s => s !== null);
 
         return (<>
-          <button onClick={() => hasAnyStatus && !isAlreadyFinalized ? setShowScorecard(!showScorecard) : null} style={{ display: isAlreadyFinalized ? "none" : "flex", marginTop: 6, marginBottom: showScorecard ? 0 : 8, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: showScorecard ? "8px 8px 0 0" : 8, cursor: hasAnyStatus ? "pointer" : "default", padding: "8px 0", alignItems: "center" }}>
+          <button onClick={() => hasAnyStatus && !isAlreadyFinalized ? setShowScorecard(!showScorecard) : null} style={{ display: isAlreadyFinalized ? "none" : "flex", marginTop: 2, marginBottom: showScorecard ? 0 : 4, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: showScorecard ? "8px 8px 0 0" : 8, cursor: hasAnyStatus ? "pointer" : "default", padding: "4px 0", alignItems: "center" }}>
             {holeStatuses.map((st, i) => {
               const colBorderR = i < 8 ? { borderRight: `1px solid ${K.bdr}30` } : {};
               if (matchClinchHole !== null && i === matchClinchHole) {
                 const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-                return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 16, color, fontWeight: 800, lineHeight: "30px", ...colBorderR }}>{clinchScoreText}</div>;
+                return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, color, fontWeight: 800, lineHeight: "24px", ...colBorderR }}>{clinchScoreText}</div>;
               }
-              if (matchClinchHole !== null && i > matchClinchHole) return <div key={i} style={{ flex: 1, height: 30, ...colBorderR }} />;
-              if (st === null) return <div key={i} style={{ flex: 1, height: 30, ...colBorderR }} />;
+              if (matchClinchHole !== null && i > matchClinchHole) return <div key={i} style={{ flex: 1, height: 24, ...colBorderR }} />;
+              if (st === null) return <div key={i} style={{ flex: 1, height: 24, ...colBorderR }} />;
               const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 16, fontWeight: 800, color, lineHeight: "30px", ...colBorderR }}>{st > 0 ? <><span style={{ fontSize: 16 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 16 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
+              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "24px", ...colBorderR }}>{st > 0 ? <><span style={{ fontSize: 14 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 14 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
             })}
           </button>
           {showScorecard && !isAlreadyFinalized && (() => {
@@ -1332,23 +1292,17 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 </button>
               </div>
             )}
-
-            {isComm && !commEditing && (
-              <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 8, marginTop: 8, background: K.warn + "15", border: `1px solid ${K.warn}40`, color: K.warn, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                Edit Scores
-              </button>
-            )}
           </div>
         );
       })() : (<>
-      <div style={{ background: K.acc, borderRadius: 10, padding: "6px 8px", marginBottom: 6, display: "flex", alignItems: "center" }}>
-        <button onClick={() => { const prev = Math.max(0, curHole - 1); setCurHole(prev); setEditing(prev < currentHoleIdx); }} disabled={curHole === 0} style={{ width: 32, height: 40, borderRadius: 8, background: "none", border: "none", cursor: curHole === 0 ? "default" : "pointer", color: curHole === 0 ? K.bg + "40" : K.bg, fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
+      <div style={{ background: K.acc, borderRadius: 10, padding: "4px 8px", marginBottom: 4, display: "flex", alignItems: "center" }}>
+        <button onClick={() => { const prev = Math.max(0, curHole - 1); setCurHole(prev); setEditing(prev < currentHoleIdx); }} disabled={curHole === 0} style={{ width: 28, height: 36, borderRadius: 8, background: "none", border: "none", cursor: curHole === 0 ? "default" : "pointer", color: curHole === 0 ? K.bg + "40" : K.bg, fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
         <div style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 8px" }}>
-          <div style={{ textAlign: "center", minWidth: 36 }}><div style={{ fontSize: 9, color: K.bg, fontWeight: 600, opacity: 0.7 }}>Par</div><div style={{ fontSize: 16, fontWeight: 800, color: K.bg }}>{par}</div></div>
-          <div style={{ textAlign: "center" }}><div style={{ fontSize: 9, color: K.bg, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, opacity: 0.7 }}>Hole</div><div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 30, fontWeight: 700, color: K.bg, lineHeight: 1 }}>{side === 'front' ? curHole + 1 : curHole + 10}</div></div>
-          <div style={{ textAlign: "center", minWidth: 36 }}><div style={{ fontSize: 9, color: K.bg, fontWeight: 600, opacity: 0.7 }}>HCP</div><div style={{ fontSize: 16, fontWeight: 800, color: K.bg }}>{hcp}</div></div>
+          <div style={{ textAlign: "center", minWidth: 32 }}><div style={{ fontSize: 8, color: K.bg, fontWeight: 600, opacity: 0.7 }}>Par</div><div style={{ fontSize: 15, fontWeight: 800, color: K.bg }}>{par}</div></div>
+          <div style={{ textAlign: "center" }}><div style={{ fontSize: 8, color: K.bg, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, opacity: 0.7 }}>Hole</div><div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 26, fontWeight: 700, color: K.bg, lineHeight: 1 }}>{side === 'front' ? curHole + 1 : curHole + 10}</div></div>
+          <div style={{ textAlign: "center", minWidth: 32 }}><div style={{ fontSize: 8, color: K.bg, fontWeight: 600, opacity: 0.7 }}>HCP</div><div style={{ fontSize: 15, fontWeight: 800, color: K.bg }}>{hcp}</div></div>
         </div>
-        <button onClick={() => { const next = Math.min(8, curHole + 1); setCurHole(next); setEditing(next < currentHoleIdx); }} disabled={curHole === 8} style={{ width: 32, height: 40, borderRadius: 8, background: "none", border: "none", cursor: curHole === 8 ? "default" : "pointer", color: curHole === 8 ? K.bg + "40" : K.bg, fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
+        <button onClick={() => { const next = Math.min(8, curHole + 1); setCurHole(next); setEditing(next < currentHoleIdx); }} disabled={curHole === 8} style={{ width: 28, height: 36, borderRadius: 8, background: "none", border: "none", cursor: curHole === 8 ? "default" : "pointer", color: curHole === 8 ? K.bg + "40" : K.bg, fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
       </div>
       </>)}
       {!isAlreadyFinalized && !justSigned && (<>
@@ -1419,20 +1373,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       )}
       </>)}
       {/* Finalize / Show Match Details buttons */}
-      {allComplete && !showFinalize && !isAlreadyFinalized && !commEditing && (
+      {allComplete && !showFinalize && !isAlreadyFinalized && (
         <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: "#3b82f615", border: `1.5px solid #3b82f650`, color: "#3b82f6", fontSize: 15, fontWeight: 700 }}>
           All Holes Complete — Sign Scorecard
         </button>
-      )}
-      {commEditing && (
-        <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
-          <button onClick={async () => { await finalizeMatch(); setCommEditing(false); setToast("Scores updated & re-signed"); setTimeout(() => setToast(null), 2500); }} disabled={!allComplete} style={{ flex: 1, padding: 10, borderRadius: 10, cursor: allComplete ? "pointer" : "default", background: allComplete ? K.warn : K.inp, border: allComplete ? "none" : `1px solid ${K.bdr}`, color: allComplete ? K.bg : K.t3, fontSize: 13, fontWeight: 800, opacity: allComplete ? 1 : 0.5 }}>
-            Save & Re-sign
-          </button>
-          <button onClick={() => setCommEditing(false)} style={{ padding: "10px 16px", borderRadius: 10, cursor: "pointer", background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 13, fontWeight: 700 }}>
-            Cancel
-          </button>
-        </div>
       )}
 
       {/* ═══ Finalize Popup ═══ */}
@@ -1538,7 +1482,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       <div style={{ background: K.warn + "15", border: `1px solid ${K.warn}40`, borderRadius: 10, padding: 12, marginBottom: 6 }}>
                         <div style={{ fontSize: 13, fontWeight: 600, color: K.t1, marginBottom: 10 }}>This will allow score edits. Continue?</div>
                         <div style={{ display: "flex", gap: 8 }}>
-                          <button onClick={() => { setCommEditing(true); setShowEditConfirm(false); setShowFinalize(false); }} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.warn, border: "none", color: K.bg, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                          <button onClick={() => { setShowEditConfirm(false); setShowFinalize(false); }} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.warn, border: "none", color: K.bg, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
                             Yes
                           </button>
                           <button onClick={() => setShowEditConfirm(false)} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
@@ -1603,31 +1547,28 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
     btns = defaultBtns.map(b => b - shift);
   }
   return (
-    <Card style={{ marginBottom: 4, padding: "10px 12px" }}>
-      <div style={{ marginBottom: 6 }}>
-        <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 2 }}>
-          <span style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.1 }}>{pl.name}</span>
-          <span style={{ fontSize: 12, fontWeight: 600, color: K.t2 }}>({nh})</span>
-          {strokes > 0 && <span style={{ color: "#3b82f6", fontSize: 14, letterSpacing: 1, lineHeight: 1 }}>{"●".repeat(strokes)}</span>}
-        </div>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          {run.thru > 0 ? <span style={{ fontSize: 11, color: K.t3 }}>Net: <strong style={{ color: run.netVsPar < 0 ? K.red : run.netVsPar === 0 ? K.t3 : K.t1 }}>{run.netVsPar > 0 ? "+" + run.netVsPar : run.netVsPar === 0 ? "E" : run.netVsPar}</strong> thru {run.thru}</span> : <span />}
-          {absentBtn}
-        </div>
+    <Card style={{ marginBottom: 3, padding: "6px 10px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 5, minWidth: 0 }}>
+        <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flexShrink: 1 }}>{pl.name}</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: K.t2, flexShrink: 0 }}>({nh})</span>
+        {strokes > 0 && <span style={{ color: "#3b82f6", fontSize: 12, letterSpacing: 1, flexShrink: 0, lineHeight: 1 }}>{"●".repeat(strokes)}</span>}
+        <div style={{ flex: 1 }} />
+        {run.thru > 0 && <span style={{ fontSize: 10, color: K.t3, flexShrink: 0, whiteSpace: "nowrap" }}>Net: <strong style={{ color: run.netVsPar < 0 ? K.red : run.netVsPar === 0 ? K.t3 : K.t1 }}>{run.netVsPar > 0 ? "+" + run.netVsPar : run.netVsPar === 0 ? "E" : run.netVsPar}</strong> thru {run.thru}</span>}
+        {absentBtn}
       </div>
       <div style={{ display: "flex", gap: 3 }}>
         {btns.map(btn => {
           const isCur = btn === score; const sd = btn - par;
-          const boxSize = 36;
+          const boxSize = 32;
           return (
-            <button key={btn} onClick={() => handleScore(isCur ? 0 : btn)} style={{ flex: 1, height: 42, borderRadius: 8, cursor: "pointer", fontSize: 16, fontWeight: 800, border: "none", background: isCur ? K.acc : K.inp, color: isCur ? K.bg : K.t2, position: "relative", transition: "all .15s", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {isCur && sd !== 0 && <div style={{ position: "absolute", width: boxSize, height: boxSize, left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}><div style={{ position: "absolute", inset: 0, borderRadius: sd < 0 ? "50%" : 3, border: `1.5px solid ${sd < 0 ? K.red : K.bg}` }} />{Math.abs(sd) >= 2 && <div style={{ position: "absolute", inset: 4, borderRadius: sd < 0 ? "50%" : 2, border: `1px solid ${sd < 0 ? K.red : K.bg}` }} />}</div>}
+            <button key={btn} onClick={() => handleScore(isCur ? 0 : btn)} style={{ flex: 1, height: 38, borderRadius: 8, cursor: "pointer", fontSize: 15, fontWeight: 800, border: "none", background: isCur ? K.acc : K.inp, color: isCur ? K.bg : K.t2, position: "relative", transition: "all .15s", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {isCur && sd !== 0 && <div style={{ position: "absolute", width: boxSize, height: boxSize, left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}><div style={{ position: "absolute", inset: 0, borderRadius: sd < 0 ? "50%" : 3, border: `1.5px solid ${sd < 0 ? K.red : K.bg}` }} />{Math.abs(sd) >= 2 && <div style={{ position: "absolute", inset: 3, borderRadius: sd < 0 ? "50%" : 2, border: `1px solid ${sd < 0 ? K.red : K.bg}` }} />}</div>}
               <span style={{ position: "relative", zIndex: 1 }}>{btn}</span>
             </button>
           );
         })}
-        <button onClick={() => handleScore(Math.max(1, (score || par) - 1))} style={{ width: 28, height: 42, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>−</button>
-        <button onClick={() => handleScore((score || par) + 1)} style={{ width: 28, height: 42, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>+</button>
+        <button onClick={() => handleScore(Math.max(1, (score || par) - 1))} style={{ width: 26, height: 38, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>−</button>
+        <button onClick={() => handleScore((score || par) + 1)} style={{ width: 26, height: 38, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>+</button>
       </div>
     </Card>
   );
