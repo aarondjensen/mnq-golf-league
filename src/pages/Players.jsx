@@ -31,6 +31,7 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
   const playerStats = useMemo(() => {
     if (!allScores) return [];
     const par = course ? (course.frontPars || []).reduce((a, b) => a + b, 0) : 36;
+    const currentSeason = new Date().getFullYear();
     return players.map(p => {
       const allRounds = allScores[p.id] || [];
       const totalRounds = allRounds.length;
@@ -40,8 +41,12 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
       const avg = best.length ? best.reduce((a, b) => a + b.gross, 0) / best.length : null;
       const calcHcp = avg !== null ? Math.round(avg - par) : null;
 
+      // Only show hcpChange if the most recent round is from the current season
+      const lastRound = allRounds[allRounds.length - 1];
+      const hasCurrentSeasonRound = lastRound && lastRound.season === currentSeason;
+
       let prevHcp = null;
-      if (allRounds.length >= 2) {
+      if (hasCurrentSeasonRound && allRounds.length >= 2) {
         const prevRounds = allRounds.slice(0, -1);
         const prevRecent = prevRounds.slice(-recentN);
         const prevSorted = [...prevRecent].sort((a, b) => a.gross - b.gross);
@@ -51,7 +56,7 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
       }
 
       const currentHcp = calcHcp !== null ? calcHcp : p.handicapIndex;
-      const hcpChange = (currentHcp !== null && prevHcp !== null) ? currentHcp - prevHcp : null;
+      const hcpChange = (hasCurrentSeasonRound && currentHcp !== null && prevHcp !== null) ? currentHcp - prevHcp : null;
 
       return { ...p, totalRounds, recentRounds, best, par, idx: currentHcp, hcpChange };
     }).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
