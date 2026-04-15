@@ -704,7 +704,7 @@ export default function GolfLeagueApp() {
                 </button>
               )}
               <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                {activePlayers.map(p => {
+                {[...activePlayers].sort((a, b) => a.name.localeCompare(b.name)).map(p => {
                   const isSelf = p.id === leagueUser.playerId;
                   const isActive = impersonating?.playerId === p.id;
                   return (
