@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { LEAGUE_ID } from "../firebase";
 import { K, FONTS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
-  SEASON_WEEKS, REGULAR_WEEKS, TEAMS_COUNT, getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap,
+  getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap,
   formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, lastNamesOnly } from "../theme";
 
 
@@ -183,8 +183,9 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
   };
 
   const [rows, setRows] = useState(() => {
+    const teamCount = Math.max(teams.length, 2);
     const r = [];
-    for (let i = 0; i < TEAMS_COUNT; i++) {
+    for (let i = 0; i < teamCount; i++) {
       const t = teams[i];
       r.push({ id: t?.id || `${LEAGUE_ID}_t${i + 1}`, name: t?.name || "", player1: t?.player1 || "", player2: t?.player2 || "" });
     }
@@ -1003,8 +1004,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           ) : (<>
             {/* Shuffle button — only shows if no weeks are locked */}
             {(() => {
-              const rrWeekCount = teams.length - 1;
-              const rrWeeks = schedule.filter(s => s.week <= rrWeekCount && !s.isPlayoff && !s.rainedOut && !s.makeupFor);
+              const rrWeeks = schedule.filter(s => !s.isPlayoff && !s.seeded && !s.rainedOut && !s.makeupFor);
               const anyLocked = schedule.some(s => s.locked);
               if (anyLocked || rrWeeks.length < 2) return null;
               const doShuffle = async () => {
@@ -1050,8 +1050,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                     </div>
                     <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
                       {isRainedOut ? "RAIN OUT" : isSeeded ? (isPlayoffWk ? "PLAYOFF — TBD" : "SEEDED — TBD") : wk.matches?.length ? (() => {
-                        const rrWeekCount = teams.length - 1;
-                        const isSeededFilled = wk.week > rrWeekCount || wk.makeupFor;
+                        const isSeededFilled = wk.seeded === true || wk.makeupFor;
                         if (isSeededFilled) {
                           return wk.matches.map(m => `#${seedMap[m.team1] || "?"}v#${seedMap[m.team2] || "?"}`).join("  ");
                         }
@@ -1083,7 +1082,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     const isPlayoff = wk.isPlayoff === true;
     const regWeeks = leagueConfig.regularWeeks || 14;
     const playoffWeeks = leagueConfig.playoffWeeks || 2;
-    const playoffRound = isPlayoff ? wk.week - regWeeks : 0; // 1 = play-in, 2 = quarters, etc.
+    // Determine playoff round by counting playoff weeks up to and including this one
+    const playoffRound = isPlayoff ? schedule.filter(s => s.isPlayoff === true && s.week <= wk.week).length : 0;
 
     // Build current standings for seeding
     const buildStandingsForSeed = () => {
@@ -1224,12 +1224,15 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     };
 
     const handleRainOut = async () => {
-      // Round-robin = weeks 1 through (teams.length - 1), originally
-      // With 10 teams, that's weeks 1-9 as generated
-      const rrWeekCount = teams.length - 1;
-      const isRoundRobin = wk.week <= rrWeekCount && !wk.isPlayoff;
+      // Determine if this week is round-robin by its schedule flags (not hardcoded team count)
+      const isRoundRobin = !wk.isPlayoff && !wk.seeded && !wk.makeupFor;
+      // Find the last RR/makeup-RR week number in the current schedule
+      const lastRRWeekNum = Math.max(0, ...schedule.filter(s =>
+        (!s.isPlayoff && !s.seeded && !s.makeupFor) || (s.makeupFor && !s.isPlayoff)
+      ).map(s => s.week));
+
       const msgDetail = isRoundRobin
-        ? `Rain out Week ${wk.week}? This will:\n\n• Skip this week (no matches played)\n• Insert a makeup week after week ${rrWeekCount} (end of round robin)\n• Push seeded/playoff weeks forward\n• Extend the season by one week`
+        ? `Rain out Week ${wk.week}? This will:\n\n• Skip this week (no matches played)\n• Insert a makeup week after week ${lastRRWeekNum} (end of round robin)\n• Push seeded/playoff weeks forward\n• Extend the season by one week`
         : `Rain out Week ${wk.week}? This will:\n\n• Skip this week\n• Same matchups will be played next week\n• All future weeks shift forward one week\n• Season extends by one week`;
       if (!window.confirm(msgDetail)) return;
 
@@ -1245,16 +1248,6 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       await saveWeekSchedule({ ...wk, rainedOut: true });
 
       if (isRoundRobin) {
-        // Find the end of the round-robin block: start from rrWeekCount,
-        // but also include any makeup weeks previously inserted after it
-        let lastRRWeekNum = rrWeekCount;
-        const makeupRRWeeks = schedule.filter(s =>
-          s.makeupFor && s.makeupFor <= rrWeekCount
-        );
-        if (makeupRRWeeks.length > 0) {
-          lastRRWeekNum = Math.max(lastRRWeekNum, ...makeupRRWeeks.map(s => s.week));
-        }
-
         // Everything after the last RR week shifts up by 1 (process descending to avoid collisions)
         const weeksToShift = schedule.filter(s => s.week > lastRRWeekNum).sort((a, b) => b.week - a.week);
         for (const fw of weeksToShift) {
@@ -1346,8 +1339,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
               <button onClick={async () => {
                 if (!window.confirm(`Undo rain out for Week ${wk.week}? This will restore the week and reverse all shifts.`)) return;
 
-                const rrWeekCount = teams.length - 1;
-                const isRR = wk.week <= rrWeekCount && !wk.isPlayoff;
+                const isRR = !wk.isPlayoff && !wk.seeded;
                 const year = leagueConfig?.year || new Date().getFullYear();
                 const parseDate = (dateStr) => {
                   if (!dateStr) return null;

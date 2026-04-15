@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { K, FONTS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
-  SEASON_WEEKS, REGULAR_WEEKS, TEAMS_COUNT, getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap,
+  getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap,
   lastNamesOnly, formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 
@@ -812,10 +812,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             {/* Rain Out button — before week is finalized */}
             {!isWeekLocked && !allMatchesAttested && (
               <button onClick={() => {
-                const rrWeekCount = teams.length - 1;
-                const isRoundRobin = weekSch.week <= rrWeekCount && !weekSch.isPlayoff;
+                const isRoundRobin = !weekSch.isPlayoff && !weekSch.seeded && !weekSch.makeupFor;
+                const lastRRWeekNum = Math.max(0, ...schedule.filter(s =>
+                  (!s.isPlayoff && !s.seeded && !s.makeupFor) || (s.makeupFor && !s.isPlayoff)
+                ).map(s => s.week));
                 const msgDetail = isRoundRobin
-                  ? `This will skip this week and insert a makeup week after week ${rrWeekCount} (end of round robin). All seeded/playoff weeks will shift forward.`
+                  ? `This will skip this week and insert a makeup week after week ${lastRRWeekNum} (end of round robin). All seeded/playoff weeks will shift forward.`
                   : "This will skip this week and add a makeup week at the end of the season. All future weeks will shift forward.";
                 setConfirmModal({
                   title: `Rain out Week ${week}?`,
@@ -833,15 +835,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     await saveWeekSchedule({ ...weekSch, rainedOut: true });
 
                     if (isRoundRobin) {
-                      // Find end of RR block including any prior makeup weeks
-                      let lastRRWeekNum = rrWeekCount;
-                      const makeupRRWeeks = schedule.filter(s =>
-                        s.makeupFor && s.makeupFor <= rrWeekCount
-                      );
-                      if (makeupRRWeeks.length > 0) {
-                        lastRRWeekNum = Math.max(lastRRWeekNum, ...makeupRRWeeks.map(s => s.week));
-                      }
-
                       // Shift everything after the last RR week up by 1 (descending)
                       const weeksToShift = schedule.filter(s => s.week > lastRRWeekNum).sort((a, b) => b.week - a.week);
                       for (const fw of weeksToShift) {
@@ -1063,7 +1056,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   if (!t1 || !t2) return null;
 
   const finalizeMatch = async () => {
-    const sr = week > REGULAR_WEEKS
+    const isPlayoffWeek = weekSch?.isPlayoff === true;
+    const sr = isPlayoffWeek
       ? { mw: scoringRules.playoffMatchWin, mt: scoringRules.playoffMatchTie, ml: scoringRules.playoffMatchLoss, bw: scoringRules.playoffBonusWin, bt: scoringRules.playoffBonusTie, bl: scoringRules.playoffBonusLoss }
       : { mw: scoringRules.matchWin, mt: scoringRules.matchTie, ml: scoringRules.matchLoss, bw: scoringRules.totalNetBonusWin, bt: scoringRules.totalNetBonusTie, bl: scoringRules.totalNetBonusLoss };
 

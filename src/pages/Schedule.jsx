@@ -93,8 +93,8 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const t1Net = getNet(t1Pids), t2Net = getNet(t2Pids);
     const t1Gross = getGross(t1Pids), t2Gross = getGross(t2Pids);
 
-    const isPlayoff = weekNum > (leagueConfig?.regularWeeks || REGULAR_WEEKS);
-    const sr = isPlayoff
+    const isPlayoffWeek = wk.isPlayoff === true;
+    const sr = isPlayoffWeek
       ? { mw: scoringRules.playoffMatchWin, mt: scoringRules.playoffMatchTie, ml: scoringRules.playoffMatchLoss, bw: scoringRules.playoffBonusWin, bt: scoringRules.playoffBonusTie, bl: scoringRules.playoffBonusLoss }
       : { mw: scoringRules.matchWin, mt: scoringRules.matchTie, ml: scoringRules.matchLoss, bw: scoringRules.totalNetBonusWin, bt: scoringRules.totalNetBonusTie, bl: scoringRules.totalNetBonusLoss };
 
@@ -196,6 +196,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   }, [schedule, matchResults]);
 
   const isWeekComplete = (wk) => {
+    if (!wk.locked) return false;
     if (!wk.matches || wk.matches.length === 0) return false;
     return wk.matches.every(m =>
       matchResults.some(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2)
