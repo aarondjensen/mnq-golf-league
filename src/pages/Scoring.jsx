@@ -442,9 +442,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const existingResult = (t1 && t2) ? matchResults.find(r => r.week === week && r.team1Id === t1.id && r.team2Id === t2.id) : null;
   const isAlreadyFinalized = !!existingResult;
 
-  // Clear justSigned once Firestore confirms the result
+  // Clear justSigned and close popup once Firestore confirms the result
   useEffect(() => {
-    if (isAlreadyFinalized && justSigned) setJustSigned(false);
+    if (isAlreadyFinalized && justSigned) {
+      setJustSigned(false);
+      setShowFinalize(false);
+    }
   }, [isAlreadyFinalized, justSigned]);
   const isAttested = existingResult?.attested === true;
   const finalizedByTeamId = existingResult?.finalizedByTeamId || null;
@@ -453,14 +456,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const isOnFinalizingTeam = myTeam && (finalizedByTeamId === myTeam.id || isTheSigner);
   const isOnOpposingTeam = myTeam && !isOnFinalizingTeam && (myTeam.id === (t1?.id) || myTeam.id === (t2?.id));
 
-  // Multi-player attestation: all 3 non-signing players must attest
+  // Multi-player attestation: all non-signing PRESENT players must attest
   const attestedBy = existingResult?.attestedBy || [];
   const allMatchPids = [...t1Players, ...t2Players];
-  const nonSignerPids = allMatchPids.filter(pid => pid !== signedByPlayerId);
-  const isFullyAttested = isAlreadyFinalized && nonSignerPids.length > 0 && nonSignerPids.every(pid => attestedBy.includes(pid));
+  const nonSignerPids = allMatchPids.filter(pid => pid !== signedByPlayerId && !isPlayerAbsent(pid));
+  // If no present non-signers (all absent), the signer's signature is sufficient
+  const isFullyAttested = isAlreadyFinalized && (nonSignerPids.length === 0 || nonSignerPids.every(pid => attestedBy.includes(pid)));
   const iHaveAttested = attestedBy.includes(leagueUser.playerId);
-  const isInThisMatch = allMatchPids.includes(leagueUser.playerId);
-  const needsAttestation = isAlreadyFinalized && !isFullyAttested && isInThisMatch && !isTheSigner && !iHaveAttested;
+  const isInThisMatch = allMatchPids.includes(leagueUser.playerId) || isComm;
+  const needsAttestation = isAlreadyFinalized && !isFullyAttested && isInThisMatch && !isTheSigner && !iHaveAttested && !isPlayerAbsent(leagueUser.playerId);
   const scoresLocked = (isWeekLocked && !isComm) || (isFullyAttested && !isComm);
 
   const guardedSaveScore = (w, pid, h, val) => {
@@ -508,11 +512,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   }, [toast]);
 
   useEffect(() => {
-    if (allComplete && !showFinalize && !isAlreadyFinalized) {
-      const timer = setTimeout(() => setShowFinalize(true), 600);
-      return () => clearTimeout(timer);
+    if (allComplete && !showFinalize && !isAlreadyFinalized && !justSigned) {
+      setShowFinalize(true);
     }
-  }, [allComplete, isAlreadyFinalized]);
+  }, [allComplete, isAlreadyFinalized, justSigned]);
 
   // ── Shared helper: get initials (with absent fallback) ──
   const getInitials = useCallback((pid) => {
@@ -607,7 +610,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             const signerIsRawT2 = isSigned && res.finalizedByTeamId === rawT2.id;
             const resAttestedBy = res?.attestedBy || [];
             const resAllPids = [...mT1Pids, ...mT2Pids];
-            const resNonSigners = resAllPids.filter(pid => pid !== res?.signedByPlayerId);
+            const resAbsent = (pid) => holeScores[`w${week}_p${pid}_habsent`] === 1;
+            const resNonSigners = resAllPids.filter(pid => pid !== res?.signedByPlayerId && !resAbsent(pid));
             const resAttestedCount = resNonSigners.filter(pid => resAttestedBy.includes(pid)).length;
             const attestNeededDispT1 = isSigned && (
               (swapped && signerIsRawT1) || (!swapped && signerIsRawT2)
@@ -1070,6 +1074,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     else if (holesRemaining > 0) matchResultText = `${matchMargin}&${holesRemaining}`;
     else matchResultText = `${Math.abs(finalStatus)}UP`;
 
+    // If all other players are absent, auto-attest since nobody can
+    const presentNonSigners = allP.filter(pid => pid !== leagueUser.playerId && !isPlayerAbsent(pid));
+    const autoAttest = presentNonSigners.length === 0;
+
     await saveMatchResult({
       id: `${LEAGUE_ID}_w${week}_${t1.id}_${t2.id}`, week,
       team1Id: t1.id, team2Id: t2.id,
@@ -1080,7 +1088,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       matchWinnerId: finalStatus > 0 ? t1.id : finalStatus < 0 ? t2.id : null,
       finalizedByTeamId: myTeam?.id || null,
       signedByPlayerId: leagueUser.playerId || null,
-      attested: false,
+      attestedBy: [],
+      attested: autoAttest,
     });
   };
 
@@ -1221,11 +1230,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         </>);
       })()}
       {/* After signed: show inline scorecard. Before signed: show hole card + scoring UI */}
-      {(isAlreadyFinalized || justSigned) ? (() => {
-        if (justSigned && !isAlreadyFinalized) {
-          // Brief transition: scorecard was just signed, waiting for Firestore confirmation
-          return <div style={{ textAlign: "center", padding: 30, color: K.t3, fontSize: 13 }} className="pu">Saving scorecard...</div>;
-        }
+      {isAlreadyFinalized ? (() => {
         const sc = buildScorecardData();
         const scComp = buildSC(sc.myPids, sc.oppPids, sc.holeResults, sc.runningStatus, sc.clinchHole, sc.clinchText, "full", true);
 
@@ -1322,7 +1327,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         <button onClick={() => { const next = Math.min(8, curHole + 1); setCurHole(next); setEditing(next < currentHoleIdx); }} disabled={curHole === 8} style={{ width: 28, height: 36, borderRadius: 8, background: "none", border: "none", cursor: curHole === 8 ? "default" : "pointer", color: curHole === 8 ? K.bg + "40" : K.bg, fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
       </div>
       </>)}
-      {!isAlreadyFinalized && !justSigned && (<>
+      {!isAlreadyFinalized && (<>
 
       {allP.map(pid => {
         const pl = playerMap[pid]; if (!pl) return null;
@@ -1390,7 +1395,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       )}
       </>)}
       {/* Full Scorecard button */}
-      {!isAlreadyFinalized && !justSigned && (
+      {!isAlreadyFinalized && (
         <button onClick={() => setShowScorecard(true)} style={{ width: "100%", padding: "7px 0", borderRadius: 8, marginTop: 4, cursor: "pointer", background: K.card, border: `1px solid ${K.bdr}60`, color: K.t2, fontSize: 12, fontWeight: 700, letterSpacing: .5 }}>
           Full Scorecard
         </button>
@@ -1543,12 +1548,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div style={{ marginTop: 16 }}>
                 {!isAlreadyFinalized && (
                   <>
-                    <button onClick={async () => { setJustSigned(true); await finalizeMatch(); setShowFinalize(false); }} style={{ width: "100%", padding: "14px", borderRadius: 12, background: "#3b82f6", border: "none", color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
-                      Sign Scorecard
+                    <button disabled={justSigned} onClick={async () => { setJustSigned(true); await finalizeMatch(); }} style={{ width: "100%", padding: "14px", borderRadius: 12, background: justSigned ? K.t3 : "#3b82f6", border: "none", color: "#fff", fontSize: 15, fontWeight: 800, cursor: justSigned ? "default" : "pointer", opacity: justSigned ? 0.7 : 1 }}>
+                      {justSigned ? "Signing..." : "Sign Scorecard"}
                     </button>
+                    {!justSigned && (
                     <button onClick={() => setShowFinalize(false)} style={{ width: "100%", padding: 10, background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 4 }}>
                       Go Back & Edit
                     </button>
+                    )}
                   </>
                 )}
                 {isAlreadyFinalized && (
