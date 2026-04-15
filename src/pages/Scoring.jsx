@@ -534,6 +534,36 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       return parts.length > 1 ? parts[parts.length - 1] : parts[0];
     };
     const amGetHcp = (pid) => {
+      const absent = holeScores[`w${week}_p${pid}_habsent`] === 1;
+      if (absent) {
+        // Find teammate
+        const allPidsForMatch = matches.flatMap(m => {
+          const mt1 = teams.find(t => t.id === m.team1);
+          const mt2 = teams.find(t => t.id === m.team2);
+          return [mt1?.player1, mt1?.player2, mt2?.player1, mt2?.player2].filter(Boolean);
+        });
+        // Find which team this player is on
+        for (const m of matches) {
+          const mt1 = teams.find(t => t.id === m.team1);
+          const mt2 = teams.find(t => t.id === m.team2);
+          const t1p = [mt1?.player1, mt1?.player2].filter(Boolean);
+          const t2p = [mt2?.player1, mt2?.player2].filter(Boolean);
+          if (t1p.includes(pid)) {
+            const tm = t1p.find(p => p !== pid);
+            if (tm && holeScores[`w${week}_p${tm}_habsent`] !== 1) {
+              const p = playerMap[tm]; return p ? Math.round(p.handicapIndex || 0) : 0;
+            }
+            break;
+          }
+          if (t2p.includes(pid)) {
+            const tm = t2p.find(p => p !== pid);
+            if (tm && holeScores[`w${week}_p${tm}_habsent`] !== 1) {
+              const p = playerMap[tm]; return p ? Math.round(p.handicapIndex || 0) : 0;
+            }
+            break;
+          }
+        }
+      }
       const p = playerMap[pid];
       return p ? Math.round(p.handicapIndex || 0) : 0;
     };
@@ -543,7 +573,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     const getThru = (mT1Pids, mT2Pids) => {
       let thru = 0;
       for (let h = 0; h < 9; h++) {
-        const allOk = [...mT1Pids, ...mT2Pids].every(pid => amGetScore(pid, h) > 0);
+        const presentPids = [...mT1Pids, ...mT2Pids].filter(pid => holeScores[`w${week}_p${pid}_habsent`] !== 1);
+        const allOk = presentPids.length > 0 && presentPids.every(pid => amGetScore(pid, h) > 0);
         if (allOk) thru = h + 1;
         else break;
       }
@@ -671,11 +702,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       {progressLabel && (
                         <div style={{ fontSize: 9, fontWeight: 700, color: progressColor, textTransform: "uppercase", letterSpacing: 1, marginTop: 1 }}>{progressLabel}</div>
                       )}
-                      {isSigned && (() => {
-                        const pending = resNonSigners.filter(pid => !resAttestedBy.includes(pid));
-                        if (!pending.length) return null;
-                        return <div style={{ fontSize: 7, color: K.t3, marginTop: 2, lineHeight: 1.3, textTransform: "uppercase" }}>{pending.map(pid => { const p = playerMap[pid]; return p ? p.name.split(' ').pop() : '?'; }).join(', ')}</div>;
-                      })()}
                     </div>
                     <div style={{ width: 16, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                       {t2Leading && (
@@ -694,6 +720,21 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     <div style={{ flexShrink: 0, marginLeft: 4, color: K.t3, fontSize: 12, transform: isExp ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</div>
                   </div>
                 </button>
+
+                {/* Pending attesters row */}
+                {isSigned && (() => {
+                  const pending = resNonSigners.filter(pid => !resAttestedBy.includes(pid));
+                  if (!pending.length) return null;
+                  return (
+                    <div style={{ display: "flex", justifyContent: "center", gap: 6, padding: "4px 10px 6px", borderTop: `1px solid ${K.bdr}20` }}>
+                      {pending.map(pid => {
+                        const p = playerMap[pid];
+                        const lastName = p ? p.name.split(' ').pop() : '?';
+                        return <span key={pid} style={{ fontSize: 9, fontWeight: 600, color: "#3b82f6", background: "#3b82f610", padding: "2px 6px", borderRadius: 3, border: `1px solid #3b82f625` }}>{lastName}</span>;
+                      })}
+                    </div>
+                  );
+                })()}
 
                 {/* Expanded scorecard — uses SharedScorecard */}
                 {isExp && (() => {
