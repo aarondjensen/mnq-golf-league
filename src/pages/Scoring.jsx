@@ -467,10 +467,43 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const needsAttestation = isAlreadyFinalized && !isFullyAttested && isInThisMatch && !isTheSigner && !iHaveAttested && !isPlayerAbsent(leagueUser.playerId);
   const scoresLocked = (isWeekLocked && !isComm) || (isFullyAttested && !isComm);
 
+  // Tee time early-entry warning
+  const teeTimeWarningDismissed = useRef(false);
+  // Reset when match changes
+  useEffect(() => { teeTimeWarningDismissed.current = false; }, [matchKey]);
+
+  const getMatchTeeTimeMinutes = () => {
+    if (!matchToScore || !matches.length) return null;
+    const matchIdx = matches.indexOf(matchToScore);
+    if (matchIdx < 0) return null;
+    const base = leagueConfig?.startTime || "4:28 PM";
+    const interval = leagueConfig?.teeInterval || 8;
+    const [timePart, ampm] = base.split(' ');
+    const [h, m] = timePart.split(':').map(Number);
+    return (ampm === 'PM' && h !== 12 ? h + 12 : h) * 60 + m + matchIdx * interval;
+  };
+
+  const isBeforeTeeTime = () => {
+    const teeMinutes = getMatchTeeTimeMinutes();
+    if (teeMinutes === null) return false;
+    const now = new Date();
+    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+    return nowMinutes < teeMinutes;
+  };
+
   const guardedSaveScore = (w, pid, h, val) => {
     if (scoresLocked) {
       setToast(isWeekLocked ? "Week is locked — scores cannot be changed" : "Scorecard attested — only commissioner can edit");
       setTimeout(() => setToast(null), 2500);
+      return;
+    }
+    // Check if before tee time (prompt every attempt until confirmed)
+    if (!teeTimeWarningDismissed.current && isBeforeTeeTime()) {
+      setConfirmModal({
+        title: "Early Score Entry",
+        message: "You are trying to enter scores before your scheduled tee time. Continue?",
+        onConfirm: () => { teeTimeWarningDismissed.current = true; setConfirmModal(null); saveScore(w, pid, h, val); },
+      });
       return;
     }
     saveScore(w, pid, h, val);
