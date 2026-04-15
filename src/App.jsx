@@ -646,19 +646,6 @@ export default function GolfLeagueApp() {
 
       {/* Upcoming match banner */}
 
-      {/* Commish mode — login as banner */}
-      {commMode && (
-        <button onClick={() => setShowPlayerPicker(true)} style={{ width: "100%", maxWidth: 900, margin: "0 auto", background: K.warn + "15", padding: "7px 14px", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, flexShrink: 0, cursor: "pointer", border: "none", borderBottom: `1px solid ${K.warn}30` }}>
-          <span style={{ fontSize: 11, color: K.warn, fontWeight: 700 }}>
-            {impersonating ? `Logged in as ${impersonating.name}` : "Login as"}
-          </span>
-          <span style={{ fontSize: 10, color: K.warn }}>▾</span>
-          {impersonating && (
-            <button onClick={(e) => { e.stopPropagation(); setImpersonating(null); }} style={{ background: "none", border: `1px solid ${K.warn}40`, borderRadius: 4, color: K.warn, fontSize: 10, padding: "2px 8px", cursor: "pointer", fontWeight: 600 }}>Exit</button>
-          )}
-        </button>
-      )}
-
       <div className="app-body" ref={appBodyRef}>
         <div style={{ maxWidth: 900, width: "100%", margin: "0 auto" }}>
           {upcomingBanner && tab !== "scoring" && (() => {
@@ -683,7 +670,7 @@ export default function GolfLeagueApp() {
               </div>
             );
           })()}
-          <div className="main-content fi" key={tab}>
+          <div className="main-content fi" key={tab} style={commMode ? { paddingBottom: 60 } : undefined}>
           {/* Fix #2: Wrap lazy-loaded tabs in Suspense */}
           <Suspense fallback={TabFallback}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} />}
@@ -743,6 +730,19 @@ export default function GolfLeagueApp() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Commish mode — login as banner, attached to bottom nav */}
+      {commMode && (
+        <button onClick={() => setShowPlayerPicker(true)} style={{ width: "100%", maxWidth: 900, margin: "0 auto", background: K.warn, padding: "8px 14px", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, flexShrink: 0, cursor: "pointer", border: "none", zIndex: 200 }}>
+          <span style={{ fontSize: 12, color: K.bg, fontWeight: 800, letterSpacing: .5 }}>
+            {impersonating ? `Logged in as ${impersonating.name}` : "Login as"}
+          </span>
+          <span style={{ fontSize: 10, color: K.bg + "90" }}>▾</span>
+          {impersonating && (
+            <button onClick={(e) => { e.stopPropagation(); setImpersonating(null); }} style={{ background: K.bg + "25", border: "none", borderRadius: 4, color: K.bg, fontSize: 10, padding: "3px 8px", cursor: "pointer", fontWeight: 700 }}>Exit</button>
+          )}
+        </button>
       )}
 
       {/* Bottom Nav */}
