@@ -671,6 +671,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       {progressLabel && (
                         <div style={{ fontSize: 9, fontWeight: 700, color: progressColor, textTransform: "uppercase", letterSpacing: 1, marginTop: 1 }}>{progressLabel}</div>
                       )}
+                      {isSigned && (() => {
+                        const pending = resNonSigners.filter(pid => !resAttestedBy.includes(pid));
+                        if (!pending.length) return null;
+                        return <div style={{ fontSize: 7, color: K.t3, marginTop: 2, lineHeight: 1.3, textTransform: "uppercase" }}>{pending.map(pid => { const p = playerMap[pid]; return p ? p.name.split(' ').pop() : '?'; }).join(', ')}</div>;
+                      })()}
                     </div>
                     <div style={{ width: 16, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                       {t2Leading && (
