@@ -150,38 +150,43 @@ export default function GolfLeagueApp() {
         touchStartY.current = 0;
         return;
       }
-      const diff = e.touches[0].clientY - touchStartY.current;
 
       // Determine if the relevant scroll container is at the top right now
       let atTop;
       if (insidePopup) {
-        atTop = popupScrollEl ? popupScrollEl.scrollTop <= 0 : true;
+        atTop = popupScrollEl ? popupScrollEl.scrollTop <= 1 : true;
       } else {
-        atTop = activeScrollEl ? activeScrollEl.scrollTop <= 0 : true;
+        atTop = activeScrollEl ? activeScrollEl.scrollTop <= 1 : true;
       }
 
+      const currentY = e.touches[0].clientY;
+      const diff = currentY - touchStartY.current;
+
       if (pullingRef.current) {
-        if (diff <= 0) {
-          // User reversed past origin — cancel pull
+        if (diff <= 0 || !atTop) {
+          // User reversed or scroll container moved away from top — cancel pull
           pullingRef.current = false;
           pullYRef.current = 0;
           setPullY(0);
-          touchStartY.current = e.touches[0].clientY;
+          touchStartY.current = currentY;
         } else {
           e.preventDefault();
           const val = Math.min(diff * 0.4, 120);
           pullYRef.current = val;
           setPullY(val);
         }
-      } else if (diff > 10 && atTop) {
-        // Engage pull — keep original touchStartY so diff grows naturally
+      } else if (atTop && diff > 10) {
+        // At top and pulling down — engage pull, reset origin for clean delta
+        touchStartY.current = currentY;
         pullingRef.current = true;
         e.preventDefault();
+        pullYRef.current = 0;
+        setPullY(0);
       } else if (!atTop) {
-        // User is scrolling through content — continuously reset start so
-        // pull doesn't falsely engage when they reach the top
-        touchStartY.current = e.touches[0].clientY;
+        // Scrolling through content — keep resetting origin
+        touchStartY.current = currentY;
       }
+      // If atTop but diff <= 10, do nothing — wait for more movement
     };
     const handleEnd = () => {
       // If popup is open, just reset everything cleanly
@@ -584,24 +589,25 @@ export default function GolfLeagueApp() {
       {/* Header */}
       <div className="app-header">
         <div style={{ maxWidth: 900, width: "100%", margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: "0 14px" }}>
-          {/* Left: Commissioner controls */}
-          <div style={{ position: "absolute", left: 14, display: "flex", flexDirection: "column", alignItems: "stretch", gap: 3 }}>
+          {/* Left: Commissioner mode toggle */}
+          <div style={{ position: "absolute", left: 14, display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
             {isComm && (
               <>
-                <button onClick={() => setCommMode(!commMode)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 8px", borderRadius: 6, border: `1px solid ${commMode ? K.warn + "50" : K.bdr}`, background: commMode ? K.warn + "15" : "none", cursor: "pointer" }}>
-                  <div style={{ width: 22, height: 12, borderRadius: 6, background: commMode ? K.warn : K.bdr, position: "relative", transition: "background .2s", flexShrink: 0 }}>
-                    <div style={{ width: 8, height: 8, borderRadius: 4, background: "#fff", position: "absolute", top: 2, left: commMode ? 12 : 2, transition: "left .2s" }} />
-                  </div>
-                  <span style={{ fontSize: 10, fontWeight: 700, color: commMode ? K.warn : K.t3, letterSpacing: .3 }}>Commish</span>
+                <span style={{ fontSize: 8, fontWeight: 700, color: commMode ? K.warn : K.t3, letterSpacing: .5, textTransform: "uppercase" }}>Commish</span>
+                <button onClick={() => setCommMode(!commMode)} style={{
+                  width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
+                  background: commMode ? K.warn : K.bdr,
+                  position: "relative", transition: "background .2s",
+                }}>
+                  <div style={{
+                    width: 20, height: 20, borderRadius: 10,
+                    background: "#fff",
+                    position: "absolute", top: 2,
+                    left: commMode ? 22 : 2,
+                    transition: "left .2s",
+                    boxShadow: "0 1px 3px rgba(0,0,0,.3)",
+                  }} />
                 </button>
-                {commMode && (
-                  <button onClick={() => setShowPlayerPicker(true)} style={{ background: impersonating ? K.teal + "15" : "none", border: `1px solid ${impersonating ? K.teal + "40" : K.bdr}`, borderRadius: 6, padding: "5px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
-                    <span style={{ fontSize: 10, color: impersonating ? K.teal : K.t3, fontWeight: 700 }}>
-                      {impersonating ? impersonating.name.split(' ').pop() : "Switch Player"}
-                    </span>
-                    <span style={{ fontSize: 8, color: K.t3 }}>▾</span>
-                  </button>
-                )}
               </>
             )}
           </div>
@@ -726,12 +732,17 @@ export default function GolfLeagueApp() {
         </>
       )}
 
-      {/* Impersonation banner */}
-      {impersonating && (
-        <div style={{ background: K.teal + "20", borderTop: `1px solid ${K.teal}40`, padding: "6px 14px", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, flexShrink: 0 }}>
-          <span style={{ fontSize: 11, color: K.teal, fontWeight: 600 }}>Playing as {impersonating.name}</span>
-          <button onClick={() => setImpersonating(null)} style={{ background: "none", border: `1px solid ${K.teal}40`, borderRadius: 4, color: K.teal, fontSize: 10, padding: "2px 8px", cursor: "pointer", fontWeight: 600 }}>Exit</button>
-        </div>
+      {/* Commish mode banner — switch player */}
+      {commMode && (
+        <button onClick={() => setShowPlayerPicker(true)} style={{ width: "100%", maxWidth: 900, margin: "0 auto", background: impersonating ? K.teal + "20" : K.warn + "12", borderTop: `1px solid ${impersonating ? K.teal + "40" : K.warn + "30"}`, padding: "6px 14px", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, flexShrink: 0, cursor: "pointer", border: "none", borderBottom: `1px solid ${impersonating ? K.teal + "40" : K.warn + "30"}` }}>
+          <span style={{ fontSize: 11, color: impersonating ? K.teal : K.warn, fontWeight: 600 }}>
+            {impersonating ? `Playing as ${impersonating.name}` : "Select a player to manage"}
+          </span>
+          <span style={{ fontSize: 10, color: impersonating ? K.teal : K.warn }}>▾</span>
+          {impersonating && (
+            <button onClick={(e) => { e.stopPropagation(); setImpersonating(null); }} style={{ background: "none", border: `1px solid ${K.teal}40`, borderRadius: 4, color: K.teal, fontSize: 10, padding: "2px 8px", cursor: "pointer", fontWeight: 600 }}>Exit</button>
+          )}
+        </button>
       )}
 
       {/* Bottom Nav */}
