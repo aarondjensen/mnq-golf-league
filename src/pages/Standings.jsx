@@ -843,7 +843,16 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                             <div style={{ width: 24, flexShrink: 0, color: K.t3, fontSize: 11 }}>{r.week}</div>
                             <div style={{ width: 48, flexShrink: 0, color: K.t3, fontSize: 11 }}>{r.date || "—"}</div>
                             <div style={{ flex: 1, color: K.t2, fontWeight: 500 }}>{r.oppName}</div>
-                            <div style={{ width: 58, flexShrink: 0, textAlign: "right", fontWeight: 700, fontSize: 11, color: r.result === "W" ? K.matchGrn : r.result === "L" ? K.red : K.t2 }}>{r.resultDisplay}</div>
+                            <div style={{ width: 58, flexShrink: 0, display: "flex", justifyContent: "flex-end", alignItems: "center", fontWeight: 700, fontSize: 11, color: r.result === "W" ? K.matchGrn : r.result === "L" ? K.red : K.t2 }}>
+                              {r.result === "T" || r.rainedOut ? (
+                                <span>{r.resultDisplay}</span>
+                              ) : (
+                                <>
+                                  <span style={{ width: 14, textAlign: "right" }}>{r.result}</span>
+                                  <span style={{ width: 34, textAlign: "right" }}>{r.matchResult?.matchResultText || `${r.myPts}-${r.oppPts}`}</span>
+                                </>
+                              )}
+                            </div>
                             <div style={{ width: 28, flexShrink: 0, textAlign: "right", color: "#3b82f6", fontWeight: 700 }}>{r.holesWon}</div>
                           </button>
                           {isResExp && (

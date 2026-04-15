@@ -546,7 +546,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   useEffect(() => {
     if (allComplete && !showFinalize && !isAlreadyFinalized && !justSigned) {
-      setShowFinalize(true);
+      const timer = setTimeout(() => setShowFinalize(true), 400);
+      return () => clearTimeout(timer);
     }
   }, [allComplete, isAlreadyFinalized, justSigned]);
 
