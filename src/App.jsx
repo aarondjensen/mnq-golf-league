@@ -593,10 +593,10 @@ export default function GolfLeagueApp() {
           <div style={{ position: "absolute", left: 14, display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
             {isComm && (
               <>
-                <span style={{ fontSize: 8, fontWeight: 700, color: commMode ? K.warn : K.t3, letterSpacing: .5, textTransform: "uppercase" }}>Commish</span>
+                <span style={{ fontSize: 8, fontWeight: 700, color: commMode ? K.act : K.t3, letterSpacing: .5, textTransform: "uppercase" }}>Commish</span>
                 <button onClick={() => setCommMode(!commMode)} style={{
                   width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
-                  background: commMode ? K.warn : K.bdr,
+                  background: commMode ? K.act : K.bdr,
                   position: "relative", transition: "background .2s",
                 }}>
                   <div style={{
@@ -670,7 +670,7 @@ export default function GolfLeagueApp() {
               </div>
             );
           })()}
-          <div className="main-content fi" key={tab} style={commMode ? { paddingBottom: 60 } : undefined}>
+          <div className="main-content fi" key={tab} style={commMode ? { paddingBottom: 80 } : undefined}>
           {/* Fix #2: Wrap lazy-loaded tabs in Suspense */}
           <Suspense fallback={TabFallback}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} />}
@@ -734,7 +734,7 @@ export default function GolfLeagueApp() {
 
       {/* Commish mode — login as banner, attached to bottom nav */}
       {commMode && (
-        <button onClick={() => setShowPlayerPicker(true)} style={{ width: "100%", maxWidth: 900, margin: "0 auto", background: K.warn, padding: "8px 14px", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, flexShrink: 0, cursor: "pointer", border: "none", zIndex: 200 }}>
+        <button onClick={() => setShowPlayerPicker(true)} style={{ width: "100%", maxWidth: 900, margin: "0 auto", background: K.act, padding: "8px 14px", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, flexShrink: 0, cursor: "pointer", border: "none", zIndex: 200 }}>
           <span style={{ fontSize: 12, color: K.bg, fontWeight: 800, letterSpacing: .5 }}>
             {impersonating ? `Logged in as ${impersonating.name}` : "Login as"}
           </span>
