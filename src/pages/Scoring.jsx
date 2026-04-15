@@ -666,8 +666,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
             const isFinalOrSigned = !!res;
             const isTied = isFinalOrSigned ? (score1 === score2) : (thru > 0 && dispCum === 0);
-            const t1Leading = isFinalOrSigned ? (score1 > score2) : (dispCum > 0);
-            const t2Leading = isFinalOrSigned ? (score2 > score1) : (dispCum < 0);
+            const matchIsTied = res?.matchResultText === "TIED";
+            const t1Leading = matchIsTied ? false : isFinalOrSigned ? (score1 > score2) : (dispCum > 0);
+            const t2Leading = matchIsTied ? false : isFinalOrSigned ? (score2 > score1) : (dispCum < 0);
 
             const isSigned = isFinalOrSigned && res && !res.attested;
             const signerIsRawT1 = isSigned && res.finalizedByTeamId === rawT1.id;
