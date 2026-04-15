@@ -75,7 +75,7 @@ export default function GolfLeagueApp() {
   // Track whether ANY popup is open (for consistent body lock + pull-to-refresh)
   const [popupOpen, setPopupOpen] = useState(false);
   const popupOpenRef = useRef(false);
-  useEffect(() => { popupOpenRef.current = popupOpen; }, [popupOpen]);
+  useEffect(() => { popupOpenRef.current = popupOpen || showPlayerPicker; }, [popupOpen, showPlayerPicker]);
 
   // Fix #5: Inject dynamic CSS via useEffect instead of inline <style> in JSX.
   // This runs once on mount and only re-runs when darkMode changes (theme toggle),
@@ -130,6 +130,11 @@ export default function GolfLeagueApp() {
       return null;
     };
     const handleStart = (e) => {
+      // Disable pull-to-refresh when any popup is open
+      if (popupOpenRef.current) {
+        touchStartY.current = 0;
+        return;
+      }
       activeScrollEl = findScrollEl(e.target);
       insidePopup = activeScrollEl === null;
       popupScrollEl = insidePopup ? findPopupScroll(e.target) : null;
@@ -139,6 +144,12 @@ export default function GolfLeagueApp() {
     };
     const handleMove = (e) => {
       if (!touchStartY.current) return;
+      // Cancel if popup opened mid-gesture
+      if (popupOpenRef.current) {
+        if (pullingRef.current) { pullingRef.current = false; pullYRef.current = 0; setPullY(0); }
+        touchStartY.current = 0;
+        return;
+      }
       const diff = e.touches[0].clientY - touchStartY.current;
 
       // Determine if the relevant scroll container is at the top right now
@@ -173,6 +184,17 @@ export default function GolfLeagueApp() {
       }
     };
     const handleEnd = () => {
+      // If popup is open, just reset everything cleanly
+      if (popupOpenRef.current) {
+        pullingRef.current = false;
+        pullYRef.current = 0;
+        setPullY(0);
+        touchStartY.current = 0;
+        activeScrollEl = null;
+        insidePopup = false;
+        popupScrollEl = null;
+        return;
+      }
       pullingRef.current = false;
       activeScrollEl = null;
       insidePopup = false;
@@ -563,20 +585,20 @@ export default function GolfLeagueApp() {
       <div className="app-header">
         <div style={{ maxWidth: 900, width: "100%", margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: "0 14px" }}>
           {/* Left: Commissioner controls */}
-          <div style={{ position: "absolute", left: 14, display: "flex", flexDirection: "column", alignItems: "flex-start", gap: 3 }}>
+          <div style={{ position: "absolute", left: 14, display: "flex", flexDirection: "column", alignItems: "stretch", gap: 3 }}>
             {isComm && (
               <>
-                <button onClick={() => setCommMode(!commMode)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "3px 8px", borderRadius: 6, border: `1px solid ${commMode ? K.warn + "50" : K.bdr}`, background: commMode ? K.warn + "15" : "none", cursor: "pointer" }}>
-                  <div style={{ width: 22, height: 12, borderRadius: 6, background: commMode ? K.warn : K.bdr, position: "relative", transition: "background .2s" }}>
+                <button onClick={() => setCommMode(!commMode)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 8px", borderRadius: 6, border: `1px solid ${commMode ? K.warn + "50" : K.bdr}`, background: commMode ? K.warn + "15" : "none", cursor: "pointer" }}>
+                  <div style={{ width: 22, height: 12, borderRadius: 6, background: commMode ? K.warn : K.bdr, position: "relative", transition: "background .2s", flexShrink: 0 }}>
                     <div style={{ width: 8, height: 8, borderRadius: 4, background: "#fff", position: "absolute", top: 2, left: commMode ? 12 : 2, transition: "left .2s" }} />
                   </div>
-                  <span style={{ fontSize: 9, fontWeight: 700, color: commMode ? K.warn : K.t3, letterSpacing: .3 }}>Commish</span>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: commMode ? K.warn : K.t3, letterSpacing: .3 }}>Commish</span>
                 </button>
                 {commMode && (
-                  <button onClick={() => setShowPlayerPicker(true)} style={{ background: impersonating ? K.teal + "15" : "none", border: `1px solid ${impersonating ? K.teal + "40" : K.bdr}`, borderRadius: 6, padding: "3px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
-                    <div style={{ fontSize: 9, color: impersonating ? K.teal : K.t3, fontWeight: 700 }}>
+                  <button onClick={() => setShowPlayerPicker(true)} style={{ background: impersonating ? K.teal + "15" : "none", border: `1px solid ${impersonating ? K.teal + "40" : K.bdr}`, borderRadius: 6, padding: "5px 8px", cursor: "pointer", display: "flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ fontSize: 10, color: impersonating ? K.teal : K.t3, fontWeight: 700 }}>
                       {impersonating ? impersonating.name.split(' ').pop() : "Switch Player"}
-                    </div>
+                    </span>
                     <span style={{ fontSize: 8, color: K.t3 }}>▾</span>
                   </button>
                 )}
