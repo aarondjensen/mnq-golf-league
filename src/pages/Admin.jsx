@@ -695,47 +695,59 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     const playoffTarget = cfg.playoffWeeks;
 
     // Phase 1: RR block (includes original RR weeks + makeup weeks for RR rainouts)
-    while (rrPlayed < rrTarget || weekNum < rrTarget + rrRainouts) {
+    // Locked seeded/playoff weeks can't move, so RR makeups go around them.
+    while (rrPlayed < rrTarget) {
       weekNum++;
       const side = cfg.alternateNines ? ((weekNum - 1) % 2 === 0 ? 'front' : 'back') : 'front';
       const existing = cleanSchedule.find(s => s.week === weekNum);
 
-      if (existing && existing.rainedOut === true) {
+      if (existing && existing.rainedOut === true && !existing.seeded && !existing.isPlayoff) {
         // Rained-out RR week — preserve as dead slot
         await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
         continue; // don't count toward rrPlayed
       }
 
-      if (existing && existing.locked === true) {
-        // Locked RR week — preserve with scores intact
+      if (existing && existing.locked === true && !existing.seeded && !existing.isPlayoff) {
+        // Locked RR week (not seeded) — preserve with scores intact
         await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
         rrPlayed++;
         continue;
       }
 
-      if (existing && existing.makeupFor) {
+      if (existing && existing.makeupFor && !existing.seeded) {
         // Makeup week for an RR rainout — preserve
         await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
         rrPlayed++;
         continue;
       }
 
-      if (rrPlayed < rrTarget) {
-        // New RR week
-        const roundIdx = rrCursor % rrRounds.length;
-        rrCursor++;
-        await setWeekSchedule({
-          id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum,
-          matches: rrRounds[roundIdx], side,
-          date: getWeekDate(weekNum - 1), isPlayoff: false,
-        });
-        rrPlayed++;
-      } else {
-        break; // RR block complete
+      // If there's a locked seeded/playoff week here, preserve it and skip past it
+      // (the RR makeup will go to the next available slot)
+      if (existing && existing.locked === true) {
+        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+        continue; // don't count toward rrPlayed — this is a seeded/playoff week we're skipping past
       }
+
+      // Empty slot — place new RR week
+      const roundIdx = rrCursor % rrRounds.length;
+      rrCursor++;
+      await setWeekSchedule({
+        id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum,
+        matches: rrRounds[roundIdx], side,
+        date: getWeekDate(weekNum - 1), isPlayoff: false,
+        makeupFor: rrRainouts > 0 ? "rr" : undefined, // mark as makeup if we're past original RR block
+      });
+      rrPlayed++;
     }
 
     // Phase 2: Seeded regular season block
+    // Some locked seeded weeks may have already been written in Phase 1 (when RR phase skipped past them)
+    // Count those toward seededPlaced first
+    const alreadyWrittenSeeded = cleanSchedule.filter(s =>
+      s.week <= weekNum && s.locked === true && s.seeded === true && !s.isPlayoff
+    );
+    seededPlaced += alreadyWrittenSeeded.length;
+
     while (seededPlaced < seededTarget) {
       weekNum++;
       const side = cfg.alternateNines ? ((weekNum - 1) % 2 === 0 ? 'front' : 'back') : 'front';
@@ -747,9 +759,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         continue;
       }
 
-      if (existing && existing.locked === true) {
-        // Locked seeded week — preserve
-        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+      if (existing && existing.locked === true && existing.seeded) {
+        // Locked seeded week — already written in Phase 1 or preserve now
+        if (!alreadyWrittenSeeded.some(s => s.week === weekNum)) {
+          await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+        }
         seededPlaced++;
         continue;
       }
