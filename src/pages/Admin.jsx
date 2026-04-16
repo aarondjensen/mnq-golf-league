@@ -1448,7 +1448,18 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                       <Pill color={K.logoBright} style={{ fontSize: 8 }}>{side === 'front' ? 'FRONT' : 'BACK'}</Pill>
                     </div>
                     <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
-                      {isRainedOut ? "RAIN OUT" : isSeeded ? (isPlayoffWk ? "PLAYOFF — TBD" : "SEEDED — TBD") : wk.matches?.length ? (() => {
+                      {isRainedOut ? "RAIN OUT" : isSeeded ? (() => {
+                        if (isPlayoffWk) return "PLAYOFF — TBD";
+                        // Show configured seed pairings if available
+                        const seededRegWeeks = schedule.filter(s => s.seeded === true && !s.isPlayoff).sort((a, b) => a.week - b.week);
+                        const seededIdx = seededRegWeeks.findIndex(s => s.week === wk.week);
+                        const customWeeks = leagueConfig?.customSeedWeeks;
+                        const weekPairs = customWeeks && customWeeks[seededIdx];
+                        if (weekPairs && weekPairs.length > 0) {
+                          return weekPairs.map(p => `#${p.s1}v#${p.s2}`).join("  ");
+                        }
+                        return "SEEDED — TBD";
+                      })() : wk.matches?.length ? (() => {
                         const isSeededFilled = wk.seeded === true;
                         if (isSeededFilled) {
                           return wk.matches.map(m => `#${seedMap[m.team1] || "?"}v#${seedMap[m.team2] || "?"}`).join("  ");
