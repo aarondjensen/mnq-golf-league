@@ -515,6 +515,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     teeInterval: leagueConfig.teeInterval || 8,
     regularWeeks: leagueConfig.regularWeeks || 14,
     playoffWeeks: leagueConfig.playoffWeeks || 2,
+    seededFormat: leagueConfig.seededFormat || "topBottom",
     startDate: leagueConfig.startDate || "",
     alternateNines: leagueConfig.alternateNines !== false,
     playoffRounds: leagueConfig.playoffRounds || [],
@@ -758,8 +759,21 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
               </div>
               <div style={{ marginBottom: 10 }}>
                 <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Seeded Regular Season Format</div>
-                <div style={{ fontSize: 12, color: K.t2, padding: "8px 0", lineHeight: 1.6 }}>
-                  Matchups by standings: #1 vs #{teams.length}, #2 vs #{teams.length - 1}, etc.
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  {[
+                    { id: "topBottom", label: "Top vs Bottom", desc: `#1 vs #${teams.length}, #2 vs #${teams.length - 1}, etc.` },
+                    { id: "topHalfBottom", label: "Top Half vs Bottom Half", desc: `#1 vs #${Math.ceil(teams.length / 2) + 1}, #2 vs #${Math.ceil(teams.length / 2) + 2}, etc.` },
+                    { id: "adjacent", label: "Adjacent Seeds", desc: "#1 vs #2, #3 vs #4, etc." },
+                  ].map(opt => (
+                    <button key={opt.id} onClick={() => setCfg({ ...cfg, seededFormat: opt.id })} style={{
+                      display: "flex", flexDirection: "column", gap: 2, padding: "8px 10px", borderRadius: 8, cursor: "pointer", textAlign: "left",
+                      background: cfg.seededFormat === opt.id ? K.act + "15" : K.card,
+                      border: `1.5px solid ${cfg.seededFormat === opt.id ? K.act + "50" : K.bdr}`,
+                    }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: cfg.seededFormat === opt.id ? K.act : K.t1 }}>{opt.label}</span>
+                      <span style={{ fontSize: 10, color: K.t3 }}>{opt.desc}</span>
+                    </button>
+                  ))}
                 </div>
               </div>
               {/* Season breakdown */}
@@ -1207,9 +1221,23 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           return;
         }
       } else {
-        // Seeded regular season: 1vLast, 2v(Last-1), etc.
-        for (let i = 0; i < Math.floor(seeds.length / 2); i++) {
-          matches.push({ team1: seeds[i], team2: seeds[seeds.length - 1 - i] });
+        // Seeded regular season: format based on leagueConfig.seededFormat
+        const format = leagueConfig.seededFormat || "topBottom";
+        const n = seeds.length;
+        const half = Math.ceil(n / 2);
+        if (format === "topHalfBottom") {
+          for (let i = 0; i < Math.floor(n / 2); i++) {
+            matches.push({ team1: seeds[i], team2: seeds[half + i] });
+          }
+        } else if (format === "adjacent") {
+          for (let i = 0; i < n - 1; i += 2) {
+            matches.push({ team1: seeds[i], team2: seeds[i + 1] });
+          }
+        } else {
+          // topBottom (default): #1 vs #Last, #2 vs #(Last-1), etc.
+          for (let i = 0; i < Math.floor(n / 2); i++) {
+            matches.push({ team1: seeds[i], team2: seeds[n - 1 - i] });
+          }
         }
       }
 
@@ -1419,17 +1447,28 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
               });
             });
           } else {
-            // Standard seeded: #1 vs #N, #2 vs #(N-1), etc.
+            // Standard seeded: format based on leagueConfig setting
+            const format = leagueConfig.seededFormat || "topBottom";
             const n = teams.length;
-            for (let i = 0; i < Math.floor(n / 2); i++) {
-              const s1 = i + 1, s2 = n - i;
-              const t1 = getTeamBySeed(s1), t2 = getTeamBySeed(s2);
-              previewPairings.push({
-                label1: `#${s1}`, label2: `#${s2}`,
-                name1: t1 ? lastNamesOnly(t1.name) : `Seed #${s1}`,
-                name2: t2 ? lastNamesOnly(t2.name) : `Seed #${s2}`,
-                seed1: s1, seed2: s2,
-              });
+            const half = Math.ceil(n / 2);
+            if (format === "topHalfBottom") {
+              for (let i = 0; i < Math.floor(n / 2); i++) {
+                const s1 = i + 1, s2 = half + i + 1;
+                const t1 = getTeamBySeed(s1), t2 = getTeamBySeed(s2);
+                previewPairings.push({ label1: `#${s1}`, label2: `#${s2}`, name1: t1 ? lastNamesOnly(t1.name) : `Seed #${s1}`, name2: t2 ? lastNamesOnly(t2.name) : `Seed #${s2}`, seed1: s1, seed2: s2 });
+              }
+            } else if (format === "adjacent") {
+              for (let i = 0; i < n - 1; i += 2) {
+                const s1 = i + 1, s2 = i + 2;
+                const t1 = getTeamBySeed(s1), t2 = getTeamBySeed(s2);
+                previewPairings.push({ label1: `#${s1}`, label2: `#${s2}`, name1: t1 ? lastNamesOnly(t1.name) : `Seed #${s1}`, name2: t2 ? lastNamesOnly(t2.name) : `Seed #${s2}`, seed1: s1, seed2: s2 });
+              }
+            } else {
+              for (let i = 0; i < Math.floor(n / 2); i++) {
+                const s1 = i + 1, s2 = n - i;
+                const t1 = getTeamBySeed(s1), t2 = getTeamBySeed(s2);
+                previewPairings.push({ label1: `#${s1}`, label2: `#${s2}`, name1: t1 ? lastNamesOnly(t1.name) : `Seed #${s1}`, name2: t2 ? lastNamesOnly(t2.name) : `Seed #${s2}`, seed1: s1, seed2: s2 });
+              }
             }
           }
 
@@ -1464,9 +1503,9 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         {/* Normal week — show matches */}
         {!isSeeded && !isRainedOut && (<>
           {/* Action buttons — top of pairings */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
             {!isFinalized && (
-              <button onClick={handleRainOut} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.red + "18", border: `1.5px solid ${K.red}50`, color: K.red, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+              <button onClick={handleRainOut} style={{ flex: 1, minWidth: 80, padding: 10, borderRadius: 8, background: K.red + "18", border: `1.5px solid ${K.red}50`, color: K.red, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                 Rain Out
               </button>
             )}
@@ -1474,13 +1513,24 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
               const newSide = wk.side === 'front' ? 'back' : 'front';
               setLocalWk({ ...wk, side: newSide });
               setWeekDirty(true);
-            }} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 12, cursor: "pointer" }}>
+            }} style={{ flex: 1, minWidth: 80, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 12, cursor: "pointer" }}>
               Change to {wk.side === 'front' ? 'Back' : 'Front'} 9
             </button>
             <button onClick={saveWeekEdits} style={{ padding: "10px 16px", borderRadius: 8, background: weekDirty ? K.act : K.inp, border: weekDirty ? "none" : `1px solid ${K.bdr}`, color: weekDirty ? K.bg : K.t3, fontSize: 12, fontWeight: 700, cursor: weekDirty ? "pointer" : "default", transition: "all .2s" }}>
               {weekDirty ? "Save" : "Saved"}
             </button>
           </div>
+          {/* Re-seed button for seeded-type weeks (non-RR, non-makeup, or playoff) that aren't finalized */}
+          {!isFinalized && (wk.isPlayoff || (wk.seeded !== undefined)) && wk.matches?.length > 0 && (
+            <button onClick={() => {
+              if (!window.confirm("Re-seed this week from current standings? This will replace the current matchups.")) return;
+              // Reset to seeded state so the Seed Week UI shows again
+              saveWeekSchedule({ ...wk, matches: [], seeded: true });
+              setLocalWk({ ...wk, matches: [], seeded: true });
+            }} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 8, background: K.logoBright + "12", border: `1px solid ${K.logoBright}30`, color: K.logoBright, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+              Re-seed from Standings
+            </button>
+          )}
 
           <div style={{ fontSize: 11, color: K.t3, marginBottom: 12 }}>
             {dragTeam && !dragTeam.dragging ? "Tap another team to swap" : "Tap to select · Hold and drag to move"}
