@@ -526,6 +526,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
   const [editWeek, setEditWeek] = useState(null);
   const [selectedSeededWeek, setSelectedSeededWeek] = useState(0);
   const [selectedSeed, setSelectedSeed] = useState(null); // {pairIdx, slot} for tap-to-swap
+  const [playoffView, setPlayoffView] = useState("setup"); // "setup" | "preview"
   const [localWk, setLocalWk] = useState(null); // local edits for the week being edited
   const [weekDirty, setWeekDirty] = useState(false);
   const [dragIdx, setDragIdx] = useState(null);
@@ -981,6 +982,44 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         {/* ── PLAYOFF TAB ── */}
         {subTab === "playoff" && (<>
           {cfg.playoffWeeks > 0 ? (<>
+
+          {/* Individual Tournament — always shown at top */}
+          <div style={{ marginBottom: 14 }}>
+            <SubLabel color={K.teal}>Individual Tournament</SubLabel>
+            <Card style={{ padding: 14 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: K.t2, cursor: "pointer", marginBottom: 8 }}>
+                <input type="checkbox" checked={cfg.individualEvent !== false} onChange={e => setCfg({ ...cfg, individualEvent: e.target.checked })} style={{ accentColor: K.act }} />
+                Run individual net stroke play during playoffs
+              </label>
+              <div style={{ fontSize: 11, color: K.t3, lineHeight: 1.5 }}>
+                All 20 players compete individually across {cfg.playoffWeeks} playoff rounds. Lowest cumulative net score wins.
+              </div>
+            </Card>
+          </div>
+
+          {/* Setup / Preview toggle */}
+          <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
+            <div style={{ display: "inline-flex", background: K.inp, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: 3 }}>
+              {[
+                { id: "setup", label: "Bracket Setup" },
+                { id: "preview", label: "Bracket Preview" },
+              ].map(opt => {
+                const isActive = playoffView === opt.id;
+                return (
+                  <button key={opt.id} onClick={() => setPlayoffView(opt.id)} style={{
+                    padding: "6px 14px", borderRadius: 6, cursor: "pointer", border: "none",
+                    background: isActive ? K.act : "transparent",
+                    color: isActive ? K.bg : K.t2, fontSize: 11, fontWeight: 700, transition: "all .2s",
+                  }}>
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Bracket Setup */}
+          {playoffView === "setup" && (
           <div className="scoring-grid">
           <div>
             <SubLabel color={K.warn}>Playoff Bracket</SubLabel>
@@ -1074,11 +1113,12 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
             })}
           </div>
           </div>
+          )}
 
           {/* Bracket Preview */}
-          {(cfg.playoffRounds || []).some(r => r.matchups?.length > 0) && (
-          <div style={{ marginTop: 12 }}>
-            <SubLabel color={K.warn}>Bracket Preview</SubLabel>
+          {playoffView === "preview" && (
+          <div>
+            {(cfg.playoffRounds || []).some(r => r.matchups?.length > 0) ? (
             <Card style={{ padding: 10 }}>
               {(() => {
                 const rounds = cfg.playoffRounds || [];
@@ -1153,21 +1193,12 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 );
               })()}
             </Card>
+            ) : (
+              <div style={{ textAlign: "center", padding: 30, color: K.t3, fontSize: 13 }}>Configure your bracket in the Setup view first to see the preview.</div>
+            )}
           </div>
           )}
 
-          <div style={{ marginTop: 12 }}>
-            <SubLabel color={K.teal}>Individual Tournament</SubLabel>
-            <Card style={{ padding: 14 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: K.t2, cursor: "pointer", marginBottom: 8 }}>
-                <input type="checkbox" checked={cfg.individualEvent !== false} onChange={e => setCfg({ ...cfg, individualEvent: e.target.checked })} style={{ accentColor: K.act }} />
-                Run individual net stroke play during playoffs
-              </label>
-              <div style={{ fontSize: 11, color: K.t3, lineHeight: 1.5 }}>
-                All 20 players compete individually across {cfg.playoffWeeks} playoff rounds. Lowest cumulative net score wins.
-              </div>
-            </Card>
-          </div>
           </>) : (
             <div style={{ textAlign: "center", padding: 30, color: K.t3, fontSize: 13 }}>Set playoff weeks in the Setup tab to configure the bracket.</div>
           )}
