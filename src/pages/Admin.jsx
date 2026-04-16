@@ -514,6 +514,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     startTime: leagueConfig.startTime || "4:28 PM",
     teeInterval: leagueConfig.teeInterval || 8,
     regularWeeks: leagueConfig.regularWeeks || 14,
+    roundRobinWeeks: leagueConfig.roundRobinWeeks || null,
+    seededWeeks: leagueConfig.seededWeeks || null,
     playoffWeeks: leagueConfig.playoffWeeks || 2,
     customSeedWeeks: leagueConfig.customSeedWeeks || null,
     startDate: leagueConfig.startDate || "",
@@ -554,7 +556,16 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     setEditWeek(null);
   };
 
-  const totalWeeks = cfg.regularWeeks + cfg.playoffWeeks;
+  // Derived week counts — if cfg values are explicitly set, use those; otherwise default
+  const defaultRRWeeks = Math.max(0, teams.length - 1);
+  const rrWeekCount = (cfg.roundRobinWeeks !== null && cfg.roundRobinWeeks !== undefined)
+    ? cfg.roundRobinWeeks
+    : Math.min(defaultRRWeeks, cfg.regularWeeks);
+  const seededWeekCount = (cfg.seededWeeks !== null && cfg.seededWeeks !== undefined)
+    ? cfg.seededWeeks
+    : Math.max(0, cfg.regularWeeks - rrWeekCount);
+  const computedRegularWeeks = rrWeekCount + seededWeekCount;
+  const totalWeeks = computedRegularWeeks + cfg.playoffWeeks;
 
   // Round-robin generator: each team plays every other team once
   const generateRoundRobin = (teamIds) => {
@@ -624,17 +635,20 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
     const teamIds = teams.map(t => t.id);
     const rrRounds = generateRoundRobin(teamIds);
-    const rrWeeks = Math.min(rrRounds.length, cfg.regularWeeks);
+    // Use explicit rrWeekCount - if it exceeds available rounds, we repeat/cycle; if less, we truncate
+    const rrWeeksToGenerate = rrWeekCount;
 
     for (let w = 0; w < totalWeeks; w++) {
       const weekNum = w + 1;
       const side = cfg.alternateNines ? (w % 2 === 0 ? 'front' : 'back') : 'front';
-      const isPlayoff = w >= cfg.regularWeeks;
+      const isPlayoff = w >= computedRegularWeeks;
       const wasLocked = lockedMap[weekNum] || false;
 
-      if (w < rrWeeks) {
+      if (w < rrWeeksToGenerate) {
+        // Cycle through rrRounds if rrWeeksToGenerate > rrRounds.length
+        const roundIdx = w % rrRounds.length;
         await setWeekSchedule({
-          id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum, matches: rrRounds[w], side,
+          id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum, matches: rrRounds[roundIdx], side,
           date: getWeekDate(w), isPlayoff: false,
           ...(wasLocked ? { locked: true } : {}),
         });
@@ -647,7 +661,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       }
     }
 
-    await saveLeagueConfig({ ...leagueConfig, ...cfg, totalWeeks });
+    await saveLeagueConfig({ ...leagueConfig, ...cfg, regularWeeks: computedRegularWeeks, roundRobinWeeks: rrWeekCount, seededWeeks: seededWeekCount, totalWeeks });
     setGenerating(false);
     setStep("view");
   };
@@ -750,8 +764,22 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
             <SubLabel>Season Format</SubLabel>
             <Card style={{ padding: 14 }}>
               <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Regular Season Weeks</div>
-                <input type="number" value={cfg.regularWeeks} onChange={e => setCfg({ ...cfg, regularWeeks: parseInt(e.target.value) || 14 })} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
+                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Round-Robin Weeks</div>
+                <input type="number" min="0" value={rrWeekCount} onChange={e => {
+                  const v = parseInt(e.target.value);
+                  setCfg({ ...cfg, roundRobinWeeks: isNaN(v) ? 0 : Math.max(0, v) });
+                }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
+                <div style={{ fontSize: 10, color: K.t3, marginTop: 3 }}>
+                  {teams.length >= 2 ? `A full round-robin with ${teams.length} teams takes ${defaultRRWeeks} weeks` : "Each team plays every other team once"}
+                </div>
+              </div>
+              <div style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Seeded Regular Season Weeks</div>
+                <input type="number" min="0" value={seededWeekCount} onChange={e => {
+                  const v = parseInt(e.target.value);
+                  setCfg({ ...cfg, seededWeeks: isNaN(v) ? 0 : Math.max(0, v) });
+                }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
+                <div style={{ fontSize: 10, color: K.t3, marginTop: 3 }}>Weeks with matchups based on current standings</div>
               </div>
               <div style={{ marginBottom: 10 }}>
                 <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Playoff Weeks</div>
@@ -766,8 +794,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
               </div>
               {/* Per-seeded-week custom matchup builder */}
               {teams.length >= 2 && (() => {
-                const rrWeeks = teams.length - 1;
-                const seededRegWeeks = Math.max(0, cfg.regularWeeks - rrWeeks);
+                const seededRegWeeks = seededWeekCount;
                 if (seededRegWeeks === 0) return null;
                 const pairCount = Math.floor(teams.length / 2);
 
@@ -828,30 +855,26 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 );
               })()}
               {/* Season breakdown */}
-              {teams.length >= 2 && (() => {
-                const rrWeeks = teams.length - 1;
-                const seededReg = Math.max(0, cfg.regularWeeks - rrWeeks);
-                return (
-                  <div style={{ fontSize: 12, color: K.t2, padding: "8px 0", borderTop: `1px solid ${K.bdr}30`, lineHeight: 1.8 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span>Round-robin</span>
-                      <span style={{ color: K.t1, fontWeight: 600 }}>{rrWeeks} weeks</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span>Seeded regular season</span>
-                      <span style={{ color: K.t1, fontWeight: 600 }}>{seededReg} weeks</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span>Playoffs</span>
-                      <span style={{ color: K.warn, fontWeight: 600 }}>{cfg.playoffWeeks} weeks</span>
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", borderTop: `1px solid ${K.bdr}30`, paddingTop: 6, marginTop: 4 }}>
-                      <span style={{ fontWeight: 600 }}>Total</span>
-                      <span style={{ color: K.t1, fontWeight: 700 }}>{totalWeeks} weeks</span>
-                    </div>
+              {teams.length >= 2 && (
+                <div style={{ fontSize: 12, color: K.t2, padding: "8px 0", borderTop: `1px solid ${K.bdr}30`, lineHeight: 1.8 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>Round-robin</span>
+                    <span style={{ color: K.t1, fontWeight: 600 }}>{rrWeekCount} weeks</span>
                   </div>
-                );
-              })()}
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>Seeded regular season</span>
+                    <span style={{ color: K.t1, fontWeight: 600 }}>{seededWeekCount} weeks</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span>Playoffs</span>
+                    <span style={{ color: K.warn, fontWeight: 600 }}>{cfg.playoffWeeks} weeks</span>
+                  </div>
+                  <div style={{ display: "flex", justifyContent: "space-between", borderTop: `1px solid ${K.bdr}30`, paddingTop: 6, marginTop: 4 }}>
+                    <span style={{ fontWeight: 600 }}>Total</span>
+                    <span style={{ color: K.t1, fontWeight: 700 }}>{totalWeeks} weeks</span>
+                  </div>
+                </div>
+              )}
               <div style={{ marginTop: 10 }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: K.t2, cursor: "pointer" }}>
                   <input type="checkbox" checked={cfg.alternateNines} onChange={e => setCfg({ ...cfg, alternateNines: e.target.checked })} style={{ accentColor: K.act }} />
@@ -874,7 +897,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           <div>
             <SubLabel color={K.warn}>Playoff Bracket</SubLabel>
             {(cfg.playoffRounds || []).map((round, ri) => {
-              const roundWeekNum = cfg.regularWeeks + ri + 1;
+              const roundWeekNum = computedRegularWeeks + ri + 1;
               const prevRound = ri > 0 ? (cfg.playoffRounds || [])[ri - 1] : null;
               const prevWinnerCount = prevRound ? prevRound.matchups.length : 0;
               const seedOptions = Array.from({ length: teams.length }, (_, i) => i + 1);
@@ -1001,7 +1024,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                         <div key={ri} style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ textAlign: "center", marginBottom: 4, height: 28 }}>
                             <div style={{ fontSize: 9, fontWeight: 700, color: K.warn, letterSpacing: .8 }}>{round.name || `R${ri + 1}`}</div>
-                            <div style={{ fontSize: 8, color: K.t3 }}>Wk {cfg.regularWeeks + ri + 1}</div>
+                            <div style={{ fontSize: 8, color: K.t3 }}>Wk {computedRegularWeeks + ri + 1}</div>
                           </div>
                           <div style={{ paddingTop: topPad }}>
                             {mc > 0 ? (round.matchups || []).map((mu, mi) => (
