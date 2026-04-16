@@ -517,8 +517,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     roundRobinWeeks: leagueConfig.roundRobinWeeks || null,
     seededWeeks: leagueConfig.seededWeeks || null,
     playoffWeeks: leagueConfig.playoffWeeks || 2,
-    customSeedWeeks: leagueConfig.customSeedWeeks || null,
-    lockSeedsEnabled: leagueConfig.lockSeedsEnabled === true,
+    customSeedWeeks: undefined, // NOT stored in cfg — read directly from leagueConfig
+    // lockSeedsEnabled also read from leagueConfig directly
     startDate: leagueConfig.startDate || "",
     alternateNines: leagueConfig.alternateNines !== false,
     playoffRounds: leagueConfig.playoffRounds || [],
@@ -928,19 +928,12 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
                 // Seed default: all weeks use top-vs-bottom
                 const defaultWeek = () => Array.from({ length: pairCount }, (_, i) => ({ s1: i + 1, s2: teams.length - i }));
-                let currentWeeks;
-                if (cfg.customSeedWeeks && cfg.customSeedWeeks.length === seededRegWeeks) {
-                  currentWeeks = cfg.customSeedWeeks;
-                } else {
-                  currentWeeks = Array.from({ length: seededRegWeeks }, () => defaultWeek());
-                  // Auto-save the defaults so they persist without needing a manual edit
-                  if (!cfg.customSeedWeeks || cfg.customSeedWeeks.length !== seededRegWeeks) {
-                    setTimeout(() => {
-                      setCfg(prev => ({ ...prev, customSeedWeeks: currentWeeks }));
-                      saveLeagueConfig({ ...leagueConfig, customSeedWeeks: currentWeeks });
-                    }, 0);
-                  }
-                }
+                const savedWeeks = leagueConfig?.customSeedWeeks;
+                const currentWeeks = (savedWeeks && savedWeeks.length === seededRegWeeks)
+                  ? savedWeeks
+                  : Array.from({ length: seededRegWeeks }, (_, i) =>
+                      savedWeeks && savedWeeks[i] && savedWeeks[i].length === pairCount ? savedWeeks[i] : defaultWeek()
+                    );
 
                 const activeIdx = Math.min(selectedSeededWeek, seededRegWeeks - 1);
                 const activeWeekPairs = currentWeeks[activeIdx] || defaultWeek();
@@ -966,12 +959,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                     nextWk[dstPos.pairIdx][dstPos.slot] = srcVal;
                     return nextWk;
                   });
-                  setCfg({ ...cfg, customSeedWeeks: next });
                   saveLeagueConfig({ ...leagueConfig, customSeedWeeks: next });
                 };
 
                 const { isValid, missing, hasDuplicates } = validateWeek(activeWeekPairs);
-                const lockSeedsEnabled = cfg.lockSeedsEnabled === true;
+                const lockSeedsEnabled = leagueConfig?.lockSeedsEnabled === true;
 
                 const onSeedTap = (pos) => {
                   if (selectedSeed) {
@@ -1060,9 +1052,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                           </div>
                         </div>
                         <button onClick={() => {
-                          const newVal = !lockSeedsEnabled;
-                          setCfg({ ...cfg, lockSeedsEnabled: newVal });
-                          saveLeagueConfig({ ...leagueConfig, lockSeedsEnabled: newVal });
+                          saveLeagueConfig({ ...leagueConfig, lockSeedsEnabled: !lockSeedsEnabled });
                         }} style={{
                           width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
                           background: lockSeedsEnabled ? K.act : K.bdr,
