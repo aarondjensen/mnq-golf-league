@@ -48,225 +48,52 @@ export default function GolfLeagueApp() {
   useEffect(() => {
     const onHashChange = () => setTabState(getTabFromHash());
     window.addEventListener("hashchange", onHashChange);
-    // Set initial hash if none
-    if (!window.location.hash) window.location.hash = "standings";
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
-  const [showMore, setShowMore] = useState(false);
-  const [impersonating, setImpersonating] = useState(null);
-  const [commMode, setCommMode] = useState(false);
-  const [showPlayerPicker, setShowPlayerPicker] = useState(false);
-  const [openAllMatches, setOpenAllMatches] = useState(false);
-  const [forceWeek, setForceWeek] = useState(null);
-  const [darkMode, setDarkMode] = useState(() => {
-    try { return localStorage.getItem("mnq_theme") !== "light"; } catch { return true; }
+  // Theme management
+  const [theme, setTheme] = useState(() => {
+    if (typeof localStorage !== "undefined") {
+      const stored = localStorage.getItem("theme");
+      return stored === "dark" ? "dark" : "light";
+    }
+    return "light";
   });
 
-  // Pull-to-refresh
-  const [pullY, setPullY] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
-  const touchStartY = useRef(0);
-  const pullYRef = useRef(0);
-  const pullingRef = useRef(false);
-  const PULL_THRESHOLD = 80;
-  const appBodyRef = useRef(null);
-
-  // Track whether ANY popup is open (for consistent body lock + pull-to-refresh)
-  const [popupOpen, setPopupOpen] = useState(false);
-  const popupOpenRef = useRef(false);
-  useEffect(() => { popupOpenRef.current = popupOpen || showPlayerPicker; }, [popupOpen, showPlayerPicker]);
-
-  // Fix #5: Inject dynamic CSS via useEffect instead of inline <style> in JSX.
-  // This runs once on mount and only re-runs when darkMode changes (theme toggle),
-  // instead of React diffing ~2KB of CSS text on every single re-render.
   useEffect(() => {
-    let styleEl = document.getElementById("mnq-dynamic-css");
-    if (!styleEl) {
-      styleEl = document.createElement("style");
-      styleEl.id = "mnq-dynamic-css";
-      document.head.appendChild(styleEl);
+    applyTheme(theme);
+    if (typeof localStorage !== "undefined") {
+      localStorage.setItem("theme", theme);
     }
-    styleEl.textContent = getCSS(K);
-    return () => {}; // leave style in place — it's needed even after unmount during auth screens
-  }, [darkMode]);
+  }, [theme]);
 
-  const toggleTheme = () => {
-    const newMode = darkMode ? "light" : "dark";
-    try { localStorage.setItem("mnq_theme", newMode); } catch {}
-    applyTheme(newMode);
-    setDarkMode(!darkMode);
-  };
+  // Menu and popup state
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
 
-  const resetPull = useCallback(() => {
-    setPullY(0);
-    pullYRef.current = 0;
-    touchStartY.current = 0;
-    pullingRef.current = false;
-  }, []);
-
+  // Auth listener
   useEffect(() => {
-    if (refreshing) return;
-    const getScrollEl = () => appBodyRef.current || document.querySelector('.app-body');
-    let activeScrollEl = null;
-    let insidePopup = false;
-    let popupScrollEl = null;
-    const findScrollEl = (target) => {
-      let el = target;
-      while (el) {
-        if (el.hasAttribute && el.hasAttribute('data-popup')) return null;
-        if (el.classList && el.classList.contains('app-body')) return el;
-        el = el.parentElement;
-      }
-      return getScrollEl();
-    };
-    const findPopupScroll = (target) => {
-      let el = target;
-      while (el) {
-        if (el.hasAttribute && el.hasAttribute('data-popup-scroll')) return el;
-        if (el.hasAttribute && el.hasAttribute('data-popup')) return null;
-        el = el.parentElement;
-      }
-      return null;
-    };
-    const handleStart = (e) => {
-      // Disable pull-to-refresh when any popup is open
-      if (popupOpenRef.current) {
-        touchStartY.current = 0;
-        return;
-      }
-      activeScrollEl = findScrollEl(e.target);
-      insidePopup = activeScrollEl === null;
-      popupScrollEl = insidePopup ? findPopupScroll(e.target) : null;
-      // Always record start Y — we check scrollTop dynamically in handleMove
-      touchStartY.current = e.touches[0].clientY;
-      pullingRef.current = false;
-    };
-    const handleMove = (e) => {
-      if (!touchStartY.current) return;
-      // Cancel if popup opened mid-gesture
-      if (popupOpenRef.current) {
-        if (pullingRef.current) { pullingRef.current = false; pullYRef.current = 0; setPullY(0); }
-        touchStartY.current = 0;
-        return;
-      }
-
-      // Determine if the relevant scroll container is at the top right now
-      let atTop;
-      if (insidePopup) {
-        atTop = popupScrollEl ? popupScrollEl.scrollTop <= 1 : true;
-      } else {
-        atTop = activeScrollEl ? activeScrollEl.scrollTop <= 1 : true;
-      }
-
-      const currentY = e.touches[0].clientY;
-      const diff = currentY - touchStartY.current;
-
-      if (pullingRef.current) {
-        if (diff <= 0 || !atTop) {
-          // User reversed or scroll container moved away from top — cancel pull
-          pullingRef.current = false;
-          pullYRef.current = 0;
-          setPullY(0);
-          touchStartY.current = currentY;
-        } else {
-          e.preventDefault();
-          const val = Math.min(diff * 0.4, 120);
-          pullYRef.current = val;
-          setPullY(val);
-        }
-      } else if (atTop && diff > 10) {
-        // At top and pulling down — engage pull, reset origin for clean delta
-        touchStartY.current = currentY;
-        pullingRef.current = true;
-        e.preventDefault();
-        pullYRef.current = 0;
-        setPullY(0);
-      } else if (!atTop) {
-        // Scrolling through content — keep resetting origin
-        touchStartY.current = currentY;
-      }
-      // If atTop but diff <= 10, do nothing — wait for more movement
-    };
-    const handleEnd = () => {
-      // If popup is open, just reset everything cleanly
-      if (popupOpenRef.current) {
-        pullingRef.current = false;
-        pullYRef.current = 0;
-        setPullY(0);
-        touchStartY.current = 0;
-        activeScrollEl = null;
-        insidePopup = false;
-        popupScrollEl = null;
-        return;
-      }
-      pullingRef.current = false;
-      activeScrollEl = null;
-      insidePopup = false;
-      popupScrollEl = null;
-      if (pullYRef.current >= PULL_THRESHOLD) {
-        setPullY(PULL_THRESHOLD); pullYRef.current = PULL_THRESHOLD;
-        setRefreshing(true);
-        setTimeout(() => window.location.reload(), 600);
-      } else { setPullY(0); pullYRef.current = 0; touchStartY.current = 0; }
-    };
-    document.addEventListener('touchstart', handleStart, { passive: true });
-    document.addEventListener('touchmove', handleMove, { passive: false });
-    document.addEventListener('touchend', handleEnd, { passive: true });
-    document.addEventListener('touchcancel', handleEnd, { passive: true });
-    return () => {
-      document.removeEventListener('touchstart', handleStart);
-      document.removeEventListener('touchmove', handleMove);
-      document.removeEventListener('touchend', handleEnd);
-      document.removeEventListener('touchcancel', handleEnd);
-    };
-  }, [refreshing]);
-
-  // Safety: if pull indicator stuck, reset after 2s
-  useEffect(() => {
-    if (pullY > 0 && !refreshing) {
-      const safety = setTimeout(resetPull, 2000);
-      return () => clearTimeout(safety);
-    }
-  }, [pullY, refreshing, resetPull]);
-
-  // Lock body scroll when ANY popup is open (prevents iOS rubber-banding)
-  useEffect(() => {
-    if (popupOpen || showPlayerPicker) {
-      document.body.style.overflow = 'hidden';
-      document.body.style.position = 'fixed';
-      document.body.style.width = '100%';
-      document.body.style.top = '0';
-      return () => {
-        document.body.style.overflow = '';
-        document.body.style.position = '';
-        document.body.style.width = '';
-        document.body.style.top = '';
-      };
-    }
-  }, [popupOpen, showPlayerPicker]);
-
-  // Firebase Auth listener
-  useEffect(() => {
-    const unsub = onAuthStateChanged(_auth, (user) => {
-      setAuthUser(user || null);
+    const unsub = onAuthStateChanged(auth => {
+      setAuthUser(auth);
       setAuthLoading(false);
     });
-    return unsub;
+    return () => unsub?.();
   }, []);
 
-  // Real-time subscriptions
+  // Data subscriptions
   useEffect(() => {
-    if (!authUser) { setLeagueUser(null); setMembersLoaded(false); return; }
+    if (!authUser?.uid) return;
+
     const unsubs = [];
 
-    // These change frequently or need real-time updates
     unsubs.push(db.subscribe("league_members", LF, (docs) => {
-      setMembers(docs);
+      setMembers(docs.map(d => ({
+        ...d,
+        id: d.id || `${d.userId}_${d.playerId}`,
+        userId: d.userId || d.user_id,
+        playerId: d.playerId || d.player_id,
+      })));
       setMembersLoaded(true);
-      const me = docs.find(d => d.uid === authUser.uid);
-      if (me) setLeagueUser({ playerId: me.playerId, isCommissioner: me.isCommissioner, name: me.name || authUser.displayName, email: authUser.email });
-      else setLeagueUser(null);
     }));
 
     unsubs.push(db.subscribe("league_players", LF, (docs) => setPlayers(docs)));
@@ -321,499 +148,341 @@ export default function GolfLeagueApp() {
 
   const CURRENT_SEASON = 2026;
 
-  // Data write helpers
-  const saveScore = useCallback(async (week, playerId, hole, score) => {
-    const id = `${LEAGUE_ID}_s${CURRENT_SEASON}_w${week}_p${playerId}_h${hole}`;
-    setHoleScores(prev => ({ ...prev, [`w${week}_p${playerId}_h${hole}`]: score }));
-    await db.upsert("league_hole_scores", { id, league_id: LEAGUE_ID, season: CURRENT_SEASON, week, player_id: playerId, hole, score, ts: Date.now() });
-  }, []);
+  // League member computation
+  const leagueMembers = useMemo(() => {
+    if (!authUser?.uid || !members?.length || !players?.length) return [];
+    return members.map(member => ({
+      ...member,
+      player: players.find(p => p.id === member.playerId),
+    })).filter(m => m.player);
+  }, [authUser?.uid, members, players]);
 
-  // Fetch scores for a specific week on-demand (non-realtime, one-time read)
-  const fetchWeekScores = useCallback(async (weekNum) => {
-    const docs = await db.get("league_hole_scores", [...LF, { field: "season", op: "==", value: CURRENT_SEASON }, { field: "week", op: "==", value: weekNum }]);
-    const scores = {};
-    docs.forEach(r => { scores[`w${r.week}_p${r.player_id}_h${r.hole}`] = r.score; });
-    return scores;
-  }, []);
+  const isComm = leagueUser?.isCommissioner === true;
 
-  // Fetch scores for current season (for stats/handicap calc)
-  const fetchSeasonScores = useCallback(async () => {
-    const docs = await db.get("league_hole_scores", [...LF, { field: "season", op: "==", value: CURRENT_SEASON }]);
-    const scores = {};
-    docs.forEach(r => { scores[`w${r.week}_p${r.player_id}_h${r.hole}`] = r.score; });
-    return scores;
-  }, []);
-
-  // Fetch ALL scores across all seasons (for handicap calc that carries over)
-  const fetchAllScores = useCallback(async () => {
-    const docs = await db.get("league_hole_scores", LF);
-    const byPlayer = {};
-    const roundMap = {};
-    docs.forEach(r => {
-      const key = `${r.season}_${r.week}_${r.player_id}`;
-      if (!roundMap[key]) roundMap[key] = { season: r.season, week: r.week, playerId: r.player_id, holes: 0, gross: 0 };
-      if (r.score > 0) { roundMap[key].holes++; roundMap[key].gross += r.score; }
-    });
-    Object.values(roundMap).forEach(rd => {
-      if (rd.holes === 9) {
-        if (!byPlayer[rd.playerId]) byPlayer[rd.playerId] = [];
-        byPlayer[rd.playerId].push({ season: rd.season, week: rd.week, gross: rd.gross });
-      }
-    });
-    for (const pid in byPlayer) {
-      byPlayer[pid].sort((a, b) => a.season !== b.season ? a.season - b.season : a.week - b.week);
+  // Find user's league membership
+  useEffect(() => {
+    if (!authUser?.uid || !leagueMembers.length) return;
+    const member = leagueMembers.find(m => m.userId === authUser.uid);
+    if (member && member.player) {
+      setLeagueUser({ ...member, name: member.player.name });
+    } else {
+      setLeagueUser(null);
     }
-    return byPlayer;
+  }, [authUser?.uid, leagueMembers]);
+
+  // Sync mutations
+  const savePlayer = useCallback(async (p) => {
+    const data = { ...p, league_id: LEAGUE_ID };
+    await db.upsert("league_players", data);
   }, []);
 
-  const saveCtp = useCallback(async (data) => await db.upsert("league_ctp", { ...data, league_id: LEAGUE_ID }), []);
-
-  const saveMatchResult = useCallback(async (data) => await db.upsert("league_match_results", { ...data, league_id: LEAGUE_ID }), []);
-  const deleteMatchResult = useCallback(async (id) => await db.deleteDoc("league_match_results", id), []);
-
-  const savePlayer = useCallback(async (p) => await db.upsert("league_players", { ...p, league_id: LEAGUE_ID }), []);
   const deletePlayer = useCallback(async (id) => await db.deleteDoc("league_players", id), []);
-  const saveTeam = useCallback(async (t) => await db.upsert("league_teams", { ...t, league_id: LEAGUE_ID }), []);
+
+  const saveTeam = useCallback(async (t) => {
+    const data = { ...t, league_id: LEAGUE_ID };
+    await db.upsert("league_teams", data);
+  }, []);
+
   const deleteTeam = useCallback(async (id) => await db.deleteDoc("league_teams", id), []);
-  const saveWeekSchedule = useCallback(async (w) => await db.upsert("league_schedule", { ...w, league_id: LEAGUE_ID }), []);
-  const setWeekSchedule = useCallback(async (w) => await db.set("league_schedule", { ...w, league_id: LEAGUE_ID }), []);
+
+  const saveWeekSchedule = useCallback(async (w) => {
+    const data = { ...w, league_id: LEAGUE_ID };
+    await db.upsert("league_schedule", data);
+  }, []);
+
+  const setWeekSchedule = useCallback(async (w) => {
+    const data = { ...w, league_id: LEAGUE_ID };
+    await db.set("league_schedule", data);
+  }, []);
+
   const deleteWeekSchedule = useCallback(async (id) => await db.deleteDoc("league_schedule", id), []);
 
-  const resetSeasonData = useCallback(async () => {
-    const seasonFilter = [...LF, { field: "season", op: "==", value: CURRENT_SEASON }];
-    await db.batchDelete("league_hole_scores", seasonFilter);
-    await db.batchDelete("league_match_results", LF);
-    await db.batchDelete("league_ctp", LF);
-    // Unlock all schedule weeks
-    for (const wk of schedule) {
-      if (wk.locked) await db.upsert("league_schedule", { ...wk, locked: false, league_id: LEAGUE_ID });
-    }
-    setHoleScores({});
-    setMatchResults([]);
-  }, [schedule]);
+  const saveMatchResult = useCallback(async (r) => {
+    const data = { ...r, league_id: LEAGUE_ID, season: CURRENT_SEASON };
+    await db.upsert("league_match_results", data);
+  }, []);
 
-  // Import historical scores from a [name, week, hole, score] array
-  const importHistoricalScores = useCallback(async (data) => {
-    // Build name -> id map (case-insensitive, trimmed)
-    const nameMap = {};
-    players.forEach(p => { nameMap[p.name.trim().toLowerCase()] = p.id; });
-    
-    // Build all docs first — data is [name, season, week, hole, score]
-    const docs = [];
-    let skipped = 0;
-    for (const row of data) {
-      const [name, season, week, hole, score] = row;
-      const playerId = nameMap[name.trim().toLowerCase()];
-      if (!playerId) { skipped++; continue; }
-      const id = `${LEAGUE_ID}_s${season}_w${week}_p${playerId}_h${hole}`;
-      docs.push({ id, league_id: LEAGUE_ID, season, week, player_id: playerId, hole, score, ts: Date.now() });
-    }
-    
-    // Write in parallel batches of 490
-    for (let i = 0; i < docs.length; i += 490) {
-      const batch = docs.slice(i, i + 490);
-      await Promise.all(batch.map(d => db.upsert("league_hole_scores", d)));
-    }
-    
-    return { imported: docs.length, skipped };
-  }, [players]);
+  const deleteMatchResult = useCallback(async (id) => await db.deleteDoc("league_match_results", id), []);
 
-  // Recalculate all player handicaps from historical scores and update their profiles
-  const recalcHandicaps = useCallback(async () => {
-    const allScores = await fetchAllScores();
-    const par = courseData ? (courseData.frontPars || []).reduce((a, b) => a + b, 0) : 36;
-    const recentN = scoringRules.hcpRecentCount || 8;
-    const bestN = scoringRules.hcpBestCount || 6;
-    let updated = 0;
-    for (const p of players) {
-      const rounds = allScores[p.id] || [];
-      if (!rounds.length) continue;
-      const recent = rounds.slice(-recentN);
-      const sorted = [...recent].sort((a, b) => a.gross - b.gross);
-      const best = sorted.slice(0, Math.min(bestN, sorted.length));
-      const avg = best.length ? best.reduce((a, b) => a + b.gross, 0) / best.length : null;
-      const newHcp = avg !== null ? Math.round(avg - par) : null;
-      if (newHcp !== null && newHcp !== p.handicapIndex) {
-        await savePlayer({ ...p, handicapIndex: newHcp });
-        updated++;
-      }
-    }
-    console.log(`Handicaps recalculated: ${updated} players updated`);
-    return updated;
-  }, [players, courseData, scoringRules, fetchAllScores, savePlayer]);
+  const saveCtp = useCallback(async (c) => {
+    const data = { ...c, league_id: LEAGUE_ID, season: CURRENT_SEASON };
+    await db.upsert("league_ctp", data);
+  }, []);
 
-  // Save handlers for rarely-changing data: write + refresh local state
   const saveCourseData = useCallback(async (c) => {
     const data = { ...c, id: `${LEAGUE_ID}_course`, league_id: LEAGUE_ID };
     await db.upsert("league_course", data);
     setCourseData(data);
   }, []);
+
   const saveScoringRules = useCallback(async (s) => {
     const data = { ...s, id: `${LEAGUE_ID}_scoring`, league_id: LEAGUE_ID };
     await db.upsert("league_scoring", data);
     setScoringRules(data);
   }, []);
+
   const saveLeagueConfig = useCallback(async (c) => {
     const data = { ...c, id: `${LEAGUE_ID}_config`, league_id: LEAGUE_ID };
     await db.upsert("league_config", data);
     setLeagueConfig(data);
   }, []);
-  
+
   // Patch league config (for narrow field updates - prevents stale closure bugs)
   const patchLeagueConfig = useCallback(async (patch) => {
     await db.upsert("league_config", { id: `${LEAGUE_ID}_config`, league_id: LEAGUE_ID, ...patch });
     setLeagueConfig(prev => ({ ...prev, ...patch }));
   }, []);
+
   const saveMember = useCallback(async (m) => await db.upsert("league_members", { ...m, league_id: LEAGUE_ID }), []);
   const deleteMember = useCallback(async (id) => await db.deleteDoc("league_members", id), []);
 
-  const isComm = leagueUser?.isCommissioner === true;
   const activePlayers = useMemo(() => players.filter(p => p.status !== "inactive"), [players]);
 
-  // Show Live Scoring button only on match days between 4-8pm ET
-  const showLiveBtn = useMemo(() => {
-    if (!schedule.length) return false;
-    const now = new Date();
-    const et = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-    const etHour = et.getHours();
-    if (etHour < 16 || etHour >= 20) return false;
-    const year = leagueConfig?.year || new Date().getFullYear();
-    const todayStr = et.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    return schedule.some(wk => {
-      if (wk.rainedOut || !wk.matches || wk.matches.length === 0) return false;
-      if (!wk.date) return false;
-      const wkDate = new Date(`${wk.date}, ${year}`);
-      if (isNaN(wkDate.getTime())) return false;
-      const wkStr = wkDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      return wkStr === todayStr;
+  const saveScore = useCallback(async (playerId, week, hole, score) => {
+    const id = `${LEAGUE_ID}_${playerId}_${week}_${hole}`;
+    const data = { id, league_id: LEAGUE_ID, season: CURRENT_SEASON, player_id: playerId, week, hole, score };
+    await db.upsert("league_hole_scores", data);
+  }, []);
+
+  const fetchWeekScores = useCallback(async (week) => {
+    if (!week) return {};
+    const filters = [...LF, { field: "season", op: "==", value: CURRENT_SEASON }, { field: "week", op: "==", value: week }];
+    const docs = await db.get("league_hole_scores", filters);
+    const scores = {};
+    docs.forEach(d => {
+      const key = `w${d.week}_p${d.player_id}_h${d.hole}`;
+      scores[key] = d.score;
     });
-  }, [schedule, leagueConfig]);
+    return scores;
+  }, []);
+
+  const fetchSeasonScores = useCallback(async () => {
+    const filters = [...LF, { field: "season", op: "==", value: CURRENT_SEASON }];
+    const docs = await db.get("league_hole_scores", filters);
+    const scores = {};
+    docs.forEach(d => {
+      const key = `w${d.week}_p${d.player_id}_h${d.hole}`;
+      scores[key] = d.score;
+    });
+    return scores;
+  }, []);
+
+  const resetSeasonData = useCallback(async () => {
+    if (!window.confirm("This will delete ALL scores, match results, and CTP data for the current season. This cannot be undone. Are you sure?")) return false;
+    try {
+      const season = CURRENT_SEASON;
+      const filters = [...LF, { field: "season", op: "==", value: season }];
+      await Promise.all([
+        db.batchDelete("league_hole_scores", filters),
+        db.batchDelete("league_match_results", filters),
+        db.batchDelete("league_ctp", filters),
+      ]);
+      setHoleScores({});
+      setMatchResults([]);
+      setCtpData([]);
+      return true;
+    } catch (e) {
+      console.error("Reset failed:", e);
+      alert("Reset failed. Check console for details.");
+      return false;
+    }
+  }, []);
+
+  const importHistoricalScores = useCallback(async (scoreData) => {
+    try {
+      const scores = Array.isArray(scoreData) ? scoreData : JSON.parse(scoreData);
+      for (const score of scores) {
+        const id = `${LEAGUE_ID}_${score.player_id}_${score.week}_${score.hole}`;
+        const data = { ...score, id, league_id: LEAGUE_ID };
+        await db.upsert("league_hole_scores", data);
+      }
+      return { success: true, count: scores.length };
+    } catch (e) {
+      console.error("Import failed:", e);
+      return { success: false, error: e.message };
+    }
+  }, []);
+
+  const recalcHandicaps = useCallback(async () => {
+    if (!courseData?.holes?.length || !activePlayers.length) {
+      alert("Missing course data or players");
+      return false;
+    }
+    try {
+      const allScores = await fetchSeasonScores();
+      const updates = [];
+      for (const player of activePlayers) {
+        const playerScores = [];
+        for (let week = 1; week <= 20; week++) {
+          const weekScores = [];
+          for (let hole = 1; hole <= 9; hole++) {
+            const score = allScores[`w${week}_p${player.id}_h${hole}`];
+            if (typeof score === 'number') weekScores.push(score);
+          }
+          if (weekScores.length === 9) {
+            const total = weekScores.reduce((sum, s) => sum + s, 0);
+            playerScores.push(total);
+          }
+        }
+        if (playerScores.length >= 3) {
+          const sorted = [...playerScores].sort((a, b) => a - b);
+          const best3 = sorted.slice(0, 3);
+          const avg = best3.reduce((sum, s) => sum + s, 0) / 3;
+          const coursePar = courseData.holes.reduce((sum, h) => sum + (h.par || 4), 0);
+          const newIndex = Math.max(0, avg - coursePar);
+          if (Math.abs(newIndex - (player.handicapIndex || 0)) > 0.1) {
+            updates.push({ ...player, handicapIndex: Math.round(newIndex * 10) / 10 });
+          }
+        }
+      }
+      for (const update of updates) {
+        await savePlayer(update);
+      }
+      return { success: true, updated: updates.length };
+    } catch (e) {
+      console.error("Recalc failed:", e);
+      return { success: false, error: e.message };
+    }
+  }, [courseData, activePlayers, savePlayer, fetchSeasonScores]);
+
+  // UI State
+  const [commMode, setCommMode] = useState(false);
+  const [impersonating, setImpersonating] = useState(null);
 
   // Clear impersonation when commish mode is turned off
   useEffect(() => { if (!commMode) setImpersonating(null); }, [commMode]);
 
-  // When commissioner impersonates a player in commish mode, effectiveUser overrides leagueUser
-  const effectiveUser = commMode && impersonating
-    ? { ...leagueUser, playerId: impersonating.playerId, name: impersonating.name }
-    : leagueUser;
+  const effectiveUser = impersonating || leagueUser;
 
   if (authLoading) return <LoadingScreen />;
-  if (!authUser) return <AuthScreen onGoogle={doGoogleSignIn} onEmail={doEmailSignIn} />;
-  if (!membersLoaded) return <LoadingScreen />;
-  if (!leagueUser || !leagueUser.playerId) return <JoinScreen authUser={authUser} members={members} players={activePlayers} saveMember={saveMember} doSignOut={doSignOut} leagueConfig={leagueConfig} />;
+  if (!authUser) return <AuthScreen onGoogleSignIn={doGoogleSignIn} onEmailSignIn={doEmailSignIn} />;
+  if (!leagueUser) return <JoinScreen authUser={authUser} members={members} players={activePlayers} saveMember={saveMember} doSignOut={doSignOut} leagueConfig={leagueConfig} />;
 
-  const tabs = [
+  const teamIds = teams.map(t => t.id);
+
+  const tabData = [
     { id: "standings", label: "Standings", icon: "trophy" },
-    { id: "scoring", label: "Scoring", icon: "flag" },
+    { id: "scoring", label: "Live", icon: "target" },
     { id: "schedule", label: "Schedule", icon: "calendar" },
-  ];
-
-  const moreItems = [
     { id: "players", label: "Players", icon: "users" },
-    { id: "stats", label: "Stats", icon: "barChart" },
-    { id: "ctp", label: "CTP", icon: "target" },
-    ...(isComm ? [{ id: "admin", label: "Admin", icon: "settings" }] : []),
-    { id: "signout", label: "Sign Out", icon: "key" },
+    { id: "stats", label: "Stats", icon: "barChart3" },
+    { id: "ctp", label: "CTP", icon: "crosshair" },
+    ...(isComm ? [{ id: "admin", label: "Admin", icon: "settings" }] : [])
   ];
-
-  // Check if there's a week ready to finalize (commish only)
-  const weekToFinalize = isComm ? (() => {
-    for (const wk of schedule) {
-      if (wk.rainedOut || wk.locked) continue;
-      if (!wk.matches || wk.matches.length === 0) continue;
-      const allAttested = wk.matches.every(m =>
-        matchResults.some(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true)
-      );
-      if (allAttested) return wk.week;
-    }
-    return null;
-  })() : null;
-
-  // Find upcoming match info for banner
-  const myTeam = teams.find(t => t.player1 === leagueUser.playerId || t.player2 === leagueUser.playerId);
-  const upcomingBanner = (() => {
-    if (!myTeam || !schedule.length) return null;
-    for (const wk of schedule) {
-      if (wk.rainedOut) continue;
-      if (!wk.matches || wk.matches.length === 0) continue;
-      if (wk.locked) continue;
-      const myMatch = wk.matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id);
-      if (!myMatch) return null;
-      const oppId = myMatch.team1 === myTeam.id ? myMatch.team2 : myMatch.team1;
-      const opp = teams.find(t => t.id === oppId);
-      const matchIdx = wk.matches.indexOf(myMatch);
-      const base = leagueConfig?.startTime || "4:28 PM";
-      const interval = leagueConfig?.teeInterval || 8;
-      const [timePart, ampm] = base.split(' ');
-      const [h, m] = timePart.split(':').map(Number);
-      let mins = (ampm === 'PM' && h !== 12 ? h + 12 : h) * 60 + m + matchIdx * interval;
-      const hr = Math.floor(mins / 60) % 12 || 12;
-      const mn = mins % 60;
-      const ap = Math.floor(mins / 60) >= 12 ? 'PM' : 'AM';
-      const teeTime = `${hr}:${String(mn).padStart(2, '0')}`;
-      const oppP1 = opp ? activePlayers.find(p => p.id === opp.player1) : null;
-      const oppP2 = opp ? activePlayers.find(p => p.id === opp.player2) : null;
-      const oppName1 = oppP1 ? oppP1.name.split(' ').pop() : "TBD";
-      const oppName2 = oppP2 ? oppP2.name.split(' ').pop() : "TBD";
-      return { week: wk.week, date: wk.date, teeTime, teeMinutes: mins, opp: opp?.name || "TBD", oppName1, oppName2, side: wk.side };
-    }
-    return null;
-  })();
-
-  const bannerGrn = K.matchGrn;
-
-  // Suspense fallback for lazy-loaded tabs
-  const TabFallback = <div style={{ textAlign: "center", padding: 40, color: K.t3, fontSize: 13 }} className="pu">Loading...</div>;
 
   return (
-    <div className="app-shell">
-      {/* Pull-to-refresh indicator */}
-      {pullY > 0 && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 999, display: "flex", justifyContent: "center", paddingTop: Math.min(pullY, 100) - 20, transition: refreshing ? "all .3s" : "none" }}>
-          <style>{`
-            @keyframes mnqSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-            @keyframes mnqPulseGlow { 0%,100% { box-shadow: 0 0 8px ${K.act}40; } 50% { box-shadow: 0 0 18px ${K.act}80; } }
-          `}</style>
-          <div style={{
-            width: 44, height: 44, borderRadius: "50%", background: K.card,
-            border: `2.5px solid ${pullY >= PULL_THRESHOLD ? K.act : K.bdr}`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            boxShadow: pullY >= PULL_THRESHOLD ? `0 0 12px ${K.act}50` : "0 2px 12px rgba(0,0,0,.3)",
-            transition: "border-color .2s, box-shadow .3s", overflow: "hidden",
-            animation: refreshing ? "mnqPulseGlow 1s ease-in-out infinite" : "none",
-          }}>
-            <img src="/favicon/favicon-96x96.png" alt="" style={{
-              width: 28, height: 28, objectFit: "contain",
-              opacity: pullY >= PULL_THRESHOLD ? 1 : 0.3 + (pullY / PULL_THRESHOLD) * 0.7,
-              transform: refreshing ? "none" : `rotate(${pullY * 3}deg)`,
-              animation: refreshing ? "mnqSpin .8s linear infinite" : "none",
-              transition: refreshing ? "none" : "opacity .2s",
-            }} />
-          </div>
-        </div>
-      )}
-      {/* Fix #1: Removed <link href={FONTS}> — now in index.html <head> with preconnect */}
-      {/* Fix #5: Removed <style>{getCSS(K)}</style> — now injected via useEffect above */}
-
-      {/* Header */}
-      <div className="app-header">
-        <div style={{ maxWidth: 900, width: "100%", margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: "0 14px" }}>
-          {/* Left: Commissioner mode toggle */}
-          <div style={{ position: "absolute", left: 14, display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
-            {isComm && (
-              <>
-                <span style={{ fontSize: 8, fontWeight: 700, color: commMode ? K.act : K.t3, letterSpacing: .5, textTransform: "uppercase" }}>Commish</span>
-                <button onClick={() => setCommMode(!commMode)} style={{
-                  width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
-                  background: commMode ? K.act : K.bdr,
-                  position: "relative", transition: "background .2s",
+    <div style={getCSS()}>
+      <div className="app">
+        {/* Header */}
+        <div className="header">
+          <div className="nav-bar">
+            <div className="nav-left">
+              <button onClick={() => setTheme(theme === "light" ? "dark" : "light")} style={{ background: "none", border: "none", color: K.t2, cursor: "pointer", fontSize: 16, padding: "8px 12px" }}>
+                {theme === "light" ? "🌙" : "☀️"}
+              </button>
+              <div style={{ fontSize: 18, fontWeight: 800, color: K.logoBright }}>MnQ</div>
+              {syncing && <div style={{ fontSize: 10, color: K.acc, fontWeight: 600, marginLeft: 8 }}>Syncing...</div>}
+            </div>
+            <div className="nav-right">
+              <button onClick={() => setMenuOpen(!menuOpen)} style={{ background: "none", border: "none", color: K.t2, cursor: "pointer", fontSize: 20, padding: "8px 12px", position: "relative" }}>
+                {menuOpen ? "✕" : "☰"}
+              </button>
+              {menuOpen && (
+                <div ref={menuRef} style={{
+                  position: "absolute", top: "100%", right: 0, minWidth: 200, background: K.card, borderRadius: 8,
+                  border: `1px solid ${K.bdr}`, boxShadow: `0 4px 12px ${K.bdr}40`, zIndex: 1000, marginTop: 4
                 }}>
-                  <div style={{
-                    width: 20, height: 20, borderRadius: 10,
-                    background: "#fff",
-                    position: "absolute", top: 2,
-                    left: commMode ? 22 : 2,
-                    transition: "left .2s",
-                    boxShadow: "0 1px 3px rgba(0,0,0,.3)",
-                  }} />
-                </button>
-              </>
-            )}
+                  <div style={{ padding: "12px 16px", borderBottom: `1px solid ${K.bdr}` }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: K.t1 }}>{authUser.displayName || "User"}</div>
+                    <div style={{ fontSize: 11, color: K.t3 }}>{authUser.email}</div>
+                  </div>
+                  {isComm && (
+                    <div style={{ padding: "8px 0", borderBottom: `1px solid ${K.bdr}` }}>
+                      <button onClick={() => setCommMode(!commMode)} style={{
+                        width: "100%", padding: "8px 16px", border: "none", background: "transparent",
+                        color: K.t2, fontSize: 12, textAlign: "left", cursor: "pointer"
+                      }}>
+                        {commMode ? "Exit" : "Enter"} Commissioner Mode
+                      </button>
+                      {commMode && activePlayers.length > 0 && (
+                        <div style={{ paddingLeft: 16, paddingRight: 16, marginTop: 4 }}>
+                          <select value={impersonating?.playerId || ""} onChange={e => {
+                            const playerId = e.target.value;
+                            if (!playerId) { setImpersonating(null); return; }
+                            const player = activePlayers.find(p => p.id === playerId);
+                            const member = leagueMembers.find(m => m.playerId === playerId);
+                            if (player && member) setImpersonating({ ...member, player, name: player.name });
+                          }} style={{
+                            width: "100%", padding: "4px 8px", borderRadius: 4, background: K.inp,
+                            border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 11
+                          }}>
+                            <option value="">Play as myself</option>
+                            {activePlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  <div style={{ padding: "8px 0" }}>
+                    <button onClick={doSignOut} style={{
+                      width: "100%", padding: "8px 16px", border: "none", background: "transparent",
+                      color: K.red, fontSize: 12, textAlign: "left", cursor: "pointer"
+                    }}>
+                      Sign Out
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
-          <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
-          {/* Right: Live Scoring button — only on match days 4-8pm ET */}
-          <div style={{ position: "absolute", right: 14, display: "flex", alignItems: "center" }}>
-            {showLiveBtn && (
-            <button onClick={() => setTab("scoring")} style={{
-              background: tab === "scoring" ? bannerGrn : "transparent",
-              border: `1.5px solid ${tab === "scoring" ? bannerGrn : bannerGrn + "50"}`,
-              borderRadius: 8, padding: "6px 10px", cursor: "pointer",
-              color: tab === "scoring" ? "#fff" : bannerGrn, fontSize: 13, fontWeight: 800,
-              textTransform: "uppercase", letterSpacing: .5, lineHeight: 1.3,
-            }}>
-              Live<br/>Scoring
-            </button>
-            )}
+
+          {/* Tab Bar */}
+          <div className="tab-bar">
+            {tabData.map(t => (
+              <button
+                key={t.id}
+                onClick={() => { setTab(t.id); setMenuOpen(false); }}
+                style={{
+                  flex: 1, padding: "12px 8px", border: "none", background: tab === t.id ? K.act : "transparent",
+                  color: tab === t.id ? K.bg : K.t2, fontSize: 11, fontWeight: 700, cursor: "pointer",
+                  borderRadius: "6px", transition: "all .15s", textTransform: "uppercase", letterSpacing: ".8px",
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6
+                }}
+              >
+                {I[t.icon](14)} {t.label}
+              </button>
+            ))}
           </div>
         </div>
-      </div>
 
-      {/* Finalize week banner — commish only */}
-      {weekToFinalize && (
-        <button onClick={() => { setForceWeek(weekToFinalize); setOpenAllMatches(true); setTab("scoring"); }} style={{
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-          width: "100%", maxWidth: 900, margin: "0 auto",
-          padding: "8px 14px", background: K.warn + "18", border: "none",
-          borderBottom: `1px solid ${K.warn}40`, cursor: "pointer", flexShrink: 0,
-        }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: K.warn }}>
-            Week {weekToFinalize} ready to finalize
-          </span>
-          <span style={{ fontSize: 11, color: K.warn, opacity: .7 }}>→</span>
-        </button>
-      )}
-
-      {/* Upcoming match banner */}
-
-      <div className="app-body" ref={appBodyRef}>
-        <div style={{ maxWidth: 900, width: "100%", margin: "0 auto" }}>
-          {upcomingBanner && tab !== "scoring" && (() => {
-            return (
-              <div style={{ background: K.card, border: `1.5px solid ${bannerGrn}`, borderRadius: 10, margin: "6px 14px", padding: "10px 16px", display: "flex", alignItems: "center" }}>
-                {/* Left: Tee time + Front/Back */}
-                <div style={{ width: 80, flexShrink: 0, textAlign: "left", lineHeight: 1.3, padding: "6px 0" }}>
-                  <div style={{ fontSize: 17, fontWeight: 800, color: K.act, letterSpacing: .5 }}>{upcomingBanner.teeTime}</div>
-                  {/* UX fix: was hardcoded #3b82f6, now uses K.logoBright for theme consistency */}
-                  <div style={{ fontSize: 12, fontWeight: 700, color: K.logoBright, letterSpacing: .5, textTransform: "uppercase" }}>{upcomingBanner.side === 'front' ? 'FRONT 9' : 'BACK 9'}</div>
-                </div>
-                {/* Center: Date + Week */}
-                <div style={{ flex: 1, textAlign: "center", lineHeight: 1.3 }}>
-                  <div style={{ fontSize: 12, color: K.t2, fontWeight: 500 }}>{upcomingBanner.date || ""}</div>
-                  <div style={{ fontSize: 14, color: K.t1, fontWeight: 700 }}>Week {upcomingBanner.week}</div>
-                </div>
-                {/* Right: Opponent player names */}
-                <div style={{ width: 80, flexShrink: 0, textAlign: "right", lineHeight: 1.3 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{upcomingBanner.oppName1}</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{upcomingBanner.oppName2}</div>
-                </div>
-              </div>
-            );
-          })()}
-          <div className="main-content fi" key={tab}>
-          {/* Fix #2: Wrap lazy-loaded tabs in Suspense */}
-          <Suspense fallback={TabFallback}>
-          {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} />}
-          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} deleteMatchResult={deleteMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} recalcHandicaps={recalcHandicaps} />}
-          {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} isComm={isComm} saveScore={saveScore} saveMatchResult={saveMatchResult} setPopupOpen={setPopupOpen} />}
-          {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} />}
-          {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
-          {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} isComm={isComm} saveCtp={saveCtp} />}
-          {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} patchLeagueConfig={patchLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} resetSeasonData={resetSeasonData} importHistoricalScores={importHistoricalScores} recalcHandicaps={recalcHandicaps} />}
+        {/* Main Content */}
+        <div className="content" style={{ padding: "16px", paddingBottom: commMode ? 60 : 16 }}>
+          <Suspense fallback={<div style={{ textAlign: "center", padding: "20px", color: K.t3 }}>Loading...</div>}>
+            {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} />}
+            {tab === "players" && <PlayersView players={activePlayers} teams={teams} matchResults={matchResults} course={courseData} fetchSeasonScores={fetchSeasonScores} leagueConfig={leagueConfig} />}
+            {tab === "stats" && <StatsView players={activePlayers} teams={teams} matchResults={matchResults} course={courseData} fetchSeasonScores={fetchSeasonScores} schedule={schedule} leagueConfig={leagueConfig} />}
+            {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} isComm={isComm} saveCtp={saveCtp} />}
+            {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} deleteMatchResult={deleteMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} />}
+            {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} isComm={isComm} saveScore={saveScore} saveMatchResult={saveMatchResult} />}
+            {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} patchLeagueConfig={patchLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} resetSeasonData={resetSeasonData} importHistoricalScores={importHistoricalScores} recalcHandicaps={recalcHandicaps} />}
           </Suspense>
           {commMode && <div style={{ height: 44 }} />}
           </div>
         </div>
-      </div>
 
-      {/* More popup menu */}
-      {showMore && (
-        <div onClick={() => setShowMore(false)} style={{ position: "fixed", inset: 0, zIndex: 150 }} />
-      )}
-
-      {/* Player picker popup (commissioner) */}
-      {showPlayerPicker && (
-        <>
-          <div onClick={() => setShowPlayerPicker(false)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 400 }} />
-          <div onClick={() => setShowPlayerPicker(false)} data-popup style={{ position: "fixed", inset: 0, zIndex: 450, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-            <div onClick={e => e.stopPropagation()} data-popup-scroll style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "16px", width: "100%", maxWidth: 340, maxHeight: "70vh", overflowY: "auto", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch" }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 12, textAlign: "center" }}>Switch Player</div>
-              {impersonating && (
-                <button onClick={() => { setImpersonating(null); setShowPlayerPicker(false); }} style={{ width: "100%", padding: "10px 14px", marginBottom: 8, borderRadius: 8, background: K.teal + "15", border: `1px solid ${K.teal}40`, color: K.teal, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                  Back to My Account
-                </button>
-              )}
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                {[...activePlayers].sort((a, b) => a.name.localeCompare(b.name)).map(p => {
-                  const isSelf = p.id === leagueUser.playerId;
-                  const isActive = impersonating?.playerId === p.id;
-                  return (
-                    <button key={p.id} onClick={() => {
-                      if (isSelf) { setImpersonating(null); }
-                      else { setImpersonating({ playerId: p.id, name: p.name }); }
-                      setShowPlayerPicker(false);
-                    }} style={{
-                      padding: "10px 14px", borderRadius: 8, cursor: "pointer", textAlign: "left",
-                      background: isActive ? K.teal + "15" : isSelf ? K.acc + "10" : K.card,
-                      border: `1px solid ${isActive ? K.teal + "40" : isSelf ? K.acc + "30" : K.bdr}`,
-                      color: K.t1, fontSize: 14, fontWeight: 600, display: "flex", justifyContent: "space-between", alignItems: "center",
-                    }}>
-                      <span>{p.name}</span>
-                      {isSelf && <span style={{ fontSize: 10, color: K.t3, fontWeight: 500 }}>(you)</span>}
-                      {isActive && <span style={{ fontSize: 10, color: K.teal, fontWeight: 500 }}>active</span>}
-                    </button>
-                  );
-                })}
-              </div>
-              <button onClick={() => setShowPlayerPicker(false)} style={{ display: "block", width: "100%", margin: "12px 0 0", padding: "9px", background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.t2, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                Cancel
-              </button>
-            </div>
+        {/* Commissioner mode indicator */}
+        {commMode && (
+          <div style={{
+            position: "fixed", bottom: 0, left: 0, right: 0, height: 44,
+            background: K.warn, color: K.bg, display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 12, fontWeight: 700, letterSpacing: 1, zIndex: 999
+          }}>
+            COMMISSIONER MODE {impersonating && `— Playing as ${impersonating.name}`}
           </div>
-        </>
-      )}
+        )}
 
-      {/* Commish mode — login as banner, attached to bottom nav */}
-      {commMode && (
-        <button onClick={() => setShowPlayerPicker(true)} style={{ width: "100%", maxWidth: 900, margin: "0 auto", background: K.act, padding: "8px 14px", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, flexShrink: 0, cursor: "pointer", border: "none", zIndex: 200 }}>
-          <span style={{ fontSize: 12, color: K.bg, fontWeight: 800, letterSpacing: .5 }}>
-            {impersonating ? `Logged in as ${impersonating.name}` : "Login as"}
-          </span>
-          <span style={{ fontSize: 10, color: K.bg + "90" }}>▾</span>
-          {impersonating && (
-            <button onClick={(e) => { e.stopPropagation(); setImpersonating(null); }} style={{ background: K.bg + "25", border: "none", borderRadius: 4, color: K.bg, fontSize: 10, padding: "3px 8px", cursor: "pointer", fontWeight: 700 }}>Exit</button>
-          )}
-        </button>
-      )}
-
-      {/* Bottom Nav */}
-      <div className="bottom-nav" style={{ margin: "0 auto" }}>
-        {tabs.map(t => {
-          const active = tab === t.id;
-          return (
-            <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }} style={{ background: active ? K.acc + "10" : "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: active ? 1 : .4, transition: "all .2s", padding: "4px 14px", borderRadius: 8 }}>
-              <span style={{ display: "flex" }}>{I[t.icon](18, active ? K.acc : K.t2)}</span>
-              <span style={{ fontSize: 9, fontWeight: active ? 600 : 400, color: active ? K.acc : K.t2 }}>{t.label}</span>
-            </button>
-          );
-        })}
-        <div style={{ position: "relative" }}>
-          <button onClick={() => setShowMore(!showMore)} style={{ background: showMore || moreItems.some(m => m.id === tab) ? K.acc + "10" : "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: showMore || moreItems.some(m => m.id === tab) ? 1 : .4, transition: "all .2s", padding: "4px 14px", borderRadius: 8 }}>
-            <span style={{ display: "flex" }}>{I.ellipsis(18, showMore || moreItems.some(m => m.id === tab) ? K.acc : K.t2)}</span>
-            <span style={{ fontSize: 9, fontWeight: showMore || moreItems.some(m => m.id === tab) ? 600 : 400, color: showMore || moreItems.some(m => m.id === tab) ? K.acc : K.t2 }}>More</span>
-          </button>
-          {showMore && (
-            <div style={{ position: "fixed", bottom: `calc(56px + env(safe-area-inset-bottom, 0px))`, right: 14, background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 12, padding: "6px 0", zIndex: 300, minWidth: 180, boxShadow: "0 -4px 20px rgba(0,0,0,.4)" }}>
-              {moreItems.map((item, idx) => {
-                const active = tab === item.id;
-                const isSignOut = item.id === "signout";
-                return (
-                  <div key={item.id}>
-                    {isSignOut && (<>
-                      {/* Dark mode toggle */}
-                      <div style={{ borderTop: `1px solid ${K.bdr}`, margin: "4px 0" }} />
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px" }}>
-                        <span style={{ fontSize: 14, fontWeight: 400, color: K.t1 }}>Dark Mode</span>
-                        <button onClick={(e) => { e.stopPropagation(); toggleTheme(); }} style={{
-                          width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
-                          background: darkMode ? K.act : K.bdr,
-                          position: "relative", transition: "background .2s",
-                        }}>
-                          <div style={{
-                            width: 20, height: 20, borderRadius: 10,
-                            background: "#fff",
-                            position: "absolute", top: 2,
-                            left: darkMode ? 22 : 2,
-                            transition: "left .2s",
-                            boxShadow: "0 1px 3px rgba(0,0,0,.3)",
-                          }} />
-                        </button>
-                      </div>
-                      <div style={{ borderTop: `1px solid ${K.bdr}`, margin: "4px 0" }} />
-                    </>)}
-                    <button onClick={() => {
-                      if (isSignOut) { doSignOut(); }
-                      else { setTab(item.id); }
-                      setShowMore(false);
-                    }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 16px", background: active && !isSignOut ? K.acc + "12" : "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
-                      <span style={{ display: "flex" }}>{I[item.icon](16, isSignOut ? K.red : active ? K.acc : K.t3)}</span>
-                      <span style={{ fontSize: 14, fontWeight: active && !isSignOut ? 600 : 400, color: isSignOut ? K.red : active ? K.acc : K.t1 }}>{item.label}</span>
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
+        {/* Click outside handler */}
+        {menuOpen && <div style={{ position: "fixed", inset: 0, zIndex: 900 }} onClick={() => setMenuOpen(false)} />}
       </div>
     </div>
   );
