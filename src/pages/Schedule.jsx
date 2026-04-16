@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, REGULAR_WEEKS, LIST_GAP, CARD_RADIUS, NAME_SIZE, HERO_NUM_SIZE, CHEVRON_SIZE } from "../theme";
+import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, HERO_NUM_SIZE, CHEVRON_SIZE } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 import { SharedScorecard } from "./Scoring";
 
@@ -196,8 +196,9 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   }, [schedule, matchResults]);
 
   const isWeekComplete = (wk) => {
-    if (!wk.locked) return false;
     if (!wk.matches || wk.matches.length === 0) return false;
+    // A week is complete if it's locked OR if all matches have results
+    if (wk.locked) return true;
     return wk.matches.every(m =>
       matchResults.some(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2)
     );
@@ -386,8 +387,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
             {isRainedOut ? "RAIN" : isSeeded ? (() => {
               if (!isPlayoff) return "Seeded — TBD";
-              const regWeeks = leagueConfig?.regularWeeks || REGULAR_WEEKS;
-              const pRound = wk.week - regWeeks;
+              const pRound = schedule.filter(s => s.isPlayoff === true && s.week <= wk.week).length;
               const roundName = (leagueConfig?.playoffRounds || [])[pRound - 1]?.name;
               return roundName ? `${roundName} — TBD` : "Playoff — TBD";
             })() : oppName}
@@ -539,8 +539,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         {isExp && !isRainedOut && isSeeded && (() => {
           let roundTitle = "Seeded Matchups";
           if (isPlayoff) {
-            const regWeeks = leagueConfig?.regularWeeks || REGULAR_WEEKS;
-            const pRound = wk.week - regWeeks;
+            const pRound = schedule.filter(s => s.isPlayoff === true && s.week <= wk.week).length;
             const roundName = (leagueConfig?.playoffRounds || [])[pRound - 1]?.name;
             roundTitle = roundName || "Playoff Matchups";
           }
