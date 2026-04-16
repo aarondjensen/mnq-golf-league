@@ -518,12 +518,14 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     seededWeeks: leagueConfig.seededWeeks || null,
     playoffWeeks: leagueConfig.playoffWeeks || 2,
     customSeedWeeks: leagueConfig.customSeedWeeks || null,
+    lockSeedsEnabled: leagueConfig.lockSeedsEnabled === true,
     startDate: leagueConfig.startDate || "",
     alternateNines: leagueConfig.alternateNines !== false,
     playoffRounds: leagueConfig.playoffRounds || [],
   });
   const [editWeek, setEditWeek] = useState(null);
   const [selectedSeededWeek, setSelectedSeededWeek] = useState(0);
+  const [selectedSeed, setSelectedSeed] = useState(null); // {pairIdx, slot} for tap-to-swap
   const [localWk, setLocalWk] = useState(null); // local edits for the week being edited
   const [weekDirty, setWeekDirty] = useState(false);
   const [dragIdx, setDragIdx] = useState(null);
@@ -808,15 +810,6 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 const activeIdx = Math.min(selectedSeededWeek, seededRegWeeks - 1);
                 const activeWeekPairs = currentWeeks[activeIdx] || defaultWeek();
 
-                const updatePair = (pairIdx, field, val) => {
-                  const parsed = parseInt(val);
-                  if (isNaN(parsed) || parsed < 1 || parsed > teams.length) return;
-                  const next = currentWeeks.map((wk, wi) =>
-                    wi === activeIdx ? wk.map((p, pi) => pi === pairIdx ? { ...p, [field]: parsed } : p) : wk
-                  );
-                  setCfg({ ...cfg, customSeedWeeks: next });
-                };
-
                 const validateWeek = (wk) => {
                   const used = new Set();
                   wk.forEach(p => { used.add(p.s1); used.add(p.s2); });
@@ -825,20 +818,37 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                   return { isValid: used.size === pairCount * 2 && missing.length === 0, missing, hasDuplicates: used.size !== pairCount * 2 };
                 };
 
+                // Swap two seed positions in the active week
+                const swapSeeds = (srcPos, dstPos) => {
+                  // srcPos = {pairIdx, slot: "s1"|"s2"}, dstPos same
+                  if (srcPos.pairIdx === dstPos.pairIdx && srcPos.slot === dstPos.slot) return;
+                  const next = currentWeeks.map((wk, wi) => {
+                    if (wi !== activeIdx) return wk;
+                    const nextWk = wk.map(p => ({ ...p }));
+                    const srcVal = nextWk[srcPos.pairIdx][srcPos.slot];
+                    const dstVal = nextWk[dstPos.pairIdx][dstPos.slot];
+                    nextWk[srcPos.pairIdx][srcPos.slot] = dstVal;
+                    nextWk[dstPos.pairIdx][dstPos.slot] = srcVal;
+                    return nextWk;
+                  });
+                  setCfg({ ...cfg, customSeedWeeks: next });
+                };
+
                 const { isValid, missing, hasDuplicates } = validateWeek(activeWeekPairs);
-                const lockedSeeds = leagueConfig?.lockedSeeds;
-                const areLocked = lockedSeeds && lockedSeeds.length === teams.length;
+                const lockSeedsEnabled = cfg.lockSeedsEnabled === true;
+
+                const onSeedTap = (pos) => {
+                  if (selectedSeed) {
+                    swapSeeds(selectedSeed, pos);
+                    setSelectedSeed(null);
+                  } else {
+                    setSelectedSeed(pos);
+                  }
+                };
 
                 return (
                   <div style={{ marginBottom: 10 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                      <div style={{ fontSize: 11, color: K.t3 }}>Seeded Regular Season Matchups</div>
-                      {areLocked && (
-                        <div style={{ fontSize: 9, fontWeight: 800, color: K.act, background: K.act + "18", border: `1px solid ${K.act}50`, padding: "2px 7px", borderRadius: 10, letterSpacing: .5 }}>
-                          🔒 SEEDS LOCKED
-                        </div>
-                      )}
-                    </div>
+                    <div style={{ fontSize: 11, color: K.t3, marginBottom: 6 }}>Seeded Regular Season Matchups</div>
 
                     <div style={{ padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${isValid ? K.bdr : K.red + "60"}` }}>
                       {/* Week toggle pills */}
@@ -847,7 +857,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                           const wv = validateWeek(currentWeeks[wi]);
                           const isActive = wi === activeIdx;
                           return (
-                            <button key={wi} onClick={() => setSelectedSeededWeek(wi)} style={{
+                            <button key={wi} onClick={() => { setSelectedSeededWeek(wi); setSelectedSeed(null); }} style={{
                               flex: "1 1 auto", minWidth: 60, padding: "6px 8px", borderRadius: 6, cursor: "pointer",
                               background: isActive ? K.act + "18" : K.card,
                               border: `1px solid ${isActive ? K.act + "60" : wv.isValid ? K.bdr : K.red + "50"}`,
@@ -860,16 +870,40 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                         })}
                       </div>
 
-                      {/* Matchups for the selected week */}
-                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                        {activeWeekPairs.map((p, pairIdx) => (
-                          <div key={pairIdx} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span style={{ fontSize: 10, color: K.t3, width: 20 }}>{pairIdx + 1}.</span>
-                            <input type="number" min="1" max={teams.length} value={p.s1} onChange={e => updatePair(pairIdx, "s1", e.target.value)} style={{ width: 50, padding: "6px 8px", borderRadius: 6, border: `1px solid ${K.bdr}`, background: K.card, color: K.t1, fontSize: 13, fontWeight: 700, textAlign: "center" }} />
-                            <span style={{ fontSize: 10, color: K.t3, fontWeight: 700 }}>VS</span>
-                            <input type="number" min="1" max={teams.length} value={p.s2} onChange={e => updatePair(pairIdx, "s2", e.target.value)} style={{ width: 50, padding: "6px 8px", borderRadius: 6, border: `1px solid ${K.bdr}`, background: K.card, color: K.t1, fontSize: 13, fontWeight: 700, textAlign: "center" }} />
-                          </div>
-                        ))}
+                      {/* Hint */}
+                      <div style={{ fontSize: 10, color: K.t3, marginBottom: 8, fontStyle: "italic" }}>
+                        {selectedSeed ? "Tap another seed to swap" : "Tap a seed to select, then tap another to swap"}
+                      </div>
+
+                      {/* Matchup rows with draggable seed cards */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                        {activeWeekPairs.map((p, pairIdx) => {
+                          const renderSeedCard = (seed, slot) => {
+                            const pos = { pairIdx, slot };
+                            const isSelected = selectedSeed && selectedSeed.pairIdx === pairIdx && selectedSeed.slot === slot;
+                            const isTarget = selectedSeed && !isSelected;
+                            return (
+                              <button onClick={() => onSeedTap(pos)} style={{
+                                width: 48, height: 38, borderRadius: 6, cursor: "pointer",
+                                background: isSelected ? K.act : isTarget ? K.act + "10" : K.card,
+                                border: `1.5px solid ${isSelected ? K.act : isTarget ? K.act + "60" : K.bdr}`,
+                                color: isSelected ? K.bg : K.t1, fontSize: 15, fontWeight: 800,
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                transition: "all .15s",
+                              }}>
+                                {seed}
+                              </button>
+                            );
+                          };
+                          return (
+                            <div key={pairIdx} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span style={{ fontSize: 10, color: K.t3, width: 16 }}>{pairIdx + 1}.</span>
+                              {renderSeedCard(p.s1, "s1")}
+                              <span style={{ fontSize: 10, color: K.t3, fontWeight: 700 }}>VS</span>
+                              {renderSeedCard(p.s2, "s2")}
+                            </div>
+                          );
+                        })}
                       </div>
 
                       {!isValid && (
@@ -878,6 +912,32 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                           {missing.length > 0 && `Missing: ${missing.map(s => `#${s}`).join(", ")}`}
                         </div>
                       )}
+
+                      {/* Lock Seeds toggle */}
+                      <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${K.bdr}50`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 11, color: K.t1, fontWeight: 700 }}>Lock Seeds</div>
+                          <div style={{ fontSize: 9, color: K.t3, lineHeight: 1.4, marginTop: 2 }}>
+                            {lockSeedsEnabled
+                              ? "#1 seed stays as #1 for all seeded weeks"
+                              : "Seeds update each week based on current standings"}
+                          </div>
+                        </div>
+                        <button onClick={() => setCfg({ ...cfg, lockSeedsEnabled: !lockSeedsEnabled })} style={{
+                          width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
+                          background: lockSeedsEnabled ? K.act : K.bdr,
+                          position: "relative", transition: "background .2s", flexShrink: 0,
+                        }}>
+                          <div style={{
+                            width: 20, height: 20, borderRadius: 10,
+                            background: "#fff",
+                            position: "absolute", top: 2,
+                            left: lockSeedsEnabled ? 22 : 2,
+                            transition: "left .2s",
+                            boxShadow: "0 1px 3px rgba(0,0,0,.3)",
+                          }} />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -1144,49 +1204,21 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 </div>
               );
             })()}
-            {/* Lock Seeds button — before seeded regular season begins */}
+            {/* Seed status pill — reflects setup config */}
             {(() => {
               const seededRegWeeks = schedule.filter(s => s.seeded === true && !s.isPlayoff);
               if (seededRegWeeks.length === 0) return null;
-              const firstUnfilledSeeded = seededRegWeeks.find(s => !s.matches || s.matches.length === 0);
+              const lockSeedsEnabled = leagueConfig?.lockSeedsEnabled === true;
               const lockedSeeds = leagueConfig?.lockedSeeds;
-              const areLocked = lockedSeeds && lockedSeeds.length === teams.length;
+              const captured = lockedSeeds && lockedSeeds.length === teams.length;
 
-              const lockSeeds = async () => {
-                // Build standings snapshot from current matchResults
-                const pts = {};
-                teams.forEach(t => { pts[t.id] = { teamId: t.id, points: 0, hw: 0 }; });
-                (matchResults || []).forEach(r => {
-                  if (!r) return;
-                  const rWeek = schedule.find(s => s.week === r.week);
-                  if (!rWeek || !rWeek.locked) return;
-                  if (pts[r.team1Id]) { pts[r.team1Id].points += (r.team1Points || 0); if (r.t1HolesWon !== undefined) pts[r.team1Id].hw += r.t1HolesWon; }
-                  if (pts[r.team2Id]) { pts[r.team2Id].points += (r.team2Points || 0); if (r.t2HolesWon !== undefined) pts[r.team2Id].hw += r.t2HolesWon; }
-                });
-                const sorted = Object.values(pts).sort((a, b) => b.points - a.points || b.hw - a.hw);
-                const seedIds = sorted.map(s => s.teamId);
-                const preview = seedIds.map((tid, i) => `#${i + 1}: ${teams.find(t => t.id === tid)?.name || "?"}`).join("\n");
-                if (!window.confirm(`Lock seeds based on current standings?\n\n${preview}\n\nAll future seeded weeks will use this snapshot.`)) return;
-                await saveLeagueConfig({ ...leagueConfig, lockedSeeds: seedIds });
-              };
-
-              const unlockSeeds = async () => {
-                if (!window.confirm("Unlock seeds? Future seeded weeks will use live standings again.")) return;
-                const { lockedSeeds: _, ...rest } = leagueConfig;
-                await saveLeagueConfig(rest);
-              };
+              if (!lockSeedsEnabled) return null;
 
               return (
                 <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 8 }}>
-                  {areLocked ? (
-                    <button onClick={unlockSeeds} style={{ background: K.act + "20", border: `1px solid ${K.act}60`, borderRadius: 8, color: K.act, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
-                      🔒 Seeds Locked · Unlock
-                    </button>
-                  ) : firstUnfilledSeeded ? (
-                    <button onClick={lockSeeds} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.acc, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 600 }}>
-                      Lock Seeds
-                    </button>
-                  ) : null}
+                  <div style={{ background: K.act + "20", border: `1px solid ${K.act}60`, borderRadius: 8, color: K.act, fontSize: 11, padding: "6px 12px", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
+                    🔒 {captured ? "Seeds Locked" : "Seeds Will Lock at Start of Seeded Play"}
+                  </div>
                 </div>
               );
             })()}
@@ -1281,11 +1313,20 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     };
 
     const handleSeedWeek = async () => {
-      // Use locked seed snapshot if available, otherwise compute from current standings
-      const lockedSeeds = leagueConfig.lockedSeeds;
-      const seeds = (lockedSeeds && lockedSeeds.length === teams.length)
-        ? lockedSeeds
-        : buildStandingsForSeed().map(s => s.teamId);
+      // Determine seeds: if lockSeedsEnabled and a snapshot exists, use it;
+      // if enabled but no snapshot yet, capture one now from current standings
+      let seeds;
+      const lockSeedsEnabled = leagueConfig?.lockSeedsEnabled === true;
+      const existingLocked = leagueConfig?.lockedSeeds;
+      if (existingLocked && existingLocked.length === teams.length) {
+        seeds = existingLocked;
+      } else {
+        seeds = buildStandingsForSeed().map(s => s.teamId);
+        // Auto-capture snapshot when entering seeded play with lockSeedsEnabled
+        if (lockSeedsEnabled && !isPlayoff) {
+          await saveLeagueConfig({ ...leagueConfig, lockedSeeds: seeds });
+        }
+      }
       let matches = [];
 
       if (isPlayoff) {
