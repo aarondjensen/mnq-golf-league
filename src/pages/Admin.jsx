@@ -843,9 +843,19 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
                 // Seed default: all weeks use top-vs-bottom
                 const defaultWeek = () => Array.from({ length: pairCount }, (_, i) => ({ s1: i + 1, s2: teams.length - i }));
-                const currentWeeks = (cfg.customSeedWeeks && cfg.customSeedWeeks.length === seededRegWeeks)
-                  ? cfg.customSeedWeeks
-                  : Array.from({ length: seededRegWeeks }, () => defaultWeek());
+                let currentWeeks;
+                if (cfg.customSeedWeeks && cfg.customSeedWeeks.length === seededRegWeeks) {
+                  currentWeeks = cfg.customSeedWeeks;
+                } else {
+                  currentWeeks = Array.from({ length: seededRegWeeks }, () => defaultWeek());
+                  // Auto-save the defaults so they persist without needing a manual edit
+                  if (!cfg.customSeedWeeks || cfg.customSeedWeeks.length !== seededRegWeeks) {
+                    setTimeout(() => {
+                      setCfg(prev => ({ ...prev, customSeedWeeks: currentWeeks }));
+                      saveLeagueConfig({ ...leagueConfig, customSeedWeeks: currentWeeks });
+                    }, 0);
+                  }
+                }
 
                 const activeIdx = Math.min(selectedSeededWeek, seededRegWeeks - 1);
                 const activeWeekPairs = currentWeeks[activeIdx] || defaultWeek();
@@ -872,6 +882,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                     return nextWk;
                   });
                   setCfg({ ...cfg, customSeedWeeks: next });
+                  saveLeagueConfig({ ...leagueConfig, customSeedWeeks: next });
                 };
 
                 const { isValid, missing, hasDuplicates } = validateWeek(activeWeekPairs);
@@ -963,7 +974,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                               : "Seeds update each week based on current standings"}
                           </div>
                         </div>
-                        <button onClick={() => setCfg({ ...cfg, lockSeedsEnabled: !lockSeedsEnabled })} style={{
+                        <button onClick={() => {
+                          const newVal = !lockSeedsEnabled;
+                          setCfg({ ...cfg, lockSeedsEnabled: newVal });
+                          saveLeagueConfig({ ...leagueConfig, lockSeedsEnabled: newVal });
+                        }} style={{
                           width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
                           background: lockSeedsEnabled ? K.act : K.bdr,
                           position: "relative", transition: "background .2s", flexShrink: 0,
