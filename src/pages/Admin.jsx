@@ -620,58 +620,91 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     if (teams.length < 2) return alert("Need at least 2 teams");
     if (!cfg.startDate) return alert("Set a season start date");
 
-    // Warn if there are finalized weeks
-    const lockedWeeks = schedule.filter(s => s.locked);
-    if (lockedWeeks.length > 0) {
-      if (!window.confirm(`${lockedWeeks.length} week(s) have been finalized with scores.\n\nFinalized weeks will be preserved (matchups and scores kept).\nAll other weeks will get new matchups.\n\nHole scores from unlocked weeks are never deleted, but may no longer match the new schedule.\n\nContinue?`)) return;
+    // Categorize existing schedule weeks
+    const lockedWeeks = schedule.filter(s => s.locked === true);
+    const rainedOutWeeks = schedule.filter(s => s.rainedOut === true);
+    const makeupWeeks = schedule.filter(s => s.makeupFor && !s.locked && !s.rainedOut);
+    const preservedWeekNums = new Set([
+      ...lockedWeeks.map(s => s.week),
+      ...rainedOutWeeks.map(s => s.week),
+      ...makeupWeeks.map(s => s.week),
+    ]);
+
+    // Warn about preserved weeks
+    if (preservedWeekNums.size > 0) {
+      const parts = [];
+      if (lockedWeeks.length > 0) parts.push(`${lockedWeeks.length} finalized week(s)`);
+      if (rainedOutWeeks.length > 0) parts.push(`${rainedOutWeeks.length} rained-out week(s)`);
+      if (makeupWeeks.length > 0) parts.push(`${makeupWeeks.length} makeup week(s)`);
+      if (!window.confirm(`The following will be PRESERVED in place at their current week numbers:\n\n• ${parts.join("\n• ")}\n\nAll other weeks will be regenerated with fresh matchups.\n\nContinue?`)) return;
     }
 
     setGenerating(true);
 
-    // Remember which weeks were locked so we can preserve that
-    const lockedMap = {};
-    schedule.forEach(s => { if (s.locked) lockedMap[s.week] = true; });
-
-    // Delete all existing schedule documents to avoid stale/zombie data
+    // Delete only the weeks we're NOT preserving
     for (const existing of schedule) {
-      if (existing.id) await deleteWeekSchedule(existing.id);
+      if (existing.id && !preservedWeekNums.has(existing.week)) {
+        await deleteWeekSchedule(existing.id);
+      }
     }
 
     const teamIds = teams.map(t => t.id);
     const rrRounds = generateRoundRobin(teamIds);
-    // Use explicit rrWeekCount - if it exceeds available rounds, we repeat/cycle; if less, we truncate
     const rrWeeksToGenerate = rrWeekCount;
 
-    for (let w = 0; w < totalWeeks; w++) {
+    // Determine the maximum week number needed:
+    // configured totalWeeks or highest preserved week number, whichever is larger
+    const maxPreservedWeek = preservedWeekNums.size > 0 ? Math.max(...preservedWeekNums) : 0;
+    const finalTotalWeeks = Math.max(totalWeeks, maxPreservedWeek);
+
+    // Walk through each week position. Preserved weeks stay as-is.
+    // New slots get assigned based on what category they fall into
+    // (counting preserved non-playoff weeks toward the regular season budget).
+    let rrCursor = 0;
+    let regularWeeksPlaced = 0;
+
+    for (let w = 0; w < finalTotalWeeks; w++) {
       const weekNum = w + 1;
       const side = cfg.alternateNines ? (w % 2 === 0 ? 'front' : 'back') : 'front';
-      const isPlayoff = w >= computedRegularWeeks;
-      const wasLocked = lockedMap[weekNum] || false;
-      // Preserve matches and metadata on locked weeks to protect existing scores
       const existingWk = schedule.find(s => s.week === weekNum);
 
-      if (wasLocked && existingWk) {
-        // Locked week: keep everything as-is, just ensure the doc exists after delete
+      // Preserve locked, rained-out, and makeup weeks as-is
+      if (preservedWeekNums.has(weekNum) && existingWk) {
         await setWeekSchedule({ ...existingWk, id: `${LEAGUE_ID}_w${weekNum}` });
+        // Count non-playoff preserved weeks toward regular season budget
+        if (existingWk.isPlayoff !== true) regularWeeksPlaced++;
         continue;
       }
 
-      if (w < rrWeeksToGenerate) {
-        // Cycle through rrRounds if rrWeeksToGenerate > rrRounds.length
-        const roundIdx = w % rrRounds.length;
+      // New slot — determine if it should be RR, seeded regular, or playoff
+      const isPlayoff = regularWeeksPlaced >= computedRegularWeeks;
+
+      if (!isPlayoff && regularWeeksPlaced < rrWeeksToGenerate) {
+        // Round-robin week
+        const roundIdx = rrCursor % rrRounds.length;
+        rrCursor++;
         await setWeekSchedule({
           id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum, matches: rrRounds[roundIdx], side,
           date: getWeekDate(w), isPlayoff: false,
         });
-      } else {
+        regularWeeksPlaced++;
+      } else if (!isPlayoff) {
+        // Seeded regular season week
         await setWeekSchedule({
           id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum, matches: [], side,
-          date: getWeekDate(w), isPlayoff, seeded: true,
+          date: getWeekDate(w), isPlayoff: false, seeded: true,
+        });
+        regularWeeksPlaced++;
+      } else {
+        // Playoff week
+        await setWeekSchedule({
+          id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum, matches: [], side,
+          date: getWeekDate(w), isPlayoff: true, seeded: true,
         });
       }
     }
 
-    await saveLeagueConfig({ ...leagueConfig, ...cfg, regularWeeks: computedRegularWeeks, roundRobinWeeks: rrWeekCount, seededWeeks: seededWeekCount, totalWeeks });
+    await saveLeagueConfig({ ...leagueConfig, ...cfg, regularWeeks: computedRegularWeeks, roundRobinWeeks: rrWeekCount, seededWeeks: seededWeekCount, totalWeeks: finalTotalWeeks });
     setGenerating(false);
     setStep("view");
   };
@@ -1489,14 +1522,25 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     const handleRainOut = async () => {
       // Determine if this week is round-robin by its schedule flags (not hardcoded team count)
       const isRoundRobin = !wk.isPlayoff && !wk.seeded && !wk.makeupFor;
-      // Find the last RR/makeup-RR week number in the current schedule
+
+      // Find where to insert the makeup week.
+      // For RR rainouts: ideally right after the last RR week.
+      // But we can NEVER shift locked weeks (scores are keyed by week number),
+      // so walk forward from the ideal position until we find the first non-locked slot.
       const lastRRWeekNum = Math.max(0, ...schedule.filter(s =>
         (!s.isPlayoff && !s.seeded && !s.makeupFor) || (s.makeupFor && !s.isPlayoff)
       ).map(s => s.week));
 
+      // Find first non-locked week at or after (lastRRWeekNum+1 for RR) or (wk.week+1 for others)
+      const insertTarget = isRoundRobin ? lastRRWeekNum + 1 : wk.week + 1;
+      let makeupWeekNum = insertTarget;
+      while (schedule.some(s => s.week === makeupWeekNum && s.locked === true)) {
+        makeupWeekNum++;
+      }
+
       const msgDetail = isRoundRobin
-        ? `Rain out Week ${wk.week}? This will:\n\n• Skip this week (no matches played)\n• Insert a makeup week after week ${lastRRWeekNum} (end of round robin)\n• Push seeded/playoff weeks forward\n• Extend the season by one week`
-        : `Rain out Week ${wk.week}? This will:\n\n• Skip this week\n• Same matchups will be played next week\n• All future weeks shift forward one week\n• Season extends by one week`;
+        ? `Rain out Week ${wk.week}? This will:\n\n• Skip this week (no matches played)\n• Insert a makeup week at week ${makeupWeekNum}\n• Push unlocked future weeks forward\n• Extend the season by one week`
+        : `Rain out Week ${wk.week}? This will:\n\n• Skip this week\n• Insert makeup matchups at week ${makeupWeekNum}\n• Push unlocked future weeks forward\n• Extend the season by one week`;
       if (!window.confirm(msgDetail)) return;
 
       const year = leagueConfig?.year || new Date().getFullYear();
@@ -1507,79 +1551,72 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       };
       const fmtDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-      // Mark this week as rained out
-      await saveWeekSchedule({ ...wk, rainedOut: true });
+      // Mark this week as rained out (clear matches since they're moved to the makeup)
+      await saveWeekSchedule({ ...wk, rainedOut: true, matches: [] });
 
-      if (isRoundRobin) {
-        // Everything after the last RR week shifts up by 1 (process descending to avoid collisions)
-        const weeksToShift = schedule.filter(s => s.week > lastRRWeekNum).sort((a, b) => b.week - a.week);
-        for (const fw of weeksToShift) {
-          const newNum = fw.week + 1;
-          let newDate = fw.date || "";
-          const parsed = parseDate(fw.date);
-          if (parsed) {
-            parsed.setDate(parsed.getDate() + 7);
-            newDate = fmtDate(parsed);
-          }
-          await setWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newNum}`, week: newNum, date: newDate });
-        }
+      // Shift only NON-LOCKED weeks from makeupWeekNum onward. Locked weeks stay put.
+      // We process descending to avoid id collisions as we renumber.
+      const weeksToShift = schedule
+        .filter(s => s.week >= makeupWeekNum && s.locked !== true && s.week !== wk.week)
+        .sort((a, b) => b.week - a.week);
 
-        // Insert makeup week right after the last RR week
-        const makeupWeekNum = lastRRWeekNum + 1;
-        const lastRRWeekData = schedule.find(s => s.week === lastRRWeekNum);
-        let makeupDate = "";
-        const lastParsed = parseDate(lastRRWeekData?.date);
-        if (lastParsed) {
-          lastParsed.setDate(lastParsed.getDate() + 7);
-          makeupDate = fmtDate(lastParsed);
-        }
-        const makeupSide = lastRRWeekData?.side === 'front' ? 'back' : 'front';
+      // We need to be careful: if we shift a week to position N, and N is occupied by a locked week,
+      // we need to skip that position. Build a mapping: oldWeek → newWeek by walking forward.
+      const shiftMap = {};
+      const lockedWeekNums = new Set(schedule.filter(s => s.locked === true).map(s => s.week));
+      const reserved = new Set(lockedWeekNums); // positions that can't be taken
+      reserved.add(wk.week); // the rained-out week stays at its original position
 
-        await setWeekSchedule({
-          id: `${LEAGUE_ID}_w${makeupWeekNum}`,
-          week: makeupWeekNum,
-          matches: [...(wk.matches || [])],
-          side: wk.side || makeupSide,
-          date: makeupDate,
-          makeupFor: wk.week,
-        });
-      } else {
-        // Seeded or Playoff rain out:
-        // The rained-out week's matchups get pushed to the next week.
-        // All future weeks shift forward by 1 (week number + date).
-        // Season extends by 1 week total.
-        const futureWeeks = schedule.filter(s => s.week > wk.week && !s.rainedOut).sort((a, b) => b.week - a.week);
-        for (const fw of futureWeeks) {
-          const newNum = fw.week + 1;
-          let newDate = fw.date || "";
-          const parsed = parseDate(fw.date);
-          if (parsed) {
-            parsed.setDate(parsed.getDate() + 7);
-            newDate = fmtDate(parsed);
-          }
-          await setWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newNum}`, week: newNum, date: newDate });
-        }
+      // Walk ascending through weeks that need to shift
+      const ascShifts = schedule
+        .filter(s => s.week >= makeupWeekNum && s.locked !== true && s.week !== wk.week)
+        .sort((a, b) => a.week - b.week);
 
-        // Write the rained-out week's matchups into the next week slot
-        const nextWeekNum = wk.week + 1;
-        let nextDate = wk.date || "";
-        const wkParsed = parseDate(wk.date);
-        if (wkParsed) {
-          wkParsed.setDate(wkParsed.getDate() + 7);
-          nextDate = fmtDate(wkParsed);
-        }
-        const nextSide = wk.side === 'front' ? 'back' : 'front';
-
-        await setWeekSchedule({
-          id: `${LEAGUE_ID}_w${nextWeekNum}`,
-          week: nextWeekNum,
-          matches: [...(wk.matches || [])],
-          side: nextSide,
-          date: nextDate,
-          isPlayoff: wk.isPlayoff || false,
-          seeded: wk.seeded || false,
-        });
+      let cursor = makeupWeekNum + 1; // makeupWeekNum itself is the makeup slot
+      for (const fw of ascShifts) {
+        while (reserved.has(cursor)) cursor++;
+        shiftMap[fw.week] = cursor;
+        reserved.add(cursor);
+        cursor++;
       }
+
+      // Apply shifts (descending by new week number to avoid collisions)
+      const shiftEntries = Object.entries(shiftMap).map(([oldW, newW]) => ({ oldW: parseInt(oldW), newW })).sort((a, b) => b.newW - a.newW);
+      for (const { oldW, newW } of shiftEntries) {
+        const fw = schedule.find(s => s.week === oldW);
+        if (!fw) continue;
+        // Delete old doc, create new at new week number
+        let newDate = fw.date || "";
+        const parsed = parseDate(fw.date);
+        if (parsed) {
+          parsed.setDate(parsed.getDate() + (newW - oldW) * 7);
+          newDate = fmtDate(parsed);
+        }
+        await deleteWeekSchedule(fw.id);
+        await setWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newW}`, week: newW, date: newDate });
+      }
+
+      // Create the makeup week at makeupWeekNum
+      // Find a neighboring week to compute the date
+      const neighborWeek = schedule.find(s => s.week === makeupWeekNum - 1) || schedule.find(s => s.week === wk.week);
+      let makeupDate = "";
+      const nParsed = parseDate(neighborWeek?.date);
+      if (nParsed) {
+        nParsed.setDate(nParsed.getDate() + 7);
+        makeupDate = fmtDate(nParsed);
+      }
+      const makeupSide = neighborWeek?.side === 'front' ? 'back' : 'front';
+
+      await setWeekSchedule({
+        id: `${LEAGUE_ID}_w${makeupWeekNum}`,
+        week: makeupWeekNum,
+        matches: [...(wk.matches || [])],
+        side: wk.side || makeupSide,
+        date: makeupDate,
+        makeupFor: wk.week,
+        isPlayoff: wk.isPlayoff || false,
+        seeded: wk.seeded || false,
+      });
 
       setEditWeek(null);
     };
@@ -1611,38 +1648,51 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 };
                 const fmtDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-                // Un-mark the rain out
-                await saveWeekSchedule({ ...wk, rainedOut: false });
-
-                // Find the week to remove:
-                // - RR rain outs have a makeupFor-tagged week
-                // - Seeded/playoff rain outs pushed matchups into wk.week + 1
-                const makeupWeek = isRR
-                  ? schedule.find(s => s.makeupFor === wk.week)
-                  : schedule.find(s => s.week === wk.week + 1);
+                // Un-mark the rain out and restore matches if they were cleared
+                const makeupWeek = schedule.find(s => s.makeupFor === wk.week);
+                const restoredMatches = makeupWeek?.matches || wk.matches || [];
+                await saveWeekSchedule({ ...wk, rainedOut: false, matches: restoredMatches });
 
                 if (makeupWeek) {
-                  // Shift all weeks after the makeup/inserted week back down by 1 (ascending)
-                  const weeksToShift = schedule.filter(s =>
-                    s.week > makeupWeek.week
-                  ).sort((a, b) => a.week - b.week);
+                  // Delete the makeup week, then shift weeks after it down by 1 — but skip over locked weeks.
+                  await deleteWeekSchedule(makeupWeek.id);
 
+                  // Build shift map: for each non-locked week after makeupWeek.week, find the next lower available slot.
+                  const lockedWeekNums = new Set(schedule.filter(s => s.locked === true && s.week !== wk.week).map(s => s.week));
+                  const weeksToShift = schedule
+                    .filter(s => s.week > makeupWeek.week && s.locked !== true && s.week !== wk.week)
+                    .sort((a, b) => a.week - b.week);
+
+                  const shiftMap = {};
+                  const reserved = new Set(lockedWeekNums);
+                  reserved.add(wk.week);
+                  reserved.add(makeupWeek.week); // this is now being vacated
+                  // Actually remove makeupWeek from reserved since we just deleted it
+                  reserved.delete(makeupWeek.week);
+
+                  let cursor = makeupWeek.week;
                   for (const fw of weeksToShift) {
-                    const newNum = fw.week - 1;
+                    while (reserved.has(cursor)) cursor++;
+                    if (cursor < fw.week) {
+                      shiftMap[fw.week] = cursor;
+                      reserved.add(cursor);
+                    }
+                    cursor++;
+                  }
+
+                  // Apply shifts ascending by old week (so we free slots before we need them)
+                  const shiftEntries = Object.entries(shiftMap).map(([oldW, newW]) => ({ oldW: parseInt(oldW), newW })).sort((a, b) => a.oldW - b.oldW);
+                  for (const { oldW, newW } of shiftEntries) {
+                    const fw = schedule.find(s => s.week === oldW);
+                    if (!fw) continue;
                     let newDate = fw.date || "";
                     const parsed = parseDate(fw.date);
                     if (parsed) {
-                      parsed.setDate(parsed.getDate() - 7);
+                      parsed.setDate(parsed.getDate() + (newW - oldW) * 7);
                       newDate = fmtDate(parsed);
                     }
-                    await setWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newNum}`, week: newNum, date: newDate });
-                  }
-
-                  // Delete the now-vacant last week doc
-                  const lastShiftedWeek = weeksToShift.length > 0 ? weeksToShift[weeksToShift.length - 1].week : makeupWeek.week;
-                  await deleteWeekSchedule(`${LEAGUE_ID}_w${lastShiftedWeek}`);
-                  if (weeksToShift.length === 0) {
-                    await deleteWeekSchedule(makeupWeek.id);
+                    await deleteWeekSchedule(fw.id);
+                    await setWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newW}`, week: newW, date: newDate });
                   }
                 }
 
