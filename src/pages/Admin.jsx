@@ -623,7 +623,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     // Warn if there are finalized weeks
     const lockedWeeks = schedule.filter(s => s.locked);
     if (lockedWeeks.length > 0) {
-      if (!window.confirm(`${lockedWeeks.length} week(s) have been finalized with scores. Regenerating will preserve their locked status but reset matchups.\n\nContinue?`)) return;
+      if (!window.confirm(`${lockedWeeks.length} week(s) have been finalized with scores.\n\nFinalized weeks will be preserved (matchups and scores kept).\nAll other weeks will get new matchups.\n\nHole scores from unlocked weeks are never deleted, but may no longer match the new schedule.\n\nContinue?`)) return;
     }
 
     setGenerating(true);
@@ -647,6 +647,14 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       const side = cfg.alternateNines ? (w % 2 === 0 ? 'front' : 'back') : 'front';
       const isPlayoff = w >= computedRegularWeeks;
       const wasLocked = lockedMap[weekNum] || false;
+      // Preserve matches and metadata on locked weeks to protect existing scores
+      const existingWk = schedule.find(s => s.week === weekNum);
+
+      if (wasLocked && existingWk) {
+        // Locked week: keep everything as-is, just ensure the doc exists after delete
+        await setWeekSchedule({ ...existingWk, id: `${LEAGUE_ID}_w${weekNum}` });
+        continue;
+      }
 
       if (w < rrWeeksToGenerate) {
         // Cycle through rrRounds if rrWeeksToGenerate > rrRounds.length
@@ -654,13 +662,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         await setWeekSchedule({
           id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum, matches: rrRounds[roundIdx], side,
           date: getWeekDate(w), isPlayoff: false,
-          ...(wasLocked ? { locked: true } : {}),
         });
       } else {
         await setWeekSchedule({
           id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum, matches: [], side,
           date: getWeekDate(w), isPlayoff, seeded: true,
-          ...(wasLocked ? { locked: true } : {}),
         });
       }
     }
