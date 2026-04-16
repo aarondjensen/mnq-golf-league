@@ -882,7 +882,6 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                   </div>
                 );
               })()}
-              })()}
               {/* Season breakdown */}
               {teams.length >= 2 && (
                 <div style={{ fontSize: 12, color: K.t2, padding: "8px 0", borderTop: `1px solid ${K.bdr}30`, lineHeight: 1.8 }}>
