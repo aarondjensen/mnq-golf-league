@@ -620,96 +620,176 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     if (teams.length < 2) return alert("Need at least 2 teams");
     if (!cfg.startDate) return alert("Set a season start date");
 
-    // Categorize existing schedule weeks
-    const lockedWeeks = schedule.filter(s => s.locked === true);
-    const rainedOutWeeks = schedule.filter(s => s.rainedOut === true);
-    const makeupWeeks = schedule.filter(s => s.makeupFor && !s.locked && !s.rainedOut);
-    const preservedWeekNums = new Set([
-      ...lockedWeeks.map(s => s.week),
-      ...rainedOutWeeks.map(s => s.week),
-      ...makeupWeeks.map(s => s.week),
-    ]);
+    // ── Sequential schedule model ──
+    // The schedule is always: [RR block] → [Seeded block] → [Playoff block]
+    // Rainouts during RR insert makeup weeks at the END of the RR block,
+    // pushing seeded and playoff forward. The RR block must fully complete
+    // before seeded play begins.
+    // Rainouts during seeded/playoff just delay the season by one week.
 
-    // Warn about preserved weeks
-    if (preservedWeekNums.size > 0) {
+    // Identify what exists and must be preserved
+    const preservedWeeks = schedule.filter(s =>
+      s.locked === true || s.rainedOut === true || (s.makeupFor && !s.rainedOut)
+    );
+    const preservedWeekNums = new Set(preservedWeeks.map(s => s.week));
+
+    if (preservedWeeks.length > 0) {
+      const locked = schedule.filter(s => s.locked).length;
+      const rained = schedule.filter(s => s.rainedOut).length;
+      const makeup = schedule.filter(s => s.makeupFor && !s.locked && !s.rainedOut).length;
       const parts = [];
-      if (lockedWeeks.length > 0) parts.push(`${lockedWeeks.length} finalized week(s)`);
-      if (rainedOutWeeks.length > 0) parts.push(`${rainedOutWeeks.length} rained-out week(s)`);
-      if (makeupWeeks.length > 0) parts.push(`${makeupWeeks.length} makeup week(s)`);
-      if (!window.confirm(`The following will be PRESERVED in place at their current week numbers:\n\n• ${parts.join("\n• ")}\n\nAll other weeks will be regenerated with fresh matchups.\n\nContinue?`)) return;
+      if (locked) parts.push(`${locked} finalized`);
+      if (rained) parts.push(`${rained} rained-out`);
+      if (makeup) parts.push(`${makeup} makeup`);
+      if (!window.confirm(`Preserved weeks: ${parts.join(", ")}.\n\nAll other weeks will be regenerated.\n\nContinue?`)) return;
     }
 
     setGenerating(true);
 
-    // Delete only the weeks we're NOT preserving
-    for (const existing of schedule) {
-      if (existing.id && !preservedWeekNums.has(existing.week)) {
-        await deleteWeekSchedule(existing.id);
+    // Clean corrupted data: locked seeded weeks shouldn't have makeupFor
+    for (const wk of schedule) {
+      if (wk.locked && wk.seeded && wk.makeupFor) {
+        await saveWeekSchedule({ ...wk, makeupFor: null });
       }
     }
+    const cleanSchedule = schedule.map(wk =>
+      (wk.locked && wk.seeded && wk.makeupFor) ? { ...wk, makeupFor: null } : wk
+    );
 
+    // Delete ALL existing schedule docs
+    for (const existing of schedule) {
+      if (existing.id) await deleteWeekSchedule(existing.id);
+    }
+
+    // Delete any zombie docs beyond the schedule
+    const maxExisting = Math.max(0, ...schedule.map(s => s.week));
+    for (let w = maxExisting + 1; w <= maxExisting + 5; w++) {
+      await deleteWeekSchedule(`${LEAGUE_ID}_w${w}`);
+    }
+
+    // ── Build the new schedule sequentially ──
     const teamIds = teams.map(t => t.id);
     const rrRounds = generateRoundRobin(teamIds);
-    const rrWeeksToGenerate = rrWeekCount;
 
-    // Determine the maximum week number needed:
-    // configured totalWeeks + number of rained-out weeks (since each rainout adds a dead slot + a makeup)
-    // Also ensure we cover all preserved week positions
-    const maxPreservedWeek = preservedWeekNums.size > 0 ? Math.max(...preservedWeekNums) : 0;
-    const rainoutCount = rainedOutWeeks.length;
-    const finalTotalWeeks = Math.max(totalWeeks + rainoutCount, maxPreservedWeek);
+    // Count how many RR rainouts exist (these need makeup weeks in the RR block)
+    const rrRainouts = cleanSchedule.filter(s =>
+      s.rainedOut === true && !s.isPlayoff && !s.seeded
+    ).length;
 
-    // Walk through each week position. Preserved weeks stay as-is.
-    // New slots get assigned based on what category they fall into
-    // (counting preserved non-playoff weeks toward the regular season budget).
-    let rrCursor = 0;
-    let regularWeeksPlaced = 0;
+    // Total weeks: base schedule + rainouts (each rainout adds 1 dead slot)
+    const totalRainouts = cleanSchedule.filter(s => s.rainedOut === true).length;
+    const finalTotalWeeks = totalWeeks + totalRainouts;
 
-    for (let w = 0; w < finalTotalWeeks; w++) {
-      const weekNum = w + 1;
-      const side = cfg.alternateNines ? (w % 2 === 0 ? 'front' : 'back') : 'front';
-      const existingWk = schedule.find(s => s.week === weekNum);
+    // Walk through week positions sequentially, building each block in order
+    let weekNum = 0;
+    let rrCursor = 0;       // which round-robin round to assign next
+    let rrPlayed = 0;       // how many RR matchups have been placed (played + makeup)
+    let seededPlaced = 0;
+    let playoffPlaced = 0;
+    const rrTarget = rrWeekCount;    // how many RR rounds needed
+    const seededTarget = seededWeekCount;
+    const playoffTarget = cfg.playoffWeeks;
 
-      // Preserve locked, rained-out, and makeup weeks as-is
-      if (preservedWeekNums.has(weekNum) && existingWk) {
-        await setWeekSchedule({ ...existingWk, id: `${LEAGUE_ID}_w${weekNum}` });
-        // Count non-playoff, non-rained-out preserved weeks toward regular season budget
-        // Rained-out weeks are dead slots — they don't consume the budget (their makeups do)
-        if (existingWk.isPlayoff !== true && existingWk.rainedOut !== true) regularWeeksPlaced++;
+    // Phase 1: RR block (includes original RR weeks + makeup weeks for RR rainouts)
+    while (rrPlayed < rrTarget || weekNum < rrTarget + rrRainouts) {
+      weekNum++;
+      const side = cfg.alternateNines ? ((weekNum - 1) % 2 === 0 ? 'front' : 'back') : 'front';
+      const existing = cleanSchedule.find(s => s.week === weekNum);
+
+      if (existing && existing.rainedOut === true) {
+        // Rained-out RR week — preserve as dead slot
+        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+        continue; // don't count toward rrPlayed
+      }
+
+      if (existing && existing.locked === true) {
+        // Locked RR week — preserve with scores intact
+        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+        rrPlayed++;
         continue;
       }
 
-      // New slot — determine if it should be RR, seeded regular, or playoff
-      const isPlayoff = regularWeeksPlaced >= computedRegularWeeks;
+      if (existing && existing.makeupFor) {
+        // Makeup week for an RR rainout — preserve
+        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+        rrPlayed++;
+        continue;
+      }
 
-      if (!isPlayoff && regularWeeksPlaced < rrWeeksToGenerate) {
-        // Round-robin week
+      if (rrPlayed < rrTarget) {
+        // New RR week
         const roundIdx = rrCursor % rrRounds.length;
         rrCursor++;
         await setWeekSchedule({
-          id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum, matches: rrRounds[roundIdx], side,
-          date: getWeekDate(w), isPlayoff: false,
+          id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum,
+          matches: rrRounds[roundIdx], side,
+          date: getWeekDate(weekNum - 1), isPlayoff: false,
         });
-        regularWeeksPlaced++;
-      } else if (!isPlayoff) {
-        // Seeded regular season week
-        await setWeekSchedule({
-          id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum, matches: [], side,
-          date: getWeekDate(w), isPlayoff: false, seeded: true,
-        });
-        regularWeeksPlaced++;
+        rrPlayed++;
       } else {
-        // Playoff week
-        await setWeekSchedule({
-          id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum, matches: [], side,
-          date: getWeekDate(w), isPlayoff: true, seeded: true,
-        });
+        break; // RR block complete
       }
     }
 
-    // Save only schedule-structure fields from cfg; preserve directly-saved fields like customSeedWeeks, lockedSeeds, lockSeedsEnabled
+    // Phase 2: Seeded regular season block
+    while (seededPlaced < seededTarget) {
+      weekNum++;
+      const side = cfg.alternateNines ? ((weekNum - 1) % 2 === 0 ? 'front' : 'back') : 'front';
+      const existing = cleanSchedule.find(s => s.week === weekNum);
+
+      if (existing && existing.rainedOut === true) {
+        // Rained-out seeded week — preserve, push everything forward
+        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+        continue;
+      }
+
+      if (existing && existing.locked === true) {
+        // Locked seeded week — preserve
+        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+        seededPlaced++;
+        continue;
+      }
+
+      // New seeded week
+      await setWeekSchedule({
+        id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum,
+        matches: [], side,
+        date: getWeekDate(weekNum - 1), isPlayoff: false, seeded: true,
+      });
+      seededPlaced++;
+    }
+
+    // Phase 3: Playoff block
+    while (playoffPlaced < playoffTarget) {
+      weekNum++;
+      const side = cfg.alternateNines ? ((weekNum - 1) % 2 === 0 ? 'front' : 'back') : 'front';
+      const existing = cleanSchedule.find(s => s.week === weekNum);
+
+      if (existing && existing.rainedOut === true) {
+        // Rained-out playoff week — preserve, push everything forward
+        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+        continue;
+      }
+
+      if (existing && existing.locked === true) {
+        // Locked playoff week — preserve
+        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+        playoffPlaced++;
+        continue;
+      }
+
+      // New playoff week
+      await setWeekSchedule({
+        id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum,
+        matches: [], side,
+        date: getWeekDate(weekNum - 1), isPlayoff: true, seeded: true,
+      });
+      playoffPlaced++;
+    }
+
+    // Save config (preserve directly-saved fields)
     const { customSeedWeeks, lockSeedsEnabled, customSeedPairs, ...scheduleFields } = cfg;
-    await saveLeagueConfig({ ...leagueConfig, ...scheduleFields, regularWeeks: computedRegularWeeks, roundRobinWeeks: rrWeekCount, seededWeeks: seededWeekCount, totalWeeks: finalTotalWeeks });
+    await saveLeagueConfig({ ...leagueConfig, ...scheduleFields, regularWeeks: computedRegularWeeks, roundRobinWeeks: rrWeekCount, seededWeeks: seededWeekCount, totalWeeks: weekNum });
     setGenerating(false);
     setStep("view");
   };
