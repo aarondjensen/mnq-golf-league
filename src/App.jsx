@@ -275,11 +275,14 @@ export default function GolfLeagueApp() {
     unsubs.push(db.subscribe("league_match_results", LF, (docs) => setMatchResults(docs)));
     unsubs.push(db.subscribe("league_ctp", LF, (docs) => setCtpData(docs)));
 
-    // These rarely change — one-time reads instead of persistent listeners
-    // (course, scoring rules, config). Re-read on save via their save handlers.
+    // Subscribe to league_config for real-time updates during schedule setup
+    unsubs.push(db.subscribe("league_config", LF, (docs) => {
+      if (docs.length) setLeagueConfig(docs[0]);
+    }));
+
+    // These change less frequently — one-time reads
     db.get("league_course", LF).then(docs => { if (docs.length) setCourseData(docs[0]); });
     db.get("league_scoring", LF).then(docs => { if (docs.length) setScoringRules(docs[0]); });
-    db.get("league_config", LF).then(docs => { if (docs.length) setLeagueConfig(docs[0]); });
 
     return () => unsubs.forEach(u => u && u());
   }, [authUser?.uid]);
@@ -454,6 +457,12 @@ export default function GolfLeagueApp() {
     const data = { ...c, id: `${LEAGUE_ID}_config`, league_id: LEAGUE_ID };
     await db.upsert("league_config", data);
     setLeagueConfig(data);
+  }, []);
+  
+  // Patch league config (for narrow field updates - prevents stale closure bugs)
+  const patchLeagueConfig = useCallback(async (patch) => {
+    await db.upsert("league_config", { id: `${LEAGUE_ID}_config`, league_id: LEAGUE_ID, ...patch });
+    setLeagueConfig(prev => ({ ...prev, ...patch }));
   }, []);
   const saveMember = useCallback(async (m) => await db.upsert("league_members", { ...m, league_id: LEAGUE_ID }), []);
   const deleteMember = useCallback(async (id) => await db.deleteDoc("league_members", id), []);
@@ -679,7 +688,7 @@ export default function GolfLeagueApp() {
           {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} />}
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
           {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} isComm={isComm} saveCtp={saveCtp} />}
-          {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} resetSeasonData={resetSeasonData} importHistoricalScores={importHistoricalScores} recalcHandicaps={recalcHandicaps} />}
+          {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} patchLeagueConfig={patchLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} resetSeasonData={resetSeasonData} importHistoricalScores={importHistoricalScores} recalcHandicaps={recalcHandicaps} />}
           </Suspense>
           {commMode && <div style={{ height: 44 }} />}
           </div>

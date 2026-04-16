@@ -6,7 +6,7 @@ import { K, FONTS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, Empt
 
 
 export default function AdminView(props) {
-  const { players, savePlayer, deletePlayer, teams, saveTeam, deleteTeam, schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, course, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, members, saveMember, deleteMember } = props;
+  const { players, savePlayer, deletePlayer, teams, saveTeam, deleteTeam, schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, course, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, patchLeagueConfig, members, saveMember, deleteMember } = props;
   const [sec, setSec] = useState(null);
   const sections = [
     { id: "config", label: "Basic Info", icon: "settings", desc: leagueConfig.name },
@@ -21,7 +21,7 @@ export default function AdminView(props) {
   if (sec === "players") return <AdminPlayers players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} course={course} members={members} saveMember={saveMember} onBack={() => setSec(null)} />;
   if (sec === "teams") return <AdminTeams teams={teams} saveTeam={saveTeam} players={players} onBack={() => setSec(null)} />;
   if (sec === "course") return <AdminCourse course={course} saveCourseData={saveCourseData} onBack={() => setSec(null)} />;
-  if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} onBack={() => setSec(null)} />;
+  if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} patchLeagueConfig={patchLeagueConfig} matchResults={props.matchResults} onBack={() => setSec(null)} />;
   if (sec === "scoring") return <AdminScoring scoring={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
   if (sec === "members") return <AdminMembers members={members} saveMember={saveMember} deleteMember={deleteMember} players={players} onBack={() => setSec(null)} />;
   if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} resetSeasonData={props.resetSeasonData} importHistoricalScores={props.importHistoricalScores} recalcHandicaps={props.recalcHandicaps} onBack={() => setSec(null)} />;
@@ -507,7 +507,7 @@ function AdminCourse({ course, saveCourseData, onBack }) {
 }
 
 
-function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, teams, leagueConfig, saveLeagueConfig, matchResults, onBack }) {
+function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, teams, leagueConfig, saveLeagueConfig, patchLeagueConfig, matchResults, onBack }) {
   const [step, setStep] = useState(schedule.length > 0 ? "view" : "setup");
   const [cfg, setCfg] = useState({
     dayOfWeek: leagueConfig.dayOfWeek || "Tuesday",
@@ -807,7 +807,18 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
     // Save config (preserve directly-saved fields)
     const { customSeedWeeks, lockSeedsEnabled, customSeedPairs, ...scheduleFields } = cfg;
-    await saveLeagueConfig({ ...leagueConfig, ...scheduleFields, regularWeeks: computedRegularWeeks, roundRobinWeeks: rrWeekCount, seededWeeks: seededWeekCount, totalWeeks: weekNum });
+    await saveLeagueConfig({
+      ...leagueConfig,
+      ...scheduleFields,
+      regularWeeks: computedRegularWeeks,
+      roundRobinWeeks: rrWeekCount,
+      seededWeeks: seededWeekCount,
+      totalWeeks: weekNum,
+      // Explicitly preserve — do not let cfg overwrite these critical fields
+      customSeedWeeks: leagueConfig.customSeedWeeks,
+      lockSeedsEnabled: leagueConfig.lockSeedsEnabled,
+      lockedSeeds: leagueConfig.lockedSeeds,
+    });
     setGenerating(false);
     setStep("view");
   };
@@ -999,11 +1010,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                     nextWk[dstPos.pairIdx][dstPos.slot] = srcVal;
                     return nextWk;
                   });
-                  // Write directly to Firestore with ONLY the fields we want to update
-                  const configId = `${LEAGUE_ID}_config`;
-                  await db.upsert("league_config", { id: configId, league_id: LEAGUE_ID, customSeedWeeks: next });
-                  // Update local state to reflect immediately
-                  saveLeagueConfig({ ...leagueConfig, customSeedWeeks: next });
+                  // Write directly to config with narrow patch to avoid stale closure bugs
+                  await patchLeagueConfig({ customSeedWeeks: next });
                 };
 
                 const { isValid, missing, hasDuplicates } = validateWeek(activeWeekPairs);
@@ -1097,9 +1105,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                         </div>
                         <button onClick={async () => {
                           const newVal = !lockSeedsEnabled;
-                          const configId = `${LEAGUE_ID}_config`;
-                          await db.upsert("league_config", { id: configId, league_id: LEAGUE_ID, lockSeedsEnabled: newVal });
-                          saveLeagueConfig({ ...leagueConfig, lockSeedsEnabled: newVal });
+                          await patchLeagueConfig({ lockSeedsEnabled: newVal });
                         }} style={{
                           width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
                           background: lockSeedsEnabled ? K.act : K.bdr,
@@ -1549,7 +1555,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         seeds = buildStandingsForSeed().map(s => s.teamId);
         // Auto-capture snapshot when entering seeded play with lockSeedsEnabled
         if (lockSeedsEnabled && !isPlayoff) {
-          await saveLeagueConfig({ ...leagueConfig, lockedSeeds: seeds });
+          await patchLeagueConfig({ lockedSeeds: seeds });
         }
       }
       let matches = [];
