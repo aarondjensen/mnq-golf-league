@@ -386,10 +386,45 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           </div>
           <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
             {isRainedOut ? "RAIN" : isSeeded ? (() => {
-              if (!isPlayoff) return "Seeded — TBD";
-              const pRound = schedule.filter(s => s.isPlayoff === true && s.week <= wk.week).length;
-              const roundName = (leagueConfig?.playoffRounds || [])[pRound - 1]?.name;
-              return roundName ? `${roundName} — TBD` : "Playoff — TBD";
+              if (isPlayoff) {
+                const pRound = schedule.filter(s => s.isPlayoff === true && s.week <= wk.week).length;
+                const roundName = (leagueConfig?.playoffRounds || [])[pRound - 1]?.name;
+                return roundName ? `${roundName} — TBD` : "Playoff — TBD";
+              }
+              // Show configured seed matchup opponent if available
+              const seededRegWeeks = schedule.filter(s => s.seeded === true && !s.isPlayoff).sort((a, b) => a.week - b.week);
+              const seededIdx = seededRegWeeks.findIndex(s => s.week === wk.week);
+              const customWeeks = leagueConfig?.customSeedWeeks;
+              const weekPairs = customWeeks && customWeeks[seededIdx];
+              if (weekPairs && myTeam) {
+                const seedOrder = leagueConfig?.lockedSeeds || (() => {
+                  const pts = {};
+                  teams.forEach(t => { pts[t.id] = 0; });
+                  matchResults.forEach(r => {
+                    if (pts[r.team1Id] !== undefined) pts[r.team1Id] += (r.team1Points || 0);
+                    if (pts[r.team2Id] !== undefined) pts[r.team2Id] += (r.team2Points || 0);
+                  });
+                  return Object.entries(pts).sort((a, b) => b[1] - a[1]).map(e => e[0]);
+                })();
+                const mySeed = seedOrder.indexOf(myTeam.id) + 1;
+                if (mySeed > 0) {
+                  const myPair = weekPairs.find(p => p.s1 === mySeed || p.s2 === mySeed);
+                  if (myPair) {
+                    const oppSeed = myPair.s1 === mySeed ? myPair.s2 : myPair.s1;
+                    const oppTeamId = seedOrder[oppSeed - 1];
+                    const oppTeam = teams.find(t => t.id === oppTeamId);
+                    if (oppTeam) return (
+                      <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <span style={{ fontSize: 9, fontWeight: 800, color: K.logoBright, background: K.logoBright + "18", border: `1px solid ${K.logoBright}25`, borderRadius: 3, padding: "0 3px", lineHeight: "16px" }}>#{mySeed}</span>
+                        <span style={{ color: K.t3 }}>vs</span>
+                        <span style={{ fontSize: 9, fontWeight: 800, color: K.logoBright, background: K.logoBright + "18", border: `1px solid ${K.logoBright}25`, borderRadius: 3, padding: "0 3px", lineHeight: "16px" }}>#{oppSeed}</span>
+                        <span>{lastNamesOnly(oppTeam.name)}</span>
+                      </span>
+                    );
+                  }
+                }
+              }
+              return "Seeded — TBD";
             })() : oppName}
           </div>
           {isComplete && res && (
