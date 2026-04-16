@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { LEAGUE_ID } from "../firebase";
+import { LEAGUE_ID, db } from "../firebase";
 import { K, FONTS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap,
   formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, lastNamesOnly } from "../theme";
@@ -973,12 +973,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                   return { isValid: used.size === pairCount * 2 && missing.length === 0, missing, hasDuplicates: used.size !== pairCount * 2 };
                 };
 
-                // Swap two seed positions in the active week
-                const swapSeeds = (srcPos, dstPos) => {
-                  // srcPos = {pairIdx, slot: "s1"|"s2"}, dstPos same
+                // Swap two seed positions — save immediately to both local + Firestore
+                const swapSeeds = async (srcPos, dstPos) => {
                   if (srcPos.pairIdx === dstPos.pairIdx && srcPos.slot === dstPos.slot) return;
                   const next = currentWeeks.map((wk, wi) => {
-                    if (wi !== activeIdx) return wk;
+                    if (wi !== activeIdx) return [...wk];
                     const nextWk = wk.map(p => ({ ...p }));
                     const srcVal = nextWk[srcPos.pairIdx][srcPos.slot];
                     const dstVal = nextWk[dstPos.pairIdx][dstPos.slot];
@@ -986,6 +985,10 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                     nextWk[dstPos.pairIdx][dstPos.slot] = srcVal;
                     return nextWk;
                   });
+                  // Write directly to Firestore with ONLY the fields we want to update
+                  const configId = `${LEAGUE_ID}_config`;
+                  await db.upsert("league_config", { id: configId, league_id: LEAGUE_ID, customSeedWeeks: next });
+                  // Update local state to reflect immediately
                   saveLeagueConfig({ ...leagueConfig, customSeedWeeks: next });
                 };
 
@@ -1078,8 +1081,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                               : "Seeds update each week based on current standings"}
                           </div>
                         </div>
-                        <button onClick={() => {
-                          saveLeagueConfig({ ...leagueConfig, lockSeedsEnabled: !lockSeedsEnabled });
+                        <button onClick={async () => {
+                          const newVal = !lockSeedsEnabled;
+                          const configId = `${LEAGUE_ID}_config`;
+                          await db.upsert("league_config", { id: configId, league_id: LEAGUE_ID, lockSeedsEnabled: newVal });
+                          saveLeagueConfig({ ...leagueConfig, lockSeedsEnabled: newVal });
                         }} style={{
                           width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
                           background: lockSeedsEnabled ? K.act : K.bdr,
