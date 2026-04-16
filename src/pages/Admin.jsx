@@ -523,6 +523,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     playoffRounds: leagueConfig.playoffRounds || [],
   });
   const [editWeek, setEditWeek] = useState(null);
+  const [selectedSeededWeek, setSelectedSeededWeek] = useState(0);
   const [localWk, setLocalWk] = useState(null); // local edits for the week being edited
   const [weekDirty, setWeekDirty] = useState(false);
   const [dragIdx, setDragIdx] = useState(null);
@@ -792,7 +793,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                   setCfg({ ...cfg, playoffWeeks: pw, playoffRounds: rounds });
                 }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
               </div>
-              {/* Per-seeded-week custom matchup builder */}
+              {/* Consolidated seeded matchup builder — single card with week toggle */}
               {teams.length >= 2 && (() => {
                 const seededRegWeeks = seededWeekCount;
                 if (seededRegWeeks === 0) return null;
@@ -804,11 +805,14 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                   ? cfg.customSeedWeeks
                   : Array.from({ length: seededRegWeeks }, () => defaultWeek());
 
-                const updatePair = (weekIdx, pairIdx, field, val) => {
+                const activeIdx = Math.min(selectedSeededWeek, seededRegWeeks - 1);
+                const activeWeekPairs = currentWeeks[activeIdx] || defaultWeek();
+
+                const updatePair = (pairIdx, field, val) => {
                   const parsed = parseInt(val);
                   if (isNaN(parsed) || parsed < 1 || parsed > teams.length) return;
                   const next = currentWeeks.map((wk, wi) =>
-                    wi === weekIdx ? wk.map((p, pi) => pi === pairIdx ? { ...p, [field]: parsed } : p) : wk
+                    wi === activeIdx ? wk.map((p, pi) => pi === pairIdx ? { ...p, [field]: parsed } : p) : wk
                   );
                   setCfg({ ...cfg, customSeedWeeks: next });
                 };
@@ -821,38 +825,63 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                   return { isValid: used.size === pairCount * 2 && missing.length === 0, missing, hasDuplicates: used.size !== pairCount * 2 };
                 };
 
+                const { isValid, missing, hasDuplicates } = validateWeek(activeWeekPairs);
+                const lockedSeeds = leagueConfig?.lockedSeeds;
+                const areLocked = lockedSeeds && lockedSeeds.length === teams.length;
+
                 return (
                   <div style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 11, color: K.t3, marginBottom: 6 }}>Seeded Regular Season Matchups</div>
-                    <div style={{ fontSize: 10, color: K.t3, marginBottom: 8, lineHeight: 1.4 }}>Configure which seeds play each other for each of the {seededRegWeeks} seeded regular season week{seededRegWeeks !== 1 ? "s" : ""}.</div>
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                      {currentWeeks.map((wkPairs, weekIdx) => {
-                        const { isValid, missing, hasDuplicates } = validateWeek(wkPairs);
-                        return (
-                          <div key={weekIdx} style={{ padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${isValid ? K.bdr : K.red + "60"}` }}>
-                            <div style={{ fontSize: 10, color: K.t2, marginBottom: 8, textTransform: "uppercase", letterSpacing: .5, fontWeight: 700 }}>Seeded Week {weekIdx + 1}</div>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                              {wkPairs.map((p, pairIdx) => (
-                                <div key={pairIdx} style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                  <span style={{ fontSize: 10, color: K.t3, width: 20 }}>{pairIdx + 1}.</span>
-                                  <input type="number" min="1" max={teams.length} value={p.s1} onChange={e => updatePair(weekIdx, pairIdx, "s1", e.target.value)} style={{ width: 50, padding: "6px 8px", borderRadius: 6, border: `1px solid ${K.bdr}`, background: K.card, color: K.t1, fontSize: 13, fontWeight: 700, textAlign: "center" }} />
-                                  <span style={{ fontSize: 10, color: K.t3, fontWeight: 700 }}>VS</span>
-                                  <input type="number" min="1" max={teams.length} value={p.s2} onChange={e => updatePair(weekIdx, pairIdx, "s2", e.target.value)} style={{ width: 50, padding: "6px 8px", borderRadius: 6, border: `1px solid ${K.bdr}`, background: K.card, color: K.t1, fontSize: 13, fontWeight: 700, textAlign: "center" }} />
-                                </div>
-                              ))}
-                            </div>
-                            {!isValid && (
-                              <div style={{ fontSize: 10, color: K.red, marginTop: 8, lineHeight: 1.4 }}>
-                                {hasDuplicates && "Each seed must be used once. "}
-                                {missing.length > 0 && `Missing: ${missing.map(s => `#${s}`).join(", ")}`}
-                              </div>
-                            )}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <div style={{ fontSize: 11, color: K.t3 }}>Seeded Regular Season Matchups</div>
+                      {areLocked && (
+                        <div style={{ fontSize: 9, fontWeight: 800, color: K.act, background: K.act + "18", border: `1px solid ${K.act}50`, padding: "2px 7px", borderRadius: 10, letterSpacing: .5 }}>
+                          🔒 SEEDS LOCKED
+                        </div>
+                      )}
+                    </div>
+
+                    <div style={{ padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${isValid ? K.bdr : K.red + "60"}` }}>
+                      {/* Week toggle pills */}
+                      <div style={{ display: "flex", gap: 4, marginBottom: 10, flexWrap: "wrap" }}>
+                        {currentWeeks.map((_, wi) => {
+                          const wv = validateWeek(currentWeeks[wi]);
+                          const isActive = wi === activeIdx;
+                          return (
+                            <button key={wi} onClick={() => setSelectedSeededWeek(wi)} style={{
+                              flex: "1 1 auto", minWidth: 60, padding: "6px 8px", borderRadius: 6, cursor: "pointer",
+                              background: isActive ? K.act + "18" : K.card,
+                              border: `1px solid ${isActive ? K.act + "60" : wv.isValid ? K.bdr : K.red + "50"}`,
+                              color: isActive ? K.act : K.t2, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: .5,
+                            }}>
+                              Week {wi + 1}
+                              {!wv.isValid && <span style={{ color: K.red, marginLeft: 3 }}>!</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Matchups for the selected week */}
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        {activeWeekPairs.map((p, pairIdx) => (
+                          <div key={pairIdx} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontSize: 10, color: K.t3, width: 20 }}>{pairIdx + 1}.</span>
+                            <input type="number" min="1" max={teams.length} value={p.s1} onChange={e => updatePair(pairIdx, "s1", e.target.value)} style={{ width: 50, padding: "6px 8px", borderRadius: 6, border: `1px solid ${K.bdr}`, background: K.card, color: K.t1, fontSize: 13, fontWeight: 700, textAlign: "center" }} />
+                            <span style={{ fontSize: 10, color: K.t3, fontWeight: 700 }}>VS</span>
+                            <input type="number" min="1" max={teams.length} value={p.s2} onChange={e => updatePair(pairIdx, "s2", e.target.value)} style={{ width: 50, padding: "6px 8px", borderRadius: 6, border: `1px solid ${K.bdr}`, background: K.card, color: K.t1, fontSize: 13, fontWeight: 700, textAlign: "center" }} />
                           </div>
-                        );
-                      })}
+                        ))}
+                      </div>
+
+                      {!isValid && (
+                        <div style={{ fontSize: 10, color: K.red, marginTop: 8, lineHeight: 1.4 }}>
+                          {hasDuplicates && "Each seed must be used once. "}
+                          {missing.length > 0 && `Missing: ${missing.map(s => `#${s}`).join(", ")}`}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
+              })()}
               })()}
               {/* Season breakdown */}
               {teams.length >= 2 && (
