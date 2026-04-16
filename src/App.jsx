@@ -3,8 +3,6 @@ import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWi
 import { K, I, DEFAULT_SCORING, SEASON_WEEKS, applyTheme, getCSS, lastNamesOnly } from "./theme";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
 
-// Fix #2: Lazy-load page components — Vite will code-split each into its own chunk.
-// Only the active tab's code is downloaded and parsed on navigation.
 const StandingsView = lazy(() => import("./pages/Standings"));
 const LiveScoringView = lazy(() => import("./pages/Scoring"));
 const ScheduleView = lazy(() => import("./pages/Schedule"));
@@ -12,7 +10,6 @@ const PlayersView = lazy(() => import("./pages/Players"));
 const StatsView = lazy(() => import("./pages/Stats"));
 const CTPView = lazy(() => import("./pages/CTP"));
 const AdminView = lazy(() => import("./pages/Admin"));
-
 
 export default function GolfLeagueApp() {
   const [authUser, setAuthUser] = useState(undefined);
@@ -44,14 +41,12 @@ export default function GolfLeagueApp() {
     window.location.hash = newTab;
   };
 
-  // Listen for browser back/forward
   useEffect(() => {
     const onHashChange = () => setTabState(getTabFromHash());
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
 
-  // Theme management
   const [theme, setTheme] = useState(() => {
     if (typeof localStorage !== "undefined") {
       const stored = localStorage.getItem("theme");
@@ -67,11 +62,9 @@ export default function GolfLeagueApp() {
     }
   }, [theme]);
 
-  // Menu and popup state
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
-  // Auth listener
   useEffect(() => {
     const unsub = onAuthStateChanged(auth => {
       setAuthUser(auth);
@@ -80,7 +73,6 @@ export default function GolfLeagueApp() {
     return () => unsub?.();
   }, []);
 
-  // Data subscriptions
   useEffect(() => {
     if (!authUser?.uid) return;
 
@@ -102,19 +94,16 @@ export default function GolfLeagueApp() {
     unsubs.push(db.subscribe("league_match_results", LF, (docs) => setMatchResults(docs)));
     unsubs.push(db.subscribe("league_ctp", LF, (docs) => setCtpData(docs)));
 
-    // Subscribe to league_config for real-time updates during schedule setup
     unsubs.push(db.subscribe("league_config", LF, (docs) => {
       if (docs.length) setLeagueConfig(docs[0]);
     }));
 
-    // These change less frequently — one-time reads
     db.get("league_course", LF).then(docs => { if (docs.length) setCourseData(docs[0]); });
     db.get("league_scoring", LF).then(docs => { if (docs.length) setScoringRules(docs[0]); });
 
     return () => unsubs.forEach(u => u && u());
   }, [authUser?.uid]);
 
-  // Subscribe to hole scores for a specific week (real-time for live scoring)
   useEffect(() => {
     if (liveWeek === null || !authUser) return;
     const weekFilters = [...LF, { field: "season", op: "==", value: 2026 }, { field: "week", op: "==", value: liveWeek }];
@@ -135,7 +124,6 @@ export default function GolfLeagueApp() {
     return () => unsub();
   }, [liveWeek, authUser?.uid]);
 
-  // Auth actions
   const doGoogleSignIn = async () => { try { await signInWithPopup(_auth, _googleProvider); } catch (e) { console.error(e); throw e; } };
   const doEmailSignIn = async (email, pw) => {
     try { await signInWithEmailAndPassword(_auth, email, pw); }
@@ -148,7 +136,6 @@ export default function GolfLeagueApp() {
 
   const CURRENT_SEASON = 2026;
 
-  // League member computation
   const leagueMembers = useMemo(() => {
     if (!authUser?.uid || !members?.length || !players?.length) return [];
     return members.map(member => ({
@@ -159,7 +146,6 @@ export default function GolfLeagueApp() {
 
   const isComm = leagueUser?.isCommissioner === true;
 
-  // Find user's league membership
   useEffect(() => {
     if (!authUser?.uid || !leagueMembers.length) return;
     const member = leagueMembers.find(m => m.userId === authUser.uid);
@@ -170,7 +156,6 @@ export default function GolfLeagueApp() {
     }
   }, [authUser?.uid, leagueMembers]);
 
-  // Sync mutations
   const savePlayer = useCallback(async (p) => {
     const data = { ...p, league_id: LEAGUE_ID };
     await db.upsert("league_players", data);
@@ -227,7 +212,6 @@ export default function GolfLeagueApp() {
     setLeagueConfig(data);
   }, []);
 
-  // Patch league config (for narrow field updates - prevents stale closure bugs)
   const patchLeagueConfig = useCallback(async (patch) => {
     await db.upsert("league_config", { id: `${LEAGUE_ID}_config`, league_id: LEAGUE_ID, ...patch });
     setLeagueConfig(prev => ({ ...prev, ...patch }));
@@ -345,11 +329,9 @@ export default function GolfLeagueApp() {
     }
   }, [courseData, activePlayers, savePlayer, fetchSeasonScores]);
 
-  // UI State
   const [commMode, setCommMode] = useState(false);
   const [impersonating, setImpersonating] = useState(null);
 
-  // Clear impersonation when commish mode is turned off
   useEffect(() => { if (!commMode) setImpersonating(null); }, [commMode]);
 
   const effectiveUser = impersonating || leagueUser;
@@ -373,7 +355,6 @@ export default function GolfLeagueApp() {
   return (
     <div style={getCSS()}>
       <div className="app">
-        {/* Header */}
         <div className="header">
           <div className="nav-bar">
             <div className="nav-left">
@@ -436,7 +417,6 @@ export default function GolfLeagueApp() {
             </div>
           </div>
 
-          {/* Tab Bar */}
           <div className="tab-bar">
             {tabData.map(t => (
               <button
@@ -455,7 +435,6 @@ export default function GolfLeagueApp() {
           </div>
         </div>
 
-        {/* Main Content */}
         <div className="content" style={{ padding: "16px", paddingBottom: commMode ? 60 : 16 }}>
           <Suspense fallback={<div style={{ textAlign: "center", padding: "20px", color: K.t3 }}>Loading...</div>}>
             {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} />}
@@ -467,10 +446,8 @@ export default function GolfLeagueApp() {
             {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} patchLeagueConfig={patchLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} resetSeasonData={resetSeasonData} importHistoricalScores={importHistoricalScores} recalcHandicaps={recalcHandicaps} />}
           </Suspense>
           {commMode && <div style={{ height: 44 }} />}
-          </div>
         </div>
 
-        {/* Commissioner mode indicator */}
         {commMode && (
           <div style={{
             position: "fixed", bottom: 0, left: 0, right: 0, height: 44,
@@ -481,7 +458,6 @@ export default function GolfLeagueApp() {
           </div>
         )}
 
-        {/* Click outside handler */}
         {menuOpen && <div style={{ position: "fixed", inset: 0, zIndex: 900 }} onClick={() => setMenuOpen(false)} />}
       </div>
     </div>
