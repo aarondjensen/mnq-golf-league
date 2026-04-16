@@ -516,6 +516,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     regularWeeks: leagueConfig.regularWeeks || 14,
     playoffWeeks: leagueConfig.playoffWeeks || 2,
     seededFormat: leagueConfig.seededFormat || "topBottom",
+    customSeedPairs: leagueConfig.customSeedPairs || null,
     startDate: leagueConfig.startDate || "",
     alternateNines: leagueConfig.alternateNines !== false,
     playoffRounds: leagueConfig.playoffRounds || [],
@@ -764,6 +765,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                     { id: "topBottom", label: "Top vs Bottom", desc: `#1 vs #${teams.length}, #2 vs #${teams.length - 1}, etc.` },
                     { id: "topHalfBottom", label: "Top Half vs Bottom Half", desc: `#1 vs #${Math.ceil(teams.length / 2) + 1}, #2 vs #${Math.ceil(teams.length / 2) + 2}, etc.` },
                     { id: "adjacent", label: "Adjacent Seeds", desc: "#1 vs #2, #3 vs #4, etc." },
+                    { id: "custom", label: "Custom Matchups", desc: "Manually configure seed pairings" },
                   ].map(opt => (
                     <button key={opt.id} onClick={() => setCfg({ ...cfg, seededFormat: opt.id })} style={{
                       display: "flex", flexDirection: "column", gap: 2, padding: "8px 10px", borderRadius: 8, cursor: "pointer", textAlign: "left",
@@ -775,6 +777,51 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                     </button>
                   ))}
                 </div>
+
+                {/* Custom matchup builder */}
+                {cfg.seededFormat === "custom" && teams.length >= 2 && (() => {
+                  const pairCount = Math.floor(teams.length / 2);
+                  const customPairs = cfg.customSeedPairs && cfg.customSeedPairs.length === pairCount
+                    ? cfg.customSeedPairs
+                    : Array.from({ length: pairCount }, (_, i) => ({ s1: i + 1, s2: teams.length - i }));
+
+                  const updatePair = (idx, field, val) => {
+                    const parsed = parseInt(val);
+                    if (isNaN(parsed) || parsed < 1 || parsed > teams.length) return;
+                    const next = customPairs.map((p, i) => i === idx ? { ...p, [field]: parsed } : p);
+                    setCfg({ ...cfg, customSeedPairs: next });
+                  };
+
+                  // Check for duplicate or missing seeds
+                  const usedSeeds = new Set();
+                  customPairs.forEach(p => { usedSeeds.add(p.s1); usedSeeds.add(p.s2); });
+                  const missingSeeds = [];
+                  for (let i = 1; i <= teams.length; i++) if (!usedSeeds.has(i)) missingSeeds.push(i);
+                  const hasDuplicates = usedSeeds.size !== pairCount * 2;
+                  const isValid = !hasDuplicates && missingSeeds.length === 0;
+
+                  return (
+                    <div style={{ marginTop: 10, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}` }}>
+                      <div style={{ fontSize: 10, color: K.t3, marginBottom: 8, textTransform: "uppercase", letterSpacing: .5 }}>Custom Seed Pairings</div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                        {customPairs.map((p, idx) => (
+                          <div key={idx} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <span style={{ fontSize: 10, color: K.t3, width: 20 }}>#{idx + 1}</span>
+                            <input type="number" min="1" max={teams.length} value={p.s1} onChange={e => updatePair(idx, "s1", e.target.value)} style={{ width: 50, padding: "6px 8px", borderRadius: 6, border: `1px solid ${K.bdr}`, background: K.card, color: K.t1, fontSize: 13, fontWeight: 700, textAlign: "center" }} />
+                            <span style={{ fontSize: 10, color: K.t3, fontWeight: 700 }}>VS</span>
+                            <input type="number" min="1" max={teams.length} value={p.s2} onChange={e => updatePair(idx, "s2", e.target.value)} style={{ width: 50, padding: "6px 8px", borderRadius: 6, border: `1px solid ${K.bdr}`, background: K.card, color: K.t1, fontSize: 13, fontWeight: 700, textAlign: "center" }} />
+                          </div>
+                        ))}
+                      </div>
+                      {!isValid && (
+                        <div style={{ fontSize: 10, color: K.red, marginTop: 8, lineHeight: 1.4 }}>
+                          {hasDuplicates && "Each seed must be used exactly once. "}
+                          {missingSeeds.length > 0 && `Missing: ${missingSeeds.map(s => `#${s}`).join(", ")}`}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
               {/* Season breakdown */}
               {teams.length >= 2 && (() => {
@@ -1064,7 +1111,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                     </div>
                     <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
                       {isRainedOut ? "RAIN OUT" : isSeeded ? (isPlayoffWk ? "PLAYOFF — TBD" : "SEEDED — TBD") : wk.matches?.length ? (() => {
-                        const isSeededFilled = wk.seeded === true || wk.makeupFor;
+                        const isSeededFilled = wk.seeded === true;
                         if (isSeededFilled) {
                           return wk.matches.map(m => `#${seedMap[m.team1] || "?"}v#${seedMap[m.team2] || "?"}`).join("  ");
                         }
@@ -1225,7 +1272,13 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         const format = leagueConfig.seededFormat || "topBottom";
         const n = seeds.length;
         const half = Math.ceil(n / 2);
-        if (format === "topHalfBottom") {
+        if (format === "custom" && leagueConfig.customSeedPairs?.length) {
+          for (const pair of leagueConfig.customSeedPairs) {
+            const t1 = seeds[pair.s1 - 1];
+            const t2 = seeds[pair.s2 - 1];
+            if (t1 && t2) matches.push({ team1: t1, team2: t2 });
+          }
+        } else if (format === "topHalfBottom") {
           for (let i = 0; i < Math.floor(n / 2); i++) {
             matches.push({ team1: seeds[i], team2: seeds[half + i] });
           }
@@ -1451,7 +1504,13 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
             const format = leagueConfig.seededFormat || "topBottom";
             const n = teams.length;
             const half = Math.ceil(n / 2);
-            if (format === "topHalfBottom") {
+            if (format === "custom" && leagueConfig.customSeedPairs?.length) {
+              leagueConfig.customSeedPairs.forEach(pair => {
+                const s1 = pair.s1, s2 = pair.s2;
+                const t1 = getTeamBySeed(s1), t2 = getTeamBySeed(s2);
+                previewPairings.push({ label1: `#${s1}`, label2: `#${s2}`, name1: t1 ? lastNamesOnly(t1.name) : `Seed #${s1}`, name2: t2 ? lastNamesOnly(t2.name) : `Seed #${s2}`, seed1: s1, seed2: s2 });
+              });
+            } else if (format === "topHalfBottom") {
               for (let i = 0; i < Math.floor(n / 2); i++) {
                 const s1 = i + 1, s2 = half + i + 1;
                 const t1 = getTeamBySeed(s1), t2 = getTeamBySeed(s2);
@@ -2041,3 +2100,5 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
     </div>
   );
 }
+
+
