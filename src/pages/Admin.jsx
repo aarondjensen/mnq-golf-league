@@ -513,6 +513,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     dayOfWeek: leagueConfig.dayOfWeek || "Tuesday",
     startTime: leagueConfig.startTime || "4:28 PM",
     teeInterval: leagueConfig.teeInterval || 8,
+    totalWeeks: leagueConfig.totalWeeks || null,
     regularWeeks: leagueConfig.regularWeeks || 14,
     roundRobinWeeks: leagueConfig.roundRobinWeeks || null,
     seededWeeks: leagueConfig.seededWeeks || null,
@@ -560,7 +561,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     setEditWeek(null);
   };
 
-  // Derived week counts — if cfg values are explicitly set, use those; otherwise default
+  // Derived week counts — all configurable by admin
   const defaultRRWeeks = Math.max(0, teams.length - 1);
   const rrWeekCount = (cfg.roundRobinWeeks !== null && cfg.roundRobinWeeks !== undefined)
     ? cfg.roundRobinWeeks
@@ -569,7 +570,10 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     ? cfg.seededWeeks
     : Math.max(0, cfg.regularWeeks - rrWeekCount);
   const computedRegularWeeks = rrWeekCount + seededWeekCount;
-  const totalWeeks = computedRegularWeeks + cfg.playoffWeeks;
+  const subTotal = rrWeekCount + seededWeekCount + cfg.playoffWeeks;
+  const totalWeeks = (cfg.totalWeeks !== null && cfg.totalWeeks !== undefined)
+    ? cfg.totalWeeks
+    : subTotal;
 
   // Round-robin generator: each team plays every other team once
   const generateRoundRobin = (teamIds) => {
@@ -897,15 +901,20 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           <div>
             <SubLabel>Season Format</SubLabel>
             <Card style={{ padding: 14 }}>
-              {/* Total season weeks at top */}
+              {/* Total season weeks — editable input */}
               <div style={{ marginBottom: 12, padding: "10px 12px", background: K.act + "10", borderRadius: 8, border: `1px solid ${K.act}30` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: K.t1 }}>Total Season</span>
-                  <span style={{ fontSize: 18, fontWeight: 800, color: K.act }}>{totalWeeks} <span style={{ fontSize: 11, fontWeight: 600 }}>weeks</span></span>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: K.t1 }}>Total Season Weeks</span>
+                  <input type="number" min="1" value={totalWeeks} onChange={e => {
+                    const v = parseInt(e.target.value);
+                    setCfg({ ...cfg, totalWeeks: isNaN(v) ? 1 : Math.max(1, v) });
+                  }} style={{ width: 60, padding: "6px 8px", borderRadius: 6, border: `1px solid ${K.act}40`, background: K.card, color: K.act, fontSize: 16, fontWeight: 800, textAlign: "center" }} />
                 </div>
-                {(rrWeekCount + seededWeekCount + cfg.playoffWeeks) !== totalWeeks && (
-                  <div style={{ fontSize: 10, color: K.red, marginTop: 4 }}>
-                    Sub-categories add up to {rrWeekCount + seededWeekCount + cfg.playoffWeeks} — adjust below
+                {subTotal !== totalWeeks && (
+                  <div style={{ fontSize: 10, color: subTotal > totalWeeks ? K.red : K.warn, marginTop: 6 }}>
+                    {subTotal > totalWeeks
+                      ? `Sub-categories total ${subTotal} — exceeds total by ${subTotal - totalWeeks}`
+                      : `Sub-categories total ${subTotal} — ${totalWeeks - subTotal} week(s) unallocated`}
                   </div>
                 )}
               </div>
@@ -1112,7 +1121,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 Run individual net stroke play during playoffs
               </label>
               <div style={{ fontSize: 11, color: K.t3, lineHeight: 1.5 }}>
-                All 20 players compete individually across {cfg.playoffWeeks} playoff rounds. Lowest cumulative net score wins.
+                All players compete individually across {cfg.playoffWeeks} playoff rounds. Lowest cumulative net score wins.
               </div>
             </Card>
           </div>
@@ -1471,8 +1480,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     const isRainedOut = wk.rainedOut === true;
     const isSeeded = wk.seeded === true && (!wk.matches || wk.matches.length === 0);
     const isPlayoff = wk.isPlayoff === true;
-    const regWeeks = leagueConfig.regularWeeks || 14;
-    const playoffWeeks = leagueConfig.playoffWeeks || 2;
+    const regWeeks = computedRegularWeeks; // use the live computed value
+    const playoffWeeks = cfg.playoffWeeks;
     // Determine playoff round by counting playoff weeks up to and including this one
     const playoffRound = isPlayoff ? schedule.filter(s => s.isPlayoff === true && s.week <= wk.week).length : 0;
 
@@ -1537,14 +1546,15 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         let prevWinners = [];
         let prevLosers = [];
         if (playoffRound > 1) {
-          const prevPlayoffWeek = schedule.find(s => s.week === regWeeks + playoffRound - 1);
+          const playoffWeeksList = schedule.filter(s => s.isPlayoff === true).sort((a, b) => a.week - b.week);
+          const prevPlayoffWeek = playoffWeeksList[playoffRound - 2]; // 0-indexed: round 2 → index 0
           if (!prevPlayoffWeek || !prevPlayoffWeek.matches || prevPlayoffWeek.matches.length === 0) {
-            alert(`Previous playoff round (Week ${regWeeks + playoffRound - 1}) has no matches yet. Seed that week first.`);
+            alert(`Previous playoff round (Week ${prevPlayoffWeek?.week || "?"}) has no matches yet. Seed that week first.`);
             return;
           }
           const prevResults = (matchResults || []).filter(r => r.week === prevPlayoffWeek.week);
           if (prevResults.length < prevPlayoffWeek.matches.length) {
-            alert(`Previous playoff round (Week ${regWeeks + playoffRound - 1}) must be finalized first.`);
+            alert(`Previous playoff round (Week ${prevPlayoffWeek.week}) must be finalized first.`);
             return;
           }
           // Get winners and losers in match order
