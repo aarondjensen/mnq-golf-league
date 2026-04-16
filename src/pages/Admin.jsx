@@ -655,20 +655,22 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         await saveWeekSchedule({ ...wk, makeupFor: null });
       }
     }
-    const cleanSchedule = schedule.map(wk =>
-      (wk.locked && wk.seeded && wk.makeupFor) ? { ...wk, makeupFor: null } : wk
-    );
 
-    // Delete ALL existing schedule docs
+    // Delete ALL existing schedule docs first
     for (const existing of schedule) {
       if (existing.id) await deleteWeekSchedule(existing.id);
     }
 
-    // Delete any zombie docs beyond the schedule
+    // Delete any zombie docs beyond the schedule (more aggressively)
     const maxExisting = Math.max(0, ...schedule.map(s => s.week));
-    for (let w = maxExisting + 1; w <= maxExisting + 5; w++) {
+    for (let w = 1; w <= Math.max(maxExisting + 10, 25); w++) {
       await deleteWeekSchedule(`${LEAGUE_ID}_w${w}`);
     }
+
+    // Build list of weeks that should be preserved (only locked or specific rainouts)
+    const preserveWeeks = schedule.filter(s =>
+      s.locked === true || (s.rainedOut === true)
+    ).map(wk => (wk.locked && wk.seeded && wk.makeupFor) ? { ...wk, makeupFor: null } : wk);
 
     // ── Build the new schedule in strict sequential phases ──
     const teamIds = teams.map(t => t.id);
@@ -680,12 +682,18 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     // PHASE 1: ROUND-ROBIN BLOCK (must be completely finished before seeded begins)
     // Place all RR weeks sequentially, including makeups for RR rainouts
     let rrPlaced = 0;
-    const rrTarget = rrWeekCount;
+    
+    // Calculate how many RR rounds we actually need to place
+    // This is the configured RR count PLUS any existing RR rainouts (which need makeups)
+    const existingRRRainouts = preserveWeeks.filter(s => 
+      s.rainedOut === true && !s.seeded && !s.isPlayoff
+    ).length;
+    const rrTarget = rrWeekCount + existingRRRainouts;
 
     while (rrPlaced < rrTarget) {
       weekNum++;
       const side = cfg.alternateNines ? ((weekNum - 1) % 2 === 0 ? 'front' : 'back') : 'front';
-      const existing = cleanSchedule.find(s => s.week === weekNum);
+      const existing = preserveWeeks.find(s => s.week === weekNum);
 
       // Handle existing weeks that should be preserved
       if (existing && existing.rainedOut === true && !existing.seeded && !existing.isPlayoff) {
@@ -708,17 +716,31 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         continue;
       }
 
-      // ERROR CHECK: We should NEVER encounter seeded/playoff weeks during RR phase
-      if (existing && (existing.seeded || existing.isPlayoff)) {
-        // This indicates the schedule is corrupted - seeded/playoff weeks are in the RR block
-        // Skip this week and let the admin know there's an issue
-        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
-        continue; // Don't count toward rrPlaced - this week doesn't belong in RR phase
+      // If we encounter existing seeded/playoff weeks during RR phase,
+      // it means there's old corrupted schedule data. Skip these entirely -
+      // they'll be recreated in the correct phase later.
+      if (existing && (existing.seeded || existing.isPlayoff) && !existing.locked) {
+        // Skip corrupted seeded/playoff weeks (unless locked)
+        continue;
       }
 
-      // Empty slot — place new RR week
+      // If it's a locked seeded/playoff week, preserve but continue looking for RR slots
+      if (existing && (existing.seeded || existing.isPlayoff) && existing.locked) {
+        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+        continue;
+      }
+
+      // Empty slot or non-conflicting week — place new RR week
       const roundIdx = rrCursor % rrRounds.length;
       rrCursor++;
+      await setWeekSchedule({
+        id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum,
+        matches: rrRounds[roundIdx], side,
+        date: getWeekDate(weekNum - 1), isPlayoff: false, seeded: false,
+      });
+      rrPlaced++;
+    }
+
       await setWeekSchedule({
         id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum,
         matches: rrRounds[roundIdx], side,
@@ -734,7 +756,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     while (seededPlaced < seededTarget) {
       weekNum++;
       const side = cfg.alternateNines ? ((weekNum - 1) % 2 === 0 ? 'front' : 'back') : 'front';
-      const existing = cleanSchedule.find(s => s.week === weekNum);
+      const existing = preserveWeeks.find(s => s.week === weekNum);
 
       if (existing && existing.rainedOut === true && existing.seeded && !existing.isPlayoff) {
         // Rained-out seeded week — preserve as dead slot
@@ -756,10 +778,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         continue;
       }
 
-      // ERROR CHECK: We shouldn't encounter RR or playoff weeks during seeded phase
+      // Skip any other existing weeks (RR or playoff) - they don't belong in seeded phase
       if (existing && (!existing.seeded || existing.isPlayoff)) {
-        // This indicates schedule corruption - preserve but don't count
-        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
         continue;
       }
 
@@ -779,7 +799,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     while (playoffPlaced < playoffTarget) {
       weekNum++;
       const side = cfg.alternateNines ? ((weekNum - 1) % 2 === 0 ? 'front' : 'back') : 'front';
-      const existing = cleanSchedule.find(s => s.week === weekNum);
+      const existing = preserveWeeks.find(s => s.week === weekNum);
 
       if (existing && existing.rainedOut === true && existing.isPlayoff) {
         // Rained-out playoff week — preserve as dead slot
@@ -801,10 +821,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         continue;
       }
 
-      // ERROR CHECK: We shouldn't encounter RR or seeded weeks during playoff phase
+      // Skip any other existing weeks (RR or seeded) - they don't belong in playoff phase
       if (existing && !existing.isPlayoff) {
-        // This indicates schedule corruption - preserve but don't count
-        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
         continue;
       }
 
