@@ -1248,7 +1248,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         : "seeded matchups";
       if (!window.confirm(`Seed Week ${wk.week} (${roundName})?\n\n${matches.map(m => `${gn(m.team1)} vs ${gn(m.team2)}`).join('\n')}`)) return;
 
-      await saveWeekSchedule({ ...wk, matches, seeded: false });
+      await saveWeekSchedule({ ...wk, matches });
     };
 
     const handleRainOut = async () => {
@@ -1342,7 +1342,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           side: nextSide,
           date: nextDate,
           isPlayoff: wk.isPlayoff || false,
-          seeded: false,
+          seeded: wk.seeded || false,
         });
       }
 
@@ -1521,7 +1521,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
             </button>
           </div>
           {/* Re-seed button for seeded-type weeks (non-RR, non-makeup, or playoff) that aren't finalized */}
-          {!isFinalized && (wk.isPlayoff || (wk.seeded !== undefined)) && wk.matches?.length > 0 && (
+          {!isFinalized && (wk.isPlayoff || wk.seeded === true) && wk.matches?.length > 0 && (
             <button onClick={() => {
               if (!window.confirm("Re-seed this week from current standings? This will replace the current matchups.")) return;
               // Reset to seeded state so the Seed Week UI shows again

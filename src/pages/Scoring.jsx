@@ -933,7 +933,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                         side: nextSide,
                         date: nextDate,
                         isPlayoff: weekSch.isPlayoff || false,
-                        seeded: false,
+                        seeded: weekSch.seeded || false,
                       });
                     }
 
