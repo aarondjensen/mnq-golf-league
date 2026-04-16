@@ -885,35 +885,53 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Minutes Between Tee Times</div>
                 <input type="number" value={cfg.teeInterval} onChange={e => setCfg({ ...cfg, teeInterval: parseInt(e.target.value) || 8 })} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
               </div>
+              <div style={{ marginTop: 10 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: K.t2, cursor: "pointer" }}>
+                  <input type="checkbox" checked={cfg.alternateNines} onChange={e => setCfg({ ...cfg, alternateNines: e.target.checked })} style={{ accentColor: K.act }} />
+                  Alternate front/back 9 each week
+                </label>
+              </div>
             </Card>
           </div>
 
           <div>
             <SubLabel>Season Format</SubLabel>
             <Card style={{ padding: 14 }}>
+              {/* Total season weeks at top */}
+              <div style={{ marginBottom: 12, padding: "10px 12px", background: K.act + "10", borderRadius: 8, border: `1px solid ${K.act}30` }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: K.t1 }}>Total Season</span>
+                  <span style={{ fontSize: 18, fontWeight: 800, color: K.act }}>{totalWeeks} <span style={{ fontSize: 11, fontWeight: 600 }}>weeks</span></span>
+                </div>
+                {(rrWeekCount + seededWeekCount + cfg.playoffWeeks) !== totalWeeks && (
+                  <div style={{ fontSize: 10, color: K.red, marginTop: 4 }}>
+                    Sub-categories add up to {rrWeekCount + seededWeekCount + cfg.playoffWeeks} — adjust below
+                  </div>
+                )}
+              </div>
+
+              {/* Sub-category inputs */}
               <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Round-Robin Weeks</div>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                  <div style={{ fontSize: 11, color: K.t3 }}>Round-Robin</div>
+                  <div style={{ fontSize: 10, color: K.t3 }}>{teams.length >= 2 ? `Full RR = ${defaultRRWeeks} wks` : ""}</div>
+                </div>
                 <input type="number" min="0" value={rrWeekCount} onChange={e => {
                   const v = parseInt(e.target.value);
                   setCfg({ ...cfg, roundRobinWeeks: isNaN(v) ? 0 : Math.max(0, v) });
                 }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
-                <div style={{ fontSize: 10, color: K.t3, marginTop: 3 }}>
-                  {teams.length >= 2 ? `A full round-robin with ${teams.length} teams takes ${defaultRRWeeks} weeks` : "Each team plays every other team once"}
-                </div>
               </div>
               <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Seeded Regular Season Weeks</div>
+                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Seeded Regular Season</div>
                 <input type="number" min="0" value={seededWeekCount} onChange={e => {
                   const v = parseInt(e.target.value);
                   setCfg({ ...cfg, seededWeeks: isNaN(v) ? 0 : Math.max(0, v) });
                 }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
-                <div style={{ fontSize: 10, color: K.t3, marginTop: 3 }}>Weeks with matchups based on current standings</div>
               </div>
               <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Playoff Weeks</div>
+                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Playoffs</div>
                 <input type="number" value={cfg.playoffWeeks} onChange={e => {
                   const pw = parseInt(e.target.value) || 0;
-                  // Adjust playoffRounds array to match
                   const rounds = [...(cfg.playoffRounds || [])];
                   while (rounds.length < pw) rounds.push({ name: `Round ${rounds.length + 1}`, matchups: [] });
                   while (rounds.length > pw) rounds.pop();
@@ -1072,33 +1090,6 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                   </div>
                 );
               })()}
-              {/* Season breakdown */}
-              {teams.length >= 2 && (
-                <div style={{ fontSize: 12, color: K.t2, padding: "8px 0", borderTop: `1px solid ${K.bdr}30`, lineHeight: 1.8 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>Round-robin</span>
-                    <span style={{ color: K.t1, fontWeight: 600 }}>{rrWeekCount} weeks</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>Seeded regular season</span>
-                    <span style={{ color: K.t1, fontWeight: 600 }}>{seededWeekCount} weeks</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span>Playoffs</span>
-                    <span style={{ color: K.warn, fontWeight: 600 }}>{cfg.playoffWeeks} weeks</span>
-                  </div>
-                  <div style={{ display: "flex", justifyContent: "space-between", borderTop: `1px solid ${K.bdr}30`, paddingTop: 6, marginTop: 4 }}>
-                    <span style={{ fontWeight: 600 }}>Total</span>
-                    <span style={{ color: K.t1, fontWeight: 700 }}>{totalWeeks} weeks</span>
-                  </div>
-                </div>
-              )}
-              <div style={{ marginTop: 10 }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: K.t2, cursor: "pointer" }}>
-                  <input type="checkbox" checked={cfg.alternateNines} onChange={e => setCfg({ ...cfg, alternateNines: e.target.checked })} style={{ accentColor: K.act }} />
-                  Alternate front/back 9 each week
-                </label>
-              </div>
             </Card>
           </div>
         </div>
