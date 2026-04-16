@@ -2041,5 +2041,3 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
     </div>
   );
 }
-
-
