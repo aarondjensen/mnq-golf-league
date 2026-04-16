@@ -653,9 +653,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     const rrWeeksToGenerate = rrWeekCount;
 
     // Determine the maximum week number needed:
-    // configured totalWeeks or highest preserved week number, whichever is larger
+    // configured totalWeeks + number of rained-out weeks (since each rainout adds a dead slot + a makeup)
+    // Also ensure we cover all preserved week positions
     const maxPreservedWeek = preservedWeekNums.size > 0 ? Math.max(...preservedWeekNums) : 0;
-    const finalTotalWeeks = Math.max(totalWeeks, maxPreservedWeek);
+    const rainoutCount = rainedOutWeeks.length;
+    const finalTotalWeeks = Math.max(totalWeeks + rainoutCount, maxPreservedWeek);
 
     // Walk through each week position. Preserved weeks stay as-is.
     // New slots get assigned based on what category they fall into
@@ -671,8 +673,9 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       // Preserve locked, rained-out, and makeup weeks as-is
       if (preservedWeekNums.has(weekNum) && existingWk) {
         await setWeekSchedule({ ...existingWk, id: `${LEAGUE_ID}_w${weekNum}` });
-        // Count non-playoff preserved weeks toward regular season budget
-        if (existingWk.isPlayoff !== true) regularWeeksPlaced++;
+        // Count non-playoff, non-rained-out preserved weeks toward regular season budget
+        // Rained-out weeks are dead slots — they don't consume the budget (their makeups do)
+        if (existingWk.isPlayoff !== true && existingWk.rainedOut !== true) regularWeeksPlaced++;
         continue;
       }
 
@@ -704,7 +707,9 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       }
     }
 
-    await saveLeagueConfig({ ...leagueConfig, ...cfg, regularWeeks: computedRegularWeeks, roundRobinWeeks: rrWeekCount, seededWeeks: seededWeekCount, totalWeeks: finalTotalWeeks });
+    // Save only schedule-structure fields from cfg; preserve directly-saved fields like customSeedWeeks, lockedSeeds, lockSeedsEnabled
+    const { customSeedWeeks, lockSeedsEnabled, customSeedPairs, ...scheduleFields } = cfg;
+    await saveLeagueConfig({ ...leagueConfig, ...scheduleFields, regularWeeks: computedRegularWeeks, roundRobinWeeks: rrWeekCount, seededWeeks: seededWeekCount, totalWeeks: finalTotalWeeks });
     setGenerating(false);
     setStep("view");
   };
@@ -1196,53 +1201,87 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 const badgeLetter = (mu, side) => { const t = mu[side + "type"]; return t === "seed" ? (mu[side] || "?") : t === "loser" ? "L" : "W"; };
                 const badgeColor = (mu, side) => mu[side + "type"] === "loser" ? K.red : K.logoBright;
                 const cardH = 44, baseGap = 6;
+                // Separate main bracket matchups from consolation in the last round
+                const lastRoundIdx = rounds.length - 1;
+                const lastRound = rounds[lastRoundIdx];
+                const lastMatchups = lastRound?.matchups || [];
+                // A consolation match has at least one "loser" slot
+                const isConsolation = (mu) => mu.s1type === "loser" || mu.s2type === "loser";
+                const mainLastMatchups = lastMatchups.filter(mu => !isConsolation(mu));
+                const consolationMatchups = lastMatchups.filter(mu => isConsolation(mu));
+
                 return (
-                  <div style={{ display: "flex", alignItems: "flex-start" }}>
-                    {rounds.map((round, ri) => {
-                      const mc = round.matchups?.length || 0;
-                      const gap = ri === 0 ? baseGap : baseGap + (cardH + baseGap) * (Math.pow(2, ri) - 1);
-                      const topPad = ri === 0 ? 0 : (gap - baseGap) / 2;
-                      return (
-                        <div key={ri} style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ textAlign: "center", marginBottom: 4, height: 28 }}>
-                            <div style={{ fontSize: 9, fontWeight: 700, color: K.warn, letterSpacing: .8 }}>{round.name || `R${ri + 1}`}</div>
-                            <div style={{ fontSize: 8, color: K.t3 }}>Wk {computedRegularWeeks + ri + 1}</div>
-                          </div>
-                          <div style={{ paddingTop: topPad }}>
-                            {mc > 0 ? (round.matchups || []).map((mu, mi) => (
-                              <div key={mi} style={{ marginBottom: mi < mc - 1 ? gap : 0 }}>
-                                <div style={{ display: "flex", alignItems: "center" }}>
-                                  {ri > 0 && <div style={{ width: 8, height: 2, background: K.bdr + "50", flexShrink: 0 }} />}
-                                  <div style={{ flex: 1, minWidth: 0, background: K.inp, borderRadius: 4, border: `1px solid ${K.bdr}`, overflow: "hidden" }}>
-                                    {["s1", "s2"].map((side, si) => (
-                                      <div key={side} style={{ display: "flex", alignItems: "center", padding: "3px 5px", gap: 4, ...(si === 0 ? { borderBottom: `1px solid ${K.bdr}30` } : {}) }}>
-                                        <div style={{ width: 14, height: 14, borderRadius: 3, background: badgeColor(mu, side) + "20", border: `1px solid ${badgeColor(mu, side)}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, fontWeight: 800, color: badgeColor(mu, side), flexShrink: 0 }}>{badgeLetter(mu, side)}</div>
-                                        <div style={{ fontSize: 9, fontWeight: 600, color: K.t2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{slotLabel(mu, side)}</div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                  {ri < rounds.length - 1 && (
-                                    <div style={{ width: 8, flexShrink: 0, position: "relative", height: cardH }}>
-                                      <div style={{ position: "absolute", top: "50%", left: 0, width: 4, height: 2, background: K.bdr + "50" }} />
-                                      {(() => {
-                                        const isTop = mi % 2 === 0, pairSize = (cardH + gap) / 2;
-                                        if (isTop && mi + 1 < mc) return <><div style={{ position: "absolute", top: "50%", left: 4, width: 2, height: pairSize, background: K.bdr + "50" }} /><div style={{ position: "absolute", top: `calc(50% + ${pairSize}px)`, left: 4, width: 4, height: 2, background: K.bdr + "50" }} /></>;
-                                        if (!isTop) return <div style={{ position: "absolute", bottom: "50%", left: 4, width: 2, height: pairSize, background: K.bdr + "50" }} />;
-                                        if (mc === 1) return <div style={{ position: "absolute", top: "50%", left: 4, width: 4, height: 2, background: K.bdr + "50" }} />;
-                                        return null;
-                                      })()}
+                  <div>
+                    <div style={{ display: "flex", alignItems: "flex-start" }}>
+                      {rounds.map((round, ri) => {
+                        const isLast = ri === lastRoundIdx;
+                        // For the last round, only show main (non-consolation) matchups
+                        const matchups = isLast ? mainLastMatchups : (round.matchups || []);
+                        const mc = matchups.length;
+                        const gap = ri === 0 ? baseGap : baseGap + (cardH + baseGap) * (Math.pow(2, ri) - 1);
+                        const topPad = ri === 0 ? 0 : (gap - baseGap) / 2;
+                        return (
+                          <div key={ri} style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ textAlign: "center", marginBottom: 4, height: 28 }}>
+                              <div style={{ fontSize: 9, fontWeight: 700, color: K.warn, letterSpacing: .8 }}>{round.name || `R${ri + 1}`}</div>
+                              <div style={{ fontSize: 8, color: K.t3 }}>Wk {computedRegularWeeks + ri + 1}</div>
+                            </div>
+                            <div style={{ paddingTop: topPad }}>
+                              {mc > 0 ? matchups.map((mu, mi) => (
+                                <div key={mi} style={{ marginBottom: mi < mc - 1 ? gap : 0 }}>
+                                  <div style={{ display: "flex", alignItems: "center" }}>
+                                    {ri > 0 && <div style={{ width: 8, height: 2, background: K.bdr + "50", flexShrink: 0 }} />}
+                                    <div style={{ flex: 1, minWidth: 0, background: K.inp, borderRadius: 4, border: `1px solid ${K.bdr}`, overflow: "hidden" }}>
+                                      {["s1", "s2"].map((side, si) => (
+                                        <div key={side} style={{ display: "flex", alignItems: "center", padding: "3px 5px", gap: 4, ...(si === 0 ? { borderBottom: `1px solid ${K.bdr}30` } : {}) }}>
+                                          <div style={{ width: 14, height: 14, borderRadius: 3, background: badgeColor(mu, side) + "20", border: `1px solid ${badgeColor(mu, side)}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, fontWeight: 800, color: badgeColor(mu, side), flexShrink: 0 }}>{badgeLetter(mu, side)}</div>
+                                          <div style={{ fontSize: 9, fontWeight: 600, color: K.t2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{slotLabel(mu, side)}</div>
+                                        </div>
+                                      ))}
                                     </div>
-                                  )}
-                                  {ri === rounds.length - 1 && mc === 1 && (
-                                    <div style={{ fontSize: 14, marginLeft: 6, flexShrink: 0 }}>🏆</div>
-                                  )}
+                                    {ri < lastRoundIdx && (
+                                      <div style={{ width: 8, flexShrink: 0, position: "relative", height: cardH }}>
+                                        <div style={{ position: "absolute", top: "50%", left: 0, width: 4, height: 2, background: K.bdr + "50" }} />
+                                        {(() => {
+                                          const isTop = mi % 2 === 0, pairSize = (cardH + gap) / 2;
+                                          if (isTop && mi + 1 < mc) return <><div style={{ position: "absolute", top: "50%", left: 4, width: 2, height: pairSize, background: K.bdr + "50" }} /><div style={{ position: "absolute", top: `calc(50% + ${pairSize}px)`, left: 4, width: 4, height: 2, background: K.bdr + "50" }} /></>;
+                                          if (!isTop) return <div style={{ position: "absolute", bottom: "50%", left: 4, width: 2, height: pairSize, background: K.bdr + "50" }} />;
+                                          if (mc === 1) return <div style={{ position: "absolute", top: "50%", left: 4, width: 4, height: 2, background: K.bdr + "50" }} />;
+                                          return null;
+                                        })()}
+                                      </div>
+                                    )}
+                                    {isLast && mc === 1 && (
+                                      <div style={{ fontSize: 14, marginLeft: 6, flexShrink: 0 }}>🏆</div>
+                                    )}
+                                  </div>
                                 </div>
-                              </div>
-                            )) : <div style={{ background: K.inp, borderRadius: 4, border: `1px solid ${K.bdr}`, padding: 8, textAlign: "center", fontSize: 9, color: K.t3 }}>—</div>}
+                              )) : <div style={{ background: K.inp, borderRadius: 4, border: `1px solid ${K.bdr}`, padding: 8, textAlign: "center", fontSize: 9, color: K.t3 }}>—</div>}
+                            </div>
                           </div>
+                        );
+                      })}
+                    </div>
+                    {/* Consolation matches — rendered below the main bracket */}
+                    {consolationMatchups.length > 0 && (
+                      <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
+                        <div style={{ width: `${100 / rounds.length}%`, minWidth: 0 }}>
+                          <div style={{ textAlign: "center", fontSize: 8, fontWeight: 700, color: K.t3, marginBottom: 4, textTransform: "uppercase", letterSpacing: .5 }}>3rd Place</div>
+                          {consolationMatchups.map((mu, mi) => (
+                            <div key={mi} style={{ marginBottom: mi < consolationMatchups.length - 1 ? baseGap : 0 }}>
+                              <div style={{ flex: 1, minWidth: 0, background: K.inp, borderRadius: 4, border: `1px solid ${K.red}30`, overflow: "hidden" }}>
+                                {["s1", "s2"].map((side, si) => (
+                                  <div key={side} style={{ display: "flex", alignItems: "center", padding: "3px 5px", gap: 4, ...(si === 0 ? { borderBottom: `1px solid ${K.bdr}30` } : {}) }}>
+                                    <div style={{ width: 14, height: 14, borderRadius: 3, background: badgeColor(mu, side) + "20", border: `1px solid ${badgeColor(mu, side)}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, fontWeight: 800, color: badgeColor(mu, side), flexShrink: 0 }}>{badgeLetter(mu, side)}</div>
+                                    <div style={{ fontSize: 9, fontWeight: 600, color: K.t2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{slotLabel(mu, side)}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          ))}
                         </div>
-                      );
-                    })}
+                      </div>
+                    )}
                   </div>
                 );
               })()}
@@ -2339,3 +2378,5 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
     </div>
   );
 }
+
+
