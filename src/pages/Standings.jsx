@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, CHEVRON_SIZE, calcCourseHandicap, calcNineHandicap, buildSeedMap } from "../theme";
+import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, CHEVRON_SIZE, calcCourseHandicap, calcNineHandicap, calcPlayerHcp, buildSeedMap } from "../theme";
 import { SharedScorecard } from "./Scoring";
 
 // Build standings from a set of match results.
@@ -311,8 +311,9 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
 // ════════════════════════════════════════════════════════════
 //  INDIVIDUAL TOURNAMENT VIEW
 // ════════════════════════════════════════════════════════════
-function IndividualEventView({ players, teams, schedule, course, leagueConfig, fetchWeekScores }) {
+function IndividualEventView({ players, teams, schedule, course, leagueConfig, fetchWeekScores, fetchAllScores, scoringRules }) {
   const [scores, setScores] = useState({});
+  const [allRounds, setAllRounds] = useState(null); // { playerId: [{ season, week, gross }] }
   const [loading, setLoading] = useState(true);
   const fetched = useRef(false);
 
@@ -323,7 +324,16 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
     [schedule]
   );
 
-  // Fetch scores for all playoff weeks
+  // Short name formatter for leaderboard display: "Aaron Jensen" -> "A. Jensen".
+  // Single-name players (rare) render as-is.
+  const shortName = (fullName) => {
+    if (!fullName) return "";
+    const parts = fullName.trim().split(/\s+/);
+    return parts.length > 1 ? `${parts[0][0]}. ${parts[parts.length - 1]}` : fullName;
+  };
+
+  // Fetch scores for all playoff weeks AND the full rounds history needed for
+  // per-week handicap snapshots.
   useEffect(() => {
     if (fetched.current || !playoffWeeks.length || !fetchWeekScores) return;
     fetched.current = true;
@@ -334,11 +344,22 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
         Object.assign(all, wkScores);
       }
       setScores(all);
+      // fetchAllScores is optional for graceful fallback; if absent, we fall back to
+      // player.handicapIndex for all rounds (the old, slightly-wrong behavior).
+      if (fetchAllScores) {
+        const hist = await fetchAllScores();
+        setAllRounds(hist);
+      }
       setLoading(false);
     })();
-  }, [playoffWeeks, fetchWeekScores]);
+  }, [playoffWeeks, fetchWeekScores, fetchAllScores]);
 
-  // Build leaderboard: each player's net total across playoff rounds
+  // Build leaderboard: each player's net total across playoff rounds.
+  // KEY DIFFERENCE from prior implementation: handicap is NOT a single value per player.
+  // It's computed per-round from the rounds the player had played BEFORE that round.
+  // The player's p.handicapIndex is always the current (latest) handicap — but using it
+  // retroactively for Round 1 gives the wrong net, because by Round 3 the player's index
+  // reflects Rounds 1 and 2's results.
   const leaderboard = useMemo(() => {
     if (!course || !players.length) return [];
 
@@ -346,18 +367,39 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
     const frontPars = course.frontPars || [];
     const backPars = course.backPars || [];
     const frontPar = frontPars.reduce((a, b) => a + b, 0);
-    const backPar = backPars.reduce((a, b) => a + b, 0);
+    const fullPar = frontPar + backPars.reduce((a, b) => a + b, 0);
+    const recentN = scoringRules?.hcpRecentCount ?? 8;
+    const bestN = scoringRules?.hcpBestCount ?? 6;
+
+    // Helper: compute a player's 9-hole handicap as of right before a given (season, week),
+    // using only rounds played strictly before that point in the history.
+    const handicapBeforeWeek = (p, asOfSeason, asOfWeek) => {
+      const teeBox = teeBoxes.find(t => t.name === p.teeBox) || teeBoxes[0] || {};
+      const slope = teeBox.slope || 113;
+      const rating = teeBox.rating || 36;
+      const priorRounds = ((allRounds && allRounds[p.id]) || []).filter(r =>
+        r.season < asOfSeason || (r.season === asOfSeason && r.week < asOfWeek)
+      );
+      // calcPlayerHcp returns a full-18 index; null if not enough rounds.
+      // If we can't compute (no history), fall back to the player's stored index — this
+      // matches the pre-bug behavior and keeps early-season rounds sensible.
+      const idx = calcPlayerHcp(priorRounds, recentN, bestN, fullPar) ?? (p.handicapIndex || 0);
+      const ch = calcCourseHandicap(idx, slope, rating, 36);
+      return { idx, nineHcp: calcNineHandicap(ch) };
+    };
 
     const board = players.map(p => {
-      const teeBox = teeBoxes.find(t => t.name === p.teeBox) || teeBoxes[0] || {};
-      const par9 = 36; // standard 9-hole par placeholder
-      const ch = calcCourseHandicap(p.handicapIndex || 0, teeBox.slope || 113, teeBox.rating || 36, par9);
-      const nineHcp = calcNineHandicap(ch);
-
       let totalGross = 0;
       let totalNet = 0;
       let roundsPlayed = 0;
       const rounds = [];
+
+      // Starting handicap — what the player had going into Round 1. Shown as a tournament
+      // reference in the HCP column so it's stable across the whole tournament view and
+      // doesn't shift every week as scores come in.
+      const firstWk = playoffWeeks[0];
+      const season = leagueConfig?.year || new Date().getFullYear();
+      const startHcp = handicapBeforeWeek(p, season, firstWk.week);
 
       for (const wk of playoffWeeks) {
         const side = wk.side || 'front';
@@ -373,11 +415,14 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
         }
 
         if (hasScores) {
+          // Per-round handicap — computed from history BEFORE this week, so it matches
+          // what the player was actually playing off of when they teed up that round.
+          const { nineHcp } = handicapBeforeWeek(p, season, wk.week);
           const net = gross - nineHcp;
           totalGross += gross;
           totalNet += net;
           roundsPlayed++;
-          rounds.push({ week: wk.week, date: wk.date, side, gross, net, parTotal, toPar: net - parTotal });
+          rounds.push({ week: wk.week, date: wk.date, side, gross, net, nineHcp, parTotal, toPar: net - parTotal });
         }
       }
 
@@ -387,9 +432,10 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
       return {
         playerId: p.id,
         name: p.name,
+        displayName: shortName(p.name),
         teamName: team ? lastNamesOnly(team.name) : "",
-        handicapIndex: p.handicapIndex || 0,
-        nineHcp,
+        startHcpIndex: startHcp.idx,
+        startNineHcp: startHcp.nineHcp,
         totalGross,
         totalNet,
         roundsPlayed,
@@ -407,7 +453,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
     });
 
     return board;
-  }, [players, teams, course, playoffWeeks, scores]);
+  }, [players, teams, course, playoffWeeks, scores, allRounds, scoringRules, leagueConfig]);
 
   if (loading && playoffWeeks.length > 0) {
     return <div style={{ textAlign: "center", padding: 40, color: K.t3, fontSize: 13 }} className="pu">Loading scores...</div>;
@@ -465,12 +511,14 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
               {/* Name */}
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: K.t1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {p.name.split(" ").pop()}
+                  {p.displayName}
                 </div>
               </div>
 
-              {/* Handicap */}
-              <div style={{ width: 36, textAlign: "center", fontSize: 11, color: K.t3 }}>{p.nineHcp}</div>
+              {/* Handicap — shown as the player's starting handicap (what they had going
+                  into Round 1). Per-round handicaps are reflected in each R# column's net
+                  score, but showing a single stable number keeps the leaderboard readable. */}
+              <div style={{ width: 36, textAlign: "center", fontSize: 11, color: K.t3 }}>{p.startNineHcp}</div>
 
               {/* Round scores */}
               {playoffWeeks.map((wk, wi) => {
@@ -498,7 +546,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
 // ════════════════════════════════════════════════════════════
 //  MAIN STANDINGS VIEW
 // ════════════════════════════════════════════════════════════
-export default function StandingsView({ teams, players, matchResults, leagueConfig, schedule, fetchSeasonScores, course, fetchWeekScores }) {
+export default function StandingsView({ teams, players, matchResults, leagueConfig, schedule, fetchSeasonScores, course, fetchWeekScores, scoringRules, fetchAllScores }) {
   const isRecord = leagueConfig?.standingsMethod === "record";
   const [expanded, setExpanded] = useState(null);
   const [expandedResult, setExpandedResult] = useState(null);
@@ -732,7 +780,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
           regardless of season phase. */}
       {view === "individual" && (
         playoffsStarted ? (
-          <IndividualEventView players={players} teams={teams} schedule={schedule} course={course} leagueConfig={leagueConfig} fetchWeekScores={fetchWeekScores} />
+          <IndividualEventView players={players} teams={teams} schedule={schedule} course={course} leagueConfig={leagueConfig} fetchWeekScores={fetchWeekScores} fetchAllScores={fetchAllScores} scoringRules={scoringRules} />
         ) : (() => {
           // Find the first playoff week — that's when the individual tournament kicks off.
           const firstPlayoff = schedule.filter(wk => wk.isPlayoff === true && !wk.rainedOut).sort((a, b) => a.week - b.week)[0];
