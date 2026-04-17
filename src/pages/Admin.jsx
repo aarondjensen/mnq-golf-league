@@ -513,7 +513,6 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     dayOfWeek: leagueConfig.dayOfWeek || "Tuesday",
     startTime: leagueConfig.startTime || "4:28 PM",
     teeInterval: leagueConfig.teeInterval || 8,
-    totalWeeks: leagueConfig.totalWeeks || null,
     regularWeeks: leagueConfig.regularWeeks || 14,
     roundRobinWeeks: leagueConfig.roundRobinWeeks || null,
     seededWeeks: leagueConfig.seededWeeks || null,
@@ -571,9 +570,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     : Math.max(0, cfg.regularWeeks - rrWeekCount);
   const computedRegularWeeks = rrWeekCount + seededWeekCount;
   const subTotal = rrWeekCount + seededWeekCount + cfg.playoffWeeks;
-  const totalWeeks = (cfg.totalWeeks !== null && cfg.totalWeeks !== undefined)
-    ? cfg.totalWeeks
-    : subTotal;
+  const totalWeeks = subTotal;
 
   // Round-robin generator: each team plays every other team once
   const generateRoundRobin = (teamIds) => {
@@ -682,7 +679,6 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
     // Total weeks: base schedule + rainouts (each rainout adds 1 dead slot)
     const totalRainouts = cleanSchedule.filter(s => s.rainedOut === true).length;
-    const finalTotalWeeks = totalWeeks + totalRainouts;
 
     // Walk through week positions sequentially, building each block in order
     let weekNum = 0;
@@ -807,7 +803,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
     // Save config (preserve directly-saved fields)
     const { customSeedWeeks, lockSeedsEnabled, customSeedPairs, ...scheduleFields } = cfg;
-    await saveLeagueConfig({ ...leagueConfig, ...scheduleFields, regularWeeks: computedRegularWeeks, roundRobinWeeks: rrWeekCount, seededWeeks: seededWeekCount, totalWeeks: weekNum });
+    await saveLeagueConfig({ ...leagueConfig, ...scheduleFields, regularWeeks: computedRegularWeeks, roundRobinWeeks: rrWeekCount, seededWeeks: seededWeekCount });
     setGenerating(false);
     setStep("view");
   };
@@ -915,22 +911,15 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           <div>
             <SubLabel>Season Format</SubLabel>
             <Card style={{ padding: 14 }}>
-              {/* Total season weeks — editable input */}
+              {/* Total season weeks — computed read-only display */}
               <div style={{ marginBottom: 12, padding: "10px 12px", background: K.act + "10", borderRadius: 8, border: `1px solid ${K.act}30` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 13, fontWeight: 800, color: K.t1 }}>Total Season Weeks</span>
-                  <input type="number" min="1" value={totalWeeks} onChange={e => {
-                    const v = parseInt(e.target.value);
-                    setCfg({ ...cfg, totalWeeks: isNaN(v) ? 1 : Math.max(1, v) });
-                  }} style={{ width: 60, padding: "6px 8px", borderRadius: 6, border: `1px solid ${K.act}40`, background: K.card, color: K.act, fontSize: 16, fontWeight: 800, textAlign: "center" }} />
+                  <span style={{ minWidth: 60, padding: "6px 8px", borderRadius: 6, background: K.card, color: K.act, fontSize: 16, fontWeight: 800, textAlign: "center" }}>{totalWeeks}</span>
                 </div>
-                {subTotal !== totalWeeks && (
-                  <div style={{ fontSize: 10, color: subTotal > totalWeeks ? K.red : K.warn, marginTop: 6 }}>
-                    {subTotal > totalWeeks
-                      ? `Sub-categories total ${subTotal} — exceeds total by ${subTotal - totalWeeks}`
-                      : `Sub-categories total ${subTotal} — ${totalWeeks - subTotal} week(s) unallocated`}
-                  </div>
-                )}
+                <div style={{ fontSize: 10, color: K.t3, marginTop: 6 }}>
+                  Round-robin + seeded + playoffs
+                </div>
               </div>
 
               {/* Sub-category inputs */}
