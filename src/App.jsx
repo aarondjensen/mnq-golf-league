@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "./firebase";
-import { K, I, DEFAULT_SCORING, applyTheme, getCSS, lastNamesOnly, calcPlayerHcp, buildStandingsForSeed } from "./theme";
+import { K, I, DEFAULT_SCORING, applyTheme, getCSS, lastNamesOnly, calcPlayerHcp, buildStandingsForSeed, pairNonBracketTeams, collectPriorMatchups } from "./theme";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
 
 // Fix #2: Lazy-load page components — Vite will code-split each into its own chunk.
@@ -593,6 +593,11 @@ export default function GolfLeagueApp() {
         for (let i = 0; i < pairCount; i++) {
           matches.push({ team1: seeds[i], team2: seeds[n - 1 - i] });
         }
+        // This fallback usually covers all teams (n/2 pairs), but if n is odd the middle
+        // seed sits out. pairNonBracketTeams will return no extra pairs in the even case.
+        const priorMatchups = collectPriorMatchups(currentSchedule, pWk.week);
+        const { pairs: consolationPairs } = pairNonBracketTeams(teams, matches, priorMatchups);
+        matches.push(...consolationPairs);
         await db.upsert("league_schedule", { ...pWk, matches, league_id: LEAGUE_ID });
         playoffCount++;
         continue;
@@ -653,15 +658,21 @@ export default function GolfLeagueApp() {
         return null;
       };
 
-      const matches = [];
+      const bracketMatches = [];
       for (const mu of roundDef.matchups) {
         const t1 = resolveSlot(mu, "s1");
         const t2 = resolveSlot(mu, "s2");
-        if (t1 && t2) matches.push({ team1: t1, team2: t2 });
+        if (t1 && t2) bracketMatches.push({ team1: t1, team2: t2 });
       }
 
       // Sanity check: did we resolve every matchup the config expects?
-      if (matches.length !== roundDef.matchups.length) break;
+      if (bracketMatches.length !== roundDef.matchups.length) break;
+
+      // Add consolation matchups so teams not in the bracket still have tee times.
+      // Picks pairings that minimize repeat meetings based on full-season history.
+      const priorMatchups = collectPriorMatchups(currentSchedule, pWk.week);
+      const { pairs: consolationPairs } = pairNonBracketTeams(teams, bracketMatches, priorMatchups);
+      const matches = [...bracketMatches, ...consolationPairs];
 
       await db.upsert("league_schedule", { ...pWk, matches, league_id: LEAGUE_ID });
       playoffCount++;

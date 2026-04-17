@@ -125,6 +125,130 @@ export function buildSeedMap(teams, matchResults, schedule, leagueConfig) {
 }
 
 // ══════════════════════════════════════════════════════════════
+//  NON-BRACKET PAIRING (PLAYOFF CONSOLATION)
+// ══════════════════════════════════════════════════════════════
+// During playoff weeks, teams not in the official bracket still need tee times.
+// This picks an optimal pairing that minimizes repeat matchups based on league history.
+//
+// Approach: exact minimum-weight perfect matching via bitmask DP.
+//   cost(pair) = # of prior meetings between those two teams
+//   objective: minimize sum of cost across all pairs
+//
+// For our 20-team league (and at most ~10-12 non-bracket teams during playoffs),
+// the 2^N * N work is trivial — we could do 20 teams in a few ms. For typical cases
+// (6-8 non-bracket teams) it's microseconds.
+//
+// Returns: { pairs: [{ team1, team2 }...], bye: teamId | null }
+//   bye is set only when the non-bracket count is odd — the caller decides what to
+//   do with the bye team.
+//
+// Args:
+//   allTeams       — array of team docs (need .id)
+//   bracketMatches — matches already slotted for the bracket: [{ team1, team2 }...]
+//   priorMatchups  — flat list of prior meetings from schedule.matches of earlier
+//                    weeks: [{ team1, team2 }...]. Both orientations are fine; we
+//                    canonicalize the pair key.
+export function pairNonBracketTeams(allTeams, bracketMatches, priorMatchups) {
+  const bracketTeamIds = new Set();
+  (bracketMatches || []).forEach(m => {
+    if (m.team1) bracketTeamIds.add(m.team1);
+    if (m.team2) bracketTeamIds.add(m.team2);
+  });
+  // Deterministic order (team id sort) so re-running produces the same pairings.
+  const remaining = (allTeams || [])
+    .map(t => t.id)
+    .filter(id => !bracketTeamIds.has(id))
+    .sort();
+  const n = remaining.length;
+  if (n < 2) return { pairs: [], bye: n === 1 ? remaining[0] : null };
+
+  // Build meeting-count matrix keyed by canonical pair string.
+  const pairKey = (a, b) => a < b ? `${a}|${b}` : `${b}|${a}`;
+  const counts = {};
+  (priorMatchups || []).forEach(m => {
+    if (!m.team1 || !m.team2) return;
+    const k = pairKey(m.team1, m.team2);
+    counts[k] = (counts[k] || 0) + 1;
+  });
+  const costIJ = (i, j) => counts[pairKey(remaining[i], remaining[j])] || 0;
+
+  // Memoized DP. State = bitmask of still-unmatched indices.
+  // dp[mask] = { cost, pairs: [[i, j], ...] }
+  const dp = new Map();
+
+  // For odd n, we try each index as the bye and DP on the rest.
+  // For even n, we DP directly on the full mask.
+  const fullMask = (1 << n) - 1;
+
+  const solve = (mask) => {
+    if (dp.has(mask)) return dp.get(mask);
+    // Find lowest unmatched index
+    let first = -1;
+    for (let i = 0; i < n; i++) {
+      if (mask & (1 << i)) { first = i; break; }
+    }
+    if (first === -1) {
+      const empty = { cost: 0, pairs: [] };
+      dp.set(mask, empty);
+      return empty;
+    }
+    let best = null;
+    for (let j = first + 1; j < n; j++) {
+      if (!(mask & (1 << j))) continue;
+      const sub = solve(mask & ~(1 << first) & ~(1 << j));
+      const total = sub.cost + costIJ(first, j);
+      if (!best || total < best.cost) {
+        best = { cost: total, pairs: [[first, j], ...sub.pairs] };
+      }
+    }
+    // best is guaranteed non-null because caller only passes even-count masks
+    // (solve always removes two indices at a time; starting masks passed below
+    // always have even population count).
+    dp.set(mask, best);
+    return best;
+  };
+
+  let resultPairs, byeId = null;
+
+  if (n % 2 === 0) {
+    const res = solve(fullMask);
+    resultPairs = res.pairs;
+  } else {
+    // Try each team as bye; keep the best overall.
+    let bestOverall = null;
+    let bestByeIdx = -1;
+    for (let byeIdx = 0; byeIdx < n; byeIdx++) {
+      const maskMinusBye = fullMask & ~(1 << byeIdx);
+      const res = solve(maskMinusBye);
+      if (!bestOverall || res.cost < bestOverall.cost) {
+        bestOverall = res;
+        bestByeIdx = byeIdx;
+      }
+    }
+    resultPairs = bestOverall.pairs;
+    byeId = remaining[bestByeIdx];
+  }
+
+  const pairs = resultPairs.map(([i, j]) => ({ team1: remaining[i], team2: remaining[j] }));
+  return { pairs, bye: byeId };
+}
+
+// Collect all prior matchups from the schedule up to (but not including) a given week.
+// Used by pairNonBracketTeams. Walks schedule.matches for every week before currentWeek
+// that has a matches array. Inclusive of seeded/RR/makeup/playoff weeks alike.
+export function collectPriorMatchups(schedule, currentWeek) {
+  const out = [];
+  (schedule || []).forEach(wk => {
+    if (typeof wk.week !== "number" || wk.week >= currentWeek) return;
+    if (wk.rainedOut) return; // rained-out weeks didn't actually play
+    (wk.matches || []).forEach(m => {
+      if (m.team1 && m.team2) out.push({ team1: m.team1, team2: m.team2 });
+    });
+  });
+  return out;
+}
+
+// ══════════════════════════════════════════════════════════════
 //  THEME
 // ══════════════════════════════════════════════════════════════
 export const getTheme = (mode = "dark") => {

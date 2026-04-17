@@ -3,7 +3,8 @@ import { LEAGUE_ID, db } from "../firebase";
 import { K, FONTS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap,
   formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, lastNamesOnly,
-  buildStandingsForSeed as sharedBuildStandingsForSeed, buildSeedMap } from "../theme";
+  buildStandingsForSeed as sharedBuildStandingsForSeed, buildSeedMap,
+  pairNonBracketTeams, collectPriorMatchups } from "../theme";
 
 // ── Shared confirm modal used across every admin sub-page ──
 // Replaces window.confirm across admin. window.confirm renders tiny native dialogs
@@ -2402,6 +2403,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         }
       }
       let matches = [];
+      // Number of matches that are "bracket" (official playoff) vs "consolation" (added
+      // for non-bracket teams). For the Seed Week confirm modal we want to display them
+      // separately so the commissioner understands why there are more matches than the
+      // configured bracket has.
+      let bracketCount = 0;
 
       if (isPlayoff) {
         const playoffRounds = leagueConfig.playoffRounds || [];
@@ -2488,6 +2494,14 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           alert("Could not resolve all matchups. Make sure previous rounds are finalized and bracket is configured correctly.");
           return;
         }
+
+        bracketCount = matches.length;
+
+        // Add consolation matchups so teams not in the bracket still have tee times.
+        // Picks pairings that minimize repeat meetings based on full-season history.
+        const priorMatchups = collectPriorMatchups(schedule, wk.week);
+        const { pairs: consolationPairs } = pairNonBracketTeams(teams, matches, priorMatchups);
+        matches.push(...consolationPairs);
       } else {
         // Seeded regular season: use per-week custom matchups
         const n = seeds.length;
@@ -2519,9 +2533,23 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       const roundName = isPlayoff
         ? ((leagueConfig.playoffRounds || [])[playoffRound - 1]?.name || `Playoff Round ${playoffRound}`)
         : "seeded matchups";
+
+      // Build a clear confirm message that distinguishes bracket matches from
+      // consolation pairings. Consolation exists only for playoff weeks where the
+      // bracket doesn't include every team.
+      const fmtPair = (m) => `• ${gn(m.team1)} vs ${gn(m.team2)}`;
+      let msg;
+      if (isPlayoff && bracketCount > 0 && matches.length > bracketCount) {
+        const bracket = matches.slice(0, bracketCount);
+        const consolation = matches.slice(bracketCount);
+        msg = `${roundName}:\n${bracket.map(fmtPair).join("\n")}\n\nConsolation (minimizes repeat matchups):\n${consolation.map(fmtPair).join("\n")}`;
+      } else {
+        msg = `${roundName}:\n\n${matches.map(fmtPair).join("\n")}`;
+      }
+
       setConfirmModal({
         title: `Seed Week ${wk.week}?`,
-        message: `${roundName}:\n\n${matches.map(m => `• ${gn(m.team1)} vs ${gn(m.team2)}`).join('\n')}`,
+        message: msg,
         confirmLabel: "Seed",
         onConfirm: async () => {
           setConfirmModal(null);
