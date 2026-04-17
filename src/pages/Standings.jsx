@@ -367,25 +367,25 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
     const frontPars = course.frontPars || [];
     const backPars = course.backPars || [];
     const frontPar = frontPars.reduce((a, b) => a + b, 0);
-    const fullPar = frontPar + backPars.reduce((a, b) => a + b, 0);
     const recentN = scoringRules?.hcpRecentCount ?? 8;
     const bestN = scoringRules?.hcpBestCount ?? 6;
 
     // Helper: compute a player's 9-hole handicap as of right before a given (season, week),
     // using only rounds played strictly before that point in the history.
+    //
+    // This must match how App.jsx:recalcHandicaps produces p.handicapIndex — that's the
+    // single source of truth everywhere else in the app (Players tab, match-play net
+    // scoring, etc.). Specifically:
+    //   par passed to calcPlayerHcp = FRONT-9 par (36), not full-18 par
+    //   the returned value IS the 9-hole handicap — no calcCourseHandicap / calcNineHandicap
+    //   transforms needed because all the rounds in allScores are 9-hole rounds already.
     const handicapBeforeWeek = (p, asOfSeason, asOfWeek) => {
-      const teeBox = teeBoxes.find(t => t.name === p.teeBox) || teeBoxes[0] || {};
-      const slope = teeBox.slope || 113;
-      const rating = teeBox.rating || 36;
       const priorRounds = ((allRounds && allRounds[p.id]) || []).filter(r =>
         r.season < asOfSeason || (r.season === asOfSeason && r.week < asOfWeek)
       );
-      // calcPlayerHcp returns a full-18 index; null if not enough rounds.
-      // If we can't compute (no history), fall back to the player's stored index — this
-      // matches the pre-bug behavior and keeps early-season rounds sensible.
-      const idx = calcPlayerHcp(priorRounds, recentN, bestN, fullPar) ?? (p.handicapIndex || 0);
-      const ch = calcCourseHandicap(idx, slope, rating, 36);
-      return { idx, nineHcp: calcNineHandicap(ch) };
+      const idx = calcPlayerHcp(priorRounds, recentN, bestN, frontPar);
+      // Not enough history → fall back to the player's currently-stored handicap.
+      return idx ?? (p.handicapIndex ?? 0);
     };
 
     const board = players.map(p => {
@@ -417,12 +417,12 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
         if (hasScores) {
           // Per-round handicap — computed from history BEFORE this week, so it matches
           // what the player was actually playing off of when they teed up that round.
-          const { nineHcp } = handicapBeforeWeek(p, season, wk.week);
-          const net = gross - nineHcp;
+          const roundHcp = handicapBeforeWeek(p, season, wk.week);
+          const net = gross - roundHcp;
           totalGross += gross;
           totalNet += net;
           roundsPlayed++;
-          rounds.push({ week: wk.week, date: wk.date, side, gross, net, nineHcp, parTotal, toPar: net - parTotal });
+          rounds.push({ week: wk.week, date: wk.date, side, gross, net, nineHcp: roundHcp, parTotal, toPar: net - parTotal });
         }
       }
 
@@ -434,8 +434,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
         name: p.name,
         displayName: shortName(p.name),
         teamName: team ? lastNamesOnly(team.name) : "",
-        startHcpIndex: startHcp.idx,
-        startNineHcp: startHcp.nineHcp,
+        startNineHcp: startHcp,
         totalGross,
         totalNet,
         roundsPlayed,
