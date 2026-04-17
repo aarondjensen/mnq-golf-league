@@ -30,37 +30,22 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
 
   const playerStats = useMemo(() => {
     if (!allScores) return [];
-    const par = course ? (course.frontPars || []).reduce((a, b) => a + b, 0) : 36;
-    const currentSeason = new Date().getFullYear();
     return players.map(p => {
       const allRounds = allScores[p.id] || [];
       const totalRounds = allRounds.length;
       const recentRounds = allRounds.slice(-recentN);
+      // Mirror calcPlayerHcp's proportional scaling for transparency in the expanded view
+      const ratio = bestN / recentN;
+      const scaledBest = recentRounds.length > 0 ? Math.max(1, Math.round(ratio * recentRounds.length)) : 0;
       const sorted = [...recentRounds].sort((a, b) => a.gross - b.gross);
-      const best = sorted.slice(0, Math.min(bestN, sorted.length));
-      const avg = best.length ? best.reduce((a, b) => a + b.gross, 0) / best.length : null;
-      const calcHcp = avg !== null ? Math.round(avg - par) : null;
+      const best = sorted.slice(0, scaledBest);
 
-      // Only show hcpChange if the most recent round is from the current season
-      const lastRound = allRounds[allRounds.length - 1];
-      const hasCurrentSeasonRound = lastRound && lastRound.season === currentSeason;
+      // Use stored handicapIndex — the single source of truth, updated when a week is locked
+      const idx = p.handicapIndex ?? null;
 
-      let prevHcp = null;
-      if (hasCurrentSeasonRound && allRounds.length >= 2) {
-        const prevRounds = allRounds.slice(0, -1);
-        const prevRecent = prevRounds.slice(-recentN);
-        const prevSorted = [...prevRecent].sort((a, b) => a.gross - b.gross);
-        const prevBest = prevSorted.slice(0, Math.min(bestN, prevSorted.length));
-        const prevAvg = prevBest.length ? prevBest.reduce((a, b) => a + b.gross, 0) / prevBest.length : null;
-        prevHcp = prevAvg !== null ? Math.round(prevAvg - par) : null;
-      }
-
-      const currentHcp = calcHcp !== null ? calcHcp : p.handicapIndex;
-      const hcpChange = (hasCurrentSeasonRound && currentHcp !== null && prevHcp !== null) ? currentHcp - prevHcp : null;
-
-      return { ...p, totalRounds, recentRounds, best, par, idx: currentHcp, hcpChange };
+      return { ...p, totalRounds, recentRounds, best, idx };
     }).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-  }, [players, allScores, course, recentN, bestN]);
+  }, [players, allScores, recentN, bestN]);
 
   if (loading) return <div style={{ textAlign: "center", padding: 40, color: K.t3, fontSize: 13 }}>Loading...</div>;
 
@@ -80,14 +65,6 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
                   width: 38, height: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 16, fontWeight: 800, color: K.t1, padding: 0,
                 }}>{p.idx}</button>
-                {p.hcpChange !== null && p.hcpChange !== 0 ? (
-                  <div style={{ fontSize: 11, fontWeight: 700, color: p.hcpChange < 0 ? K.matchGrn : K.red, display: "flex", alignItems: "center", gap: 1, minWidth: 28 }}>
-                    <span style={{ fontSize: 9 }}>{p.hcpChange < 0 ? "▼" : "▲"}</span>
-                    <span>{Math.abs(p.hcpChange)}</span>
-                  </div>
-                ) : (
-                  <div style={{ minWidth: 28 }} />
-                )}
               </div>
             </div>
             {expanded === p.id && (
@@ -114,7 +91,7 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
                 )}
                 {p.best.length > 0 && (
                   <div style={{ color: K.t2, paddingTop: 8, marginTop: 6, textAlign: "center", fontSize: 12 }}>
-                    Best {p.best.length}: {p.best.map(b => b.gross).join(", ")} · Avg: {(p.best.reduce((a, b) => a + b.gross, 0) / p.best.length).toFixed(1)} · <strong style={{ color: K.t1 }}>HCP: {p.idx}</strong>
+                    Best {p.best.length} of {p.recentRounds.length}: {p.best.map(b => b.gross).join(", ")} · Avg: {(p.best.reduce((a, b) => a + b.gross, 0) / p.best.length).toFixed(1)} · <strong style={{ color: K.t1 }}>HCP: {p.idx}</strong>
                   </div>
                 )}
               </div>

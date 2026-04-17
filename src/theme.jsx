@@ -36,6 +36,23 @@ export function calcLeagueHandicap(grossScores, par, recentCount, bestCount) {
   return Math.round(avg - par);
 }
 
+// ── Handicap calc with proportional scaling for players with few rounds ──
+// Admin sets "best N of recent M" (e.g. best 6 of 8 → ratio 0.75).
+// For a player with fewer than M rounds, scale the "best" count proportionally:
+// e.g. with 4 rounds → best round(4 * 0.75) = best 3 of 4.
+// Accepts either an array of round objects { gross } or raw gross numbers.
+export function calcPlayerHcp(rounds, recentN, bestN, par) {
+  if (!rounds || !rounds.length) return null;
+  const ratio = bestN / recentN;
+  const actualRecent = rounds.slice(-recentN);
+  const scaledBest = Math.max(1, Math.round(ratio * actualRecent.length));
+  const grosses = actualRecent.map(r => typeof r === 'number' ? r : r.gross);
+  const sorted = [...grosses].sort((a, b) => a - b);
+  const best = sorted.slice(0, scaledBest);
+  const avg = best.reduce((a, b) => a + b, 0) / best.length;
+  return Math.round(avg - par);
+}
+
 // ── Shared utility: extract last names from team name ──
 export function lastNamesOnly(teamName) {
   if (!teamName) return "";

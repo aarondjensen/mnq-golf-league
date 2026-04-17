@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "./firebase";
-import { K, I, DEFAULT_SCORING, applyTheme, getCSS, lastNamesOnly } from "./theme";
+import { K, I, DEFAULT_SCORING, applyTheme, getCSS, lastNamesOnly, calcPlayerHcp } from "./theme";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
 
 // Fix #2: Lazy-load page components — Vite will code-split each into its own chunk.
@@ -417,7 +417,9 @@ export default function GolfLeagueApp() {
     return { imported: docs.length, skipped };
   }, [players]);
 
-  // Recalculate all player handicaps from historical scores and update their profiles
+  // Recalculate all player handicaps from historical scores and update their profiles.
+  // Triggered when commissioner locks a week. Uses calcPlayerHcp with proportional scaling:
+  // admin configures "best N of recent M"; players with fewer than M rounds use a scaled count.
   const recalcHandicaps = useCallback(async () => {
     const allScores = await fetchAllScores();
     const par = courseData ? (courseData.frontPars || []).reduce((a, b) => a + b, 0) : 36;
@@ -426,12 +428,7 @@ export default function GolfLeagueApp() {
     let updated = 0;
     for (const p of players) {
       const rounds = allScores[p.id] || [];
-      if (!rounds.length) continue;
-      const recent = rounds.slice(-recentN);
-      const sorted = [...recent].sort((a, b) => a.gross - b.gross);
-      const best = sorted.slice(0, Math.min(bestN, sorted.length));
-      const avg = best.length ? best.reduce((a, b) => a + b.gross, 0) / best.length : null;
-      const newHcp = avg !== null ? Math.round(avg - par) : null;
+      const newHcp = calcPlayerHcp(rounds, recentN, bestN, par);
       if (newHcp !== null && newHcp !== p.handicapIndex) {
         await savePlayer({ ...p, handicapIndex: newHcp });
         updated++;
