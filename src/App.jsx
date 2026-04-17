@@ -381,12 +381,14 @@ export default function GolfLeagueApp() {
     await db.batchDelete("league_hole_scores", seasonFilter);
     await db.batchDelete("league_match_results", LF);
     await db.batchDelete("league_ctp", LF);
-    // Unlock all schedule weeks
+    // Delete all schedule weeks for this league — fresh slate for next Generate.
+    // Clears rainouts, makeup flags, seeded/playoff flags, locked weeks, and match arrays.
     for (const wk of schedule) {
-      if (wk.locked) await db.upsert("league_schedule", { ...wk, locked: false, league_id: LEAGUE_ID });
+      if (wk.id) await db.deleteDoc("league_schedule", wk.id);
     }
     setHoleScores({});
     setMatchResults([]);
+    setSchedule([]);
   }, [schedule]);
 
   // Import historical scores from a [name, week, hole, score] array

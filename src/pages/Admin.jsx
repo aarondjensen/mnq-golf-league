@@ -6,7 +6,7 @@ import { K, FONTS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, Empt
 
 
 export default function AdminView(props) {
-  const { players, savePlayer, deletePlayer, teams, saveTeam, deleteTeam, schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, course, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, members, saveMember, deleteMember } = props;
+  const { players, savePlayer, deletePlayer, teams, saveTeam, deleteTeam, schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, course, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, members, saveMember, deleteMember, matchResults, saveMatchResult } = props;
   const [sec, setSec] = useState(null);
   const sections = [
     { id: "config", label: "Basic Info", icon: "settings", desc: leagueConfig.name },
@@ -24,7 +24,7 @@ export default function AdminView(props) {
   if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} onBack={() => setSec(null)} />;
   if (sec === "scoring") return <AdminScoring scoring={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
   if (sec === "members") return <AdminMembers members={members} saveMember={saveMember} deleteMember={deleteMember} players={players} onBack={() => setSec(null)} />;
-  if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} resetSeasonData={props.resetSeasonData} importHistoricalScores={props.importHistoricalScores} recalcHandicaps={props.recalcHandicaps} onBack={() => setSec(null)} />;
+  if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} resetSeasonData={props.resetSeasonData} importHistoricalScores={props.importHistoricalScores} recalcHandicaps={props.recalcHandicaps} matchResults={matchResults} saveMatchResult={saveMatchResult} onBack={() => setSec(null)} />;
 
   return (
     <div><SectionTitle>Commissioner Dashboard</SectionTitle>
@@ -2374,14 +2374,12 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
 }
 
 
-function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoricalScores, recalcHandicaps, onBack }) {
+function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoricalScores, recalcHandicaps, matchResults, saveMatchResult, onBack }) {
   const [lc, setLc] = useState({ ...config });
   const [dirty, setDirty] = useState(false);
   const [resetting, setResetting] = useState(false);
-  const [importing, setImporting] = useState(false);
-  const [importResult, setImportResult] = useState(null);
-  const [recalcing, setRecalcing] = useState(false);
-  const [recalcResult, setRecalcResult] = useState(null);
+  const [attesting, setAttesting] = useState(false);
+  const [attestResult, setAttestResult] = useState(null);
   const save = async () => { await saveLeagueConfig(lc); setDirty(false); };
 
   const handleBack = async () => {
@@ -2393,26 +2391,31 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
   };
 
   const handleReset = async () => {
-    if (!window.confirm("Reset all season data?\n\nThis will permanently delete:\n• All hole scores\n• All match results\n• All CTP data\n• Unlock all weeks\n\nThis cannot be undone.")) return;
-    if (!window.confirm("Are you sure? This will wipe ALL scores and results for the current season.")) return;
+    if (!window.confirm("Reset all season data?\n\nThis will permanently delete:\n• All hole scores\n• All match results\n• All CTP data\n• The entire schedule (all weeks, rainouts, makeups)\n\nAfter reset, you'll need to regenerate the schedule from scratch.\n\nThis cannot be undone.")) return;
+    if (!window.confirm("Are you sure? This wipes ALL season data including the schedule itself.")) return;
     setResetting(true);
     await resetSeasonData();
     setResetting(false);
   };
 
-  const handleImportHistorical = async () => {
-    if (!window.confirm("Import 2023 + 2024 + 2025 historical scores?\n\nThis will write ~7,500 hole scores across 45 weeks (3 seasons). Existing historical scores will be overwritten.")) return;
-    setImporting(true);
-    setImportResult(null);
-    try {
-      const { default: IMPORT_HISTORICAL } = await import("./importHistoricalData.js");
-      const result = await importHistoricalScores(IMPORT_HISTORICAL);
-      setImportResult(result);
-    } catch (e) {
-      console.error("Import error:", e);
-      setImportResult({ error: e.message });
+  const handleAttestAll = async () => {
+    const unattested = (matchResults || []).filter(r => r.attested !== true);
+    if (unattested.length === 0) {
+      setAttestResult({ updated: 0, message: "No unattested match results" });
+      return;
     }
-    setImporting(false);
+    if (!window.confirm(`Mark all ${unattested.length} unattested match result(s) as attested?\n\nTESTING ONLY — this bypasses the opposing-team signature requirement.`)) return;
+    setAttesting(true);
+    setAttestResult(null);
+    try {
+      for (const r of unattested) {
+        await saveMatchResult({ ...r, attested: true });
+      }
+      setAttestResult({ updated: unattested.length });
+    } catch (e) {
+      setAttestResult({ error: e.message });
+    }
+    setAttesting(false);
   };
 
   return (
@@ -2432,45 +2435,24 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
           <SubLabel color={K.red}>Danger Zone</SubLabel>
           <Card style={{ padding: 14, border: `1px solid ${K.red}30` }}>
             <div style={{ fontSize: 12, color: K.t2, marginBottom: 10, lineHeight: 1.5 }}>
-              Wipe all hole scores, match results, and CTP data for the current season. Use this to clear test data before the real season starts.
+              Wipe all scores, match results, CTP data, and the entire schedule for the current season. After resetting, regenerate the schedule from Schedule settings.
             </div>
             <button onClick={handleReset} disabled={resetting} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.red + "15", border: `1.5px solid ${K.red}50`, color: K.red, fontSize: 13, fontWeight: 700, cursor: resetting ? "default" : "pointer", opacity: resetting ? 0.6 : 1 }}>
               {resetting ? "Resetting..." : "Reset Season Data"}
             </button>
           </Card>
 
-          {importHistoricalScores && (
+          {saveMatchResult && (
           <Card style={{ padding: 14, border: `1px solid ${K.warn}30`, marginTop: 8 }}>
             <div style={{ fontSize: 12, color: K.t2, marginBottom: 10, lineHeight: 1.5 }}>
-              Import 2023–2025 season scores from historical spreadsheet data. This writes hole-by-hole scores for handicap calculation.
+              <strong>Testing only.</strong> Force-attest every match result, bypassing the opposing-team signature requirement. Remove this card before live play.
             </div>
-            <button onClick={handleImportHistorical} disabled={importing} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 13, fontWeight: 700, cursor: importing ? "default" : "pointer", opacity: importing ? 0.6 : 1 }}>
-              {importing ? "Importing..." : "Import Historical Scores (2023–2025)"}
+            <button onClick={handleAttestAll} disabled={attesting} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 13, fontWeight: 700, cursor: attesting ? "default" : "pointer", opacity: attesting ? 0.6 : 1 }}>
+              {attesting ? "Attesting..." : "Attest All Match Results"}
             </button>
-            {importResult && (
-              <div style={{ fontSize: 11, color: importResult.error ? K.red : K.grn, marginTop: 8, textAlign: "center", fontWeight: 600 }}>
-                {importResult.error ? `Error: ${importResult.error}` : `Done! ${importResult.imported} scores imported, ${importResult.skipped} skipped`}
-              </div>
-            )}
-          </Card>
-          )}
-
-          {recalcHandicaps && (
-          <Card style={{ padding: 14, border: `1px solid ${K.teal}30`, marginTop: 8 }}>
-            <div style={{ fontSize: 12, color: K.t2, marginBottom: 10, lineHeight: 1.5 }}>
-              Recalculate all player handicaps from historical scores. This happens automatically after each week is finalized, but you can trigger it manually here.
-            </div>
-            <button onClick={async () => {
-              setRecalcing(true); setRecalcResult(null);
-              try { const n = await recalcHandicaps(); setRecalcResult({ updated: n }); }
-              catch (e) { setRecalcResult({ error: e.message }); }
-              setRecalcing(false);
-            }} disabled={recalcing} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.teal + "15", border: `1.5px solid ${K.teal}50`, color: K.teal, fontSize: 13, fontWeight: 700, cursor: recalcing ? "default" : "pointer", opacity: recalcing ? 0.6 : 1 }}>
-              {recalcing ? "Recalculating..." : "Recalc Handicaps"}
-            </button>
-            {recalcResult && (
-              <div style={{ fontSize: 11, color: recalcResult.error ? K.red : K.grn, marginTop: 8, textAlign: "center", fontWeight: 600 }}>
-                {recalcResult.error ? `Error: ${recalcResult.error}` : `Done! ${recalcResult.updated} player(s) updated`}
+            {attestResult && (
+              <div style={{ fontSize: 11, color: attestResult.error ? K.red : K.grn, marginTop: 8, textAlign: "center", fontWeight: 600 }}>
+                {attestResult.error ? `Error: ${attestResult.error}` : attestResult.message || `Done! ${attestResult.updated} result(s) attested`}
               </div>
             )}
           </Card>
