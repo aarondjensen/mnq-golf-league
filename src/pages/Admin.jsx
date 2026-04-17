@@ -509,22 +509,30 @@ function AdminCourse({ course, saveCourseData, onBack }) {
 
 function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, teams, leagueConfig, saveLeagueConfig, matchResults, onBack }) {
   const [step, setStep] = useState(schedule.length > 0 ? "view" : "setup");
-  const [cfg, setCfg] = useState({
-    dayOfWeek: leagueConfig.dayOfWeek ?? "Tuesday",
-    startTime: leagueConfig.startTime ?? "4:28 PM",
-    teeInterval: leagueConfig.teeInterval ?? 8,
-    totalWeeks: leagueConfig.totalWeeks ?? null, // editable; null = fall back to subTotal
-    regularWeeks: leagueConfig.regularWeeks ?? 14,
-    roundRobinWeeks: leagueConfig.roundRobinWeeks ?? null,
-    seededWeeks: leagueConfig.seededWeeks ?? null,
-    playoffWeeks: leagueConfig.playoffWeeks ?? 2,
-    customSeedWeeks: undefined, // NOT stored in cfg — read directly from leagueConfig
-    // lockSeedsEnabled also read from leagueConfig directly
-    startDate: leagueConfig.startDate ?? "",
-    alternateNines: leagueConfig.alternateNines !== false,
-    startingSide: leagueConfig.startingSide ?? "front", // 'front' | 'back' — which nine week 1 plays
-    playoffRounds: leagueConfig.playoffRounds ?? [],
+
+  // Single source of truth for "derive cfg from stored leagueConfig".
+  // Used for both initial cfg state AND the snapshot dirty detection compares against.
+  // Falls back to sensible defaults only when a stored value is missing entirely.
+  const cfgFromLeague = (lc) => ({
+    dayOfWeek: lc.dayOfWeek ?? "Tuesday",
+    startTime: lc.startTime ?? "4:28 PM",
+    teeInterval: lc.teeInterval ?? 8,
+    totalWeeks: lc.totalWeeks ?? null, // editable; null = fall back to subTotal
+    regularWeeks: lc.regularWeeks ?? 14,
+    roundRobinWeeks: lc.roundRobinWeeks ?? null,
+    seededWeeks: lc.seededWeeks ?? null,
+    playoffWeeks: lc.playoffWeeks ?? 2,
+    startDate: lc.startDate ?? "",
+    alternateNines: lc.alternateNines !== false,
+    startingSide: lc.startingSide ?? "front", // 'front' | 'back' — which nine week 1 plays
   });
+
+  const [cfg, setCfg] = useState(() => ({
+    ...cfgFromLeague(leagueConfig),
+    // These aren't tracked in dirty detection; saved via their own code paths.
+    customSeedWeeks: undefined,
+    playoffRounds: leagueConfig.playoffRounds ?? [],
+  }));
   const [editWeek, setEditWeek] = useState(null);
   const [selectedSeededWeek, setSelectedSeededWeek] = useState(0);
   const [selectedSeed, setSelectedSeed] = useState(null); // {pairIdx, slot} for tap-to-swap
@@ -537,28 +545,31 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
   const [generating, setGenerating] = useState(false);
   const [setupDirty, setSetupDirty] = useState(false);
   const [savingSetup, setSavingSetup] = useState(false);
-  // Snapshot of cfg fields that are considered "setup" — used for dirty detection
-  // vs leagueConfig. customSeedWeeks/lockSeedsEnabled/customSeedPairs/playoffRounds
-  // are saved through their own code paths, so exclude them from this comparison.
-  const cfgSnapshot = useMemo(() => ({
-    dayOfWeek: leagueConfig.dayOfWeek ?? "Tuesday",
-    startTime: leagueConfig.startTime ?? "4:28 PM",
-    teeInterval: leagueConfig.teeInterval ?? 8,
-    totalWeeks: leagueConfig.totalWeeks ?? null,
-    regularWeeks: leagueConfig.regularWeeks ?? 14,
-    roundRobinWeeks: leagueConfig.roundRobinWeeks ?? null,
-    seededWeeks: leagueConfig.seededWeeks ?? null,
-    playoffWeeks: leagueConfig.playoffWeeks ?? 2,
-    startDate: leagueConfig.startDate ?? "",
-    alternateNines: leagueConfig.alternateNines !== false,
-    startingSide: leagueConfig.startingSide ?? "front",
-  }), [leagueConfig]);
+  // Snapshot of setup fields as currently stored in leagueConfig.
+  // Used for dirty detection: cfg vs this snapshot.
+  // customSeedWeeks/playoffRounds are saved through their own code paths — not tracked here.
+  const cfgSnapshot = useMemo(() => cfgFromLeague(leagueConfig), [leagueConfig]);
 
   // Watch cfg; when any tracked setup field diverges from the stored snapshot, flag dirty.
   useEffect(() => {
     const changed = Object.keys(cfgSnapshot).some(k => cfg[k] !== cfgSnapshot[k]);
     setSetupDirty(changed);
   }, [cfg, cfgSnapshot]);
+
+  // Sync cfg from leagueConfig when it loads/refreshes — but only while clean,
+  // so user edits are never clobbered mid-edit.
+  // Covers two cases: (1) initial mount before leagueConfig has arrived from Firestore,
+  // (2) after Generate completes and writes new values back to leagueConfig.
+  useEffect(() => {
+    if (!setupDirty) {
+      setCfg(prev => ({
+        ...prev,
+        ...cfgFromLeague(leagueConfig),
+        playoffRounds: leagueConfig.playoffRounds ?? prev.playoffRounds,
+      }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [leagueConfig]);
 
   const saveSetup = async () => {
     setSavingSetup(true);
