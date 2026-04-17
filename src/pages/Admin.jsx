@@ -800,7 +800,9 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum,
         matches: rrRounds[roundIdx], side,
         date: getWeekDate(weekNum - 1), isPlayoff: false,
-        makeupFor: rrRainouts > 0 ? "rr" : undefined, // mark as makeup if we're past original RR block
+        // Only attach makeupFor if there are actual RR rainouts being made up.
+        // Firestore strict setDoc rejects fields with undefined values, so omit entirely.
+        ...(rrRainouts > 0 ? { makeupFor: "rr" } : {}),
       });
       rrPlayed++;
     }
