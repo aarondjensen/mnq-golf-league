@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "./firebase";
-import { K, I, DEFAULT_SCORING, SEASON_WEEKS, applyTheme, getCSS, lastNamesOnly } from "./theme";
+import { K, I, DEFAULT_SCORING, applyTheme, getCSS, lastNamesOnly } from "./theme";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
 
 // Fix #2: Lazy-load page components — Vite will code-split each into its own chunk.
@@ -421,8 +421,8 @@ export default function GolfLeagueApp() {
   const recalcHandicaps = useCallback(async () => {
     const allScores = await fetchAllScores();
     const par = courseData ? (courseData.frontPars || []).reduce((a, b) => a + b, 0) : 36;
-    const recentN = scoringRules.hcpRecentCount || 8;
-    const bestN = scoringRules.hcpBestCount || 6;
+    const recentN = scoringRules.hcpRecentCount ?? 8;
+    const bestN = scoringRules.hcpBestCount ?? 6;
     let updated = 0;
     for (const p of players) {
       const rounds = allScores[p.id] || [];
@@ -535,8 +535,8 @@ export default function GolfLeagueApp() {
       const oppId = myMatch.team1 === myTeam.id ? myMatch.team2 : myMatch.team1;
       const opp = teams.find(t => t.id === oppId);
       const matchIdx = wk.matches.indexOf(myMatch);
-      const base = leagueConfig?.startTime || "4:28 PM";
-      const interval = leagueConfig?.teeInterval || 8;
+      const base = leagueConfig?.startTime ?? "4:28 PM";
+      const interval = leagueConfig?.teeInterval ?? 8;
       const [timePart, ampm] = base.split(' ');
       const [h, m] = timePart.split(':').map(Number);
       let mins = (ampm === 'PM' && h !== 12 ? h + 12 : h) * 60 + m + matchIdx * interval;

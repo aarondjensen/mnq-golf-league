@@ -7,7 +7,7 @@ import { LEAGUE_ID } from "../firebase";
 // ═══════════════════════════════════════════════════════════════
 //  ScoreCell — golf scorecard notation (circles, squares, dots)
 // ═══════════════════════════════════════════════════════════════
-export function ScoreCell({ score, par, strokes, size = 13, color: colorOverride }) {
+function ScoreCell({ score, par, strokes, size = 13, color: colorOverride }) {
   if (!score || score <= 0) return <span style={{ color: K.t3 + "30", fontSize: size }}>·</span>;
   const diff = score - par;
   const s = size;
@@ -55,10 +55,10 @@ export function ScoreCell({ score, par, strokes, size = 13, color: colorOverride
 // ═══════════════════════════════════════════════════════════════
 
 // Shared style constants (created once, reused across renders)
-export const GRID_LINE_STYLE = (bdr) => `1px solid ${bdr}25`;
-export const COL_BDR_STYLE = (bdr) => `1px solid ${bdr}30`;
+const GRID_LINE_STYLE = (bdr) => `1px solid ${bdr}25`;
+const COL_BDR_STYLE = (bdr) => `1px solid ${bdr}30`;
 
-export function SharedScorecard({
+function SharedScorecard({
   pars, side, hcps,
   team1Pids, team2Pids,        // player ID arrays
   getScore,                     // (pid, hole) => score
@@ -87,20 +87,23 @@ export function SharedScorecard({
   const scoreSize = variant === "compact" ? 13 : 15;
   const parTotal = pars.reduce((a, b) => a + b, 0);
 
+  // Header row style depends on variant
+  const useAccHeader = variant !== "compact";
+
   const HoleRow = () => (
-    <div style={{ display: "flex", background: K.acc, borderRadius: variant === "allMatches" ? "6px 6px 0 0" : "10px 10px 0 0" }}>
-      <div style={{ ...lblStyle, height: 28, color: K.bg, opacity: .8, borderRight: "none", fontWeight: 800, fontSize: 10 }}>HOLE</div>
+    <div style={{ display: "flex", background: useAccHeader ? K.acc : K.inp, borderRadius: variant === "allMatches" ? "6px 6px 0 0" : useAccHeader ? "10px 10px 0 0" : undefined, borderBottom: !useAccHeader ? colBdr : undefined }}>
+      <div style={{ ...lblStyle, height: useAccHeader ? 28 : 24, color: useAccHeader ? K.bg : K.t3, opacity: useAccHeader ? .8 : 1, borderRight: "none", fontWeight: 800, fontSize: 10 }}>HOLE</div>
       {Array.from({ length: 9 }, (_, i) => (
-        <div key={i} style={{ flex: 1, height: 28, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <span style={{ fontSize: 12, fontWeight: 800, color: K.bg }}>{side === 'front' ? i + 1 : i + 10}</span>
+        <div key={i} style={{ flex: 1, height: useAccHeader ? 28 : 24, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ fontSize: useAccHeader ? 12 : 12, fontWeight: useAccHeader ? 800 : 700, color: useAccHeader ? K.bg : K.t3 }}>{side === 'front' ? i + 1 : i + 10}</span>
         </div>
       ))}
-      {totStyle && <div style={{ ...totStyle, height: 28, borderLeft: "none" }}><span style={{ fontSize: 10, fontWeight: 700, color: K.bg }}>TOT</span></div>}
+      {totStyle && <div style={{ ...totStyle, height: useAccHeader ? 28 : 24, borderLeft: "none" }}><span style={{ fontSize: 10, fontWeight: 700, color: useAccHeader ? K.bg : K.t3 }}>TOT</span></div>}
     </div>
   );
 
   const ParRow = () => (
-    <div style={{ display: "flex", borderBottom: gridLine, background: K.acc + "18" }}>
+    <div style={{ display: "flex", borderBottom: gridLine, background: useAccHeader ? K.acc + "18" : undefined }}>
       <div style={{ ...lblStyle, height: variant === "allMatches" ? 26 : 22 }}>PAR</div>
       {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 11, color: K.t2, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", height: variant === "allMatches" ? 26 : 22, borderRight: i < 8 ? gridLine : "none" }}>{p}</div>)}
       {totStyle && <div style={{ ...totStyle, height: 22 }}><span style={{ fontSize: 11, fontWeight: 700, color: K.t3 }}>{parTotal}</span></div>}
@@ -136,7 +139,7 @@ export function SharedScorecard({
     const isAM = variant === "allMatches";
     return (
       <div style={{ display: "flex", ...(isAM ? { alignItems: "center", background: K.act + "0c" } : {}) }}>
-        <div style={{ ...lblStyle, height: isAM ? 28 : 38, fontSize: 9, fontWeight: 800 }}>{isAM ? "NET" : "TEAM"}</div>
+        <div style={{ ...lblStyle, height: isAM ? 28 : 34, fontSize: 9, fontWeight: 800 }}>{isAM ? "NET" : "TEAM"}</div>
         {Array.from({ length: 9 }, (_, h) => {
           let tNet = 0; let ok = true;
           pids.forEach(pid => { const s = getScore(pid, h); if (s <= 0) ok = false; else tNet += s - getStrokes(pid, h); });
@@ -144,6 +147,7 @@ export function SharedScorecard({
           const won = holeResults && holeResults[h] === (isTeam1Side ? 1 : -1);
 
           if (isAM) {
+            // All Matches style: gold border on the cell itself, bg swap, remove borderRight
             return <div key={h} style={{
               flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800,
               color: !ok ? K.t3 + "30" : K.t1, lineHeight: "22px",
@@ -152,20 +156,22 @@ export function SharedScorecard({
             }}>{ok ? tNet : "\u00B7"}</div>;
           }
 
+          // Full/compact style: gold background cell + inner 26x26 bordered box
           return <div key={h} style={{
-            flex: 1, height: 38, display: "flex", alignItems: "center", justifyContent: "center",
-            borderRight: h < 8 ? gridLine : "none",
+            flex: 1, height: 34, display: "flex", alignItems: "center", justifyContent: "center",
+            borderRight: h < 8 ? colBdr : "none",
+            background: won ? K.act + "18" : "transparent",
           }}>
-            {won ? (
-              <div style={{ width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 3, border: `1.5px solid ${K.act}`, background: K.act + "18" }}>
-                <span style={{ fontSize: scoreSize, fontWeight: 800, color: K.t1 }}>{ok ? tNet : "·"}</span>
-              </div>
-            ) : (
-              <span style={{ fontSize: scoreSize, fontWeight: 800, color: ok ? K.t1 : K.t3 + "30" }}>{ok ? tNet : "·"}</span>
-            )}
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "center",
+              width: 26, height: 26, borderRadius: 3,
+              border: won ? `1.5px solid ${K.act}` : "none",
+            }}>
+              <span style={{ fontSize: 15, fontWeight: 800, color: K.t2 }}>{ok ? tNet : "·"}</span>
+            </div>
           </div>;
         })}
-        {totStyle && <div style={{ ...totStyle, height: 38 }}><span style={{ fontSize: 14, fontWeight: 800, color: K.t1 }}>{isNaN(netTotal) ? "" : netTotal}</span></div>}
+        {totStyle && <div style={{ ...totStyle, height: 34 }}><span style={{ fontSize: 14, fontWeight: 800, color: K.t1 }}>{isNaN(netTotal) ? "" : netTotal}</span></div>}
       </div>
     );
   };
@@ -178,19 +184,14 @@ export function SharedScorecard({
         <div style={{ ...lblStyle, height: 28, fontSize: 8, fontWeight: 800, color: K.t2 }}>MATCH</div>
         {runningStatus.map((rs, i) => {
           const colBorderR = i < 8 ? { borderRight: gridLine } : {};
-          const isClinch = clinchHole !== null && i === clinchHole;
           if (clinchHole !== null && i > clinchHole) return <div key={i} style={{ flex: 1, height: 28, ...colBorderR }} />;
-          if (isClinch) {
+          if (clinchHole !== null && i === clinchHole) {
             const color = rs > 0 ? mGrn : rs < 0 ? K.red : K.t3;
-            return <div key={i} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", height: 28, ...colBorderR }}>
-              <div style={{ border: `1.5px solid ${color}`, borderRadius: 4, padding: "0 3px", lineHeight: "22px" }}>
-                <span style={{ fontSize: variant === "allMatches" ? 12 : 14, fontWeight: 800, color }}>{clinchText}</span>
-              </div>
-            </div>;
+            return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: variant === "allMatches" ? 12 : 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>{clinchText}</div>;
           }
           const color = rs > 0 ? mGrn : rs < 0 ? K.red : K.t3;
           return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: variant === "allMatches" ? 12 : 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>
-            {rs > 0 ? <><span style={{ fontSize: variant === "allMatches" ? 12 : 14 }}>▲</span>{rs}</> : rs < 0 ? <><span style={{ fontSize: variant === "allMatches" ? 12 : 14 }}>▼</span>{Math.abs(rs)}</> : <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: .5 }}>TIED</span>}
+            {rs > 0 ? <><span style={{ fontSize: variant === "allMatches" ? 12 : 14 }}>▲</span>{rs}</> : rs < 0 ? <><span style={{ fontSize: variant === "allMatches" ? 12 : 14 }}>▼</span>{Math.abs(rs)}</> : "—"}
           </div>;
         })}
         {totStyle && <div style={{ width: tw, flexShrink: 0, height: 28 }} />}
@@ -258,7 +259,7 @@ function computeMatchStatus(t1Pids, t2Pids, getScore, getStrokes, pars) {
 // ═══════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
-export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, openAllMatches, onAllMatchesOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps }) {
+export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule, openAllMatches, onAllMatchesOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
   const [showAllMatches, setShowAllMatches] = useState(false);
@@ -442,12 +443,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const existingResult = (t1 && t2) ? matchResults.find(r => r.week === week && r.team1Id === t1.id && r.team2Id === t2.id) : null;
   const isAlreadyFinalized = !!existingResult;
 
-  // Clear justSigned and close popup once Firestore confirms the result
+  // Clear justSigned once Firestore confirms the result
   useEffect(() => {
-    if (isAlreadyFinalized && justSigned) {
-      setJustSigned(false);
-      setShowFinalize(false);
-    }
+    if (isAlreadyFinalized && justSigned) setJustSigned(false);
   }, [isAlreadyFinalized, justSigned]);
   const isAttested = existingResult?.attested === true;
   const finalizedByTeamId = existingResult?.finalizedByTeamId || null;
@@ -455,55 +453,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const isTheSigner = leagueUser.playerId === signedByPlayerId;
   const isOnFinalizingTeam = myTeam && (finalizedByTeamId === myTeam.id || isTheSigner);
   const isOnOpposingTeam = myTeam && !isOnFinalizingTeam && (myTeam.id === (t1?.id) || myTeam.id === (t2?.id));
-
-  // Multi-player attestation: all non-signing PRESENT players must attest
-  const attestedBy = existingResult?.attestedBy || [];
-  const allMatchPids = [...t1Players, ...t2Players];
-  const nonSignerPids = allMatchPids.filter(pid => pid !== signedByPlayerId && !isPlayerAbsent(pid));
-  // If no present non-signers (all absent), the signer's signature is sufficient
-  const isFullyAttested = isAlreadyFinalized && (nonSignerPids.length === 0 || nonSignerPids.every(pid => attestedBy.includes(pid)));
-  const iHaveAttested = attestedBy.includes(leagueUser.playerId);
-  const isInThisMatch = allMatchPids.includes(leagueUser.playerId) || isComm;
-  const needsAttestation = isAlreadyFinalized && !isFullyAttested && isInThisMatch && !isTheSigner && !iHaveAttested && !isPlayerAbsent(leagueUser.playerId);
-  const scoresLocked = (isWeekLocked && !isComm) || (isFullyAttested && !isComm);
-
-  // Tee time early-entry warning
-  const teeTimeWarningDismissed = useRef(false);
-  // Reset when match changes
-  useEffect(() => { teeTimeWarningDismissed.current = false; }, [matchKey]);
-
-  const getMatchTeeTimeMinutes = () => {
-    if (!matchToScore || !matches.length) return null;
-    const matchIdx = matches.indexOf(matchToScore);
-    if (matchIdx < 0) return null;
-    const base = leagueConfig?.startTime || "4:28 PM";
-    const interval = leagueConfig?.teeInterval || 8;
-    const [timePart, ampm] = base.split(' ');
-    const [h, m] = timePart.split(':').map(Number);
-    return (ampm === 'PM' && h !== 12 ? h + 12 : h) * 60 + m + matchIdx * interval;
-  };
-
-  const isBeforeTeeTime = () => {
-    const teeMinutes = getMatchTeeTimeMinutes();
-    if (teeMinutes === null) return false;
-    const now = new Date();
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
-    return nowMinutes < teeMinutes;
-  };
+  const needsAttestation = isAlreadyFinalized && !isAttested && isOnOpposingTeam;
+  const scoresLocked = (isWeekLocked && !isComm) || (isAttested && !isComm);
 
   const guardedSaveScore = (w, pid, h, val) => {
     if (scoresLocked) {
       setToast(isWeekLocked ? "Week is locked — scores cannot be changed" : "Scorecard attested — only commissioner can edit");
       setTimeout(() => setToast(null), 2500);
-      return;
-    }
-    // Check if before tee time (prompt every attempt until confirmed)
-    if (!teeTimeWarningDismissed.current && isBeforeTeeTime()) {
-      setConfirmModal({
-        title: "Early Score Entry",
-        message: "You are trying to enter scores before your scheduled tee time. Continue?",
-        onConfirm: () => { teeTimeWarningDismissed.current = true; setConfirmModal(null); saveScore(w, pid, h, val); },
-      });
       return;
     }
     saveScore(w, pid, h, val);
@@ -545,11 +501,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   }, [toast]);
 
   useEffect(() => {
-    if (allComplete && !showFinalize && !isAlreadyFinalized && !justSigned) {
-      const timer = setTimeout(() => setShowFinalize(true), 400);
+    if (allComplete && !showFinalize && !isAlreadyFinalized) {
+      const timer = setTimeout(() => setShowFinalize(true), 600);
       return () => clearTimeout(timer);
     }
-  }, [allComplete, isAlreadyFinalized, justSigned]);
+  }, [allComplete, isAlreadyFinalized]);
 
   // ── Shared helper: get initials (with absent fallback) ──
   const getInitials = useCallback((pid) => {
@@ -560,7 +516,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   // ── All Matches view ──
   if (showAllMatches && !activeMatch) {
-    const formatTeeTime = (idx) => fmtTeeTimeUtil(leagueConfig?.startTime || "4:28 PM", idx, leagueConfig?.teeInterval || 8);
+    const formatTeeTime = (idx) => fmtTeeTimeUtil(leagueConfig?.startTime ?? "4:28 PM", idx, leagueConfig?.teeInterval ?? 8);
     const dn = (pid) => {
       const pl = playerMap[pid];
       if (!pl) return "TBD";
@@ -568,36 +524,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       return parts.length > 1 ? parts[parts.length - 1] : parts[0];
     };
     const amGetHcp = (pid) => {
-      const absent = holeScores[`w${week}_p${pid}_habsent`] === 1;
-      if (absent) {
-        // Find teammate
-        const allPidsForMatch = matches.flatMap(m => {
-          const mt1 = teams.find(t => t.id === m.team1);
-          const mt2 = teams.find(t => t.id === m.team2);
-          return [mt1?.player1, mt1?.player2, mt2?.player1, mt2?.player2].filter(Boolean);
-        });
-        // Find which team this player is on
-        for (const m of matches) {
-          const mt1 = teams.find(t => t.id === m.team1);
-          const mt2 = teams.find(t => t.id === m.team2);
-          const t1p = [mt1?.player1, mt1?.player2].filter(Boolean);
-          const t2p = [mt2?.player1, mt2?.player2].filter(Boolean);
-          if (t1p.includes(pid)) {
-            const tm = t1p.find(p => p !== pid);
-            if (tm && holeScores[`w${week}_p${tm}_habsent`] !== 1) {
-              const p = playerMap[tm]; return p ? Math.round(p.handicapIndex || 0) : 0;
-            }
-            break;
-          }
-          if (t2p.includes(pid)) {
-            const tm = t2p.find(p => p !== pid);
-            if (tm && holeScores[`w${week}_p${tm}_habsent`] !== 1) {
-              const p = playerMap[tm]; return p ? Math.round(p.handicapIndex || 0) : 0;
-            }
-            break;
-          }
-        }
-      }
       const p = playerMap[pid];
       return p ? Math.round(p.handicapIndex || 0) : 0;
     };
@@ -607,8 +533,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     const getThru = (mT1Pids, mT2Pids) => {
       let thru = 0;
       for (let h = 0; h < 9; h++) {
-        const presentPids = [...mT1Pids, ...mT2Pids].filter(pid => holeScores[`w${week}_p${pid}_habsent`] !== 1);
-        const allOk = presentPids.length > 0 && presentPids.every(pid => amGetScore(pid, h) > 0);
+        const allOk = [...mT1Pids, ...mT2Pids].every(pid => amGetScore(pid, h) > 0);
         if (allOk) thru = h + 1;
         else break;
       }
@@ -667,18 +592,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
             const isFinalOrSigned = !!res;
             const isTied = isFinalOrSigned ? (score1 === score2) : (thru > 0 && dispCum === 0);
-            const matchIsTied = res?.matchResultText === "TIED";
-            const t1Leading = matchIsTied ? false : isFinalOrSigned ? (score1 > score2) : (dispCum > 0);
-            const t2Leading = matchIsTied ? false : isFinalOrSigned ? (score2 > score1) : (dispCum < 0);
+            const t1Leading = isFinalOrSigned ? (score1 > score2) : (dispCum > 0);
+            const t2Leading = isFinalOrSigned ? (score2 > score1) : (dispCum < 0);
 
             const isSigned = isFinalOrSigned && res && !res.attested;
             const signerIsRawT1 = isSigned && res.finalizedByTeamId === rawT1.id;
             const signerIsRawT2 = isSigned && res.finalizedByTeamId === rawT2.id;
-            const resAttestedBy = res?.attestedBy || [];
-            const resAllPids = [...mT1Pids, ...mT2Pids];
-            const resAbsent = (pid) => holeScores[`w${week}_p${pid}_habsent`] === 1;
-            const resNonSigners = resAllPids.filter(pid => pid !== res?.signedByPlayerId && !resAbsent(pid));
-            const resAttestedCount = resNonSigners.filter(pid => resAttestedBy.includes(pid)).length;
             const attestNeededDispT1 = isSigned && (
               (swapped && signerIsRawT1) || (!swapped && signerIsRawT2)
             );
@@ -691,15 +610,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
             if (isFinalOrSigned) {
               centerText = res.matchResultText || `${score1}-${score2}`;
-              centerColor = matchIsTied ? K.t3 : K.t1;
+              centerColor = (res.matchResultText === "TIED" || score1 === score2) ? K.t3 : K.t1;
               if (res.attested) { progressLabel = "FINAL"; progressColor = K.grn; }
               else {
-                progressLabel = `${resAttestedCount}/${resNonSigners.length} ATTEST`;
+                progressLabel = attestNeededDispT1 ? "‹ ATTEST" : "ATTEST ›";
                 progressColor = "#3b82f6";
               }
             } else if (thru > 0) {
-              if (dispCum > 0) { centerText = dispCum + "UP"; centerColor = K.t1; }
-              else if (dispCum < 0) { centerText = Math.abs(dispCum) + "UP"; centerColor = K.t1; }
+              if (dispCum > 0) { centerText = dispCum + "UP"; centerColor = K.matchGrn; }
+              else if (dispCum < 0) { centerText = Math.abs(dispCum) + "UP"; centerColor = K.matchGrn; }
               else { centerText = "AS"; centerColor = K.t3; }
               progressLabel = "Thru " + thru;
             } else {
@@ -756,21 +675,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   </div>
                 </button>
 
-                {/* Pending attesters row */}
-                {isSigned && (() => {
-                  const pending = resNonSigners.filter(pid => !resAttestedBy.includes(pid));
-                  if (!pending.length) return null;
-                  return (
-                    <div style={{ display: "flex", justifyContent: "center", gap: 6, padding: "4px 10px 6px", borderTop: `1px solid ${K.bdr}20` }}>
-                      {pending.map(pid => {
-                        const p = playerMap[pid];
-                        const lastName = p ? p.name.split(' ').pop() : '?';
-                        return <span key={pid} style={{ fontSize: 9, fontWeight: 600, color: "#3b82f6", background: "#3b82f610", padding: "2px 6px", borderRadius: 3, border: `1px solid #3b82f625` }}>{lastName}</span>;
-                      })}
-                    </div>
-                  );
-                })()}
-
                 {/* Expanded scorecard — uses SharedScorecard */}
                 {isExp && (() => {
                   const amIsAbsent = (pid) => holeScores[`w${week}_p${pid}_habsent`] === 1;
@@ -820,7 +724,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     getInitials: amGetInitials, isAbsent: amIsAbsent,
                     holeResults: dispHoleResults, runningStatus: dispRunning,
                     clinchHole: dispClinchHole, clinchText: dispClinchText,
-                    variant: "allMatches", showTotals: true, matchGrn,
+                    variant: "allMatches", matchGrn,
                   });
 
                   return (
@@ -847,17 +751,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             {/* Rain Out button — before week is finalized */}
             {!isWeekLocked && !allMatchesAttested && (
               <button onClick={() => {
-                const isRoundRobin = !weekSch.isPlayoff && !weekSch.seeded && !weekSch.makeupFor;
-                const lastRRWeekNum = Math.max(0, ...schedule.filter(s =>
-                  (!s.isPlayoff && !s.seeded && !s.makeupFor) || (s.makeupFor && !s.isPlayoff)
-                ).map(s => s.week));
-                // Find first non-locked slot at or after ideal insert position
-                const insertTarget = isRoundRobin ? lastRRWeekNum + 1 : weekSch.week + 1;
-                let makeupWeekNum = insertTarget;
-                while (schedule.some(s => s.week === makeupWeekNum && s.locked === true)) {
-                  makeupWeekNum++;
-                }
-                const msgDetail = `This will skip this week and insert a makeup week at week ${makeupWeekNum}. Unlocked future weeks will shift forward. Locked weeks stay put.`;
+                const rrWeekCount = teams.length - 1;
+                const isRoundRobin = weekSch.week <= rrWeekCount && !weekSch.isPlayoff;
+                const msgDetail = isRoundRobin
+                  ? `This will skip this week and insert a makeup week after week ${rrWeekCount} (end of round robin). All seeded/playoff weeks will shift forward.`
+                  : "This will skip this week and add a makeup week at the end of the season. All future weeks will shift forward.";
                 setConfirmModal({
                   title: `Rain out Week ${week}?`,
                   message: msgDetail,
@@ -870,65 +768,85 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     };
                     const fmtDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-                    // Mark the week as rained out (clear matches since they're moved to makeup)
-                    await saveWeekSchedule({ ...weekSch, rainedOut: true, matches: [] });
+                    // Mark the week as rained out
+                    await saveWeekSchedule({ ...weekSch, rainedOut: true });
 
-                    // Build shift map: non-locked weeks at or after makeupWeekNum skip over locked weeks
-                    const lockedWeekNums = new Set(schedule.filter(s => s.locked === true).map(s => s.week));
-                    const reserved = new Set(lockedWeekNums);
-                    reserved.add(weekSch.week); // rained-out week stays put
-
-                    const ascShifts = schedule
-                      .filter(s => s.week >= makeupWeekNum && s.locked !== true && s.week !== weekSch.week)
-                      .sort((a, b) => a.week - b.week);
-
-                    const shiftMap = {};
-                    let cursor = makeupWeekNum + 1;
-                    for (const fw of ascShifts) {
-                      while (reserved.has(cursor)) cursor++;
-                      shiftMap[fw.week] = cursor;
-                      reserved.add(cursor);
-                      cursor++;
-                    }
-
-                    // Apply shifts descending by new week number
-                    const shiftEntries = Object.entries(shiftMap).map(([oldW, newW]) => ({ oldW: parseInt(oldW), newW })).sort((a, b) => b.newW - a.newW);
-                    for (const { oldW, newW } of shiftEntries) {
-                      const fw = schedule.find(s => s.week === oldW);
-                      if (!fw) continue;
-                      let newDate = fw.date || "";
-                      const parsed = parseDate(fw.date);
-                      if (parsed) {
-                        parsed.setDate(parsed.getDate() + (newW - oldW) * 7);
-                        newDate = fmtDate(parsed);
+                    if (isRoundRobin) {
+                      // Find end of RR block including any prior makeup weeks
+                      let lastRRWeekNum = rrWeekCount;
+                      const makeupRRWeeks = schedule.filter(s =>
+                        s.makeupFor && s.makeupFor <= rrWeekCount
+                      );
+                      if (makeupRRWeeks.length > 0) {
+                        lastRRWeekNum = Math.max(lastRRWeekNum, ...makeupRRWeeks.map(s => s.week));
                       }
-                      if (deleteWeekSchedule) await deleteWeekSchedule(fw.id);
-                      if (setWeekSchedule) await setWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newW}`, week: newW, date: newDate });
-                      else await saveWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newW}`, week: newW, date: newDate });
-                    }
 
-                    // Create makeup week
-                    const neighborWeek = schedule.find(s => s.week === makeupWeekNum - 1) || weekSch;
-                    let makeupDate = "";
-                    const nParsed = parseDate(neighborWeek?.date);
-                    if (nParsed) {
-                      nParsed.setDate(nParsed.getDate() + 7);
-                      makeupDate = fmtDate(nParsed);
-                    }
-                    const makeupSide = neighborWeek?.side === 'front' ? 'back' : 'front';
+                      // Shift everything after the last RR week up by 1 (descending)
+                      const weeksToShift = schedule.filter(s => s.week > lastRRWeekNum).sort((a, b) => b.week - a.week);
+                      for (const fw of weeksToShift) {
+                        const newNum = fw.week + 1;
+                        let newDate = fw.date || "";
+                        const parsed = parseDate(fw.date);
+                        if (parsed) {
+                          parsed.setDate(parsed.getDate() + 7);
+                          newDate = fmtDate(parsed);
+                        }
+                        await saveWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newNum}`, week: newNum, date: newDate });
+                      }
 
-                    const makeupDoc = {
-                      id: `${LEAGUE_ID}_w${makeupWeekNum}`,
-                      week: makeupWeekNum,
-                      matches: [...(weekSch.matches || [])],
-                      side: weekSch.side || makeupSide,
-                      date: makeupDate,
-                      makeupFor: weekSch.week,
-                      isPlayoff: weekSch.isPlayoff || false,
-                      seeded: weekSch.seeded || false,
-                    };
-                    if (setWeekSchedule) await setWeekSchedule(makeupDoc);
-                    else await saveWeekSchedule(makeupDoc);
+                      // Insert makeup week right after last RR week
+                      const makeupWeekNum = lastRRWeekNum + 1;
+                      const lastRRWeekData = schedule.find(s => s.week === lastRRWeekNum);
+                      let makeupDate = "";
+                      const lastParsed = parseDate(lastRRWeekData?.date);
+                      if (lastParsed) {
+                        lastParsed.setDate(lastParsed.getDate() + 7);
+                        makeupDate = fmtDate(lastParsed);
+                      }
+                      const makeupSide = lastRRWeekData?.side === 'front' ? 'back' : 'front';
+
+                      await saveWeekSchedule({
+                        id: `${LEAGUE_ID}_w${makeupWeekNum}`,
+                        week: makeupWeekNum,
+                        matches: [...(weekSch.matches || [])],
+                        side: weekSch.side || makeupSide,
+                        date: makeupDate,
+                        makeupFor: weekSch.week,
+                      });
+                    } else {
+                      // Seeded or Playoff: shift future weeks up by 1, put rained-out matchups in next slot
+                      const futureWeeks = schedule.filter(s => s.week > weekSch.week && !s.rainedOut).sort((a, b) => b.week - a.week);
+                      for (const fw of futureWeeks) {
+                        const newNum = fw.week + 1;
+                        let newDate = fw.date || "";
+                        const parsed = parseDate(fw.date);
+                        if (parsed) {
+                          parsed.setDate(parsed.getDate() + 7);
+                          newDate = fmtDate(parsed);
+                        }
+                        await saveWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newNum}`, week: newNum, date: newDate });
+                      }
+
+                      // Write the rained-out week's matchups into the next week slot
+                      const nextWeekNum = weekSch.week + 1;
+                      let nextDate = weekSch.date || "";
+                      const wkParsed = parseDate(weekSch.date);
+                      if (wkParsed) {
+                        wkParsed.setDate(wkParsed.getDate() + 7);
+                        nextDate = fmtDate(wkParsed);
+                      }
+                      const nextSide = weekSch.side === 'front' ? 'back' : 'front';
+
+                      await saveWeekSchedule({
+                        id: `${LEAGUE_ID}_w${nextWeekNum}`,
+                        week: nextWeekNum,
+                        matches: [...(weekSch.matches || [])],
+                        side: nextSide,
+                        date: nextDate,
+                        isPlayoff: weekSch.isPlayoff || false,
+                        seeded: false,
+                      });
+                    }
 
                     setConfirmModal(null);
                     setToast("Week " + week + " rained out");
@@ -1084,8 +1002,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   if (!t1 || !t2) return null;
 
   const finalizeMatch = async () => {
-    const isPlayoffWeek = weekSch?.isPlayoff === true;
-    const sr = isPlayoffWeek
+    const sr = weekSch?.isPlayoff === true
       ? { mw: scoringRules.playoffMatchWin, mt: scoringRules.playoffMatchTie, ml: scoringRules.playoffMatchLoss, bw: scoringRules.playoffBonusWin, bt: scoringRules.playoffBonusTie, bl: scoringRules.playoffBonusLoss }
       : { mw: scoringRules.matchWin, mt: scoringRules.matchTie, ml: scoringRules.matchLoss, bw: scoringRules.totalNetBonusWin, bt: scoringRules.totalNetBonusTie, bl: scoringRules.totalNetBonusLoss };
 
@@ -1142,10 +1059,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     else if (holesRemaining > 0) matchResultText = `${matchMargin}&${holesRemaining}`;
     else matchResultText = `${Math.abs(finalStatus)}UP`;
 
-    // If all other players are absent, auto-attest since nobody can
-    const presentNonSigners = allP.filter(pid => pid !== leagueUser.playerId && !isPlayerAbsent(pid));
-    const autoAttest = presentNonSigners.length === 0;
-
     await saveMatchResult({
       id: `${LEAGUE_ID}_w${week}_${t1.id}_${t2.id}`, week,
       team1Id: t1.id, team2Id: t2.id,
@@ -1156,23 +1069,21 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       matchWinnerId: finalStatus > 0 ? t1.id : finalStatus < 0 ? t2.id : null,
       finalizedByTeamId: myTeam?.id || null,
       signedByPlayerId: leagueUser.playerId || null,
-      attestedBy: [],
-      attested: autoAttest,
+      attested: false,
     });
   };
 
   const attestMatch = async () => {
     if (!existingResult) return;
-    const newAttestedBy = [...new Set([...attestedBy, leagueUser.playerId])];
-    const allDone = nonSignerPids.every(pid => newAttestedBy.includes(pid));
     await saveMatchResult({
       ...existingResult,
-      attestedBy: newAttestedBy,
-      attested: allDone,
+      attested: true,
+      attestedByTeamId: myTeam?.id || null,
+      attestedByPlayerId: leagueUser.playerId || null,
     });
     setShowFinalize(false);
     setShowEditConfirm(false);
-    setToast(allDone ? "Scorecard fully attested ✓" : "Attestation recorded ✓");
+    setToast("Scorecard attested ✓");
     setTimeout(() => setToast(null), 2000);
   };
 
@@ -1222,12 +1133,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         </div>
       )}
       {!activeMatch && (
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}>
-          <div style={{ display: "flex", background: K.inp, borderRadius: 20, border: `1px solid ${K.bdr}`, padding: 2 }}>
-            <button style={{ padding: "4px 14px", borderRadius: 17, cursor: "default", fontSize: 11, fontWeight: 700, border: "none", background: K.acc, color: K.bg, transition: "all .2s" }}>
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
+          <div style={{ display: "flex", background: K.inp, borderRadius: 20, border: `1px solid ${K.bdr}`, padding: 3 }}>
+            <button style={{ padding: "6px 16px", borderRadius: 17, cursor: "default", fontSize: 12, fontWeight: 700, border: "none", background: K.acc, color: K.bg, transition: "all .2s" }}>
               My Match
             </button>
-            <button onClick={() => setShowAllMatches(true)} style={{ padding: "4px 14px", borderRadius: 17, cursor: "pointer", fontSize: 11, fontWeight: 700, border: "none", background: "transparent", color: K.t3, transition: "all .2s" }}>
+            <button onClick={() => setShowAllMatches(true)} style={{ padding: "6px 16px", borderRadius: 17, cursor: "pointer", fontSize: 12, fontWeight: 700, border: "none", background: "transparent", color: K.t3, transition: "all .2s" }}>
               All Matches
             </button>
           </div>
@@ -1235,15 +1146,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       )}
       {/* Status banners */}
       {isWeekLocked && (
-        <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 4, fontSize: 13, color: K.warn, fontWeight: 700, textAlign: "center" }}>
+        <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 6, fontSize: 13, color: K.warn, fontWeight: 700, textAlign: "center" }}>
           Week {week} is locked — scores are read-only
         </div>
       )}
       {!isAlreadyFinalized && (
-      <div style={{ display: "flex", gap: 3, marginBottom: 2 }}>
+      <div style={{ display: "flex", gap: 3, marginBottom: 4 }}>
         {Array.from({ length: 9 }, (_, i) => {
           const cur = i === curHole; const done = allP.every(pid => getS(pid, i) > 0);
-          return <button key={i} onClick={() => { setCurHole(i); setEditing(i < currentHoleIdx); }} style={{ flex: 1, height: 32, borderRadius: done || cur ? 8 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 15, fontWeight: 700, cursor: "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{side === 'front' ? i + 1 : i + 10}</button>;
+          return <button key={i} onClick={() => { setCurHole(i); setEditing(i < currentHoleIdx); }} style={{ flex: 1, height: 38, borderRadius: done || cur ? 10 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 16, fontWeight: 700, cursor: "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{side === 'front' ? i + 1 : i + 10}</button>;
         })}
       </div>
       )}
@@ -1282,29 +1193,73 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const hasAnyStatus = holeStatuses.some(s => s !== null);
 
         return (<>
-          <div style={{ display: isAlreadyFinalized ? "none" : "flex", marginTop: 2, marginBottom: 4, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 8, padding: "4px 0", alignItems: "center" }}>
+          <button onClick={() => setShowScorecard(!showScorecard)} style={{ display: isAlreadyFinalized || !hasAnyStatus ? "none" : "flex", marginTop: 6, marginBottom: showScorecard ? 0 : 8, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: showScorecard ? "8px 8px 0 0" : 8, cursor: "pointer", padding: "8px 0", alignItems: "center" }}>
             {holeStatuses.map((st, i) => {
               const colBorderR = i < 8 ? { borderRight: `1px solid ${K.bdr}30` } : {};
               if (matchClinchHole !== null && i === matchClinchHole) {
                 const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-                return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, color, fontWeight: 800, lineHeight: "24px", ...colBorderR }}>{clinchScoreText}</div>;
+                return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 16, color, fontWeight: 800, lineHeight: "30px", ...colBorderR }}>{clinchScoreText}</div>;
               }
-              if (matchClinchHole !== null && i > matchClinchHole) return <div key={i} style={{ flex: 1, height: 24, ...colBorderR }} />;
-              if (st === null) return <div key={i} style={{ flex: 1, height: 24, ...colBorderR }} />;
+              if (matchClinchHole !== null && i > matchClinchHole) return <div key={i} style={{ flex: 1, height: 30, ...colBorderR }} />;
+              if (st === null) return <div key={i} style={{ flex: 1, height: 30, ...colBorderR }} />;
               const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "24px", ...colBorderR }}>{st > 0 ? <><span style={{ fontSize: 14 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 14 }}>▼</span>{Math.abs(st)}</> : <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: .5 }}>TIED</span>}</div>;
+              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 16, fontWeight: 800, color, lineHeight: "30px", ...colBorderR }}>{st > 0 ? <><span style={{ fontSize: 16 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 16 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
             })}
-          </div>
+          </button>
+          {showScorecard && !isAlreadyFinalized && (() => {
+            const scMyPids = isMyT1 ? t1Players : t2Players;
+            const scOppPids = isMyT1 ? t2Players : t1Players;
+            const scStatus = computeMatchStatus(scMyPids, scOppPids, getS, getStrokes, pars);
+            const sc = buildSC(scMyPids, scOppPids, scStatus.holeResults, scStatus.runningStatus, scStatus.clinchHole, scStatus.clinchText, "allMatches", false);
+
+            return (<>
+            <div onClick={() => setShowScorecard(false)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 400 }} />
+            <div onClick={() => setShowScorecard(false)} data-popup style={{ position: "fixed", inset: 0, zIndex: 450, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "0 0 10px", width: "100%", maxWidth: 420, overflow: "hidden", overscrollBehavior: "contain" }}>
+              <sc.HoleRow />
+              <sc.ParRow />
+              <div style={{ padding: "0 4px" }}>
+                {scMyPids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
+                <sc.TeamNetRow pids={scMyPids} isTeam1Side={true} />
+                <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "3px 0" }} />
+                <div style={{ display: "flex", alignItems: "center", background: K.acc + "18", borderBottom: `2px solid ${K.bdr}40` }}>
+                  <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700, padding: "5px 0", borderRight: `1px solid ${K.bdr}25`, paddingLeft: 4, letterSpacing: .3 }}>MATCH</div>
+                  {holeStatuses.map((st, i) => {
+                    if (matchClinchHole !== null && i === matchClinchHole) {
+                      const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
+                      return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color, fontWeight: 800, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none" }}>{clinchScoreText}</div>;
+                    }
+                    if (matchClinchHole !== null && i > matchClinchHole) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none" }} />;
+                    if (st === null) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none", color: K.t3 + "30" }}>—</div>;
+                    const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
+                    return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none" }}>{st > 0 ? <><span style={{ fontSize: 15 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 15 }}>▼</span>{Math.abs(st)}</> : "—"}</div>;
+                  })}
+                </div>
+                <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "3px 0" }} />
+                {scOppPids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
+                <sc.TeamNetRow pids={scOppPids} isTeam1Side={false} />
+              </div>
+              <button onClick={() => setShowScorecard(false)} style={{ display: "block", width: "calc(100% - 20px)", margin: "10px auto 0", padding: "9px", background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.t2, fontSize: 13, fontWeight: 600, cursor: "pointer", letterSpacing: .4 }}>
+                Close
+              </button>
+            </div>
+            </div>
+            </>);
+          })()}
         </>);
       })()}
       {/* After signed: show inline scorecard. Before signed: show hole card + scoring UI */}
-      {isAlreadyFinalized ? (() => {
+      {(isAlreadyFinalized || justSigned) ? (() => {
+        if (justSigned && !isAlreadyFinalized) {
+          // Brief transition: scorecard was just signed, waiting for Firestore confirmation
+          return <div style={{ textAlign: "center", padding: 30, color: K.t3, fontSize: 13 }} className="pu">Saving scorecard...</div>;
+        }
         const sc = buildScorecardData();
         const scComp = buildSC(sc.myPids, sc.oppPids, sc.holeResults, sc.runningStatus, sc.clinchHole, sc.clinchText, "full", true);
 
         return (
           <div style={{ marginBottom: 6, position: "relative" }}>
-            {isFullyAttested && (
+            {isAttested && (
               <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", zIndex: 2, overflow: "hidden" }}>
                 <div style={{ fontSize: "clamp(70px, 22vw, 120px)", fontWeight: 900, color: K.t3 + "20", letterSpacing: "clamp(12px, 4vw, 24px)", textTransform: "uppercase", userSelect: "none", whiteSpace: "nowrap", transform: "rotate(-18deg)" }}>FINAL</div>
               </div>
@@ -1324,78 +1279,33 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <scComp.TeamNetRow pids={sc.oppPids} isTeam1Side={false} />
             </div>
 
-            {/* Attestation status + actions */}
-            {isAlreadyFinalized && !isFullyAttested && !isWeekLocked && (() => {
-              const attestCount = attestedBy.length;
-              const needed = nonSignerPids.length;
-              const statusText = `${attestCount} of ${needed} attested`;
-              return (
-                <div style={{ marginTop: 8 }}>
-                  {/* Attestation progress */}
-                  <div style={{ display: "flex", gap: 4, marginBottom: 6, flexWrap: "wrap", justifyContent: "center" }}>
-                    {nonSignerPids.map(pid => {
-                      const pl = playerMap[pid];
-                      const done = attestedBy.includes(pid);
-                      const lastName = pl ? pl.name.split(' ').pop() : "?";
-                      return (
-                        <div key={pid} style={{ fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 4, background: done ? K.grn + "18" : K.inp, border: `1px solid ${done ? K.grn + "40" : K.bdr}`, color: done ? K.grn : K.t3 }}>
-                          {done ? "✓ " : ""}{lastName}
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div style={{ textAlign: "center", fontSize: 11, color: K.warn, fontWeight: 600, marginBottom: 6 }}>
-                    {statusText}
-                  </div>
+            {isAlreadyFinalized && !isAttested && !isWeekLocked && !needsAttestation && (
+              <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginTop: 8, fontSize: 13, color: K.warn, fontWeight: 700, textAlign: "center" }}>
+                Scorecard signed — awaiting opponent attestation
+              </div>
+            )}
 
-                  {/* Attest button — for non-signers who haven't attested yet */}
-                  {needsAttestation && (
-                    <>
-                      <button onClick={attestMatch} style={{ width: "100%", padding: "12px", borderRadius: 10, background: "#3b82f6", border: "none", color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>
-                        Attest Scorecard
-                      </button>
-                      {signedByPlayerId && playerMap[signedByPlayerId] && (
-                        <div style={{ textAlign: "center", marginTop: 5, fontSize: 11, color: K.t3, fontWeight: 600 }}>
-                          Signed by {playerMap[signedByPlayerId].name}
-                        </div>
-                      )}
-                    </>
-                  )}
-
-                  {/* Already attested but waiting for others */}
-                  {iHaveAttested && !isFullyAttested && (
-                    <div style={{ textAlign: "center", fontSize: 12, color: K.t3, fontWeight: 600, padding: "6px 0" }}>
-                      You attested — waiting for others
-                    </div>
-                  )}
-
-                  {/* Unsign button — any of the 4 players can unsign before fully attested */}
-                  {isInThisMatch && existingResult?.id && (
-                    <button onClick={() => {
-                      if (window.confirm("Unsign this scorecard? All attestations will be reset and scores can be edited.")) {
-                        deleteMatchResult(existingResult.id);
-                      }
-                    }} style={{ width: "100%", padding: "7px 0", borderRadius: 8, marginTop: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
-                      Unsign & Edit
-                    </button>
-                  )}
-                </div>
-              );
-            })()}
+            {needsAttestation && (
+              <div style={{ marginTop: 12 }}>
+                <button onClick={attestMatch} style={{ width: "100%", padding: "14px", borderRadius: 12, background: "#3b82f6", border: "none", color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
+                  Attest Scorecard
+                </button>
+              </div>
+            )}
           </div>
         );
       })() : (<>
-      <div style={{ background: K.acc, borderRadius: 10, padding: "4px 8px", marginBottom: 4, display: "flex", alignItems: "center" }}>
-        <button onClick={() => { const prev = Math.max(0, curHole - 1); setCurHole(prev); setEditing(prev < currentHoleIdx); }} disabled={curHole === 0} style={{ width: 28, height: 36, borderRadius: 8, background: "none", border: "none", cursor: curHole === 0 ? "default" : "pointer", color: curHole === 0 ? K.bg + "40" : K.bg, fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
+      <div style={{ background: K.acc, borderRadius: 10, padding: "6px 8px", marginBottom: 6, display: "flex", alignItems: "center" }}>
+        <button onClick={() => { const prev = Math.max(0, curHole - 1); setCurHole(prev); setEditing(prev < currentHoleIdx); }} disabled={curHole === 0} style={{ width: 32, height: 40, borderRadius: 8, background: "none", border: "none", cursor: curHole === 0 ? "default" : "pointer", color: curHole === 0 ? K.bg + "40" : K.bg, fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
         <div style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 8px" }}>
-          <div style={{ textAlign: "center", minWidth: 32 }}><div style={{ fontSize: 8, color: K.bg, fontWeight: 600, opacity: 0.7 }}>Par</div><div style={{ fontSize: 15, fontWeight: 800, color: K.bg }}>{par}</div></div>
-          <div style={{ textAlign: "center" }}><div style={{ fontSize: 8, color: K.bg, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, opacity: 0.7 }}>Hole</div><div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 26, fontWeight: 700, color: K.bg, lineHeight: 1 }}>{side === 'front' ? curHole + 1 : curHole + 10}</div></div>
-          <div style={{ textAlign: "center", minWidth: 32 }}><div style={{ fontSize: 8, color: K.bg, fontWeight: 600, opacity: 0.7 }}>HCP</div><div style={{ fontSize: 15, fontWeight: 800, color: K.bg }}>{hcp}</div></div>
+          <div style={{ textAlign: "center", minWidth: 36 }}><div style={{ fontSize: 9, color: K.bg, fontWeight: 600, opacity: 0.7 }}>Par</div><div style={{ fontSize: 16, fontWeight: 800, color: K.bg }}>{par}</div></div>
+          <div style={{ textAlign: "center" }}><div style={{ fontSize: 9, color: K.bg, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, opacity: 0.7 }}>Hole</div><div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 30, fontWeight: 700, color: K.bg, lineHeight: 1 }}>{side === 'front' ? curHole + 1 : curHole + 10}</div></div>
+          <div style={{ textAlign: "center", minWidth: 36 }}><div style={{ fontSize: 9, color: K.bg, fontWeight: 600, opacity: 0.7 }}>HCP</div><div style={{ fontSize: 16, fontWeight: 800, color: K.bg }}>{hcp}</div></div>
         </div>
-        <button onClick={() => { const next = Math.min(8, curHole + 1); setCurHole(next); setEditing(next < currentHoleIdx); }} disabled={curHole === 8} style={{ width: 28, height: 36, borderRadius: 8, background: "none", border: "none", cursor: curHole === 8 ? "default" : "pointer", color: curHole === 8 ? K.bg + "40" : K.bg, fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
+        <button onClick={() => { const next = Math.min(8, curHole + 1); setCurHole(next); setEditing(next < currentHoleIdx); }} disabled={curHole === 8} style={{ width: 32, height: 40, borderRadius: 8, background: "none", border: "none", cursor: curHole === 8 ? "default" : "pointer", color: curHole === 8 ? K.bg + "40" : K.bg, fontSize: 20, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
       </div>
       </>)}
-      {!isAlreadyFinalized && (<>
+      {!isAlreadyFinalized && !justSigned && (<>
 
       {allP.map(pid => {
         const pl = playerMap[pid]; if (!pl) return null;
@@ -1462,69 +1372,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         </button>
       )}
       </>)}
-      {/* Full Scorecard button */}
-      {!isAlreadyFinalized && (
-        <button onClick={() => setShowScorecard(true)} style={{ width: "100%", padding: "7px 0", borderRadius: 8, marginTop: 4, cursor: "pointer", background: K.card, border: `1px solid ${K.bdr}60`, color: K.t2, fontSize: 12, fontWeight: 700, letterSpacing: .5 }}>
-          Full Scorecard
-        </button>
-      )}
-      {showScorecard && !isAlreadyFinalized && (() => {
-        const myTeamId = myTeam?.id || t1.id;
-        const isMyT1 = t1.id === myTeamId;
-        const scMyPids = isMyT1 ? t1Players : t2Players;
-        const scOppPids = isMyT1 ? t2Players : t1Players;
-        const scStatus = computeMatchStatus(scMyPids, scOppPids, getS, getStrokes, pars);
-        const sc = buildSC(scMyPids, scOppPids, scStatus.holeResults, scStatus.runningStatus, scStatus.clinchHole, scStatus.clinchText, "allMatches", true);
-        const holeStatuses = Array.from({ length: 9 }, (_, i) => {
-          let holesUp = 0, hasData = false;
-          for (let h = 0; h <= i; h++) {
-            let t1HN = 0, t2HN = 0, t1OK = true, t2OK = true;
-            t1Players.forEach(pid => { const s = getS(pid, h); if (s <= 0) t1OK = false; else t1HN += s - getStrokes(pid, h); });
-            t2Players.forEach(pid => { const s = getS(pid, h); if (s <= 0) t2OK = false; else t2HN += s - getStrokes(pid, h); });
-            if (t1OK && t2OK) { if (t1HN < t2HN) holesUp += isMyT1 ? 1 : -1; else if (t1HN > t2HN) holesUp += isMyT1 ? -1 : 1; hasData = true; } else { hasData = false; break; }
-          }
-          return hasData ? holesUp : null;
-        });
-        let matchClinchHole = null, clinchScoreText = null;
-        for (let h = 0; h < 9; h++) {
-          if (holeStatuses[h] === null) break;
-          const lead = Math.abs(holeStatuses[h]); const rem = 8 - h;
-          if (lead > rem) { matchClinchHole = h; clinchScoreText = rem > 0 ? `${lead}&${rem}` : `${lead}UP`; break; }
-        }
-        return (<>
-          <div onClick={() => setShowScorecard(false)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 400 }} />
-          <div onClick={() => setShowScorecard(false)} data-popup style={{ position: "fixed", inset: 0, zIndex: 450, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "0 0 10px", width: "100%", maxWidth: 420, overflow: "hidden", overscrollBehavior: "contain" }}>
-            <sc.HoleRow />
-            <sc.ParRow />
-            <div style={{ padding: "0 4px" }}>
-              {scMyPids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
-              <sc.TeamNetRow pids={scMyPids} isTeam1Side={true} />
-              <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "3px 0" }} />
-              <div style={{ display: "flex", alignItems: "center", background: K.acc + "18", borderBottom: `2px solid ${K.bdr}40` }}>
-                <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700, padding: "5px 0", borderRight: `1px solid ${K.bdr}25`, paddingLeft: 4, letterSpacing: .3 }}>MATCH</div>
-                {holeStatuses.map((st, i) => {
-                  if (matchClinchHole !== null && i === matchClinchHole) {
-                    const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-                    return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color, fontWeight: 800, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none" }}>{clinchScoreText}</div>;
-                  }
-                  if (matchClinchHole !== null && i > matchClinchHole) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none" }} />;
-                  if (st === null) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none", color: K.t3 + "30" }}>—</div>;
-                  const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-                  return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none" }}>{st > 0 ? <><span style={{ fontSize: 15 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 15 }}>▼</span>{Math.abs(st)}</> : <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: .5 }}>TIED</span>}</div>;
-                })}
-              </div>
-              <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "3px 0" }} />
-              {scOppPids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
-              <sc.TeamNetRow pids={scOppPids} isTeam1Side={false} />
-            </div>
-            <button onClick={() => setShowScorecard(false)} style={{ display: "block", width: "calc(100% - 20px)", margin: "10px auto 0", padding: "9px", background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.t2, fontSize: 13, fontWeight: 600, cursor: "pointer", letterSpacing: .4 }}>
-              Close
-            </button>
-          </div>
-          </div>
-        </>);
-      })()}
       {/* Finalize / Show Match Details buttons */}
       {allComplete && !showFinalize && !isAlreadyFinalized && (
         <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: "#3b82f615", border: `1.5px solid #3b82f650`, color: "#3b82f6", fontSize: 15, fontWeight: 700 }}>
@@ -1616,14 +1463,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div style={{ marginTop: 16 }}>
                 {!isAlreadyFinalized && (
                   <>
-                    <button disabled={justSigned} onClick={async () => { setJustSigned(true); await finalizeMatch(); }} style={{ width: "100%", padding: "14px", borderRadius: 12, background: justSigned ? K.t3 : "#3b82f6", border: "none", color: "#fff", fontSize: 15, fontWeight: 800, cursor: justSigned ? "default" : "pointer", opacity: justSigned ? 0.7 : 1 }}>
-                      {justSigned ? "Signing..." : "Sign Scorecard"}
+                    <button onClick={async () => { setJustSigned(true); await finalizeMatch(); setShowFinalize(false); }} style={{ width: "100%", padding: "14px", borderRadius: 12, background: "#3b82f6", border: "none", color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
+                      Sign Scorecard
                     </button>
-                    {!justSigned && (
                     <button onClick={() => setShowFinalize(false)} style={{ width: "100%", padding: 10, background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 4 }}>
                       Go Back & Edit
                     </button>
-                    )}
                   </>
                 )}
                 {isAlreadyFinalized && (
@@ -1702,28 +1547,30 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
     btns = defaultBtns.map(b => b - shift);
   }
   return (
-    <Card style={{ marginBottom: 3, padding: "6px 10px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 5, minWidth: 0 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flexShrink: 1 }}>{pl.name}</span>
-        <span style={{ fontSize: 11, fontWeight: 600, color: K.t2, flexShrink: 0 }}>({nh})</span>
-        {strokes > 0 && <span style={{ color: "#3b82f6", fontSize: 12, letterSpacing: 1, flexShrink: 0, lineHeight: 1 }}>{"●".repeat(strokes)}</span>}
-        <div style={{ flex: 1 }} />
-        {run.thru > 0 && <span style={{ fontSize: 10, color: K.t3, flexShrink: 0, whiteSpace: "nowrap" }}>Net: <strong style={{ color: run.netVsPar < 0 ? K.red : run.netVsPar === 0 ? K.t3 : K.t1 }}>{run.netVsPar > 0 ? "+" + run.netVsPar : run.netVsPar === 0 ? "E" : run.netVsPar}</strong> thru {run.thru}</span>}
-        {absentBtn}
+    <Card style={{ marginBottom: 4, padding: "10px 12px" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 16, fontWeight: 700 }}>{pl.name}</span>
+          <span style={{ fontSize: 12, fontWeight: 600, color: K.t1 }}>({nh})</span>
+          {strokes > 0 && <span style={{ color: "#3b82f6", fontSize: 16, letterSpacing: 1, display: "inline-flex", alignItems: "center", height: 16 }}>{"●".repeat(strokes)}</span>}
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          {run.thru > 0 && <span style={{ fontSize: 11, color: K.t3 }}>Net: <strong style={{ color: run.netVsPar < 0 ? K.red : run.netVsPar === 0 ? K.t3 : K.t1 }}>{run.netVsPar > 0 ? "+" + run.netVsPar : run.netVsPar === 0 ? "E" : run.netVsPar}</strong> thru {run.thru}</span>}
+          {absentBtn}
+        </div>
       </div>
       <div style={{ display: "flex", gap: 3 }}>
         {btns.map(btn => {
-          const isCur = btn === score; const sd = btn - par;
-          const boxSize = 32;
+          const isCur = btn === score; const sd = btn - par; const sc = sd < 0 ? K.red : sd === 0 ? K.t3 : K.bg;
           return (
-            <button key={btn} onClick={() => handleScore(isCur ? 0 : btn)} style={{ flex: 1, height: 38, borderRadius: 8, cursor: "pointer", fontSize: 15, fontWeight: 800, border: "none", background: isCur ? K.acc : K.inp, color: isCur ? K.bg : K.t2, position: "relative", transition: "all .15s", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {isCur && sd !== 0 && <div style={{ position: "absolute", width: boxSize, height: boxSize, left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}><div style={{ position: "absolute", inset: 0, borderRadius: sd < 0 ? "50%" : 3, border: `1.5px solid ${sd < 0 ? K.red : K.bg}` }} />{Math.abs(sd) >= 2 && <div style={{ position: "absolute", inset: 3, borderRadius: sd < 0 ? "50%" : 2, border: `1px solid ${sd < 0 ? K.red : K.bg}` }} />}</div>}
+            <button key={btn} onClick={() => handleScore(isCur ? 0 : btn)} style={{ flex: 1, height: 42, borderRadius: 8, cursor: "pointer", fontSize: 16, fontWeight: 800, border: "none", background: isCur ? K.acc : K.inp, color: isCur ? K.bg : K.t2, position: "relative", transition: "all .15s" }}>
+              {isCur && sd !== 0 && <div style={{ position: "absolute", width: 34, height: 34, left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}><div style={{ position: "absolute", inset: 0, borderRadius: sd < 0 ? "50%" : 3, border: `1.5px solid ${sc}` }} />{Math.abs(sd) >= 2 && <div style={{ position: "absolute", inset: 4, borderRadius: sd < 0 ? "50%" : 2, border: `1px solid ${sc}` }} />}</div>}
               <span style={{ position: "relative", zIndex: 1 }}>{btn}</span>
             </button>
           );
         })}
-        <button onClick={() => handleScore(Math.max(1, (score || par) - 1))} style={{ width: 26, height: 38, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>−</button>
-        <button onClick={() => handleScore((score || par) + 1)} style={{ width: 26, height: 38, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>+</button>
+        <button onClick={() => handleScore(Math.max(1, (score || par) - 1))} style={{ width: 28, height: 42, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>−</button>
+        <button onClick={() => handleScore((score || par) + 1)} style={{ width: 28, height: 42, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>+</button>
       </div>
     </Card>
   );

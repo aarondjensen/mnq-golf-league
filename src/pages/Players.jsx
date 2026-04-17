@@ -2,8 +2,8 @@ import { useState, useEffect, useMemo } from "react";
 import { K, EmptyState, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, CHEVRON_SIZE } from "../theme";
 
 export default function PlayersView({ players, course, schedule, scoringRules, fetchAllScores, members }) {
-  const recentN = scoringRules.hcpRecentCount || 8;
-  const bestN = scoringRules.hcpBestCount || 6;
+  const recentN = scoringRules.hcpRecentCount ?? 8;
+  const bestN = scoringRules.hcpBestCount ?? 6;
   const [allScores, setAllScores] = useState(null);
   const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(null);

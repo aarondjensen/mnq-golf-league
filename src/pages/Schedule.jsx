@@ -205,8 +205,8 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   };
 
   const fmtTeeTime = (idx) => {
-    const base = leagueConfig?.startTime || "4:28 PM";
-    const interval = leagueConfig?.teeInterval || 8;
+    const base = leagueConfig?.startTime ?? "4:28 PM";
+    const interval = leagueConfig?.teeInterval ?? 8;
     return formatTeeTime(base, idx, interval);
   };
 
@@ -262,8 +262,8 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   // ── ICS calendar ──
   const addAllToCalendar = async () => {
     if (!myTeam) return;
-    const base = leagueConfig?.startTime || "4:28 PM";
-    const interval = leagueConfig?.teeInterval || 8;
+    const base = leagueConfig?.startTime ?? "4:28 PM";
+    const interval = leagueConfig?.teeInterval ?? 8;
     const [timePart, ampm] = base.split(' ');
     const [bh, bm] = timePart.split(':').map(Number);
     const year = leagueConfig?.year || new Date().getFullYear();

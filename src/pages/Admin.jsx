@@ -510,18 +510,18 @@ function AdminCourse({ course, saveCourseData, onBack }) {
 function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, teams, leagueConfig, saveLeagueConfig, matchResults, onBack }) {
   const [step, setStep] = useState(schedule.length > 0 ? "view" : "setup");
   const [cfg, setCfg] = useState({
-    dayOfWeek: leagueConfig.dayOfWeek || "Tuesday",
-    startTime: leagueConfig.startTime || "4:28 PM",
-    teeInterval: leagueConfig.teeInterval || 8,
-    regularWeeks: leagueConfig.regularWeeks || 14,
-    roundRobinWeeks: leagueConfig.roundRobinWeeks || null,
-    seededWeeks: leagueConfig.seededWeeks || null,
-    playoffWeeks: leagueConfig.playoffWeeks || 2,
+    dayOfWeek: leagueConfig.dayOfWeek ?? "Tuesday",
+    startTime: leagueConfig.startTime ?? "4:28 PM",
+    teeInterval: leagueConfig.teeInterval ?? 8,
+    regularWeeks: leagueConfig.regularWeeks ?? 14,
+    roundRobinWeeks: leagueConfig.roundRobinWeeks ?? null,
+    seededWeeks: leagueConfig.seededWeeks ?? null,
+    playoffWeeks: leagueConfig.playoffWeeks ?? 2,
     customSeedWeeks: undefined, // NOT stored in cfg — read directly from leagueConfig
     // lockSeedsEnabled also read from leagueConfig directly
-    startDate: leagueConfig.startDate || "",
+    startDate: leagueConfig.startDate ?? "",
     alternateNines: leagueConfig.alternateNines !== false,
-    playoffRounds: leagueConfig.playoffRounds || [],
+    playoffRounds: leagueConfig.playoffRounds ?? [],
   });
   const [editWeek, setEditWeek] = useState(null);
   const [selectedSeededWeek, setSelectedSeededWeek] = useState(0);
@@ -2157,7 +2157,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
                 return (
                   <div key={mi} style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, userSelect: "none" }}>
-                    <div style={{ flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700 }}>{formatTeeTime(cfg.startTime || "4:28 PM", mi).replace(/\s*(AM|PM)$/i, '')}</div>
+                    <div style={{ flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700 }}>{formatTeeTime(cfg.startTime ?? "4:28 PM", mi).replace(/\s*(AM|PM)$/i, '')}</div>
                     {renderTeamCard(m.team1, seed1, "team1")}
                     <div style={{ fontSize: 10, color: K.t3, fontWeight: 800, flexShrink: 0 }}>VS</div>
                     {renderTeamCard(m.team2, seed2, "team2")}
