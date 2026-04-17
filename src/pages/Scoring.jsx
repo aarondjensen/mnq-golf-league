@@ -261,7 +261,12 @@ function computeMatchStatus(t1Pids, t2Pids, getScore, getStrokes, pars) {
 export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, openAllMatches, onAllMatchesOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
-  const [showAllMatches, setShowAllMatches] = useState(false);
+  // 3-way view toggle: "myMatch" (default scoring view), "allMatches" (week overview), "lowNet" (leaderboard)
+  // Kept as derived alias for backward-compat with existing code paths.
+  const [view, setView] = useState("myMatch");
+  const showAllMatches = view === "allMatches";
+  const showLowNet = view === "lowNet";
+  const setShowAllMatches = (b) => setView(b ? "allMatches" : "myMatch");
   const [expandedMatch, setExpandedMatch] = useState(null);
   const [toast, setToast] = useState(null);
 
@@ -587,6 +592,31 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     });
   };
 
+  // ── Three-way view toggle helper (used by My Match, All Matches, and Low Net views) ──
+  const ViewToggle = () => (
+    <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
+      <div style={{ display: "flex", background: K.inp, borderRadius: 20, border: `1px solid ${K.bdr}`, padding: 3 }}>
+        {[
+          { id: "myMatch", label: "My Match" },
+          { id: "allMatches", label: "All Matches" },
+          { id: "lowNet", label: "Low Net" },
+        ].map(opt => {
+          const isActive = view === opt.id;
+          return (
+            <button key={opt.id} onClick={() => { if (!isActive) setView(opt.id); }} style={{
+              padding: "6px 14px", borderRadius: 17,
+              cursor: isActive ? "default" : "pointer",
+              fontSize: 12, fontWeight: 700, border: "none",
+              background: isActive ? K.acc : "transparent",
+              color: isActive ? K.bg : K.t3,
+              transition: "all .2s",
+            }}>{opt.label}</button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   // ── All Matches view ──
   if (showAllMatches && !activeMatch) {
     const formatTeeTime = (idx) => fmtTeeTimeUtil(leagueConfig?.startTime || "4:28 PM", idx, leagueConfig?.teeInterval || 8);
@@ -646,16 +676,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
     return (
       <div style={{ maxWidth: 540, margin: "0 auto" }}>
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
-          <div style={{ display: "flex", background: K.inp, borderRadius: 20, border: `1px solid ${K.bdr}`, padding: 3 }}>
-            <button onClick={() => setShowAllMatches(false)} style={{ padding: "6px 16px", borderRadius: 17, cursor: "pointer", fontSize: 12, fontWeight: 700, border: "none", background: "transparent", color: K.t3, transition: "all .2s" }}>
-              My Match
-            </button>
-            <button style={{ padding: "6px 16px", borderRadius: 17, cursor: "default", fontSize: 12, fontWeight: 700, border: "none", background: K.acc, color: K.bg, transition: "all .2s" }}>
-              All Matches
-            </button>
-          </div>
-        </div>
+        <ViewToggle />
 
         <div style={{ marginBottom: 10 }}>
           <div style={{ fontSize: 11, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1.5 }}>Week {week}</div>
@@ -1104,6 +1125,128 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     );
   }
 
+  // ── Low Net leaderboard view ──
+  // Shows every player in the league this week, ranked by net (best to worst).
+  // Players without a complete 9-hole round sit at the bottom with em-dashes.
+  // Strokes use the player's stored handicap mapped to the course's stroke-index allocation.
+  if (showLowNet && !activeMatch) {
+    const parTotal = pars.reduce((a, b) => a + b, 0);
+
+    // Build the set of players actually scheduled this week (across all matches)
+    const weekPidsSet = new Set();
+    matches.forEach(m => {
+      const mt1 = teams.find(t => t.id === m.team1);
+      const mt2 = teams.find(t => t.id === m.team2);
+      [mt1?.player1, mt1?.player2, mt2?.player1, mt2?.player2].filter(Boolean).forEach(pid => weekPidsSet.add(pid));
+    });
+    const weekPids = Array.from(weekPidsSet);
+
+    const rows = weekPids.map(pid => {
+      const pl = playerMap[pid];
+      const hcp = pl ? Math.round(pl.handicapIndex || 0) : 0;
+      const strokesByHole = getStrokesMap(hcp);
+      const isAbsent = holeScores[`w${week}_p${pid}_habsent`] === 1;
+
+      let gross = 0, net = 0, holesPlayed = 0;
+      for (let h = 0; h < 9; h++) {
+        const s = holeScores[`w${week}_p${pid}_h${h}`] || 0;
+        if (s > 0) {
+          gross += s;
+          net += s - (strokesByHole[h] || 0);
+          holesPlayed++;
+        }
+      }
+      const complete = holesPlayed === 9 && !isAbsent;
+      return {
+        pid,
+        name: pl?.name || "?",
+        hcp,
+        isAbsent,
+        complete,
+        gross: complete ? gross : null,
+        net: complete ? net : null,
+        toPar: complete ? net - parTotal : null,
+      };
+    });
+
+    // Sort: complete rounds first (by net asc), then incomplete by name
+    rows.sort((a, b) => {
+      if (a.complete && !b.complete) return -1;
+      if (!a.complete && b.complete) return 1;
+      if (a.complete && b.complete) return a.net - b.net;
+      return a.name.localeCompare(b.name);
+    });
+
+    const fmtToPar = (tp) => {
+      if (tp === null) return "—";
+      if (tp === 0) return "E";
+      return tp > 0 ? `+${tp}` : `${tp}`;
+    };
+
+    return (
+      <div style={{ maxWidth: 540, margin: "0 auto" }}>
+        <ViewToggle />
+
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1.5 }}>Week {week} — Low Net</div>
+          {weekSch?.date && <div style={{ fontSize: 9, color: K.t3 }}>{weekSch.date}</div>}
+        </div>
+
+        {/* Table header */}
+        <div style={{ display: "flex", alignItems: "center", padding: "6px 10px", background: K.acc, borderRadius: "8px 8px 0 0", color: K.bg, fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: .5 }}>
+          <div style={{ width: 22, textAlign: "center", opacity: .8 }}>#</div>
+          <div style={{ flex: 1, paddingLeft: 8 }}>Player</div>
+          <div style={{ width: 36, textAlign: "center", opacity: .8 }}>Hcp</div>
+          <div style={{ width: 44, textAlign: "center" }}>To Par</div>
+          <div style={{ width: 40, textAlign: "center" }}>Net</div>
+          <div style={{ width: 44, textAlign: "center", opacity: .8 }}>Gross</div>
+        </div>
+
+        <div style={{ background: K.card, border: `1px solid ${K.bdr}`, borderTop: "none", borderRadius: "0 0 8px 8px", overflow: "hidden" }}>
+          {rows.map((r, i) => {
+            const isMe = r.pid === leagueUser.playerId;
+            const isLeader = r.complete && i === 0;
+            const isLast = i === rows.length - 1;
+            const showRank = r.complete;
+            // Tied with prior row?
+            const tiedAbove = r.complete && i > 0 && rows[i - 1].complete && rows[i - 1].net === r.net;
+            return (
+              <div key={r.pid} style={{
+                display: "flex", alignItems: "center", padding: "9px 10px",
+                borderBottom: isLast ? "none" : `1px solid ${K.bdr}30`,
+                background: isMe ? K.acc + "12" : "transparent",
+              }}>
+                <div style={{ width: 22, textAlign: "center", fontSize: 12, fontWeight: 700, color: isLeader ? K.matchGrn : K.t3 }}>
+                  {showRank ? (tiedAbove ? "T" : "") + (i + 1) : "—"}
+                </div>
+                <div style={{ flex: 1, paddingLeft: 8, fontSize: 13, fontWeight: isMe ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {r.name}
+                  {r.isAbsent && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 700, color: K.red, background: K.red + "15", padding: "1px 4px", borderRadius: 3 }}>ABS</span>}
+                </div>
+                <div style={{ width: 36, textAlign: "center", fontSize: 11, fontWeight: 700, color: "#3b82f6" }}>{r.hcp}</div>
+                <div style={{ width: 44, textAlign: "center", fontSize: 13, fontWeight: 800, color: r.toPar === null ? K.t3 + "60" : r.toPar < 0 ? K.matchGrn : r.toPar === 0 ? K.t2 : K.t1 }}>
+                  {fmtToPar(r.toPar)}
+                </div>
+                <div style={{ width: 40, textAlign: "center", fontSize: 14, fontWeight: 800, color: r.net === null ? K.t3 + "60" : isLeader ? K.matchGrn : K.t1 }}>
+                  {r.net ?? "—"}
+                </div>
+                <div style={{ width: 44, textAlign: "center", fontSize: 12, fontWeight: 600, color: r.gross === null ? K.t3 + "60" : K.t2 }}>
+                  {r.gross ?? "—"}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {rows.every(r => !r.complete) && (
+          <div style={{ textAlign: "center", marginTop: 16, fontSize: 12, color: K.t3, fontStyle: "italic" }}>
+            No complete rounds yet this week
+          </div>
+        )}
+      </div>
+    );
+  }
+
   // ── Default: no match found ──
   if (!matchToScore) {
     return (
@@ -1256,18 +1399,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           <BackBtn onClick={() => { setActiveMatch(null); }} />
         </div>
       )}
-      {!activeMatch && (
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}>
-          <div style={{ display: "flex", background: K.inp, borderRadius: 20, border: `1px solid ${K.bdr}`, padding: 2 }}>
-            <button style={{ padding: "4px 14px", borderRadius: 17, cursor: "default", fontSize: 11, fontWeight: 700, border: "none", background: K.acc, color: K.bg, transition: "all .2s" }}>
-              My Match
-            </button>
-            <button onClick={() => setShowAllMatches(true)} style={{ padding: "4px 14px", borderRadius: 17, cursor: "pointer", fontSize: 11, fontWeight: 700, border: "none", background: "transparent", color: K.t3, transition: "all .2s" }}>
-              All Matches
-            </button>
-          </div>
-        </div>
-      )}
+      {!activeMatch && <ViewToggle />}
       {/* Status banners */}
       {isWeekLocked && (
         <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 4, fontSize: 13, color: K.warn, fontWeight: 700, textAlign: "center" }}>

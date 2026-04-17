@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { K, EmptyState, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, CHEVRON_SIZE } from "../theme";
+import { K, EmptyState, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, CHEVRON_SIZE, calcPlayerHcp } from "../theme";
 
 export default function PlayersView({ players, course, schedule, scoringRules, fetchAllScores, members }) {
   const recentN = scoringRules.hcpRecentCount ?? 8;
@@ -30,6 +30,8 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
 
   const playerStats = useMemo(() => {
     if (!allScores) return [];
+    const par = course ? (course.frontPars || []).reduce((a, b) => a + b, 0) : 36;
+    const currentSeason = new Date().getFullYear();
     return players.map(p => {
       const allRounds = allScores[p.id] || [];
       const totalRounds = allRounds.length;
@@ -43,9 +45,28 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
       // Use stored handicapIndex — the single source of truth, updated when a week is locked
       const idx = p.handicapIndex ?? null;
 
-      return { ...p, totalRounds, recentRounds, best, idx };
+      // Week-over-week change arrow: only show if the player's most recent round
+      // is from the current season (otherwise the arrow is stale/confusing).
+      // Compare current handicap to what it would have been before the most recent week's round(s).
+      let hcpChange = null;
+      if (allRounds.length >= 2 && idx !== null) {
+        const lastRound = allRounds[allRounds.length - 1];
+        if (lastRound.season === currentSeason) {
+          // Strip all rounds matching the most-recent (season, week) — handles the rare case
+          // where a player has multiple entries per week (shouldn't happen, but safe).
+          const priorRounds = allRounds.filter(r => !(r.season === lastRound.season && r.week === lastRound.week));
+          if (priorRounds.length > 0) {
+            const priorHcp = calcPlayerHcp(priorRounds, recentN, bestN, par);
+            if (priorHcp !== null) {
+              hcpChange = idx - priorHcp; // negative = improved (lower handicap)
+            }
+          }
+        }
+      }
+
+      return { ...p, totalRounds, recentRounds, best, idx, hcpChange };
     }).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
-  }, [players, allScores, recentN, bestN]);
+  }, [players, allScores, course, recentN, bestN]);
 
   if (loading) return <div style={{ textAlign: "center", padding: 40, color: K.t3, fontSize: 13 }}>Loading...</div>;
 
@@ -65,6 +86,16 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
                   width: 38, height: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
                   fontSize: 16, fontWeight: 800, color: K.t1, padding: 0,
                 }}>{p.idx}</button>
+                {p.hcpChange !== null && p.hcpChange !== 0 && (
+                  <div style={{
+                    fontSize: 11, fontWeight: 700,
+                    color: p.hcpChange < 0 ? K.matchGrn : K.red,
+                    display: "flex", alignItems: "center", gap: 1, minWidth: 24,
+                  }}>
+                    <span style={{ fontSize: 9 }}>{p.hcpChange < 0 ? "▼" : "▲"}</span>
+                    <span>{Math.abs(p.hcpChange)}</span>
+                  </div>
+                )}
               </div>
             </div>
             {expanded === p.id && (
