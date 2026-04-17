@@ -6,7 +6,7 @@ import { K, FONTS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, Empt
 
 
 export default function AdminView(props) {
-  const { players, savePlayer, deletePlayer, teams, saveTeam, deleteTeam, schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, course, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, patchLeagueConfig, members, saveMember, deleteMember } = props;
+  const { players, savePlayer, deletePlayer, teams, saveTeam, deleteTeam, schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, course, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, members, saveMember, deleteMember } = props;
   const [sec, setSec] = useState(null);
   const sections = [
     { id: "config", label: "Basic Info", icon: "settings", desc: leagueConfig.name },
@@ -21,7 +21,7 @@ export default function AdminView(props) {
   if (sec === "players") return <AdminPlayers players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} course={course} members={members} saveMember={saveMember} onBack={() => setSec(null)} />;
   if (sec === "teams") return <AdminTeams teams={teams} saveTeam={saveTeam} players={players} onBack={() => setSec(null)} />;
   if (sec === "course") return <AdminCourse course={course} saveCourseData={saveCourseData} onBack={() => setSec(null)} />;
-  if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} patchLeagueConfig={patchLeagueConfig} matchResults={props.matchResults} onBack={() => setSec(null)} />;
+  if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} onBack={() => setSec(null)} />;
   if (sec === "scoring") return <AdminScoring scoring={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
   if (sec === "members") return <AdminMembers members={members} saveMember={saveMember} deleteMember={deleteMember} players={players} onBack={() => setSec(null)} />;
   if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} resetSeasonData={props.resetSeasonData} importHistoricalScores={props.importHistoricalScores} recalcHandicaps={props.recalcHandicaps} onBack={() => setSec(null)} />;
@@ -507,7 +507,7 @@ function AdminCourse({ course, saveCourseData, onBack }) {
 }
 
 
-function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, teams, leagueConfig, saveLeagueConfig, patchLeagueConfig, matchResults, onBack }) {
+function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, teams, leagueConfig, saveLeagueConfig, matchResults, onBack }) {
   const [step, setStep] = useState(schedule.length > 0 ? "view" : "setup");
   const [cfg, setCfg] = useState({
     dayOfWeek: leagueConfig.dayOfWeek || "Tuesday",
@@ -625,10 +625,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     if (!cfg.startDate) return alert("Set a season start date");
 
     // ── Sequential schedule model ──
-    // The schedule is STRICTLY SEQUENTIAL: [RR block] → [Seeded block] → [Playoff block]
-    // - ALL round-robin weeks (including makeups) must complete before ANY seeded weeks
-    // - RR rainouts create makeup weeks at the END of the RR block
-    // - Seeded/playoff rainouts just push the entire remaining schedule back 1 week
+    // The schedule is always: [RR block] → [Seeded block] → [Playoff block]
+    // Rainouts during RR insert makeup weeks at the END of the RR block,
+    // pushing seeded and playoff forward. The RR block must fully complete
+    // before seeded play begins.
+    // Rainouts during seeded/playoff just delay the season by one week.
 
     // Identify what exists and must be preserved
     const preservedWeeks = schedule.filter(s =>
@@ -655,135 +656,119 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         await saveWeekSchedule({ ...wk, makeupFor: null });
       }
     }
+    const cleanSchedule = schedule.map(wk =>
+      (wk.locked && wk.seeded && wk.makeupFor) ? { ...wk, makeupFor: null } : wk
+    );
 
-    // Delete ALL existing schedule docs first
+    // Delete ALL existing schedule docs
     for (const existing of schedule) {
       if (existing.id) await deleteWeekSchedule(existing.id);
     }
 
-    // Delete any zombie docs beyond the schedule (more aggressively)
+    // Delete any zombie docs beyond the schedule
     const maxExisting = Math.max(0, ...schedule.map(s => s.week));
-    for (let w = 1; w <= Math.max(maxExisting + 10, 25); w++) {
+    for (let w = maxExisting + 1; w <= maxExisting + 5; w++) {
       await deleteWeekSchedule(`${LEAGUE_ID}_w${w}`);
     }
 
-    // Build list of weeks that should be preserved (only locked or specific rainouts)
-    const preserveWeeks = schedule.filter(s =>
-      s.locked === true || (s.rainedOut === true)
-    ).map(wk => (wk.locked && wk.seeded && wk.makeupFor) ? { ...wk, makeupFor: null } : wk);
-
-    // ── Build the new schedule in strict sequential phases ──
+    // ── Build the new schedule sequentially ──
     const teamIds = teams.map(t => t.id);
     const rrRounds = generateRoundRobin(teamIds);
 
-    let weekNum = 0;
-    let rrCursor = 0;
-
-    // PHASE 1: ROUND-ROBIN BLOCK (must be completely finished before seeded begins)
-    // Place all RR weeks sequentially, including makeups for RR rainouts
-    let rrPlaced = 0;
-    
-    // Calculate how many RR rounds we actually need to place
-    // This is the configured RR count PLUS any existing RR rainouts (which need makeups)
-    const existingRRRainouts = preserveWeeks.filter(s => 
-      s.rainedOut === true && !s.seeded && !s.isPlayoff
+    // Count how many RR rainouts exist (these need makeup weeks in the RR block)
+    const rrRainouts = cleanSchedule.filter(s =>
+      s.rainedOut === true && !s.isPlayoff && !s.seeded
     ).length;
-    const rrTarget = rrWeekCount + existingRRRainouts;
 
-    while (rrPlaced < rrTarget) {
+    // Total weeks: base schedule + rainouts (each rainout adds 1 dead slot)
+    const totalRainouts = cleanSchedule.filter(s => s.rainedOut === true).length;
+    const finalTotalWeeks = totalWeeks + totalRainouts;
+
+    // Walk through week positions sequentially, building each block in order
+    let weekNum = 0;
+    let rrCursor = 0;       // which round-robin round to assign next
+    let rrPlayed = 0;       // how many RR matchups have been placed (played + makeup)
+    let seededPlaced = 0;
+    let playoffPlaced = 0;
+    const rrTarget = rrWeekCount;    // how many RR rounds needed
+    const seededTarget = seededWeekCount;
+    const playoffTarget = cfg.playoffWeeks;
+
+    // Phase 1: RR block (includes original RR weeks + makeup weeks for RR rainouts)
+    // Locked seeded/playoff weeks can't move, so RR makeups go around them.
+    while (rrPlayed < rrTarget) {
       weekNum++;
       const side = cfg.alternateNines ? ((weekNum - 1) % 2 === 0 ? 'front' : 'back') : 'front';
-      const existing = preserveWeeks.find(s => s.week === weekNum);
+      const existing = cleanSchedule.find(s => s.week === weekNum);
 
-      // Handle existing weeks that should be preserved
       if (existing && existing.rainedOut === true && !existing.seeded && !existing.isPlayoff) {
-        // Rained-out RR week — preserve as dead slot, doesn't count toward rrPlaced
+        // Rained-out RR week — preserve as dead slot
         await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
-        continue;
+        continue; // don't count toward rrPlayed
       }
 
       if (existing && existing.locked === true && !existing.seeded && !existing.isPlayoff) {
-        // Locked RR week — preserve
+        // Locked RR week (not seeded) — preserve with scores intact
         await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
-        rrPlaced++;
+        rrPlayed++;
         continue;
       }
 
-      if (existing && existing.makeupFor && !existing.seeded && !existing.isPlayoff) {
-        // RR makeup week — preserve
+      if (existing && existing.makeupFor && !existing.seeded) {
+        // Makeup week for an RR rainout — preserve
         await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
-        rrPlaced++;
+        rrPlayed++;
         continue;
       }
 
-      // If we encounter existing seeded/playoff weeks during RR phase,
-      // it means there's old corrupted schedule data. Skip these entirely -
-      // they'll be recreated in the correct phase later.
-      if (existing && (existing.seeded || existing.isPlayoff) && !existing.locked) {
-        // Skip corrupted seeded/playoff weeks (unless locked)
-        continue;
-      }
-
-      // If it's a locked seeded/playoff week, preserve but continue looking for RR slots
-      if (existing && (existing.seeded || existing.isPlayoff) && existing.locked) {
+      // If there's a locked seeded/playoff week here, preserve it and skip past it
+      // (the RR makeup will go to the next available slot)
+      if (existing && existing.locked === true) {
         await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
-        continue;
+        continue; // don't count toward rrPlayed — this is a seeded/playoff week we're skipping past
       }
 
-      // Empty slot or non-conflicting week — place new RR week
+      // Empty slot — place new RR week
       const roundIdx = rrCursor % rrRounds.length;
       rrCursor++;
       await setWeekSchedule({
         id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum,
         matches: rrRounds[roundIdx], side,
-        date: getWeekDate(weekNum - 1), isPlayoff: false, seeded: false,
+        date: getWeekDate(weekNum - 1), isPlayoff: false,
+        makeupFor: rrRainouts > 0 ? "rr" : undefined, // mark as makeup if we're past original RR block
       });
-      rrPlaced++;
+      rrPlayed++;
     }
 
-      await setWeekSchedule({
-        id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum,
-        matches: rrRounds[roundIdx], side,
-        date: getWeekDate(weekNum - 1), isPlayoff: false, seeded: false,
-      });
-      rrPlaced++;
-    }
-
-    // PHASE 2: SEEDED REGULAR SEASON BLOCK (starts only after RR is completely done)
-    let seededPlaced = 0;
-    const seededTarget = seededWeekCount;
+    // Phase 2: Seeded regular season block
+    // Some locked seeded weeks may have already been written in Phase 1 (when RR phase skipped past them)
+    // Count those toward seededPlaced first
+    const alreadyWrittenSeeded = cleanSchedule.filter(s =>
+      s.week <= weekNum && s.locked === true && s.seeded === true && !s.isPlayoff
+    );
+    seededPlaced += alreadyWrittenSeeded.length;
 
     while (seededPlaced < seededTarget) {
       weekNum++;
       const side = cfg.alternateNines ? ((weekNum - 1) % 2 === 0 ? 'front' : 'back') : 'front';
-      const existing = preserveWeeks.find(s => s.week === weekNum);
+      const existing = cleanSchedule.find(s => s.week === weekNum);
 
-      if (existing && existing.rainedOut === true && existing.seeded && !existing.isPlayoff) {
-        // Rained-out seeded week — preserve as dead slot
+      if (existing && existing.rainedOut === true) {
+        // Rained-out seeded week — preserve, push everything forward
         await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
         continue;
       }
 
-      if (existing && existing.locked === true && existing.seeded && !existing.isPlayoff) {
-        // Locked seeded week — preserve
-        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+      if (existing && existing.locked === true && existing.seeded) {
+        // Locked seeded week — already written in Phase 1 or preserve now
+        if (!alreadyWrittenSeeded.some(s => s.week === weekNum)) {
+          await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+        }
         seededPlaced++;
         continue;
       }
 
-      if (existing && existing.makeupFor && existing.seeded && !existing.isPlayoff) {
-        // Seeded makeup week — preserve
-        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
-        seededPlaced++;
-        continue;
-      }
-
-      // Skip any other existing weeks (RR or playoff) - they don't belong in seeded phase
-      if (existing && (!existing.seeded || existing.isPlayoff)) {
-        continue;
-      }
-
-      // Empty slot — place new seeded week
+      // New seeded week
       await setWeekSchedule({
         id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum,
         matches: [], side,
@@ -792,41 +777,26 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       seededPlaced++;
     }
 
-    // PHASE 3: PLAYOFF BLOCK (starts only after seeded is completely done)
-    let playoffPlaced = 0;
-    const playoffTarget = cfg.playoffWeeks;
-
+    // Phase 3: Playoff block
     while (playoffPlaced < playoffTarget) {
       weekNum++;
       const side = cfg.alternateNines ? ((weekNum - 1) % 2 === 0 ? 'front' : 'back') : 'front';
-      const existing = preserveWeeks.find(s => s.week === weekNum);
+      const existing = cleanSchedule.find(s => s.week === weekNum);
 
-      if (existing && existing.rainedOut === true && existing.isPlayoff) {
-        // Rained-out playoff week — preserve as dead slot
+      if (existing && existing.rainedOut === true) {
+        // Rained-out playoff week — preserve, push everything forward
         await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
         continue;
       }
 
-      if (existing && existing.locked === true && existing.isPlayoff) {
+      if (existing && existing.locked === true) {
         // Locked playoff week — preserve
         await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
         playoffPlaced++;
         continue;
       }
 
-      if (existing && existing.makeupFor && existing.isPlayoff) {
-        // Playoff makeup week — preserve
-        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
-        playoffPlaced++;
-        continue;
-      }
-
-      // Skip any other existing weeks (RR or seeded) - they don't belong in playoff phase
-      if (existing && !existing.isPlayoff) {
-        continue;
-      }
-
-      // Empty slot — place new playoff week
+      // New playoff week
       await setWeekSchedule({
         id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum,
         matches: [], side,
@@ -837,18 +807,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
     // Save config (preserve directly-saved fields)
     const { customSeedWeeks, lockSeedsEnabled, customSeedPairs, ...scheduleFields } = cfg;
-    await saveLeagueConfig({
-      ...leagueConfig,
-      ...scheduleFields,
-      regularWeeks: computedRegularWeeks,
-      roundRobinWeeks: rrWeekCount,
-      seededWeeks: seededWeekCount,
-      totalWeeks: weekNum,
-      // Explicitly preserve — do not let cfg overwrite these critical fields
-      customSeedWeeks: leagueConfig.customSeedWeeks,
-      lockSeedsEnabled: leagueConfig.lockSeedsEnabled,
-      lockedSeeds: leagueConfig.lockedSeeds,
-    });
+    await saveLeagueConfig({ ...leagueConfig, ...scheduleFields, regularWeeks: computedRegularWeeks, roundRobinWeeks: rrWeekCount, seededWeeks: seededWeekCount, totalWeeks: weekNum });
     setGenerating(false);
     setStep("view");
   };
@@ -1040,8 +999,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                     nextWk[dstPos.pairIdx][dstPos.slot] = srcVal;
                     return nextWk;
                   });
-                  // Write directly to config with narrow patch to avoid stale closure bugs
-                  await patchLeagueConfig({ customSeedWeeks: next });
+                  // Write directly to Firestore with ONLY the fields we want to update
+                  const configId = `${LEAGUE_ID}_config`;
+                  await db.upsert("league_config", { id: configId, league_id: LEAGUE_ID, customSeedWeeks: next });
+                  // Update local state to reflect immediately
+                  saveLeagueConfig({ ...leagueConfig, customSeedWeeks: next });
                 };
 
                 const { isValid, missing, hasDuplicates } = validateWeek(activeWeekPairs);
@@ -1135,7 +1097,9 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                         </div>
                         <button onClick={async () => {
                           const newVal = !lockSeedsEnabled;
-                          await patchLeagueConfig({ lockSeedsEnabled: newVal });
+                          const configId = `${LEAGUE_ID}_config`;
+                          await db.upsert("league_config", { id: configId, league_id: LEAGUE_ID, lockSeedsEnabled: newVal });
+                          saveLeagueConfig({ ...leagueConfig, lockSeedsEnabled: newVal });
                         }} style={{
                           width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
                           background: lockSeedsEnabled ? K.act : K.bdr,
@@ -1585,7 +1549,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         seeds = buildStandingsForSeed().map(s => s.teamId);
         // Auto-capture snapshot when entering seeded play with lockSeedsEnabled
         if (lockSeedsEnabled && !isPlayoff) {
-          await patchLeagueConfig({ lockedSeeds: seeds });
+          await saveLeagueConfig({ ...leagueConfig, lockedSeeds: seeds });
         }
       }
       let matches = [];
@@ -2516,3 +2480,5 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
     </div>
   );
 }
+
+
