@@ -2369,6 +2369,8 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
   const [resetting, setResetting] = useState(false);
   const [attesting, setAttesting] = useState(false);
   const [attestResult, setAttestResult] = useState(null);
+  const [recalcing, setRecalcing] = useState(false);
+  const [recalcResult, setRecalcResult] = useState(null);
   const save = async () => { await saveLeagueConfig(lc); setDirty(false); };
 
   const handleBack = async () => {
@@ -2407,6 +2409,18 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
     setAttesting(false);
   };
 
+  const handleRecalc = async () => {
+    setRecalcing(true);
+    setRecalcResult(null);
+    try {
+      const updated = await recalcHandicaps();
+      setRecalcResult({ updated });
+    } catch (e) {
+      setRecalcResult({ error: e.message });
+    }
+    setRecalcing(false);
+  };
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
@@ -2442,6 +2456,22 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
             {attestResult && (
               <div style={{ fontSize: 11, color: attestResult.error ? K.red : K.grn, marginTop: 8, textAlign: "center", fontWeight: 600 }}>
                 {attestResult.error ? `Error: ${attestResult.error}` : attestResult.message || `Done! ${attestResult.updated} result(s) attested`}
+              </div>
+            )}
+          </Card>
+          )}
+
+          {recalcHandicaps && (
+          <Card style={{ padding: 14, border: `1px solid ${K.teal}30`, marginTop: 8 }}>
+            <div style={{ fontSize: 12, color: K.t2, marginBottom: 10, lineHeight: 1.5 }}>
+              Recalculate all player handicaps now from historical scores. Normally this runs automatically when a week is locked — use this to force a sync if stored values are out of date.
+            </div>
+            <button onClick={handleRecalc} disabled={recalcing} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.teal + "15", border: `1.5px solid ${K.teal}50`, color: K.teal, fontSize: 13, fontWeight: 700, cursor: recalcing ? "default" : "pointer", opacity: recalcing ? 0.6 : 1 }}>
+              {recalcing ? "Recalculating..." : "Recalc Handicaps"}
+            </button>
+            {recalcResult && (
+              <div style={{ fontSize: 11, color: recalcResult.error ? K.red : K.grn, marginTop: 8, textAlign: "center", fontWeight: 600 }}>
+                {recalcResult.error ? `Error: ${recalcResult.error}` : `Done! ${recalcResult.updated} player(s) updated`}
               </div>
             )}
           </Card>
