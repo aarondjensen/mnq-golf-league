@@ -5,55 +5,323 @@ import { K, FONTS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, Empt
   formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, lastNamesOnly,
   buildStandingsForSeed as sharedBuildStandingsForSeed, buildSeedMap } from "../theme";
 
-
-export default function AdminView(props) {
-  const { players, savePlayer, deletePlayer, teams, saveTeam, deleteTeam, schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, course, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, members, saveMember, deleteMember, matchResults, saveMatchResult } = props;
-  const [sec, setSec] = useState(null);
-  const sections = [
-    { id: "config", label: "Basic Info", icon: "settings", desc: leagueConfig.name },
-    { id: "players", label: "Players", icon: "user", desc: `${players.filter(p => p.status !== "inactive").length} active` },
-    { id: "teams", label: "Teams", icon: "users", desc: `${teams.length} teams` },
-    { id: "course", label: "Course Setup", icon: "mapPin", desc: course?.name || "Not set" },
-    { id: "schedule", label: "Schedule", icon: "calendar", desc: `${schedule.length} weeks` },
-    { id: "scoring", label: "Scoring Rules", icon: "ruler", desc: "Match & bonus points" },
-    { id: "members", label: "Members / Auth", icon: "key", desc: `${members.length} linked accounts` },
-  ];
-
-  if (sec === "players") return <AdminPlayers players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} course={course} members={members} saveMember={saveMember} onBack={() => setSec(null)} />;
-  if (sec === "teams") return <AdminTeams teams={teams} saveTeam={saveTeam} players={players} onBack={() => setSec(null)} />;
-  if (sec === "course") return <AdminCourse course={course} saveCourseData={saveCourseData} onBack={() => setSec(null)} />;
-  if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} autoSeedIfReady={props.autoSeedIfReady} onBack={() => setSec(null)} />;
-  if (sec === "scoring") return <AdminScoring scoring={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
-  if (sec === "members") return <AdminMembers members={members} saveMember={saveMember} deleteMember={deleteMember} players={players} onBack={() => setSec(null)} />;
-  if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} resetSeasonData={props.resetSeasonData} importHistoricalScores={props.importHistoricalScores} recalcHandicaps={props.recalcHandicaps} matchResults={matchResults} saveMatchResult={saveMatchResult} schedule={schedule} teams={teams} onBack={() => setSec(null)} />;
-
+// ── Shared confirm modal used across every admin sub-page ──
+// Replaces window.confirm across admin. window.confirm renders tiny native dialogs
+// on mobile that clash visually with the rest of the app — a themed modal is
+// consistent and more readable. Pattern: set a non-null state object with
+// { title, message, confirmLabel, cancelLabel, destructive, onConfirm, onCancel }
+// and render <ConfirmModal modal={state} /> at the end of your component.
+// The modal closes by calling whichever handler you pass.
+function ConfirmModal({ modal }) {
+  if (!modal) return null;
   return (
-    <div><SectionTitle>Commissioner Dashboard</SectionTitle>
-      <div className="admin-sections-grid">
-        {sections.map(s => <button key={s.id} onClick={() => setSec(s.id)} style={{ background: K.card, borderRadius: 10, padding: "14px 16px", border: `1px solid ${K.bdr}`, cursor: "pointer", textAlign: "left", width: "100%", display: "flex", alignItems: "center", gap: 12 }}><div style={{ display: "flex", color: K.t3 }}>{I[s.icon](20, K.t3)}</div><div style={{ flex: 1 }}><div style={{ fontSize: 14, fontWeight: 600, color: K.t1 }}>{s.label}</div><div style={{ fontSize: 11, color: K.t3 }}>{s.desc}</div></div><div style={{ color: K.t3, fontSize: 16 }}>›</div></button>)}
+    <div
+      onClick={() => modal.onCancel && modal.onCancel()}
+      style={{
+        position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        zIndex: 1000, padding: 20,
+      }}
+    >
+      <div onClick={e => e.stopPropagation()} style={{
+        background: K.card, borderRadius: 12, padding: 20, maxWidth: 360, width: "100%",
+        border: `1px solid ${K.bdr}`, boxShadow: "0 20px 40px rgba(0,0,0,0.3)",
+      }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 8 }}>{modal.title}</div>
+        {modal.message && (
+          <div style={{ fontSize: 12, color: K.t2, lineHeight: 1.5, marginBottom: 16, whiteSpace: "pre-wrap" }}>{modal.message}</div>
+        )}
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => modal.onCancel && modal.onCancel()}
+            style={{ flex: 1, padding: "10px 14px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
+          >
+            {modal.cancelLabel || "Cancel"}
+          </button>
+          <button
+            onClick={() => modal.onConfirm && modal.onConfirm()}
+            style={{
+              flex: 1, padding: "10px 14px", borderRadius: 8,
+              background: modal.destructive ? K.red : K.act, border: "none",
+              color: modal.destructive ? "#fff" : K.bg,
+              fontSize: 13, fontWeight: 700, cursor: "pointer",
+            }}
+          >
+            {modal.confirmLabel || "Confirm"}
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
 
-function AdminPlayers({ players, savePlayer, deletePlayer, course, members, saveMember, onBack }) {
+export default function AdminView(props) {
+  const { players, savePlayer, deletePlayer, teams, saveTeam, deleteTeam, schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, course, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, members, saveMember, deleteMember, matchResults, saveMatchResult } = props;
+  const [sec, setSec] = useState(null);
+
+  // ── Derive actionable status for the dashboard banner ──
+  // The dashboard previously showed static inventory ("10 teams", "20 active"). Commissioners
+  // open Admin mid-season to do something — finalize a week, fix a roster, respond to an
+  // issue. Surfacing the actionable items up front is the single highest-leverage change.
+  const activePlayers = useMemo(() => players.filter(p => p.status !== "inactive"), [players]);
+  const teeBoxNames = useMemo(() => (course?.teeBoxes || []).map(t => t.name), [course]);
+
+  // Per-player issues
+  const playersWithIssues = useMemo(() => activePlayers.filter(p => {
+    if (!p.teeBox || !teeBoxNames.includes(p.teeBox)) return true;
+    if (p.handicapIndex === undefined || p.handicapIndex === null) return true;
+    return false;
+  }), [activePlayers, teeBoxNames]);
+
+  // Per-team issues: a team needs both player1 and player2 filled in
+  const incompleteTeams = useMemo(() => teams.filter(t => !t.player1 || !t.player2), [teams]);
+
+  // Unlinked members: signed-in account with no player assigned
+  const unlinkedMembers = useMemo(() => members.filter(m => !m.playerId), [members]);
+
+  // Unassigned players (active player with no team)
+  const unassignedPlayers = useMemo(() => {
+    const assigned = new Set();
+    teams.forEach(t => { if (t.player1) assigned.add(t.player1); if (t.player2) assigned.add(t.player2); });
+    return activePlayers.filter(p => !assigned.has(p.id));
+  }, [activePlayers, teams]);
+
+  // Weeks ready to finalize (all matches attested but week not yet locked)
+  const weeksReadyToFinalize = useMemo(() => {
+    return schedule.filter(wk => {
+      if (wk.rainedOut || wk.locked) return false;
+      if (!wk.matches || wk.matches.length === 0) return false;
+      return wk.matches.every(m =>
+        (matchResults || []).some(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true)
+      );
+    });
+  }, [schedule, matchResults]);
+
+  // Weeks with signed-but-unattested matches (commissioner may need to force-attest)
+  const weeksWithPendingAttestation = useMemo(() => {
+    const weeks = new Set();
+    (matchResults || []).forEach(r => {
+      if (r.attested !== true && r.signedByPlayerId) weeks.add(r.week);
+    });
+    return Array.from(weeks).sort((a, b) => a - b);
+  }, [matchResults]);
+
+  // Current / next week (earliest playable unlocked week)
+  const currentWeek = useMemo(() => {
+    for (const wk of schedule) {
+      if (wk.rainedOut) continue;
+      if (!wk.matches || wk.matches.length === 0) continue;
+      if (!wk.locked) return wk;
+    }
+    return null;
+  }, [schedule]);
+
+  // Build flat list of issues with descriptions + section jump targets
+  const issues = [];
+  if (weeksReadyToFinalize.length > 0) {
+    issues.push({
+      level: "action",
+      text: `Week ${weeksReadyToFinalize.map(w => w.week).join(", ")} ready to finalize`,
+      jump: "schedule",
+    });
+  }
+  if (weeksWithPendingAttestation.length > 0) {
+    issues.push({
+      level: "info",
+      text: `${weeksWithPendingAttestation.length === 1 ? "Week" : "Weeks"} ${weeksWithPendingAttestation.join(", ")} awaiting attestation`,
+      jump: "schedule",
+    });
+  }
+  if (incompleteTeams.length > 0) {
+    issues.push({
+      level: "warn",
+      text: `${incompleteTeams.length} incomplete team${incompleteTeams.length === 1 ? "" : "s"}`,
+      jump: "teams",
+    });
+  }
+  if (playersWithIssues.length > 0) {
+    issues.push({
+      level: "warn",
+      text: `${playersWithIssues.length} player${playersWithIssues.length === 1 ? "" : "s"} missing tee box or handicap`,
+      jump: "players",
+    });
+  }
+  if (unassignedPlayers.length > 0 && teams.length > 0) {
+    issues.push({
+      level: "info",
+      text: `${unassignedPlayers.length} player${unassignedPlayers.length === 1 ? "" : "s"} not on a team`,
+      jump: "teams",
+    });
+  }
+  if (unlinkedMembers.length > 0) {
+    issues.push({
+      level: "info",
+      text: `${unlinkedMembers.length} account${unlinkedMembers.length === 1 ? "" : "s"} not linked to a player`,
+      jump: "members",
+    });
+  }
+
+  // Section tiles — grouped by intent rather than entity type.
+  // League (once-per-season config), Roster (people), Season (running play), Maintenance (rare/destructive).
+  const groupedSections = [
+    {
+      title: "League",
+      items: [
+        { id: "config", label: "League", icon: "settings", desc: leagueConfig.name || "Name, year, invite code" },
+        { id: "course", label: "Course", icon: "mapPin", desc: course?.name || "Not set" },
+        { id: "scoring", label: "Rules", icon: "ruler", desc: "Scoring & handicaps" },
+      ],
+    },
+    {
+      title: "Roster",
+      items: [
+        {
+          id: "players", label: "Players", icon: "user",
+          desc: `${activePlayers.length} active`,
+          badge: playersWithIssues.length > 0 ? { count: playersWithIssues.length, color: K.warn } : null,
+        },
+        {
+          id: "teams", label: "Teams", icon: "users",
+          desc: `${teams.length} team${teams.length === 1 ? "" : "s"}`,
+          badge: incompleteTeams.length > 0 ? { count: incompleteTeams.length, color: K.warn } : null,
+        },
+        {
+          id: "members", label: "Accounts", icon: "key",
+          desc: `${members.length} signed in`,
+          badge: unlinkedMembers.length > 0 ? { count: unlinkedMembers.length, color: "#3b82f6" } : null,
+        },
+      ],
+    },
+    {
+      title: "Season",
+      items: [
+        {
+          id: "schedule", label: "Schedule", icon: "calendar",
+          desc: currentWeek ? `Week ${currentWeek.week}${currentWeek.date ? " · " + currentWeek.date : ""}` : `${schedule.length} week${schedule.length === 1 ? "" : "s"}`,
+          badge: weeksReadyToFinalize.length > 0 ? { count: weeksReadyToFinalize.length, color: K.act } : null,
+        },
+      ],
+    },
+  ];
+
+  if (sec === "players") return <AdminPlayers players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} course={course} teams={teams} members={members} saveMember={saveMember} onBack={() => setSec(null)} />;
+  if (sec === "teams") return <AdminTeams teams={teams} saveTeam={saveTeam} players={players} onBack={() => setSec(null)} />;
+  if (sec === "course") return <AdminCourse course={course} saveCourseData={saveCourseData} onBack={() => setSec(null)} />;
+  if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} autoSeedIfReady={props.autoSeedIfReady} onBack={() => setSec(null)} />;
+  if (sec === "scoring") return <AdminScoring scoring={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
+  if (sec === "members") return <AdminMembers members={members} saveMember={saveMember} deleteMember={deleteMember} players={players} onBack={() => setSec(null)} />;
+  if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} resetSeasonData={props.resetSeasonData} importHistoricalScores={props.importHistoricalScores} recalcHandicaps={props.recalcHandicaps} matchResults={matchResults} saveMatchResult={saveMatchResult} schedule={schedule} teams={teams} scoringRules={scoringRules} saveScoringRules={saveScoringRules} onBack={() => setSec(null)} />;
+
+  const levelColor = (level) => level === "action" ? K.act : level === "warn" ? K.warn : "#3b82f6";
+
+  return (
+    <div>
+      <SectionTitle>Commissioner Dashboard</SectionTitle>
+
+      {/* ── Status banner ── */}
+      {(currentWeek || issues.length > 0) && (
+        <div style={{ marginBottom: 16 }}>
+          {currentWeek && (
+            <button onClick={() => setSec("schedule")} style={{
+              width: "100%", background: K.card, border: `1.5px solid ${K.matchGrn}40`,
+              borderRadius: 10, padding: "10px 14px", cursor: "pointer", textAlign: "left",
+              display: "flex", alignItems: "center", gap: 10, marginBottom: issues.length > 0 ? 6 : 0,
+            }}>
+              <div style={{ display: "flex", color: K.matchGrn }}>{I.calendar(18, K.matchGrn)}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: K.matchGrn, letterSpacing: 1, textTransform: "uppercase" }}>Current Week</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>
+                  Week {currentWeek.week}{currentWeek.date ? ` · ${currentWeek.date}` : ""}
+                  {currentWeek.side && <span style={{ marginLeft: 8, fontSize: 11, color: K.t3, fontWeight: 500 }}>{currentWeek.side === "front" ? "Front 9" : "Back 9"}</span>}
+                </div>
+              </div>
+              <div style={{ color: K.t3, fontSize: 16 }}>›</div>
+            </button>
+          )}
+          {issues.map((issue, i) => (
+            <button key={i} onClick={() => setSec(issue.jump)} style={{
+              width: "100%", background: K.card, border: `1px solid ${levelColor(issue.level)}40`,
+              borderRadius: 8, padding: "8px 14px", cursor: "pointer", textAlign: "left",
+              display: "flex", alignItems: "center", gap: 10, marginTop: i === 0 ? 0 : 4,
+            }}>
+              <div style={{
+                width: 8, height: 8, borderRadius: "50%",
+                background: levelColor(issue.level), flexShrink: 0,
+              }} />
+              <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: K.t1 }}>{issue.text}</div>
+              <div style={{ color: K.t3, fontSize: 13 }}>›</div>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* ── Grouped section tiles ── */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {groupedSections.map(group => (
+          <div key={group.title}>
+            <SubLabel style={{ marginBottom: 6 }}>{group.title}</SubLabel>
+            <div className="admin-sections-grid">
+              {group.items.map(s => (
+                <button key={s.id} onClick={() => setSec(s.id)} style={{
+                  background: K.card, borderRadius: 10, padding: "14px 16px",
+                  border: `1px solid ${K.bdr}`, cursor: "pointer", textAlign: "left",
+                  width: "100%", display: "flex", alignItems: "center", gap: 12,
+                }}>
+                  <div style={{ display: "flex", color: K.t3 }}>{I[s.icon](20, K.t3)}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: K.t1 }}>{s.label}</div>
+                    <div style={{ fontSize: 11, color: K.t3 }}>{s.desc}</div>
+                  </div>
+                  {s.badge && (
+                    <div style={{
+                      minWidth: 22, height: 22, borderRadius: 11, padding: "0 7px",
+                      background: s.badge.color + "22", border: `1px solid ${s.badge.color}60`,
+                      color: s.badge.color, fontSize: 11, fontWeight: 800,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                    }}>{s.badge.count}</div>
+                  )}
+                  <div style={{ color: K.t3, fontSize: 16 }}>›</div>
+                </button>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+
+function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, members, saveMember, onBack }) {
   const [ed, setEd] = useState(null);
   const [f, setF] = useState({ name: "", handicapIndex: "", teeBox: "Blue" });
   const [orig, setOrig] = useState(null); // snapshot for dirty detection
   const [showInactive, setShowInactive] = useState(false);
+  const [confirmModal, setConfirmModal] = useState(null);
   const nameRef = useCallback(node => { if (node) setTimeout(() => node.focus(), 50); }, [ed]);
   const teeBoxes = course?.teeBoxes || [{ name: "White", color: "#e2e8f0", slope: 113, rating: 67 }];
   const teeColor = (name) => (teeBoxes.find(t => t.name === name) || {}).color || K.bdr;
   const isWhiteTee = (name) => { const c = teeColor(name).toLowerCase(); return c === "#fff" || c === "#ffffff" || c === "#e2e8f0" || c === "white"; };
+  const teeBoxNames = teeBoxes.map(t => t.name);
 
   const getMember = (playerId) => (members || []).find(m => m.playerId === playerId);
   const isComm = (playerId) => getMember(playerId)?.isCommissioner === true;
-  const toggleComm = async (playerId) => {
-    const member = getMember(playerId);
-    if (!member) return;
-    await saveMember({ ...member, isCommissioner: !member.isCommissioner });
-  };
+
+  // Map player → team for inline display on the row.
+  const teamForPlayer = (playerId) => (teams || []).find(t => t.player1 === playerId || t.player2 === playerId);
+
+  // Pre-fill helper: for new players, default tee box to whatever the existing roster
+  // uses most often. Most leagues have everyone on one or two tee boxes, so this saves
+  // a tap for the common case.
+  const defaultTeeBox = useMemo(() => {
+    const active = players.filter(p => p.status !== "inactive");
+    if (active.length === 0) return teeBoxes[0]?.name || "White";
+    const counts = {};
+    active.forEach(p => { if (p.teeBox) counts[p.teeBox] = (counts[p.teeBox] || 0) + 1; });
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    return sorted[0]?.[0] || teeBoxes[0]?.name || "White";
+  }, [players, teeBoxes]);
 
   const isDirty = orig && (
     f.name !== orig.name ||
@@ -76,11 +344,21 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, members, save
   const rowStyle = { display: "flex", alignItems: "center", background: K.card, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: "8px 10px", gap: 8 };
   const inputStyle = { padding: "8px 10px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 16, width: "100%" };
 
+  // Per-player missing-data flags. Used to render the red dot on the row and to decide
+  // whether the row needs visual attention. Keep this in sync with the dashboard's
+  // playersWithIssues calculation.
+  const playerIssues = (p) => {
+    const issues = [];
+    if (!p.teeBox || !teeBoxNames.includes(p.teeBox)) issues.push("Missing tee box");
+    if (p.handicapIndex === undefined || p.handicapIndex === null) issues.push("No handicap set");
+    return issues;
+  };
+
   /* ── Edit Card (shared for new + existing) ── */
+  // Note: Commissioner toggle removed from this card. It now lives only on the Accounts
+  // page, which is where commissioner status conceptually belongs (it's a property of a
+  // member account, not a player).
   const EditCard = ({ isNew }) => {
-    const playerId = isNew ? null : ed;
-    const member = playerId ? getMember(playerId) : null;
-    const commStatus = playerId ? isComm(playerId) : false;
     return (
       <Card style={{ padding: "10px 12px", marginBottom: 8 }}>
         {/* Row 1: Name input + close */}
@@ -104,7 +382,7 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, members, save
             style={{ ...inputStyle, padding: "7px 10px", fontWeight: 700, textAlign: "center", flex: 1 }}
           />
         </div>
-        {/* Row 2: Tee box + Commissioner + Deactivate */}
+        {/* Row 2: Tee box selection + Deactivate */}
         <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
           <div style={{ display: "flex", gap: 4, flex: 1 }}>
             {teeBoxes.map(t => {
@@ -115,16 +393,20 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, members, save
               );
             })}
           </div>
-          {!isNew && member && (
-            <button onClick={() => toggleComm(playerId)} style={{ display: "flex", alignItems: "center", gap: 5, padding: "5px 8px", borderRadius: 6, border: `1px solid ${commStatus ? K.warn + "40" : K.bdr}`, background: commStatus ? K.warn + "12" : K.inp, cursor: "pointer", flexShrink: 0 }}>
-              <div style={{ width: 26, height: 14, borderRadius: 7, background: commStatus ? K.warn : K.bdr, position: "relative", transition: "background .2s" }}>
-                <div style={{ width: 10, height: 10, borderRadius: 5, background: "#fff", position: "absolute", top: 2, left: commStatus ? 14 : 2, transition: "left .2s" }} />
-              </div>
-              <span style={{ fontSize: 9, color: commStatus ? K.warn : K.t3, fontWeight: 700 }}>Comm</span>
-            </button>
-          )}
           {!isNew && (
-            <button onClick={() => { if (confirm(`Deactivate ${f.name}?`)) { toggleStatus(players.find(p => p.id === ed)); setEd(null); setOrig(null); } }} style={{ padding: "5px 8px", borderRadius: 6, border: `1px solid ${K.red}30`, background: K.red + "10", color: K.red, fontSize: 9, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>Deactivate</button>
+            <button onClick={() => {
+              setConfirmModal({
+                title: `Deactivate ${f.name}?`,
+                message: "They'll be hidden from active rosters but their historical scores are preserved. You can reactivate later.",
+                confirmLabel: "Deactivate",
+                onConfirm: () => {
+                  setConfirmModal(null);
+                  toggleStatus(players.find(p => p.id === ed));
+                  setEd(null); setOrig(null);
+                },
+                onCancel: () => setConfirmModal(null),
+              });
+            }} style={{ padding: "5px 8px", borderRadius: 6, border: `1px solid ${K.red}30`, background: K.red + "10", color: K.red, fontSize: 9, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>Deactivate</button>
           )}
         </div>
         {/* Row 3: Save */}
@@ -133,45 +415,83 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, members, save
     );
   };
 
-  const PlayerRow = ({ p, inactive }) => (
-    <div style={{ ...rowStyle, opacity: inactive ? .5 : 1 }}>
-      <div style={{ flex: 1, fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 5 }}>
-        {p.name}
-        {isComm(p.id) && <span style={{ fontSize: 8, fontWeight: 700, color: K.warn, background: K.warn + "18", padding: "1px 5px", borderRadius: 3, textTransform: "uppercase", letterSpacing: .5, flexShrink: 0 }}>Comm</span>}
-      </div>
-      <div style={{ width: 34, textAlign: "center", fontSize: 14, fontWeight: 700, color: K.t2 }}>{p.handicapIndex}</div>
-      {inactive ? (
-        <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <button onClick={() => toggleStatus(p)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.grn, fontSize: 10, padding: "4px 8px", cursor: "pointer", fontWeight: 600 }}>Reactivate</button>
-          <button onClick={() => { if (confirm(`Permanently delete ${p.name}? This cannot be undone.`)) deletePlayer(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.red, fontSize: 10, padding: "4px 8px", cursor: "pointer", fontWeight: 600 }}>Delete</button>
+  const PlayerRow = ({ p, inactive }) => {
+    const issues = inactive ? [] : playerIssues(p);
+    const team = inactive ? null : teamForPlayer(p.id);
+    return (
+      <div style={{ ...rowStyle, opacity: inactive ? .5 : 1 }}>
+        {/* Issue indicator dot — red when player is missing required data */}
+        {!inactive && issues.length > 0 && (
+          <div title={issues.join(" · ")} style={{
+            width: 7, height: 7, borderRadius: "50%", background: K.warn, flexShrink: 0,
+          }} />
+        )}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 5 }}>
+            {p.name}
+            {!inactive && isComm(p.id) && <span style={{ fontSize: 8, fontWeight: 700, color: K.warn, background: K.warn + "18", padding: "1px 5px", borderRadius: 3, textTransform: "uppercase", letterSpacing: .5, flexShrink: 0 }}>Comm</span>}
+          </div>
+          {/* Team-name subtitle so finding a player's team doesn't require leaving this page */}
+          {team && (
+            <div style={{ fontSize: 10, color: K.t3, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {team.name || "Team"}
+            </div>
+          )}
         </div>
-      ) : (
-        <button onClick={() => { startEdit({ name: p.name, handicapIndex: String(p.handicapIndex ?? ""), teeBox: p.teeBox || teeBoxes[0]?.name || "White", status: p.status || "active" }); setEd(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.acc, fontSize: 10, padding: "5px 10px", cursor: "pointer", fontWeight: 600 }}>Edit</button>
-      )}
-    </div>
-  );
+        <div style={{ width: 34, textAlign: "center", fontSize: 14, fontWeight: 700, color: K.t2 }}>{p.handicapIndex}</div>
+        {inactive ? (
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <button onClick={() => toggleStatus(p)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.grn, fontSize: 10, padding: "4px 8px", cursor: "pointer", fontWeight: 600 }}>Reactivate</button>
+            <button onClick={() => {
+              setConfirmModal({
+                title: `Delete ${p.name}?`,
+                message: "This permanently removes the player record. Historical scores and match results remain in the database but won't be attributable by name. This cannot be undone.",
+                confirmLabel: "Delete",
+                destructive: true,
+                onConfirm: () => { setConfirmModal(null); deletePlayer(p.id); },
+                onCancel: () => setConfirmModal(null),
+              });
+            }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.red, fontSize: 10, padding: "4px 8px", cursor: "pointer", fontWeight: 600 }}>Delete</button>
+          </div>
+        ) : (
+          <button onClick={() => { startEdit({ name: p.name, handicapIndex: String(p.handicapIndex ?? ""), teeBox: p.teeBox || teeBoxes[0]?.name || "White", status: p.status || "active" }); setEd(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.acc, fontSize: 10, padding: "5px 10px", cursor: "pointer", fontWeight: 600 }}>Edit</button>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Players ({activePlayers.length} active)</span>
-        <button onClick={() => { startEdit({ name: "", handicapIndex: "", teeBox: teeBoxes[0]?.name || "White", status: "active" }); setEd("new"); }} style={{ background: K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 700 }}>+ Add</button>
+        <button onClick={() => { startEdit({ name: "", handicapIndex: "", teeBox: defaultTeeBox, status: "active" }); setEd("new"); }} style={{ background: K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 700 }}>+ Add</button>
       </div>
       {ed === "new" && <EditCard isNew />}
-      {/* Column header */}
-      <div style={{ display: "flex", padding: "0 10px 4px", gap: 8, fontSize: 10, fontWeight: 600, color: K.t3, textTransform: "uppercase", letterSpacing: 1 }}>
-        <div style={{ flex: 1 }}>Name</div>
-        <div style={{ width: 34, textAlign: "center" }}>HCP</div>
-        <div style={{ width: 42 }} />
-      </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        {activePlayers.map(p => (
-          <div key={p.id}>
-            <PlayerRow p={p} />
-            {ed === p.id && <div style={{ marginTop: 4 }}><EditCard /></div>}
+      {/* Empty state with link to next action */}
+      {activePlayers.length === 0 && ed !== "new" && (
+        <div style={{ background: K.card, border: `1px dashed ${K.bdr}`, borderRadius: 10, padding: "24px 16px", textAlign: "center" }}>
+          <div style={{ fontSize: 13, color: K.t2, marginBottom: 8 }}>No players yet.</div>
+          <div style={{ fontSize: 11, color: K.t3 }}>Tap <strong style={{ color: K.acc }}>+ Add</strong> in the top right to create your first player.</div>
+        </div>
+      )}
+      {activePlayers.length > 0 && (
+        <>
+          {/* Column header */}
+          <div style={{ display: "flex", padding: "0 10px 4px", gap: 8, fontSize: 10, fontWeight: 600, color: K.t3, textTransform: "uppercase", letterSpacing: 1 }}>
+            <div style={{ flex: 1 }}>Name</div>
+            <div style={{ width: 34, textAlign: "center" }}>HCP</div>
+            <div style={{ width: 42 }} />
           </div>
-        ))}
-      </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {activePlayers.map(p => (
+              <div key={p.id}>
+                <PlayerRow p={p} />
+                {ed === p.id && <div style={{ marginTop: 4 }}><EditCard /></div>}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
       {inactivePlayers.length > 0 && (
         <div style={{ marginTop: 20 }}>
           <button onClick={() => setShowInactive(!showInactive)} style={{ background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", fontWeight: 500 }}>
@@ -184,6 +504,7 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, members, save
           )}
         </div>
       )}
+      <ConfirmModal modal={confirmModal} />
     </div>
   );
 }
@@ -216,7 +537,12 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
 
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [confirmModal, setConfirmModal] = useState(null);
   const [dragPlayer, setDragPlayer] = useState(null); // { playerId, source: { type: "pool" } | { type: "slot", teamIdx, slot } }
+  // Tap-to-swap state — alternative to drag, works great on mobile and is more discoverable.
+  // Tap a player to "select" it, then tap a slot or another player to swap/place.
+  // Tap the selected player again (or tap outside) to cancel.
+  const [tapSelected, setTapSelected] = useState(null); // { playerId, source: { type: "pool" } | { type: "slot", teamIdx, slot } }
   const dragRef = useRef(null);
 
   const assignedIds = rows.flatMap(r => [r.player1, r.player2]).filter(Boolean);
@@ -255,6 +581,79 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
     setDirty(true);
   };
 
+  // Tap-swap equivalent of placePlayer. Same swap logic but takes an explicit source
+  // object instead of relying on dragRef — because the tap flow never touches dragRef.
+  // If dragging into an occupied slot from another slot, the displaced player goes
+  // back to where the dragged one came from (a true 2-player swap). From the pool,
+  // the displaced player returns to the pool.
+  const tapSwap = (playerId, source, teamIdx, slot) => {
+    setRows(prev => {
+      const next = prev.map(r => ({ ...r }));
+      // Remove player from any existing slot
+      next.forEach(r => {
+        if (r.player1 === playerId) r.player1 = "";
+        if (r.player2 === playerId) r.player2 = "";
+      });
+      const displaced = next[teamIdx][slot];
+      if (displaced && source?.type === "slot") {
+        next[source.teamIdx][source.slot] = displaced;
+        const sp1 = source.slot === "player1" ? displaced : next[source.teamIdx].player1;
+        const sp2 = source.slot === "player2" ? displaced : next[source.teamIdx].player2;
+        next[source.teamIdx].name = buildName(sp1, sp2);
+      }
+      next[teamIdx][slot] = playerId;
+      next[teamIdx].name = buildName(
+        slot === "player1" ? playerId : next[teamIdx].player1,
+        slot === "player2" ? playerId : next[teamIdx].player2,
+      );
+      return next;
+    });
+    setDirty(true);
+  };
+
+  // Central handler for tap interactions on players and slots.
+  // Pattern: first tap selects; second tap on a slot places; second tap on the same
+  // selected player cancels; second tap on a different player swaps the two players.
+  const handleTap = (target) => {
+    // target is either { kind: "player", playerId, source } or { kind: "slot", teamIdx, slot, playerId }
+    if (!tapSelected) {
+      // First tap — select a player (and only if there IS a player in the target)
+      if (target.kind === "player") {
+        setTapSelected({ playerId: target.playerId, source: target.source });
+      } else if (target.kind === "slot" && target.playerId) {
+        setTapSelected({ playerId: target.playerId, source: { type: "slot", teamIdx: target.teamIdx, slot: target.slot } });
+      }
+      return;
+    }
+
+    // Second tap — complete or cancel
+    if (target.kind === "player" && target.playerId === tapSelected.playerId) {
+      // Tap on the same player cancels the selection
+      setTapSelected(null);
+      return;
+    }
+
+    if (target.kind === "slot") {
+      // Place selected player into this slot (may trigger a swap if occupied)
+      tapSwap(tapSelected.playerId, tapSelected.source, target.teamIdx, target.slot);
+      setTapSelected(null);
+      return;
+    }
+
+    if (target.kind === "player" && target.source?.type === "slot") {
+      // Tap on a different player that's in a team slot — swap them
+      tapSwap(tapSelected.playerId, tapSelected.source, target.source.teamIdx, target.source.slot);
+      setTapSelected(null);
+      return;
+    }
+
+    if (target.kind === "player" && target.source?.type === "pool") {
+      // Selected player was in pool, tapped a different pool player — reassign selection
+      setTapSelected({ playerId: target.playerId, source: target.source });
+      return;
+    }
+  };
+
   const removeFromSlot = (teamIdx, slot) => {
     setRows(prev => {
       const next = prev.map(r => ({ ...r }));
@@ -276,12 +675,16 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
     setDirty(false);
   };
 
-  const handleBack = async () => {
-    if (dirty) {
-      const choice = window.confirm("You have unsaved changes. Save before leaving?");
-      if (choice) await saveAll();
-    }
-    onBack();
+  const handleBack = () => {
+    if (!dirty) { onBack(); return; }
+    setConfirmModal({
+      title: "Unsaved changes",
+      message: "You have unsaved team changes. Save before leaving?",
+      confirmLabel: "Save",
+      cancelLabel: "Discard",
+      onConfirm: async () => { setConfirmModal(null); await saveAll(); onBack(); },
+      onCancel: () => { setConfirmModal(null); onBack(); },
+    });
   };
 
   // Find drop target from coordinates
@@ -302,51 +705,98 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
     const p = players.find(pl => pl.id === playerId);
     if (!p) return null;
     const isDragging = dragPlayer?.playerId === playerId;
+    const isSelected = tapSelected?.playerId === playerId;
     return (
       <div
         style={{
           display: "inline-flex", alignItems: "center", gap: 4,
           padding: "5px 10px", borderRadius: 6,
-          background: isDragging ? K.act + "20" : K.card,
-          border: `1px solid ${isDragging ? K.act : K.bdr}`,
+          background: isSelected ? K.act + "30" : isDragging ? K.act + "20" : K.card,
+          border: `1px solid ${isSelected ? K.act : isDragging ? K.act : K.bdr}`,
+          boxShadow: isSelected ? `0 0 0 2px ${K.act}40` : "none",
           fontSize: 12, fontWeight: 600, color: K.t1,
-          cursor: "grab", userSelect: "none",
+          cursor: "pointer", userSelect: "none",
           opacity: isDragging ? .5 : 1,
-          transition: "opacity .1s",
+          transition: "opacity .1s, box-shadow .15s, background .15s",
           ...extraStyle,
         }}
+        onClick={(e) => {
+          // onClick fires on tap completion. Fires after mouseup/touchend so a completed
+          // drag's final mouseup won't mis-trigger this tap — the drag's onUp fires before
+          // onClick and setDragPlayer(null) is called. But to be safe, if we're mid-drag,
+          // skip the tap.
+          if (dragPlayer) return;
+          handleTap({ kind: "player", playerId, source });
+        }}
         onMouseDown={(e) => {
+          // Only initiate a drag on explicit mouse-down-and-move. A quick click stays a tap.
+          // We set up drag listeners but only flip dragPlayer on actual movement.
           e.preventDefault();
           const info = { playerId, source };
           dragRef.current = info;
-          setDragPlayer(info);
-          const onMove = (ev) => { dragRef.current = { ...dragRef.current, curX: ev.clientX, curY: ev.clientY }; };
+          let moved = false;
+          const onMove = (ev) => {
+            const dx = ev.clientX - e.clientX;
+            const dy = ev.clientY - e.clientY;
+            if (!moved && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+              moved = true;
+              setDragPlayer(info);
+              // Cancel any pending tap selection since the user is dragging
+              setTapSelected(null);
+            }
+            if (moved) dragRef.current = { ...dragRef.current, curX: ev.clientX, curY: ev.clientY };
+          };
           const onUp = (ev) => {
             document.removeEventListener("mousemove", onMove);
             document.removeEventListener("mouseup", onUp);
-            const target = findSlotTarget(ev.clientX, ev.clientY);
-            if (target) placePlayer(playerId, target.teamIdx, target.slot);
+            if (moved) {
+              const target = findSlotTarget(ev.clientX, ev.clientY);
+              if (target) placePlayer(playerId, target.teamIdx, target.slot);
+              setDragPlayer(null);
+            }
             dragRef.current = null;
-            setDragPlayer(null);
           };
           document.addEventListener("mousemove", onMove);
           document.addEventListener("mouseup", onUp);
         }}
         onTouchStart={(e) => {
+          // On touch, we only kick off a drag after a short long-press so a quick tap
+          // still registers as a tap. Any movement before the long-press fires also
+          // cancels the tap.
           const touch = e.touches[0];
           const info = { playerId, source };
           dragRef.current = info;
-          setDragPlayer(info);
-          if (navigator.vibrate) navigator.vibrate(15);
-          const onMove = (ev) => { ev.preventDefault(); };
+          let started = false;
+          let moved = false;
+          const startDrag = () => {
+            if (moved) return; // movement before timer means we should not drag
+            started = true;
+            setDragPlayer(info);
+            setTapSelected(null);
+            if (navigator.vibrate) navigator.vibrate(15);
+          };
+          const lpTimer = setTimeout(startDrag, 200);
+          const onMove = (ev) => {
+            const t2 = ev.touches[0];
+            const dx = t2.clientX - touch.clientX;
+            const dy = t2.clientY - touch.clientY;
+            if (!started && (Math.abs(dx) > 6 || Math.abs(dy) > 6)) {
+              moved = true;
+              clearTimeout(lpTimer);
+            }
+            if (started) ev.preventDefault();
+          };
           const onEnd = (ev) => {
+            clearTimeout(lpTimer);
             document.removeEventListener("touchmove", onMove);
             document.removeEventListener("touchend", onEnd);
-            const t = ev.changedTouches[0];
-            const target = findSlotTarget(t.clientX, t.clientY);
-            if (target) placePlayer(playerId, target.teamIdx, target.slot);
+            if (started) {
+              const t = ev.changedTouches[0];
+              const target = findSlotTarget(t.clientX, t.clientY);
+              if (target) placePlayer(playerId, target.teamIdx, target.slot);
+              setDragPlayer(null);
+            }
             dragRef.current = null;
-            setDragPlayer(null);
           };
           document.addEventListener("touchmove", onMove, { passive: false });
           document.addEventListener("touchend", onEnd);
@@ -362,23 +812,38 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
   const Slot = ({ teamIdx, slot, playerId }) => {
     const isEmpty = !playerId;
     const isDropTarget = !!dragPlayer;
+    const hasTapSelection = !!tapSelected;
     return (
       <div
         data-team-slot={`${teamIdx}-${slot}`}
+        onClick={(e) => {
+          // Tapping a slot delegates to handleTap. Empty slots receive selections and
+          // place the currently-selected player; occupied slots also delegate (so taps
+          // on occupied slots can swap with the current selection). Clicks on the inner
+          // PlayerChip stop propagation so the chip's own onClick fires first.
+          if (dragPlayer) return;
+          // Only handle slot-level click when the click target is actually the slot
+          // container (not a chip inside it — those have their own onClick).
+          if (e.target !== e.currentTarget) return;
+          handleTap({ kind: "slot", teamIdx, slot, playerId });
+        }}
         style={{
           flex: 1, minHeight: 36, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center",
-          background: isDropTarget ? K.act + "08" : K.inp,
-          border: `1.5px dashed ${isDropTarget ? K.act + "50" : isEmpty ? K.bdr + "80" : "transparent"}`,
+          background: isDropTarget ? K.act + "08" : hasTapSelection && isEmpty ? K.act + "08" : K.inp,
+          border: `1.5px dashed ${isDropTarget ? K.act + "50" : hasTapSelection && isEmpty ? K.act + "50" : isEmpty ? K.bdr + "80" : "transparent"}`,
           ...(isEmpty ? {} : { border: `1px solid ${K.bdr}`, background: K.card }),
+          cursor: hasTapSelection ? "pointer" : isEmpty ? "default" : "pointer",
           transition: "all .15s",
         }}
       >
         {isEmpty ? (
-          <span style={{ fontSize: 10, color: K.t3 + "80" }}>Drop here</span>
+          <span style={{ fontSize: 10, color: hasTapSelection ? K.act : K.t3 + "80", fontWeight: hasTapSelection ? 700 : 400, pointerEvents: "none" }}>
+            {hasTapSelection ? "Tap to place" : "Tap or drop here"}
+          </span>
         ) : (
           <div style={{ display: "flex", alignItems: "center", gap: 4, width: "100%" }}>
             <PlayerChip playerId={playerId} source={{ type: "slot", teamIdx, slot }} style={{ flex: 1, borderRadius: 4, border: "none", background: "transparent", padding: "4px 6px" }} />
-            <button onClick={() => removeFromSlot(teamIdx, slot)} style={{ background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", padding: "2px 4px", flexShrink: 0, lineHeight: 1 }}>✕</button>
+            <button onClick={(e) => { e.stopPropagation(); removeFromSlot(teamIdx, slot); }} style={{ background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", padding: "2px 4px", flexShrink: 0, lineHeight: 1 }}>✕</button>
           </div>
         )}
       </div>
@@ -394,9 +859,37 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
       </div>
 
       {/* Unassigned player pool */}
+      {/* Helper strip — shows current tap interaction state + quick cancel.
+          When a player is selected, this is the clearest place to tell the user
+          "you've got a selection" and give them a one-tap escape. */}
+      {tapSelected && (() => {
+        const p = players.find(pl => pl.id === tapSelected.playerId);
+        if (!p) return null;
+        return (
+          <div style={{
+            display: "flex", alignItems: "center", gap: 8,
+            background: K.act + "15", border: `1px solid ${K.act}50`,
+            borderRadius: 8, padding: "8px 12px", marginBottom: 10,
+          }}>
+            <span style={{ fontSize: 11, color: K.t3, fontWeight: 600, letterSpacing: .5, textTransform: "uppercase" }}>Selected:</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: K.t1 }}>{shortName(p)}</span>
+            <span style={{ flex: 1, fontSize: 11, color: K.t3 }}>Tap a slot to place, or tap another player to swap.</span>
+            <button onClick={() => setTapSelected(null)} style={{
+              background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 6,
+              color: K.t2, fontSize: 10, padding: "4px 8px", cursor: "pointer", fontWeight: 600,
+            }}>Cancel</button>
+          </div>
+        );
+      })()}
+
       {unassigned.length > 0 && (
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 10, fontWeight: 600, color: K.t3, letterSpacing: 1, marginBottom: 6 }}>Unassigned ({unassigned.length})</div>
+          <div style={{ fontSize: 10, fontWeight: 600, color: K.t3, letterSpacing: 1, marginBottom: 6 }}>
+            Unassigned ({unassigned.length})
+            <span style={{ marginLeft: 10, textTransform: "none", letterSpacing: 0, fontSize: 10, color: K.t3, fontWeight: 400 }}>
+              Tap to select, tap a slot to place — or drag
+            </span>
+          </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {unassigned.map(p => <PlayerChip key={p.id} playerId={p.id} source={{ type: "pool" }} />)}
           </div>
@@ -411,13 +904,44 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        {rows.map((r, i) => (
-          <div key={i} style={{ display: "flex", gap: 6, alignItems: "center", background: K.card, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: "6px 8px" }}>
-            <div style={{ width: 24, fontSize: 13, fontWeight: 700, color: K.t3, textAlign: "center", flexShrink: 0 }}>{i + 1}</div>
-            <Slot teamIdx={i} slot="player1" playerId={r.player1} />
-            <Slot teamIdx={i} slot="player2" playerId={r.player2} />
-          </div>
-        ))}
+        {rows.map((r, i) => {
+          const isIncomplete = !r.player1 || !r.player2;
+          // Combined handicap is a fast read on team balance — useful when forming or
+          // tweaking pairings. We sum what's there (treating empty slots as 0) so the
+          // number still updates as the second player is added.
+          const p1 = r.player1 ? activePlayers.find(p => p.id === r.player1) : null;
+          const p2 = r.player2 ? activePlayers.find(p => p.id === r.player2) : null;
+          const h1 = p1?.handicapIndex ?? 0;
+          const h2 = p2?.handicapIndex ?? 0;
+          const combined = (parseFloat(h1) || 0) + (parseFloat(h2) || 0);
+          return (
+            <div key={i} style={{
+              display: "flex", flexDirection: "column", gap: 4,
+              background: K.card, borderRadius: 8,
+              border: `1px solid ${isIncomplete ? K.warn + "40" : K.bdr}`,
+              padding: "6px 8px",
+            }}>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <div style={{ width: 24, fontSize: 13, fontWeight: 700, color: K.t3, textAlign: "center", flexShrink: 0 }}>{i + 1}</div>
+                <Slot teamIdx={i} slot="player1" playerId={r.player1} />
+                <Slot teamIdx={i} slot="player2" playerId={r.player2} />
+              </div>
+              {/* Subtitle row: incomplete-team flag OR combined handicap */}
+              <div style={{ display: "flex", gap: 6, alignItems: "center", paddingLeft: 30, fontSize: 10 }}>
+                {isIncomplete ? (
+                  <span style={{ color: K.warn, fontWeight: 700, letterSpacing: .5 }}>
+                    ⚠ Needs {!r.player1 && !r.player2 ? "two players" : "one more player"}
+                  </span>
+                ) : (
+                  <span style={{ color: K.t3 }}>
+                    Combined HCP: <span style={{ color: K.t2, fontWeight: 700 }}>{combined.toFixed(1)}</span>
+                    <span style={{ marginLeft: 6, color: K.t3 }}>({h1} + {h2})</span>
+                  </span>
+                )}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {dirty && (
@@ -425,6 +949,7 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
           {saving ? "Saving..." : "Save All Teams"}
         </button>
       )}
+      <ConfirmModal modal={confirmModal} />
     </div>
   );
 }
@@ -433,6 +958,7 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
 function AdminCourse({ course, saveCourseData, onBack }) {
   const [lc, setLc] = useState(course || { name: "", frontPars: [4,4,4,3,5,4,4,3,5], backPars: [4,3,5,4,4,4,5,3,4], frontHcps: [7,3,1,9,5,13,11,17,15], backHcps: [8,14,2,10,4,16,6,18,12], teeBoxes: [{ name: "White", color: "#e2e8f0", slope: 113, rating: 67 }] });
   const [dirty, setDirty] = useState(false);
+  const [confirmModal, setConfirmModal] = useState(null);
   const upT = (ti, f, v) => { const t = [...lc.teeBoxes]; t[ti] = { ...t[ti], [f]: f === 'slope' || f === 'rating' ? parseFloat(v) || 0 : v }; setLc({ ...lc, teeBoxes: t }); setDirty(true); };
 
   // Store hole values in refs so editing never triggers re-render
@@ -458,7 +984,15 @@ function AdminCourse({ course, saveCourseData, onBack }) {
     }
   }, [course, dirty]);
 
-  // On save, read all ref values into state
+  // On save, read all ref values into state and validate before writing.
+  // Validation rules:
+  //  - Pars must be 3..6 (anything outside that range is almost certainly a typo)
+  //  - HCP indexes 1..9 must each appear exactly once on each side (front, back)
+  // We validate the front and back independently because the database stores them as
+  // separate arrays and many courses really do reuse the same handicap-index numbers
+  // 1..9 on each nine.
+  const [validationError, setValidationError] = useState(null);
+
   const saveWithRefs = async () => {
     const updated = { ...lc };
     ['frontPars', 'backPars', 'frontHcps', 'backHcps'].forEach(key => {
@@ -467,6 +1001,28 @@ function AdminCourse({ course, saveCourseData, onBack }) {
         return parseInt(ref.current?.value) || 0;
       });
     });
+
+    const errors = [];
+    [['frontPars', 'Front'], ['backPars', 'Back']].forEach(([key, label]) => {
+      updated[key].forEach((v, i) => {
+        if (v < 3 || v > 6) errors.push(`${label} hole ${i + 1}: par must be 3-6 (got ${v})`);
+      });
+    });
+    [['frontHcps', 'Front'], ['backHcps', 'Back']].forEach(([key, label]) => {
+      const arr = updated[key];
+      const sorted = [...arr].sort((a, b) => a - b);
+      const expected = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+      if (JSON.stringify(sorted) !== JSON.stringify(expected)) {
+        errors.push(`${label} HCP indexes must be 1-9 each used exactly once`);
+      }
+    });
+
+    if (errors.length > 0) {
+      setValidationError(errors.join(" · "));
+      return;
+    }
+
+    setValidationError(null);
     setLc(updated);
     await saveCourseData(updated);
     setDirty(false);
@@ -498,12 +1054,16 @@ function AdminCourse({ course, saveCourseData, onBack }) {
     );
   };
 
-  const handleBack = async () => {
-    if (dirty) {
-      const choice = window.confirm("You have unsaved changes. Save before leaving?");
-      if (choice) await saveWithRefs();
-    }
-    onBack();
+  const handleBack = () => {
+    if (!dirty) { onBack(); return; }
+    setConfirmModal({
+      title: "Unsaved changes",
+      message: "You have unsaved course changes. Save before leaving?",
+      confirmLabel: "Save",
+      cancelLabel: "Discard",
+      onConfirm: async () => { setConfirmModal(null); await saveWithRefs(); onBack(); },
+      onCancel: () => { setConfirmModal(null); onBack(); },
+    });
   };
 
   return (
@@ -514,6 +1074,15 @@ function AdminCourse({ course, saveCourseData, onBack }) {
         <button onClick={saveWithRefs} style={{ background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: 13, padding: "7px 16px", cursor: dirty ? "pointer" : "default", fontWeight: 600, letterSpacing: .4, transition: "all .2s" }}>{dirty ? "Save" : "Saved"}</button>
       </div>
       <input value={lc.name} onChange={e => setLc({ ...lc, name: e.target.value })} placeholder="Course Name" style={{ width: "100%", maxWidth: 400, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14, marginBottom: 12 }} />
+      {validationError && (
+        <div style={{
+          background: K.warn + "18", border: `1px solid ${K.warn}50`,
+          borderRadius: 8, padding: "8px 12px", marginBottom: 12,
+          fontSize: 12, color: K.warn, fontWeight: 600,
+        }}>
+          ⚠ {validationError}
+        </div>
+      )}
       <div className="scoring-grid">
       {['front', 'back'].map(s => (
         <div key={s} style={{ marginBottom: 12 }}>
@@ -539,6 +1108,7 @@ function AdminCourse({ course, saveCourseData, onBack }) {
       ))}
       </div>
       <button onClick={() => setLc({ ...lc, teeBoxes: [...lc.teeBoxes, { name: "New", color: "#888", slope: 113, rating: 67 }] })} style={{ width: "100%", maxWidth: 300, padding: 10, borderRadius: 8, background: K.inp, border: `1px dashed ${K.bdr}`, color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 4 }}>+ Add Tee Box</button>
+      <ConfirmModal modal={confirmModal} />
     </div>
   );
 }
@@ -583,6 +1153,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
   const [generating, setGenerating] = useState(false);
   const [setupDirty, setSetupDirty] = useState(false);
   const [savingSetup, setSavingSetup] = useState(false);
+  const [confirmModal, setConfirmModal] = useState(null);
   // Local editing state for seeded-matchups pairings. Swaps update this; Save commits
   // to Firestore. Prior design auto-saved on every tap but stale closures were silently
   // overwriting saves. This pattern matches the rest of the Setup tab's Save flow.
@@ -641,12 +1212,16 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     setSeedsDirty(false);
   };
 
-  const handleOnBack = async () => {
-    if (setupDirty || seedsDirty) {
-      const choice = window.confirm("You have unsaved setup changes. Save before leaving?");
-      if (choice) await saveSetup();
-    }
-    onBack();
+  const handleOnBack = () => {
+    if (!setupDirty && !seedsDirty) { onBack(); return; }
+    setConfirmModal({
+      title: "Unsaved setup changes",
+      message: "You have unsaved schedule setup changes. Save before leaving?",
+      confirmLabel: "Save",
+      cancelLabel: "Discard",
+      onConfirm: async () => { setConfirmModal(null); await saveSetup(); onBack(); },
+      onCancel: () => { setConfirmModal(null); onBack(); },
+    });
   };
 
   // Sync localWk when editWeek changes or schedule updates
@@ -667,12 +1242,16 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     }
   };
 
-  const handleWeekBack = async () => {
-    if (weekDirty) {
-      const choice = window.confirm("You have unsaved changes. Save before leaving?");
-      if (choice) await saveWeekEdits();
-    }
-    setEditWeek(null);
+  const handleWeekBack = () => {
+    if (!weekDirty) { setEditWeek(null); return; }
+    setConfirmModal({
+      title: "Unsaved changes",
+      message: "You have unsaved week changes. Save before leaving?",
+      confirmLabel: "Save",
+      cancelLabel: "Discard",
+      onConfirm: async () => { setConfirmModal(null); await saveWeekEdits(); setEditWeek(null); },
+      onCancel: () => { setConfirmModal(null); setEditWeek(null); },
+    });
   };
 
   // Derived week counts — all configurable by admin
@@ -759,9 +1338,22 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       if (locked) parts.push(`${locked} finalized`);
       if (rained) parts.push(`${rained} rained-out`);
       if (makeup) parts.push(`${makeup} makeup`);
-      if (!window.confirm(`Preserved weeks: ${parts.join(", ")}.\n\nAll other weeks will be regenerated.\n\nContinue?`)) return;
+      setConfirmModal({
+        title: "Regenerate schedule?",
+        message: `Preserved weeks: ${parts.join(", ")}. All other weeks will be regenerated from the current setup.`,
+        confirmLabel: "Regenerate",
+        onConfirm: () => { setConfirmModal(null); runGenerate(preservedWeekNums); },
+        onCancel: () => setConfirmModal(null),
+      });
+      return;
     }
 
+    runGenerate(preservedWeekNums);
+  };
+
+  // Async body extracted from generate() so the confirmation prompt can be a themed modal
+  // (which is async/callback-based) instead of window.confirm (which was sync).
+  const runGenerate = async (preservedWeekNums) => {
     setGenerating(true);
 
     // Clean corrupted data: locked seeded weeks shouldn't have makeupFor
@@ -1331,6 +1923,59 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           <div className="scoring-grid">
           <div>
             <SubLabel color={K.warn}>Playoff Bracket</SubLabel>
+
+            {/* Preset buttons: skip the tedium of filling out matchups by hand for
+                the common case. Top-vs-bottom is 1v8 / 2v7 / 3v6 / 4v5 for an 8-team
+                round; top-of-bracket is 1v4 / 2v3 for a 4-team semifinal. Re-presets
+                only affect the FIRST round — subsequent rounds typically depend on
+                winners and need per-league configuration. */}
+            {teams.length >= 2 && (cfg.playoffRounds || []).length > 0 && (
+              <Card style={{ padding: "10px 12px", marginBottom: 8, background: K.inp, border: `1px dashed ${K.bdr}` }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color: K.t3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
+                  Quick Setup — Round 1
+                </div>
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                  {[
+                    { label: `All ${teams.length} (1v${teams.length})`, fn: () => {
+                      const n = teams.length;
+                      const pairs = [];
+                      for (let i = 0; i < Math.floor(n / 2); i++) {
+                        pairs.push({ s1: String(i + 1), s2: String(n - i), s1type: "seed", s2type: "seed" });
+                      }
+                      return pairs;
+                    }},
+                    ...(teams.length >= 8 ? [{ label: "Top 8 (1v8)", fn: () => [
+                      { s1: "1", s2: "8", s1type: "seed", s2type: "seed" },
+                      { s1: "4", s2: "5", s1type: "seed", s2type: "seed" },
+                      { s1: "2", s2: "7", s1type: "seed", s2type: "seed" },
+                      { s1: "3", s2: "6", s1type: "seed", s2type: "seed" },
+                    ]}] : []),
+                    ...(teams.length >= 4 ? [{ label: "Top 4 (1v4)", fn: () => [
+                      { s1: "1", s2: "4", s1type: "seed", s2type: "seed" },
+                      { s1: "2", s2: "3", s1type: "seed", s2type: "seed" },
+                    ]}] : []),
+                  ].map((preset, i) => (
+                    <button key={i} onClick={() => {
+                      const rounds = [...(cfg.playoffRounds || [])];
+                      if (rounds[0]) {
+                        rounds[0] = { ...rounds[0], matchups: preset.fn() };
+                        setCfg({ ...cfg, playoffRounds: rounds });
+                      }
+                    }} style={{
+                      padding: "6px 10px", borderRadius: 6,
+                      background: K.card, border: `1px solid ${K.bdr}`,
+                      color: K.t2, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                    }}>
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ fontSize: 10, color: K.t3, marginTop: 6, lineHeight: 1.4 }}>
+                  Replaces Round 1 matchups only. Round 2+ still need manual setup (winners/losers from prior round).
+                </div>
+              </Card>
+            )}
+
             {(cfg.playoffRounds || []).map((round, ri) => {
               const roundWeekNum = computedRegularWeeks + ri + 1;
               const prevRound = ri > 0 ? (cfg.playoffRounds || [])[ri - 1] : null;
@@ -1556,18 +2201,24 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
               const rrWeeks = schedule.filter(s => !s.isPlayoff && !s.seeded && !s.rainedOut && !s.makeupFor);
               const anyLocked = schedule.some(s => s.locked);
               if (anyLocked || rrWeeks.length < 2) return null;
-              const doShuffle = async () => {
-                if (!window.confirm("Shuffle the round-robin matchup order? This randomizes which week each matchup is played.")) return;
-                // Collect all RR matchups and shuffle
-                const matchups = rrWeeks.map(w => w.matches || []);
-                for (let i = matchups.length - 1; i > 0; i--) {
-                  const j = Math.floor(Math.random() * (i + 1));
-                  [matchups[i], matchups[j]] = [matchups[j], matchups[i]];
-                }
-                // Save back with shuffled matchups
-                for (let i = 0; i < rrWeeks.length; i++) {
-                  await saveWeekSchedule({ ...rrWeeks[i], matches: matchups[i] });
-                }
+              const doShuffle = () => {
+                setConfirmModal({
+                  title: "Shuffle round-robin order?",
+                  message: "Randomizes which week each matchup is played. Only available before any week is locked.",
+                  confirmLabel: "Shuffle",
+                  onConfirm: async () => {
+                    setConfirmModal(null);
+                    const matchups = rrWeeks.map(w => w.matches || []);
+                    for (let i = matchups.length - 1; i > 0; i--) {
+                      const j = Math.floor(Math.random() * (i + 1));
+                      [matchups[i], matchups[j]] = [matchups[j], matchups[i]];
+                    }
+                    for (let i = 0; i < rrWeeks.length; i++) {
+                      await saveWeekSchedule({ ...rrWeeks[i], matches: matchups[i] });
+                    }
+                  },
+                  onCancel: () => setConfirmModal(null),
+                });
               };
               return (
                 <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
@@ -1590,14 +2241,22 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
               const emptySeededWeeks = schedule.filter(s => s.seeded === true && !s.isPlayoff && !s.rainedOut && (!s.matches || s.matches.length === 0));
               if (emptySeededWeeks.length === 0) return null;
               const lastRRLockedWeek = Math.max(...rrWeeks.map(s => s.week));
-              const doRecoverySeed = async () => {
-                if (!window.confirm(`Seed ${emptySeededWeeks.length} empty seeded week${emptySeededWeeks.length === 1 ? "" : "s"} from current standings?`)) return;
-                const count = (await autoSeedIfReady(lastRRLockedWeek)) || 0;
-                if (count > 0) {
-                  alert(`Seeded ${count} week${count === 1 ? "" : "s"}.`);
-                } else {
-                  alert("No weeks needed seeding, or not enough data to seed.");
-                }
+              const doRecoverySeed = () => {
+                setConfirmModal({
+                  title: `Seed ${emptySeededWeeks.length} empty week${emptySeededWeeks.length === 1 ? "" : "s"}?`,
+                  message: "Generates matchups for the listed seeded weeks from current standings.",
+                  confirmLabel: "Seed",
+                  onConfirm: async () => {
+                    setConfirmModal(null);
+                    const count = (await autoSeedIfReady(lastRRLockedWeek)) || 0;
+                    if (count > 0) {
+                      alert(`Seeded ${count} week${count === 1 ? "" : "s"}.`);
+                    } else {
+                      alert("No weeks needed seeding, or not enough data to seed.");
+                    }
+                  },
+                  onCancel: () => setConfirmModal(null),
+                });
               };
               return (
                 <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
@@ -1633,50 +2292,80 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 const isSeeded = wk.seeded === true && (!wk.matches || wk.matches.length === 0);
                 const isFinalized = wk.locked === true;
                 const side = wk.side || 'front';
+
+                // Week state → left-bar color. At-a-glance scan of the season.
+                // Ready-to-finalize = all matches attested but not yet locked.
+                const allMatchesAttested = !isSeeded && !isRainedOut && wk.matches?.length > 0 && wk.matches.every(m =>
+                  (matchResults || []).some(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true)
+                );
+                // Current week = earliest unlocked week with pairings set. Only the first
+                // qualifying week gets the "current" color — subsequent unplayed weeks are
+                // "upcoming". We derive this by checking: this week unlocked AND no earlier
+                // unlocked-with-matches week exists.
+                const isCurrent = !isFinalized && !isRainedOut && wk.matches?.length > 0 && !allMatchesAttested &&
+                  !schedule.some(w => w.week < wk.week && !w.locked && !w.rainedOut && w.matches?.length > 0 && !w.matches.every(m =>
+                    (matchResults || []).some(r => r.week === w.week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true)
+                  ));
+
+                const barColor =
+                  isRainedOut ? K.warn :
+                  isFinalized ? K.grn :
+                  allMatchesAttested ? K.act :
+                  isCurrent ? "#3b82f6" :
+                  K.bdr;
+
                 return (
                   <button key={wk.week} onClick={() => setEditWeek(wk.week)} style={{
-                    display: "flex", alignItems: "center", width: "100%",
+                    display: "flex", alignItems: "stretch", width: "100%",
                     background: K.card, borderRadius: CARD_RADIUS,
                     border: `1px solid ${isRainedOut ? K.warn + "40" : K.bdr}`,
-                    padding: "10px 14px", cursor: "pointer", textAlign: "left",
-                    opacity: isRainedOut ? 0.5 : 1, gap: 8,
+                    padding: 0, cursor: "pointer", textAlign: "left",
+                    opacity: isRainedOut ? 0.5 : 1,
+                    overflow: "hidden",
                   }}>
-                    <div style={{ width: 26, fontSize: 14, fontWeight: 700, color: K.t1, flexShrink: 0 }}>{wk.week}</div>
-                    <div style={{ width: 52, fontSize: 12, fontWeight: 600, color: K.t1, flexShrink: 0 }}>{wk.date || "—"}</div>
-                    <div style={{ width: 42, flexShrink: 0 }}>
-                      <Pill color={K.logoBright} style={{ fontSize: 8 }}>{side === 'front' ? 'FRONT' : 'BACK'}</Pill>
+                    <div style={{
+                      width: 4, background: barColor, flexShrink: 0,
+                    }} />
+                    <div style={{ display: "flex", alignItems: "center", flex: 1, padding: "10px 14px", gap: 8 }}>
+                      <div style={{ width: 26, fontSize: 14, fontWeight: 700, color: K.t1, flexShrink: 0 }}>{wk.week}</div>
+                      <div style={{ width: 52, fontSize: 12, fontWeight: 600, color: K.t1, flexShrink: 0 }}>{wk.date || "—"}</div>
+                      <div style={{ width: 42, flexShrink: 0 }}>
+                        <Pill color={K.logoBright} style={{ fontSize: 8 }}>{side === 'front' ? 'FRONT' : 'BACK'}</Pill>
+                      </div>
+                      <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+                        {isRainedOut ? "RAIN OUT" : isSeeded ? (() => {
+                          if (isPlayoffWk) return "PLAYOFF — TBD";
+                          // Show configured seed pairings if available
+                          const seededRegWeeks = schedule.filter(s => s.seeded === true && !s.isPlayoff).sort((a, b) => a.week - b.week);
+                          const seededIdx = seededRegWeeks.findIndex(s => s.week === wk.week);
+                          const customWeeks = leagueConfig?.customSeedWeeks;
+                          const weekPairs = customWeeks && customWeeks[seededIdx];
+                          if (weekPairs && weekPairs.length > 0) {
+                            return weekPairs.map(p => `#${p.s1}v#${p.s2}`).join("  ");
+                          }
+                          return "SEEDED — TBD";
+                        })() : wk.matches?.length ? (() => {
+                          const isSeededFilled = wk.seeded === true;
+                          if (isSeededFilled) {
+                            return wk.matches.map(m => `#${seedMap[m.team1] || "?"}v#${seedMap[m.team2] || "?"}`).join("  ");
+                          }
+                          return `${wk.matches.length} MATCHES`;
+                        })() : "—"}
+                      </div>
+                      <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
+                        {isFinalized && <Pill color={K.grn} style={{ fontSize: 7 }}>FINAL</Pill>}
+                        {!isFinalized && allMatchesAttested && <Pill color={K.act} style={{ fontSize: 7 }}>READY</Pill>}
+                        {wk.makeupFor && <Pill color={K.teal} style={{ fontSize: 7 }}>MU</Pill>}
+                      </div>
+                      <div style={{ color: K.t3, fontSize: 12, flexShrink: 0 }}>›</div>
                     </div>
-                    <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
-                      {isRainedOut ? "RAIN OUT" : isSeeded ? (() => {
-                        if (isPlayoffWk) return "PLAYOFF — TBD";
-                        // Show configured seed pairings if available
-                        const seededRegWeeks = schedule.filter(s => s.seeded === true && !s.isPlayoff).sort((a, b) => a.week - b.week);
-                        const seededIdx = seededRegWeeks.findIndex(s => s.week === wk.week);
-                        const customWeeks = leagueConfig?.customSeedWeeks;
-                        const weekPairs = customWeeks && customWeeks[seededIdx];
-                        if (weekPairs && weekPairs.length > 0) {
-                          return weekPairs.map(p => `#${p.s1}v#${p.s2}`).join("  ");
-                        }
-                        return "SEEDED — TBD";
-                      })() : wk.matches?.length ? (() => {
-                        const isSeededFilled = wk.seeded === true;
-                        if (isSeededFilled) {
-                          return wk.matches.map(m => `#${seedMap[m.team1] || "?"}v#${seedMap[m.team2] || "?"}`).join("  ");
-                        }
-                        return `${wk.matches.length} MATCHES`;
-                      })() : "—"}
-                    </div>
-                    <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
-                      {isFinalized && <Pill color={K.grn} style={{ fontSize: 7 }}>FINAL</Pill>}
-                      {wk.makeupFor && <Pill color={K.teal} style={{ fontSize: 7 }}>MU</Pill>}
-                    </div>
-                    <div style={{ color: K.t3, fontSize: 12, flexShrink: 0 }}>›</div>
                   </button>
                 );
               })}
             </div>
           </>)}
         </>)}
+        <ConfirmModal modal={confirmModal} />
       </div>
     );
   }
@@ -1830,9 +2519,16 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       const roundName = isPlayoff
         ? ((leagueConfig.playoffRounds || [])[playoffRound - 1]?.name || `Playoff Round ${playoffRound}`)
         : "seeded matchups";
-      if (!window.confirm(`Seed Week ${wk.week} (${roundName})?\n\n${matches.map(m => `${gn(m.team1)} vs ${gn(m.team2)}`).join('\n')}`)) return;
-
-      await saveWeekSchedule({ ...wk, matches });
+      setConfirmModal({
+        title: `Seed Week ${wk.week}?`,
+        message: `${roundName}:\n\n${matches.map(m => `• ${gn(m.team1)} vs ${gn(m.team2)}`).join('\n')}`,
+        confirmLabel: "Seed",
+        onConfirm: async () => {
+          setConfirmModal(null);
+          await saveWeekSchedule({ ...wk, matches });
+        },
+        onCancel: () => setConfirmModal(null),
+      });
     };
 
     const handleRainOut = async () => {
@@ -1855,9 +2551,32 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       }
 
       const msgDetail = isRoundRobin
-        ? `Rain out Week ${wk.week}? This will:\n\n• Skip this week (no matches played)\n• Insert a makeup week at week ${makeupWeekNum}\n• Push unlocked future weeks forward\n• Extend the season by one week`
-        : `Rain out Week ${wk.week}? This will:\n\n• Skip this week\n• Insert makeup matchups at week ${makeupWeekNum}\n• Push unlocked future weeks forward\n• Extend the season by one week`;
-      if (!window.confirm(msgDetail)) return;
+        ? `This will skip this week, insert a makeup at week ${makeupWeekNum}, push unlocked future weeks forward, and extend the season by one week.`
+        : `This will skip this week, insert makeup matchups at week ${makeupWeekNum}, push unlocked future weeks forward, and extend the season by one week.`;
+      setConfirmModal({
+        title: `Rain out Week ${wk.week}?`,
+        message: msgDetail,
+        confirmLabel: "Rain Out",
+        destructive: true,
+        onConfirm: async () => {
+          setConfirmModal(null);
+          await doRainOut();
+        },
+        onCancel: () => setConfirmModal(null),
+      });
+    };
+
+    // Body of rain-out flow extracted from handleRainOut so confirm + action can be split.
+    const doRainOut = async () => {
+      const isRoundRobin = !wk.isPlayoff && !wk.seeded && !wk.makeupFor;
+      const lastRRWeekNum = Math.max(0, ...schedule.filter(s =>
+        (!s.isPlayoff && !s.seeded && !s.makeupFor) || (s.makeupFor && !s.isPlayoff)
+      ).map(s => s.week));
+      const insertTarget = isRoundRobin ? lastRRWeekNum + 1 : wk.week + 1;
+      let makeupWeekNum = insertTarget;
+      while (schedule.some(s => s.week === makeupWeekNum && s.locked === true)) {
+        makeupWeekNum++;
+      }
 
       const year = leagueConfig?.year || new Date().getFullYear();
       const parseDate = (dateStr) => {
@@ -1952,26 +2671,30 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
             <span style={{ fontSize: 13, fontWeight: 700, color: K.warn }}>Rained Out</span>
             {wk.makeupFor && <span style={{ fontSize: 11, color: K.t3, marginLeft: 6 }}>(Makeup for Week {wk.makeupFor})</span>}
             <div style={{ marginTop: 8 }}>
-              <button onClick={async () => {
-                if (!window.confirm(`Undo rain out for Week ${wk.week}? This will restore the week and reverse all shifts.`)) return;
+              <button onClick={() => {
+                setConfirmModal({
+                  title: `Undo rain out for Week ${wk.week}?`,
+                  message: "Restores the week and reverses all week-number shifts. Locked weeks stay put.",
+                  confirmLabel: "Undo Rain Out",
+                  onConfirm: async () => {
+                    setConfirmModal(null);
 
-                const isRR = !wk.isPlayoff && !wk.seeded;
-                const year = leagueConfig?.year || new Date().getFullYear();
-                const parseDate = (dateStr) => {
-                  if (!dateStr) return null;
-                  const d = new Date(`${dateStr}, ${year}`);
-                  return isNaN(d.getTime()) ? null : d;
-                };
-                const fmtDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                    const year = leagueConfig?.year || new Date().getFullYear();
+                    const parseDate = (dateStr) => {
+                      if (!dateStr) return null;
+                      const d = new Date(`${dateStr}, ${year}`);
+                      return isNaN(d.getTime()) ? null : d;
+                    };
+                    const fmtDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-                // Un-mark the rain out and restore matches if they were cleared
-                const makeupWeek = schedule.find(s => s.makeupFor === wk.week);
-                const restoredMatches = makeupWeek?.matches || wk.matches || [];
-                await saveWeekSchedule({ ...wk, rainedOut: false, matches: restoredMatches });
+                    // Un-mark the rain out and restore matches if they were cleared
+                    const makeupWeek = schedule.find(s => s.makeupFor === wk.week);
+                    const restoredMatches = makeupWeek?.matches || wk.matches || [];
+                    await saveWeekSchedule({ ...wk, rainedOut: false, matches: restoredMatches });
 
-                if (makeupWeek) {
-                  // Delete the makeup week, then shift weeks after it down by 1 — but skip over locked weeks.
-                  await deleteWeekSchedule(makeupWeek.id);
+                    if (makeupWeek) {
+                      // Delete the makeup week, then shift weeks after it down by 1 — but skip over locked weeks.
+                      await deleteWeekSchedule(makeupWeek.id);
 
                   // Build shift map: for each non-locked week after makeupWeek.week, find the next lower available slot.
                   const lockedWeekNums = new Set(schedule.filter(s => s.locked === true && s.week !== wk.week).map(s => s.week));
@@ -2013,6 +2736,9 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 }
 
                 setEditWeek(null);
+                  },
+                  onCancel: () => setConfirmModal(null),
+                });
               }} style={{ padding: "6px 16px", borderRadius: 6, background: K.card, border: `1px solid ${K.warn}40`, color: K.warn, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                 Undo Rain Out
               </button>
@@ -2122,10 +2848,17 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           {/* Re-seed button for seeded-type weeks (non-RR, non-makeup, or playoff) that aren't finalized */}
           {!isFinalized && (wk.isPlayoff || wk.seeded === true) && wk.matches?.length > 0 && (
             <button onClick={() => {
-              if (!window.confirm("Re-seed this week from current standings? This will replace the current matchups.")) return;
-              // Reset to seeded state so the Seed Week UI shows again
-              saveWeekSchedule({ ...wk, matches: [], seeded: true });
-              setLocalWk({ ...wk, matches: [], seeded: true });
+              setConfirmModal({
+                title: "Re-seed this week?",
+                message: "Replaces current matchups with fresh pairings from current standings. Does nothing if the week is already finalized.",
+                confirmLabel: "Re-seed",
+                onConfirm: async () => {
+                  setConfirmModal(null);
+                  await saveWeekSchedule({ ...wk, matches: [], seeded: true });
+                  setLocalWk({ ...wk, matches: [], seeded: true });
+                },
+                onCancel: () => setConfirmModal(null),
+              });
             }} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 8, background: K.logoBright + "12", border: `1px solid ${K.logoBright}30`, color: K.logoBright, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
               Re-seed from Standings
             </button>
@@ -2366,6 +3099,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
             })()}
           </div>
         </>)}
+        <ConfirmModal modal={confirmModal} />
       </div>
     );
   }
@@ -2376,6 +3110,7 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
   const [lc, setLc] = useState({ ...scoring });
   const [cfg, setCfg] = useState({ scoringFormat: "lowHighBonus", bonusType: "teamNetTotal", standingsMethod: "points", ...leagueConfig });
   const [dirty, setDirty] = useState(false);
+  const [confirmModal, setConfirmModal] = useState(null);
 
   // Keep local form state in sync when Firestore updates — as long as the user isn't
   // mid-edit. Prevents silently overwriting concurrent changes on Save.
@@ -2400,7 +3135,7 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
   const F = ({ label, field }) => (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${K.bdr}15` }}>
       <span style={{ fontSize: 12, color: K.t2 }}>{label}</span>
-      <input value={lc[field]} onChange={e => { setLc({ ...lc, [field]: parseFloat(e.target.value) || 0 }); setDirty(true); }} type="number" step="0.5" style={{ width: 58, padding: "5px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13, textAlign: "center" }} />
+      <input value={lc[field]} onChange={e => { setLc({ ...lc, [field]: parseFloat(e.target.value) || 0 }); setDirty(true); }} onFocus={e => setTimeout(() => e.target.select(), 10)} type="number" inputMode="decimal" step="0.5" style={{ width: 58, padding: "5px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13, textAlign: "center" }} />
     </div>
   );
 
@@ -2430,12 +3165,16 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
     </div>
   );
 
-  const handleBack = async () => {
-    if (dirty) {
-      const choice = window.confirm("You have unsaved changes. Save before leaving?");
-      if (choice) await save();
-    }
-    onBack();
+  const handleBack = () => {
+    if (!dirty) { onBack(); return; }
+    setConfirmModal({
+      title: "Unsaved changes",
+      message: "You have unsaved scoring rules changes. Save before leaving?",
+      confirmLabel: "Save",
+      cancelLabel: "Discard",
+      onConfirm: async () => { setConfirmModal(null); await save(); onBack(); },
+      onCancel: () => { setConfirmModal(null); onBack(); },
+    });
   };
 
   return (
@@ -2451,6 +3190,32 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
         { id: "teamNetTotal", label: "Team Net Total", desc: "Combined team net vs combined team net — single match" },
       ]} value={format} onChange={v => setCfg({ ...cfg, scoringFormat: v })} />
 
+      {/* Worked example so the format choice isn't abstract. Numbers pull from the
+          current scoring rules so the preview reflects what will actually happen. */}
+      <Card style={{ padding: "10px 12px", marginBottom: 16, background: K.inp, border: `1px dashed ${K.bdr}` }}>
+        <div style={{ fontSize: 10, fontWeight: 700, color: K.t3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
+          Example Week
+        </div>
+        {isLowHigh ? (
+          <div style={{ fontSize: 12, color: K.t2, lineHeight: 1.7 }}>
+            <div>• Your low-HCP player beat theirs <span style={{ color: K.t1, fontWeight: 700 }}>→ +{lc.matchWin ?? 3} pts</span></div>
+            <div>• Your high-HCP player tied theirs <span style={{ color: K.t1, fontWeight: 700 }}>→ +{lc.matchTie ?? 1.5} pts</span></div>
+            <div>• Your team net total won the bonus <span style={{ color: K.t1, fontWeight: 700 }}>→ +{lc.bonusWin ?? 3} pts</span></div>
+            <div style={{ marginTop: 4, paddingTop: 4, borderTop: `1px solid ${K.bdr}`, color: K.t1, fontWeight: 700 }}>
+              Total: {((lc.matchWin ?? 3) + (lc.matchTie ?? 1.5) + (lc.bonusWin ?? 3)).toFixed(1)} pts this week
+            </div>
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: K.t2, lineHeight: 1.7 }}>
+            <div>• Combined net score: your team 138, theirs 142</div>
+            <div>• Lower total wins the match <span style={{ color: K.t1, fontWeight: 700 }}>→ +{lc.matchWin ?? 3} pts</span></div>
+            <div style={{ marginTop: 4, paddingTop: 4, borderTop: `1px solid ${K.bdr}`, color: K.t1, fontWeight: 700 }}>
+              Total: {(lc.matchWin ?? 3).toFixed(1)} pts this week
+            </div>
+          </div>
+        )}
+      </Card>
+
       <SubLabel>Standings Method</SubLabel>
       <Radio items={[
         { id: "points", label: "Points-Based", desc: "Teams accumulate points each week — most points wins" },
@@ -2462,14 +3227,6 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
           dropdown has been removed — holes won is the only real tiebreaker. */}
 
       <div className="scoring-grid">
-        <div>
-          <SubLabel>Handicap Calculation</SubLabel>
-          <Card style={{ padding: "2px 14px" }}>
-            <F label="Recent rounds to consider" field="hcpRecentCount" />
-            <F label="Best rounds to average" field="hcpBestCount" />
-          </Card>
-        </div>
-
         {isPoints ? (<>
           {isLowHigh ? (<>
             <div>
@@ -2537,95 +3294,290 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
           </div>
         )}
       </div>
+      <ConfirmModal modal={confirmModal} />
     </div>
   );
 }
 
 
 function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
-  const assigned = members.map(m => m.playerId).filter(Boolean);
+  // Draft state lets the user try several dropdown/comm selections before committing.
+  // The old version wrote on every change, so scrolling through a dropdown on mobile
+  // would fire a write per option tapped. Draft-then-save is consistent with the rest of
+  // admin and dramatically less chatty with Firestore.
+  const [drafts, setDrafts] = useState({}); // { [memberId]: { playerId, isCommissioner } }
+  const [confirmModal, setConfirmModal] = useState(null);
+  const [saving, setSaving] = useState(false);
+
+  // Resolve the effective value for a member — draft takes precedence over stored.
+  const eff = (m, field) => (drafts[m.id] && field in drafts[m.id]) ? drafts[m.id][field] : m[field];
+
+  const setDraft = (memberId, field, value) => {
+    setDrafts(prev => {
+      const next = { ...prev };
+      const existing = next[memberId] || {};
+      next[memberId] = { ...existing, [field]: value };
+      return next;
+    });
+  };
+
+  // Is this member's draft different from what's stored?
+  const memberDirty = (m) => {
+    const d = drafts[m.id];
+    if (!d) return false;
+    if ("playerId" in d && d.playerId !== (m.playerId || "")) return true;
+    if ("isCommissioner" in d && !!d.isCommissioner !== !!m.isCommissioner) return true;
+    return false;
+  };
+
+  const dirty = members.some(memberDirty);
+  const dirtyCount = members.filter(memberDirty).length;
+
+  const saveAll = async () => {
+    if (!dirty || saving) return;
+    setSaving(true);
+    for (const m of members) {
+      if (!memberDirty(m)) continue;
+      const d = drafts[m.id];
+      const updated = {
+        ...m,
+        ...(("playerId" in d) ? { playerId: d.playerId } : {}),
+        ...(("isCommissioner" in d) ? { isCommissioner: d.isCommissioner } : {}),
+      };
+      await saveMember(updated);
+    }
+    setDrafts({});
+    setSaving(false);
+  };
+
+  // Dropdown-exclusion uses EFFECTIVE playerIds so the draft state behaves consistently —
+  // selecting Alice on one member immediately removes her from the dropdown on another.
+  const effectiveAssigned = members.map(m => eff(m, "playerId")).filter(Boolean);
+
+  // Handle the edge case of a member whose stored playerId references a player who no
+  // longer exists (e.g., the commissioner deleted the player but not the account).
+  const playerExists = (playerId) => players.some(p => p.id === playerId);
+
+  const handleBack = async () => {
+    if (dirty) {
+      setConfirmModal({
+        title: "Unsaved changes",
+        message: `You have ${dirtyCount} unsaved member change${dirtyCount === 1 ? "" : "s"}. Save before leaving?`,
+        confirmLabel: "Save",
+        cancelLabel: "Discard",
+        onConfirm: async () => { setConfirmModal(null); await saveAll(); onBack(); },
+        onCancel: () => { setConfirmModal(null); onBack(); },
+      });
+      return;
+    }
+    onBack();
+  };
+
+  const handleDelete = (m) => {
+    setConfirmModal({
+      title: `Remove ${m.name}?`,
+      message: `This removes their sign-in access. Their player profile stays — if you want to remove that too, go to the Players page.`,
+      confirmLabel: "Remove",
+      onConfirm: async () => { setConfirmModal(null); await deleteMember(m.id); },
+      onCancel: () => setConfirmModal(null),
+    });
+  };
+
   return (
     <div>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}><BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Members</span><div style={{ width: 60 }} /></div>
-      <div style={{ fontSize: 12, color: K.t3, marginBottom: 12, lineHeight: 1.5 }}>Members sign in via Google or email and link to a player profile. Grant commissioner access as needed.</div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-        {members.map(m => (
-          <Card key={m.id} style={{ padding: "10px 12px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-              <div><div style={{ fontSize: 13, fontWeight: 700 }}>{m.name}</div><div style={{ fontSize: 10, color: K.t3 }}>{m.email}</div></div>
-              <div style={{ display: "flex", gap: 4 }}>{m.isCommissioner && <Pill color={K.warn} style={{ fontSize: 8 }}>COMM</Pill>}<button onClick={() => { if (confirm(`Remove ${m.name}?`)) deleteMember(m.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.red, fontSize: 10, padding: "3px 6px", cursor: "pointer" }}>✕</button></div>
-            </div>
-            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              <select value={m.playerId || ""} onChange={e => saveMember({ ...m, playerId: e.target.value })} style={{ flex: 1, padding: 6, borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 12 }}><option value="">— Unlinked —</option>{players.filter(p => !assigned.includes(p.id) || p.id === m.playerId).map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select>
-              <button onClick={() => saveMember({ ...m, isCommissioner: !m.isCommissioner })} style={{ padding: "5px 8px", borderRadius: 6, background: m.isCommissioner ? K.warn + "20" : K.inp, border: `1px solid ${m.isCommissioner ? K.warn + "40" : K.bdr}`, color: m.isCommissioner ? K.warn : K.t3, fontSize: 10, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap" }}>{m.isCommissioner ? "Revoke" : "Make Comm"}</button>
-            </div>
-          </Card>
-        ))}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+        <BackBtn onClick={handleBack} />
+        <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Accounts</span>
+        <button
+          onClick={saveAll}
+          disabled={!dirty || saving}
+          style={{
+            background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`,
+            borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: 13,
+            padding: "7px 16px", cursor: dirty && !saving ? "pointer" : "default",
+            fontWeight: 600, letterSpacing: .4, transition: "all .2s",
+            opacity: saving ? .6 : 1,
+          }}
+        >
+          {saving ? "Saving..." : dirty ? `Save${dirtyCount > 1 ? ` (${dirtyCount})` : ""}` : "Saved"}
+        </button>
       </div>
+      <div style={{ fontSize: 12, color: K.t3, marginBottom: 12, lineHeight: 1.5 }}>
+        Members sign in via Google or email and link to a player profile. Commissioner
+        access is granted here.
+      </div>
+
+      {members.length === 0 && (
+        <div style={{ background: K.card, border: `1px dashed ${K.bdr}`, borderRadius: 10, padding: "24px 16px", textAlign: "center" }}>
+          <div style={{ fontSize: 13, color: K.t2, marginBottom: 4 }}>No accounts yet.</div>
+          <div style={{ fontSize: 11, color: K.t3 }}>Members appear here after they sign in and complete the join flow.</div>
+        </div>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+        {members.map(m => {
+          const effectivePlayerId = eff(m, "playerId") || "";
+          const effectiveComm = !!eff(m, "isCommissioner");
+          const isUnlinked = !effectivePlayerId || !playerExists(effectivePlayerId);
+          const isDirty = memberDirty(m);
+          return (
+            <Card key={m.id} style={{
+              padding: "10px 12px",
+              border: isDirty ? `1.5px solid ${K.act}60` : `1px solid ${K.bdr}`,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name || "—"}</div>
+                    <div style={{ fontSize: 10, color: K.t3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.email}</div>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
+                  {isUnlinked && (
+                    <Pill color="#3b82f6" style={{ fontSize: 8 }}>UNLINKED</Pill>
+                  )}
+                  {effectiveComm && (
+                    <Pill color={K.warn} style={{ fontSize: 8 }}>COMM</Pill>
+                  )}
+                  <button onClick={() => handleDelete(m)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.red, fontSize: 10, padding: "3px 6px", cursor: "pointer" }}>✕</button>
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <select
+                  value={effectivePlayerId}
+                  onChange={e => setDraft(m.id, "playerId", e.target.value)}
+                  style={{ flex: 1, padding: 6, borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 12 }}
+                >
+                  <option value="">— Unlinked —</option>
+                  {players
+                    .filter(p => !effectiveAssigned.includes(p.id) || p.id === effectivePlayerId)
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+                <button
+                  onClick={() => setDraft(m.id, "isCommissioner", !effectiveComm)}
+                  style={{
+                    padding: "5px 8px", borderRadius: 6,
+                    background: effectiveComm ? K.warn + "20" : K.inp,
+                    border: `1px solid ${effectiveComm ? K.warn + "40" : K.bdr}`,
+                    color: effectiveComm ? K.warn : K.t3,
+                    fontSize: 10, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+                  }}
+                >
+                  {effectiveComm ? "Revoke" : "Make Comm"}
+                </button>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      {confirmModal && <ConfirmModal modal={confirmModal} />}
     </div>
   );
 }
 
 
-function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoricalScores, recalcHandicaps, matchResults, saveMatchResult, schedule, teams, onBack }) {
+function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoricalScores, recalcHandicaps, matchResults, saveMatchResult, schedule, teams, scoringRules, saveScoringRules, onBack }) {
   const [lc, setLc] = useState({ ...config });
+  const [sr, setSr] = useState({ ...(scoringRules || {}) });
   const [dirty, setDirty] = useState(false);
   const [resetting, setResetting] = useState(false);
   const [attesting, setAttesting] = useState(false);
   const [attestResult, setAttestResult] = useState(null);
   const [recalcing, setRecalcing] = useState(false);
   const [recalcResult, setRecalcResult] = useState(null);
+  const [confirmModal, setConfirmModal] = useState(null);
 
   // Keep local form state in sync when the Firestore doc updates — as long as the user
   // hasn't started editing. Prevents silently overwriting a concurrent change made in
   // another tab (or by another commissioner) when this user eventually hits Save.
   useEffect(() => { if (!dirty) setLc({ ...config }); }, [config, dirty]);
+  useEffect(() => { if (!dirty && scoringRules) setSr({ ...scoringRules }); }, [scoringRules, dirty]);
 
-  const save = async () => { await saveLeagueConfig(lc); setDirty(false); };
+  const save = async () => {
+    await saveLeagueConfig(lc);
+    // Only write scoring rules if they actually changed — avoids churning the doc
+    // every time a user hits Save after editing only the league name.
+    if (scoringRules && (sr.hcpRecentCount !== scoringRules.hcpRecentCount || sr.hcpBestCount !== scoringRules.hcpBestCount)) {
+      await saveScoringRules(sr);
+    }
+    setDirty(false);
+  };
 
   const handleBack = async () => {
     if (dirty) {
-      const choice = window.confirm("You have unsaved changes. Save before leaving?");
-      if (choice) await save();
+      setConfirmModal({
+        title: "Unsaved changes",
+        message: "You have unsaved changes. Save before leaving?",
+        confirmLabel: "Save",
+        cancelLabel: "Discard",
+        onConfirm: async () => { setConfirmModal(null); await save(); onBack(); },
+        onCancel: () => { setConfirmModal(null); onBack(); },
+      });
+      return;
     }
     onBack();
   };
 
-  const handleReset = async () => {
-    if (!window.confirm("Reset all season data?\n\nThis will permanently delete:\n• All hole scores\n• All match results\n• All CTP data\n• The entire schedule (all weeks, rainouts, makeups)\n\nAfter reset, you'll need to regenerate the schedule from scratch.\n\nThis cannot be undone.")) return;
-    if (!window.confirm("Are you sure? This wipes ALL season data including the schedule itself.")) return;
-    setResetting(true);
-    await resetSeasonData();
-    setResetting(false);
+  const handleReset = () => {
+    setConfirmModal({
+      title: "Reset all season data?",
+      message: "This permanently deletes all hole scores, match results, CTP data, and the entire schedule (all weeks, rainouts, makeups). After reset, you'll need to regenerate the schedule from scratch. This cannot be undone.",
+      confirmLabel: "Reset",
+      destructive: true,
+      onConfirm: () => {
+        // Two-step confirm for a genuinely destructive action
+        setConfirmModal({
+          title: "Really reset?",
+          message: "This wipes ALL season data including the schedule itself. Last chance to cancel.",
+          confirmLabel: "Yes, wipe everything",
+          destructive: true,
+          onConfirm: async () => {
+            setConfirmModal(null);
+            setResetting(true);
+            await resetSeasonData();
+            setResetting(false);
+          },
+          onCancel: () => setConfirmModal(null),
+        });
+      },
+      onCancel: () => setConfirmModal(null),
+    });
   };
 
-  const handleAttestAll = async () => {
+  const handleAttestAll = () => {
     const unattested = (matchResults || []).filter(r => r.attested !== true);
     if (unattested.length === 0) {
       setAttestResult({ updated: 0, message: "No unattested match results" });
       return;
     }
-    if (!window.confirm(`Mark all ${unattested.length} unattested match result(s) as attested?\n\nDEV BUILD ONLY — bypasses the opposing-team signature requirement.`)) return;
-    setAttesting(true);
-    setAttestResult(null);
-    let completed = 0;
-    try {
-      for (const r of unattested) {
-        // Compute all non-signer player IDs for this match so UI components that read
-        // attestedBy (e.g., "1 of 3 attested" badges, isFullyAttested checks) see a
-        // consistent record instead of "attested: true" alongside a stale partial list.
-        const t1 = (teams || []).find(t => t.id === r.team1Id);
-        const t2 = (teams || []).find(t => t.id === r.team2Id);
-        const allPids = [t1?.player1, t1?.player2, t2?.player1, t2?.player2].filter(Boolean);
-        const nonSignerPids = allPids.filter(pid => pid !== r.signedByPlayerId);
-        await saveMatchResult({ ...r, attested: true, attestedBy: nonSignerPids });
-        completed++;
-      }
-      setAttestResult({ updated: completed });
-    } catch (e) {
-      setAttestResult({ error: `${e.message} (${completed} of ${unattested.length} completed before error)` });
-    }
-    setAttesting(false);
+    setConfirmModal({
+      title: `Force-attest ${unattested.length} match${unattested.length === 1 ? "" : "es"}?`,
+      message: "DEV BUILD ONLY — bypasses the opposing-team signature requirement.",
+      confirmLabel: "Attest all",
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setAttesting(true);
+        setAttestResult(null);
+        let completed = 0;
+        try {
+          for (const r of unattested) {
+            const t1 = (teams || []).find(t => t.id === r.team1Id);
+            const t2 = (teams || []).find(t => t.id === r.team2Id);
+            const allPids = [t1?.player1, t1?.player2, t2?.player1, t2?.player2].filter(Boolean);
+            const nonSignerPids = allPids.filter(pid => pid !== r.signedByPlayerId);
+            await saveMatchResult({ ...r, attested: true, attestedBy: nonSignerPids });
+            completed++;
+          }
+          setAttestResult({ updated: completed });
+        } catch (e) {
+          setAttestResult({ error: `${e.message} (${completed} of ${unattested.length} completed before error)` });
+        }
+        setAttesting(false);
+      },
+      onCancel: () => setConfirmModal(null),
+    });
   };
 
   const handleRecalc = async () => {
@@ -2646,12 +3598,67 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
         <BackBtn onClick={handleBack} />
         <button onClick={save} style={{ background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: 13, padding: "7px 16px", cursor: dirty ? "pointer" : "default", fontWeight: 600, letterSpacing: .4, transition: "all .2s" }}>{dirty ? "Save" : "Saved"}</button>
       </div>
-      <Card style={{ padding: 14, marginBottom: 12 }}>
+      <SubLabel>League Basics</SubLabel>
+      <Card style={{ padding: 14, marginBottom: 16 }}>
         <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>League Name</div><input value={lc.name} onChange={e => { setLc({ ...lc, name: e.target.value }); setDirty(true); }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} /></div>
-        <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Season Year</div><input value={lc.year} onChange={e => { setLc({ ...lc, year: parseInt(e.target.value) || 2026 }); setDirty(true); }} type="number" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} /></div>
+        <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Season Year</div><input value={lc.year} onChange={e => { setLc({ ...lc, year: parseInt(e.target.value) || 2026 }); setDirty(true); }} type="number" inputMode="numeric" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} /></div>
         <div><div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Invite Code</div><input value={lc.inviteCode || ""} onChange={e => { setLc({ ...lc, inviteCode: e.target.value.toUpperCase() }); setDirty(true); }} placeholder="e.g. MNQ2026" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14, letterSpacing: 2, textTransform: "uppercase" }} /><div style={{ fontSize: 10, color: K.t3, marginTop: 4 }}>New members must enter this code to join. Leave blank to allow anyone.</div></div>
       </Card>
 
+      {/* ── Handicaps section ──
+          All handicap controls in one place: the calc settings (how handicaps are
+          derived from historical rounds) and the recalc action button. Previously
+          the calc settings lived in Scoring Rules and the recalc button was buried
+          in the old Basic Info "Danger Zone" — commissioners had to visit two pages
+          to understand or manage handicaps. */}
+      {scoringRules && (
+        <>
+          <SubLabel>Handicaps</SubLabel>
+          <Card style={{ padding: "2px 14px", marginBottom: 8 }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${K.bdr}15` }}>
+              <span style={{ fontSize: 12, color: K.t2 }}>Recent rounds to consider</span>
+              <input
+                value={sr.hcpRecentCount ?? ""}
+                onChange={e => { setSr({ ...sr, hcpRecentCount: parseInt(e.target.value) || 0 }); setDirty(true); }}
+                onFocus={e => setTimeout(() => e.target.select(), 10)}
+                type="number" inputMode="numeric" step="1"
+                style={{ width: 58, padding: "5px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13, textAlign: "center" }}
+              />
+            </div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0" }}>
+              <span style={{ fontSize: 12, color: K.t2 }}>Best rounds to average</span>
+              <input
+                value={sr.hcpBestCount ?? ""}
+                onChange={e => { setSr({ ...sr, hcpBestCount: parseInt(e.target.value) || 0 }); setDirty(true); }}
+                onFocus={e => setTimeout(() => e.target.select(), 10)}
+                type="number" inputMode="numeric" step="1"
+                style={{ width: 58, padding: "5px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13, textAlign: "center" }}
+              />
+            </div>
+          </Card>
+          <div style={{ fontSize: 10, color: K.t3, marginBottom: 16, lineHeight: 1.5, paddingLeft: 4 }}>
+            Handicap = average of the {sr.hcpBestCount || "N"} best rounds out of the most recent {sr.hcpRecentCount || "M"} rounds. Players with fewer rounds use a proportionally scaled count.
+          </div>
+
+          {recalcHandicaps && (
+            <Card style={{ padding: 14, marginBottom: 16, border: `1px solid ${K.teal}30` }}>
+              <div style={{ fontSize: 12, color: K.t2, marginBottom: 10, lineHeight: 1.5 }}>
+                Recalculate all player handicaps now from historical scores. Normally runs automatically when a week is locked — use this to force a sync if stored values are out of date.
+              </div>
+              <button onClick={handleRecalc} disabled={recalcing} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.teal + "15", border: `1.5px solid ${K.teal}50`, color: K.teal, fontSize: 13, fontWeight: 700, cursor: recalcing ? "default" : "pointer", opacity: recalcing ? 0.6 : 1 }}>
+                {recalcing ? "Recalculating..." : "Recalc Handicaps Now"}
+              </button>
+              {recalcResult && (
+                <div style={{ fontSize: 11, color: recalcResult.error ? K.red : K.grn, marginTop: 8, textAlign: "center", fontWeight: 600 }}>
+                  {recalcResult.error ? `Error: ${recalcResult.error}` : `Done! ${recalcResult.updated} player(s) updated`}
+                </div>
+              )}
+            </Card>
+          )}
+        </>
+      )}
+
+      {/* ── Danger Zone — destructive only ── */}
       {resetSeasonData && (
         <div style={{ marginTop: 24, paddingTop: 16, borderTop: `1px solid ${K.bdr}30` }}>
           <SubLabel color={K.red}>Danger Zone</SubLabel>
@@ -2680,24 +3687,11 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
             )}
           </Card>
           )}
-
-          {recalcHandicaps && (
-          <Card style={{ padding: 14, border: `1px solid ${K.teal}30`, marginTop: 8 }}>
-            <div style={{ fontSize: 12, color: K.t2, marginBottom: 10, lineHeight: 1.5 }}>
-              Recalculate all player handicaps now from historical scores. Normally this runs automatically when a week is locked — use this to force a sync if stored values are out of date.
-            </div>
-            <button onClick={handleRecalc} disabled={recalcing} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.teal + "15", border: `1.5px solid ${K.teal}50`, color: K.teal, fontSize: 13, fontWeight: 700, cursor: recalcing ? "default" : "pointer", opacity: recalcing ? 0.6 : 1 }}>
-              {recalcing ? "Recalculating..." : "Recalc Handicaps"}
-            </button>
-            {recalcResult && (
-              <div style={{ fontSize: 11, color: recalcResult.error ? K.red : K.grn, marginTop: 8, textAlign: "center", fontWeight: 600 }}>
-                {recalcResult.error ? `Error: ${recalcResult.error}` : `Done! ${recalcResult.updated} player(s) updated`}
-              </div>
-            )}
-          </Card>
-          )}
         </div>
       )}
+
+      {/* ── Confirm modal ── */}
+      <ConfirmModal modal={confirmModal} />
     </div>
   );
 }

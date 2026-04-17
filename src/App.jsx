@@ -115,6 +115,20 @@ export default function GolfLeagueApp() {
     pullingRef.current = false;
   }, []);
 
+  // Re-fetch the three collections that don't have live subscriptions (course, scoring
+  // rules, config). Used on mount and by pull-to-refresh so users can manually pick up
+  // changes without a full page reload.
+  //
+  // IMPORTANT: this must be declared BEFORE any useEffect that references it in its
+  // dependency array. React evaluates dep arrays during render, and referencing a const
+  // before its declaration hits the temporal dead zone (produces a minified
+  // "Cannot access 'X' before initialization" crash in prod).
+  const refetchOneTimeReads = useCallback(() => {
+    db.get("league_course", LF).then(docs => { if (docs.length) setCourseData(docs[0]); });
+    db.get("league_scoring", LF).then(docs => { if (docs.length) setScoringRules(docs[0]); });
+    db.get("league_config", LF).then(docs => { if (docs.length) setLeagueConfig(docs[0]); });
+  }, []);
+
   useEffect(() => {
     if (refreshing) return;
     const getScrollEl = () => appBodyRef.current || document.querySelector('.app-body');
@@ -274,15 +288,6 @@ export default function GolfLeagueApp() {
       setAuthLoading(false);
     });
     return unsub;
-  }, []);
-
-  // Re-fetch the three collections that don't have live subscriptions. Used on mount (below)
-  // and by pull-to-refresh so users can manually pick up changes to course / scoring rules /
-  // league config without a full page reload.
-  const refetchOneTimeReads = useCallback(() => {
-    db.get("league_course", LF).then(docs => { if (docs.length) setCourseData(docs[0]); });
-    db.get("league_scoring", LF).then(docs => { if (docs.length) setScoringRules(docs[0]); });
-    db.get("league_config", LF).then(docs => { if (docs.length) setLeagueConfig(docs[0]); });
   }, []);
 
   // Real-time subscriptions
