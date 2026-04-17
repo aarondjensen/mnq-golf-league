@@ -161,9 +161,9 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
         }}>
           <div style={{
             width: 18, height: 18, borderRadius: 5, flexShrink: 0, marginRight: 6,
-            background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`,
+            background: K.act, border: `1px solid ${K.act}`,
             display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 9, fontWeight: 800, color: K.logoBright,
+            fontSize: 9, fontWeight: 800, color: K.logoBlue,
           }}>{mu.seed1}</div>
           <div style={{ flex: 1, fontSize: 12, fontWeight: 700, color: mu.t1Won ? K.t1 : mu.t2Won ? K.t3 : K.t1 }}>
             {mu.name1}
@@ -186,9 +186,9 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
         }}>
           <div style={{
             width: 18, height: 18, borderRadius: 5, flexShrink: 0, marginRight: 6,
-            background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`,
+            background: K.act, border: `1px solid ${K.act}`,
             display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 9, fontWeight: 800, color: K.logoBright,
+            fontSize: 9, fontWeight: 800, color: K.logoBlue,
           }}>{mu.seed2}</div>
           <div style={{ flex: 1, fontSize: 12, fontWeight: 700, color: mu.t2Won ? K.t1 : mu.t1Won ? K.t3 : K.t1 }}>
             {mu.name2}
@@ -247,9 +247,9 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
                   marginBottom: 8,
                   display: "flex", alignItems: "baseline", gap: 8,
                 }}>
-                  <span>Consolation</span>
+                  <span>Non-Playoff Matches</span>
                   <span style={{ fontSize: 9, fontWeight: 400, color: K.t3, letterSpacing: 0, textTransform: "none" }}>
-                    Non-bracket tee times
+                    Tee times for teams not in the bracket
                   </span>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
