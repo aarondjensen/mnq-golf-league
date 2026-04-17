@@ -535,6 +535,48 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
   const [dragTeam, setDragTeam] = useState(null); // { matchIdx, slot: "team1"|"team2", teamId, ghostPos? }
   const dragTeamRef = useRef(null); // ref mirror for touch handlers (avoids stale closures)
   const [generating, setGenerating] = useState(false);
+  const [setupDirty, setSetupDirty] = useState(false);
+  const [savingSetup, setSavingSetup] = useState(false);
+  // Snapshot of cfg fields that are considered "setup" — used for dirty detection
+  // vs leagueConfig. customSeedWeeks/lockSeedsEnabled/customSeedPairs/playoffRounds
+  // are saved through their own code paths, so exclude them from this comparison.
+  const cfgSnapshot = useMemo(() => ({
+    dayOfWeek: leagueConfig.dayOfWeek ?? "Tuesday",
+    startTime: leagueConfig.startTime ?? "4:28 PM",
+    teeInterval: leagueConfig.teeInterval ?? 8,
+    totalWeeks: leagueConfig.totalWeeks ?? null,
+    regularWeeks: leagueConfig.regularWeeks ?? 14,
+    roundRobinWeeks: leagueConfig.roundRobinWeeks ?? null,
+    seededWeeks: leagueConfig.seededWeeks ?? null,
+    playoffWeeks: leagueConfig.playoffWeeks ?? 2,
+    startDate: leagueConfig.startDate ?? "",
+    alternateNines: leagueConfig.alternateNines !== false,
+    startingSide: leagueConfig.startingSide ?? "front",
+  }), [leagueConfig]);
+
+  // Watch cfg; when any tracked setup field diverges from the stored snapshot, flag dirty.
+  useEffect(() => {
+    const changed = Object.keys(cfgSnapshot).some(k => cfg[k] !== cfgSnapshot[k]);
+    setSetupDirty(changed);
+  }, [cfg, cfgSnapshot]);
+
+  const saveSetup = async () => {
+    setSavingSetup(true);
+    // Save the same shape the generate() function saves on completion, minus the
+    // computed regularWeeks/roundRobinWeeks/seededWeeks/totalWeeks (those recompute on Generate).
+    const { customSeedWeeks, lockSeedsEnabled, customSeedPairs, ...scheduleFields } = cfg;
+    await saveLeagueConfig({ ...leagueConfig, ...scheduleFields });
+    setSavingSetup(false);
+    setSetupDirty(false);
+  };
+
+  const handleOnBack = async () => {
+    if (setupDirty) {
+      const choice = window.confirm("You have unsaved setup changes. Save before leaving?");
+      if (choice) await saveSetup();
+    }
+    onBack();
+  };
 
   // Sync localWk when editWeek changes or schedule updates
   useEffect(() => {
@@ -866,9 +908,9 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     return (
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-          <BackBtn onClick={onBack} />
+          <BackBtn onClick={handleOnBack} />
           <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Schedule</span>
-          <div style={{ width: 60 }} />
+          <button onClick={saveSetup} disabled={!setupDirty || savingSetup} style={{ background: setupDirty ? K.act : K.inp, border: setupDirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: setupDirty ? K.bg : K.t3, fontSize: 13, padding: "7px 16px", cursor: setupDirty && !savingSetup ? "pointer" : "default", fontWeight: 600, letterSpacing: .4, transition: "all .2s", opacity: savingSetup ? 0.6 : 1 }}>{savingSetup ? "Saving..." : setupDirty ? "Save" : "Saved"}</button>
         </div>
 
         {/* 3-tab toggle */}
