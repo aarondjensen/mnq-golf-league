@@ -81,21 +81,21 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
                 {commPlayerIds.includes(p.id) && <span style={{ fontSize: 8, fontWeight: 700, color: K.warn, background: K.warn + "18", padding: "1px 5px", borderRadius: 3, textTransform: "uppercase", letterSpacing: .5 }}>Comm</span>}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <button onClick={() => setExpanded(expanded === p.id ? null : p.id)} style={{
-                  background: K.logoBright + "20", border: `1px solid ${K.logoBright}50`, borderRadius: 6,
-                  width: 38, height: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 16, fontWeight: 800, color: K.t1, padding: 0,
-                }}>{p.idx}</button>
                 {p.hcpChange !== null && p.hcpChange !== 0 && (
                   <div style={{
                     fontSize: 11, fontWeight: 700,
                     color: p.hcpChange < 0 ? K.matchGrn : K.red,
-                    display: "flex", alignItems: "center", gap: 1, minWidth: 24,
+                    display: "flex", alignItems: "center", gap: 1, justifyContent: "flex-end", minWidth: 24,
                   }}>
                     <span style={{ fontSize: 9 }}>{p.hcpChange < 0 ? "▼" : "▲"}</span>
                     <span>{Math.abs(p.hcpChange)}</span>
                   </div>
                 )}
+                <button onClick={() => setExpanded(expanded === p.id ? null : p.id)} style={{
+                  background: K.logoBright + "20", border: `1px solid ${K.logoBright}50`, borderRadius: 6,
+                  width: 38, height: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 16, fontWeight: 800, color: K.t1, padding: 0,
+                }}>{p.idx}</button>
               </div>
             </div>
             {expanded === p.id && (
