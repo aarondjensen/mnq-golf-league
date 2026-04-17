@@ -1091,14 +1091,24 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             // Auto-recalculate all handicaps from updated scores
             if (recalcHandicaps) recalcHandicaps();
             // If this was the last RR week, auto-populate seeded regular-season weeks
-            // from current standings so the schedule is ready for seeded play.
-            let seededCount = 0;
+            // from current standings so the schedule is ready for seeded play. Also auto-seeds
+            // the next playoff round if dependencies are met.
+            let autoSeedResult = { seeded: 0, playoff: 0 };
             if (autoSeedIfReady) {
-              seededCount = (await autoSeedIfReady(week)) || 0;
+              const r = await autoSeedIfReady(week);
+              if (r && typeof r === "object") autoSeedResult = r;
             }
             setShowCtpPopup(false);
-            setToast(seededCount > 0
-              ? `Week ${week} finalized — ${seededCount} seeded week${seededCount === 1 ? "" : "s"} populated`
+            // Build a summary of what got auto-seeded so the commish sees explicit feedback.
+            const parts = [];
+            if (autoSeedResult.seeded > 0) {
+              parts.push(`${autoSeedResult.seeded} seeded week${autoSeedResult.seeded === 1 ? "" : "s"}`);
+            }
+            if (autoSeedResult.playoff > 0) {
+              parts.push(`${autoSeedResult.playoff} playoff round${autoSeedResult.playoff === 1 ? "" : "s"}`);
+            }
+            setToast(parts.length
+              ? `Week ${week} finalized — ${parts.join(" + ")} populated`
               : `Week ${week} finalized`);
             setTimeout(() => {
               setToast(null);

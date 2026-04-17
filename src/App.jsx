@@ -408,83 +408,210 @@ export default function GolfLeagueApp() {
     await db.batchDelete("league_ctp", ctpFilter);
   }, []);
 
-  // Auto-seed empty seeded (non-playoff) weeks once the round-robin block completes.
-  // Called right after a week is finalized (locked) — if that finalization was the
-  // last RR/makeup week, populates every empty seeded regular-season week with
-  // matchups derived from current standings + customSeedWeeks config.
-  // Playoff weeks are NOT auto-seeded — they depend on seeded-week results and are
-  // still seeded manually per-round via Admin's Seed Week button.
+  // Auto-seed empty seeded (non-playoff) weeks once the round-robin block completes,
+  // AND auto-seed playoff rounds as they become resolvable:
+  //   - First playoff round: seeded the moment the last seeded regular-season week locks
+  //   - Subsequent playoff rounds: seeded as their prior playoff round locks (since they
+  //     depend on winners/losers from the prior round)
+  // Called right after a week is finalized (locked).
   // Idempotent: skips weeks that already have matches. Safe to call unconditionally
   // after every week-lock.
+  // Returns: { seeded: <count of seeded regular-season weeks populated>, playoff: <count of playoff rounds populated> }
   const autoSeedIfReady = useCallback(async (justLockedWeek) => {
-    // Only fires on RR or RR-makeup finalization. If the locked week was seeded or
-    // playoff, that's not the trigger for this auto-seeder.
     const lockedWk = schedule.find(s => s.week === justLockedWeek);
-    if (!lockedWk) return;
-    if (lockedWk.seeded === true || lockedWk.isPlayoff === true) return;
+    if (!lockedWk) return 0;
 
-    // Check: are all RR + RR-makeup weeks now locked?
-    const rrWeeks = schedule.filter(s => !s.isPlayoff && !s.seeded && !s.rainedOut);
-    const allRRLocked = rrWeeks.length > 0 && rrWeeks.every(s =>
-      // Either already locked in Firestore, or it's the week we're about to lock
-      s.locked === true || s.week === justLockedWeek
+    // Projected schedule that reflects the just-locked week — avoids closure races where
+    // the `schedule` prop hasn't yet re-rendered with locked:true.
+    const projectedSchedule = schedule.map(s =>
+      s.week === justLockedWeek ? { ...s, locked: true } : s
     );
-    if (!allRRLocked) return;
 
-    // Build seed ranking from current standings. If the league has locked-seeds
-    // enabled and a snapshot exists, honor it; otherwise compute fresh and
-    // (if enabled) capture the snapshot now so subsequent seeded/playoff rounds
-    // use a stable seeding even as late scores drift.
+    // ── Shared: build seeds (same logic regardless of which block we're seeding) ──
     const lockSeedsEnabled = leagueConfig?.lockSeedsEnabled === true;
     const existingLocked = leagueConfig?.lockedSeeds;
     let seeds;
-    if (existingLocked && existingLocked.length === teams.length) {
-      seeds = existingLocked;
-    } else {
-      // Build standings including the just-locked week's results even if the
-      // `schedule` prop hasn't yet re-rendered with locked:true (closure race).
-      const projectedSchedule = schedule.map(s =>
-        s.week === justLockedWeek ? { ...s, locked: true } : s
-      );
-      seeds = buildStandingsForSeed(teams, matchResults, projectedSchedule, leagueConfig?.standingsMethod).map(s => s.teamId);
-      if (lockSeedsEnabled) {
-        await db.upsert("league_config", { ...leagueConfig, id: leagueConfig?.id || `${LEAGUE_ID}_config`, league_id: LEAGUE_ID, lockedSeeds: seeds });
+    const needsFreshSeedsSnapshot = !(existingLocked && existingLocked.length === teams.length);
+
+    const computeSeeds = () => buildStandingsForSeed(
+      teams, matchResults, projectedSchedule, leagueConfig?.standingsMethod
+    ).map(s => s.teamId);
+
+    // ── Phase 1: If we just locked the last RR week, auto-seed regular-season seeded weeks ──
+    let seededCount = 0;
+    const rrWeeks = schedule.filter(s => !s.isPlayoff && !s.seeded && !s.rainedOut);
+    const allRRLocked = rrWeeks.length > 0 && rrWeeks.every(s =>
+      s.locked === true || s.week === justLockedWeek
+    );
+    const justLockedIsRR = lockedWk.seeded !== true && lockedWk.isPlayoff !== true;
+
+    if (justLockedIsRR && allRRLocked) {
+      if (needsFreshSeedsSnapshot) {
+        seeds = computeSeeds();
+        if (lockSeedsEnabled) {
+          await db.upsert("league_config", { ...leagueConfig, id: leagueConfig?.id || `${LEAGUE_ID}_config`, league_id: LEAGUE_ID, lockedSeeds: seeds });
+        }
+      } else {
+        seeds = existingLocked;
+      }
+
+      const n = seeds.length;
+      const pairCount = Math.floor(n / 2);
+      if (pairCount >= 1) {
+        const seededRegWeeks = schedule.filter(s => s.seeded === true && !s.isPlayoff && !s.rainedOut).sort((a, b) => a.week - b.week);
+        const customWeeks = leagueConfig?.customSeedWeeks;
+
+        for (let si = 0; si < seededRegWeeks.length; si++) {
+          const wk = seededRegWeeks[si];
+          if (wk.matches && wk.matches.length > 0) continue; // already seeded, skip
+          const weekPairs = (customWeeks && customWeeks[si]) || null;
+          const matches = [];
+          if (weekPairs && weekPairs.length === pairCount) {
+            for (const pair of weekPairs) {
+              const t1 = seeds[pair.s1 - 1];
+              const t2 = seeds[pair.s2 - 1];
+              if (t1 && t2) matches.push({ team1: t1, team2: t2 });
+            }
+          } else {
+            // Fallback: top vs bottom
+            for (let i = 0; i < pairCount; i++) {
+              matches.push({ team1: seeds[i], team2: seeds[n - 1 - i] });
+            }
+          }
+          if (matches.length) {
+            await db.upsert("league_schedule", { ...wk, matches, league_id: LEAGUE_ID });
+            seededCount++;
+          }
+        }
       }
     }
 
-    const n = seeds.length;
-    const pairCount = Math.floor(n / 2);
-    if (pairCount < 1) return;
+    // ── Phase 2: Auto-seed the next playoff round if it's now resolvable ──
+    // Trigger 1: last seeded regular-season week just locked → seed playoff round 1
+    // Trigger 2: a playoff round just locked → seed the NEXT playoff round
+    //
+    // Seeds snapshot strategy: for playoff auto-seeding, we use either the locked snapshot
+    // OR the seeds that were computed when RR ended. If we haven't computed yet (e.g., the
+    // just-locked week is a seeded regular-season week, not the RR finale), compute now.
+    let playoffCount = 0;
 
-    // Seeded regular-season weeks, sorted. Only populate ones that are EMPTY —
-    // don't overwrite anything a commish may have manually seeded already.
-    const seededRegWeeks = schedule.filter(s => s.seeded === true && !s.isPlayoff && !s.rainedOut).sort((a, b) => a.week - b.week);
-    const customWeeks = leagueConfig?.customSeedWeeks;
+    const playoffWeeksList = schedule.filter(s => s.isPlayoff === true).sort((a, b) => a.week - b.week);
+    if (playoffWeeksList.length === 0) {
+      return { seeded: seededCount, playoff: 0 };
+    }
 
-    let seededCount = 0;
-    for (let si = 0; si < seededRegWeeks.length; si++) {
-      const wk = seededRegWeeks[si];
-      if (wk.matches && wk.matches.length > 0) continue; // already seeded, skip
-      const weekPairs = (customWeeks && customWeeks[si]) || null;
-      const matches = [];
-      if (weekPairs && weekPairs.length === pairCount) {
-        for (const pair of weekPairs) {
-          const t1 = seeds[pair.s1 - 1];
-          const t2 = seeds[pair.s2 - 1];
-          if (t1 && t2) matches.push({ team1: t1, team2: t2 });
-        }
-      } else {
-        // Fallback: top vs bottom
+    // Determine which playoff round(s) are now ready to auto-seed.
+    // We populate the FIRST empty playoff round whose dependencies are satisfied.
+    const playoffRoundsCfg = leagueConfig?.playoffRounds || [];
+    if (playoffRoundsCfg.length === 0) {
+      return { seeded: seededCount, playoff: 0 };
+    }
+
+    // Compute seeds for playoff resolution if we don't already have them
+    if (!seeds) {
+      seeds = existingLocked && existingLocked.length === teams.length
+        ? existingLocked
+        : computeSeeds();
+    }
+
+    // Walk each playoff week in order; if it's empty AND its dependencies are met, seed it.
+    for (let pi = 0; pi < playoffWeeksList.length; pi++) {
+      const pWk = playoffWeeksList[pi];
+      if (pWk.matches && pWk.matches.length > 0) continue; // already seeded, skip
+
+      const roundDef = playoffRoundsCfg[pi];
+
+      // Round 1 has no prior-round dependencies — always resolvable once seeds are known.
+      // If the commish hasn't configured playoff round 1 matchups, fall back to top-vs-bottom
+      // pairings so playoffs still auto-start when the regular season ends. Later rounds can't
+      // use this fallback because they depend on winners/losers of prior rounds.
+      if (pi === 0 && (!roundDef || !roundDef.matchups || !roundDef.matchups.length)) {
+        const n = seeds.length;
+        const pairCount = Math.floor(n / 2);
+        if (pairCount < 1) break;
+        const matches = [];
         for (let i = 0; i < pairCount; i++) {
           matches.push({ team1: seeds[i], team2: seeds[n - 1 - i] });
         }
+        await db.upsert("league_schedule", { ...pWk, matches, league_id: LEAGUE_ID });
+        playoffCount++;
+        continue;
       }
-      if (matches.length) {
-        await db.upsert("league_schedule", { ...wk, matches, league_id: LEAGUE_ID });
-        seededCount++;
+
+      if (!roundDef || !roundDef.matchups || !roundDef.matchups.length) break; // no config → can't seed this or later rounds
+
+      // Round 2+ needs the prior playoff round to be locked AND have all match results.
+      let prevWinners = [];
+      let prevLosers = [];
+      if (pi > 0) {
+        const prevPWk = playoffWeeksList[pi - 1];
+        if (!prevPWk.locked && prevPWk.week !== justLockedWeek) break; // prior round not finalized → stop
+        if (!prevPWk.matches || prevPWk.matches.length === 0) break; // prior round not seeded
+        const prevResults = (matchResults || []).filter(r => r.week === prevPWk.week);
+        if (prevResults.length < prevPWk.matches.length) break; // prior round not fully scored
+        prevPWk.matches.forEach((m) => {
+          const r = prevResults.find(pr => pr.team1Id === m.team1 && pr.team2Id === m.team2);
+          if (r) {
+            const d = (r.team1Points || 0) - (r.team2Points || 0);
+            // Tie goes to higher seed (team1 is always higher seed in match storage)
+            prevWinners.push(d >= 0 ? r.team1Id : r.team2Id);
+            prevLosers.push(d >= 0 ? r.team2Id : r.team1Id);
+          }
+        });
       }
+
+      // Resolve matchup slots the same way the manual Seed button does.
+      const resolveSlot = (mu, side) => {
+        const type = mu[side + "type"];
+        const val = mu[side];
+        if (type === "seed") {
+          const seedIdx = parseInt(val) - 1;
+          return seedIdx >= 0 && seedIdx < seeds.length ? seeds[seedIdx] : null;
+        } else if (type === "winner") {
+          if (val === "lowestWinner" || val === "lowestSeed") {
+            const sorted = prevWinners.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => b.rank - a.rank);
+            return sorted[0]?.id || null;
+          } else if (val === "nextLowestWinner" || val === "nextLowestSeed") {
+            const sorted = prevWinners.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => b.rank - a.rank);
+            return sorted[1]?.id || null;
+          } else if (val?.startsWith("winner_")) {
+            const idx = parseInt(val.split("_")[1]);
+            return prevWinners[idx] || null;
+          }
+        } else if (type === "loser") {
+          if (val === "highestLoser") {
+            const sorted = prevLosers.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => a.rank - b.rank);
+            return sorted[0]?.id || null;
+          } else if (val === "nextHighestLoser") {
+            const sorted = prevLosers.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => a.rank - b.rank);
+            return sorted[1]?.id || null;
+          } else if (val?.startsWith("loser_")) {
+            const idx = parseInt(val.split("_")[1]);
+            return prevLosers[idx] || null;
+          }
+        }
+        return null;
+      };
+
+      const matches = [];
+      for (const mu of roundDef.matchups) {
+        const t1 = resolveSlot(mu, "s1");
+        const t2 = resolveSlot(mu, "s2");
+        if (t1 && t2) matches.push({ team1: t1, team2: t2 });
+      }
+
+      // Sanity check: did we resolve every matchup the config expects?
+      if (matches.length !== roundDef.matchups.length) break;
+
+      await db.upsert("league_schedule", { ...pWk, matches, league_id: LEAGUE_ID });
+      playoffCount++;
+      // Continue loop — the round we just auto-seeded can't trigger the NEXT round
+      // (that would need this round's matches to be played and locked), so the next
+      // iteration will break at the "prior round not finalized" check. That's fine —
+      // autoSeedIfReady will fire again when this round eventually locks.
     }
-    return seededCount;
+
+    return { seeded: seededCount, playoff: playoffCount };
   }, [schedule, teams, matchResults, leagueConfig]);
 
   // Import historical scores from a [name, week, hole, score] array

@@ -579,22 +579,26 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
   }, [leagueConfig]);
 
   const saveSetup = async () => {
+    console.log("[saveSetup] START", { setupDirty, seedsDirty, localSeedWeeks });
     setSavingSetup(true);
     // Save the same shape the generate() function saves on completion, minus the
     // computed regularWeeks/roundRobinWeeks/seededWeeks/totalWeeks (those recompute on Generate).
     const { customSeedWeeks, lockSeedsEnabled, customSeedPairs, ...scheduleFields } = cfg;
-    // Build the payload: scheduleFields from cfg, plus the currently-edited seed weeks
-    // if the user has touched them. Otherwise preserve whatever's in leagueConfig.
+    // Build the payload: scheduleFields from cfg, plus the currently-edited seed weeks.
+    // We include localSeedWeeks whenever it's populated (not just when seedsDirty is true)
+    // because a race between the dirty-flag reset and the async save was causing the
+    // customSeedWeeks field to silently drop from the payload.
     const payload = { ...leagueConfig, ...scheduleFields };
-    if (seedsDirty && localSeedWeeks) {
+    if (localSeedWeeks) {
       payload.customSeedWeeks = localSeedWeeks;
     }
-    await saveLeagueConfig(payload);
+    console.log("[saveSetup] PAYLOAD", JSON.stringify(payload, null, 2));
+    const result = await saveLeagueConfig(payload);
+    console.log("[saveSetup] RESULT from saveLeagueConfig:", result);
     setSavingSetup(false);
     setSetupDirty(false);
     setSeedsDirty(false);
-    // Keep localSeedWeeks pointing at the committed value so the UI stays in sync
-    // without a flash from the Firestore round-trip.
+    console.log("[saveSetup] DONE");
   };
 
   const handleOnBack = async () => {
