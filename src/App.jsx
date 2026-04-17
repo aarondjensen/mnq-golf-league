@@ -779,13 +779,13 @@ export default function GolfLeagueApp() {
   if (!leagueUser || !leagueUser.playerId) return <JoinScreen authUser={authUser} members={members} players={activePlayers} saveMember={saveMember} doSignOut={doSignOut} leagueConfig={leagueConfig} />;
 
   const tabs = [
+    { id: "players", label: "Players", icon: "users" },
     { id: "standings", label: "Standings", icon: "trophy" },
     { id: "scoring", label: "Scoring", icon: "flag" },
     { id: "schedule", label: "Schedule", icon: "calendar" },
   ];
 
   const moreItems = [
-    { id: "players", label: "Players", icon: "users" },
     { id: "stats", label: "Stats", icon: "barChart" },
     { id: "ctp", label: "CTP", icon: "target" },
     ...(isComm ? [{ id: "admin", label: "Admin", icon: "settings" }] : []),
