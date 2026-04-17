@@ -596,9 +596,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   // ── Three-way view toggle helper (used by My Match, All Matches, and Low Net views) ──
   const ViewToggle = () => (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 10 }}>
-      <div style={{ textAlign: "center", marginBottom: 6 }}>
-        <div style={{ fontSize: 11, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1.5 }}>Week {week}</div>
-        {weekSch?.date && <div style={{ fontSize: 10, color: K.t3, marginTop: 1 }}>{weekSch.date}</div>}
+      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
+        <span style={{ fontSize: 11, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1.5 }}>Week {week}</span>
+        {weekSch?.date && <span style={{ fontSize: 10, color: K.t3 }}>{weekSch.date}</span>}
       </div>
       <div style={{ display: "flex", background: K.inp, borderRadius: 20, border: `1px solid ${K.bdr}`, padding: 3 }}>
         {[
