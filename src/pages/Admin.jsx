@@ -522,6 +522,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     // lockSeedsEnabled also read from leagueConfig directly
     startDate: leagueConfig.startDate ?? "",
     alternateNines: leagueConfig.alternateNines !== false,
+    startingSide: leagueConfig.startingSide ?? "front", // 'front' | 'back' — which nine week 1 plays
     playoffRounds: leagueConfig.playoffRounds ?? [],
   });
   const [editWeek, setEditWeek] = useState(null);
@@ -696,11 +697,20 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     const seededTarget = seededWeekCount;
     const playoffTarget = cfg.playoffWeeks;
 
+    // Helper: determine which nine a week plays based on startingSide + alternateNines
+    // Week 1 plays startingSide. If alternating, each subsequent week flips.
+    const otherSide = (s) => (s === 'front' ? 'back' : 'front');
+    const sideForWeek = (wn) => {
+      const start = cfg.startingSide || 'front';
+      if (!cfg.alternateNines) return start;
+      return (wn - 1) % 2 === 0 ? start : otherSide(start);
+    };
+
     // Phase 1: RR block (includes original RR weeks + makeup weeks for RR rainouts)
     // Locked seeded/playoff weeks can't move, so RR makeups go around them.
     while (rrPlayed < rrTarget) {
       weekNum++;
-      const side = cfg.alternateNines ? ((weekNum - 1) % 2 === 0 ? 'front' : 'back') : 'front';
+      const side = sideForWeek(weekNum);
       const existing = cleanSchedule.find(s => s.week === weekNum);
 
       if (existing && existing.rainedOut === true && !existing.seeded && !existing.isPlayoff) {
@@ -752,7 +762,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
     while (seededPlaced < seededTarget) {
       weekNum++;
-      const side = cfg.alternateNines ? ((weekNum - 1) % 2 === 0 ? 'front' : 'back') : 'front';
+      const side = sideForWeek(weekNum);
       const existing = cleanSchedule.find(s => s.week === weekNum);
 
       if (existing && existing.rainedOut === true) {
@@ -782,7 +792,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     // Phase 3: Playoff block
     while (playoffPlaced < playoffTarget) {
       weekNum++;
-      const side = cfg.alternateNines ? ((weekNum - 1) % 2 === 0 ? 'front' : 'back') : 'front';
+      const side = sideForWeek(weekNum);
       const existing = cleanSchedule.find(s => s.week === weekNum);
 
       if (existing && existing.rainedOut === true) {
@@ -910,6 +920,23 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                   <input type="checkbox" checked={cfg.alternateNines} onChange={e => setCfg({ ...cfg, alternateNines: e.target.checked })} style={{ accentColor: K.act }} />
                   Alternate front/back 9 each week
                 </label>
+              </div>
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Week 1 Starts On</div>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[{ id: "front", label: "Front 9" }, { id: "back", label: "Back 9" }].map(opt => {
+                    const active = cfg.startingSide === opt.id;
+                    return (
+                      <button key={opt.id} onClick={() => setCfg({ ...cfg, startingSide: opt.id })} style={{
+                        flex: 1, padding: "8px 10px", borderRadius: 8,
+                        background: active ? K.act : K.inp,
+                        border: `1px solid ${active ? K.act : K.bdr}`,
+                        color: active ? K.bg : K.t2,
+                        fontSize: 13, fontWeight: 700, cursor: "pointer",
+                      }}>{opt.label}</button>
+                    );
+                  })}
+                </div>
               </div>
             </Card>
           </div>
