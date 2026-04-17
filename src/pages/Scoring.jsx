@@ -58,7 +58,7 @@ function ScoreCell({ score, par, strokes, size = 13, color: colorOverride }) {
 const GRID_LINE_STYLE = (bdr) => `1px solid ${bdr}25`;
 const COL_BDR_STYLE = (bdr) => `1px solid ${bdr}30`;
 
-function SharedScorecard({
+export function SharedScorecard({
   pars, side, hcps,
   team1Pids, team2Pids,        // player ID arrays
   getScore,                     // (pid, hole) => score
