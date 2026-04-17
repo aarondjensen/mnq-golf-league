@@ -391,6 +391,23 @@ export default function GolfLeagueApp() {
     setSchedule([]);
   }, [schedule]);
 
+  // Hard-delete all data for a specific week of the current season.
+  // Called when a week is rained out — partial scores and signed match results
+  // from the aborted week are meaningless once it's replayed at the makeup week.
+  // Without this cleanup, bad handicap data, polluted stats, and double-counted
+  // standings would persist. The schedule doc itself is NOT deleted (caller
+  // marks it rainedOut:true and keeps it as a historical placeholder).
+  const clearWeekData = useCallback(async (weekNum) => {
+    const weekFilter = [...LF, { field: "season", op: "==", value: CURRENT_SEASON }, { field: "week", op: "==", value: weekNum }];
+    // league_match_results isn't season-scoped in the filter because it's already
+    // scoped by week id in practice — but safer to filter both collections the same way.
+    const mrFilter = [...LF, { field: "week", op: "==", value: weekNum }];
+    const ctpFilter = [...LF, { field: "week", op: "==", value: weekNum }];
+    await db.batchDelete("league_hole_scores", weekFilter);
+    await db.batchDelete("league_match_results", mrFilter);
+    await db.batchDelete("league_ctp", ctpFilter);
+  }, []);
+
   // Import historical scores from a [name, week, hole, score] array
   const importHistoricalScores = useCallback(async (data) => {
     // Build name -> id map (case-insensitive, trimmed)
@@ -673,7 +690,7 @@ export default function GolfLeagueApp() {
           {/* Fix #2: Wrap lazy-loaded tabs in Suspense */}
           <Suspense fallback={TabFallback}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} />}
-          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} deleteMatchResult={deleteMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} recalcHandicaps={recalcHandicaps} />}
+          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} deleteMatchResult={deleteMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} recalcHandicaps={recalcHandicaps} clearWeekData={clearWeekData} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} isComm={isComm} saveScore={saveScore} saveMatchResult={saveMatchResult} setPopupOpen={setPopupOpen} />}
           {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} />}
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}

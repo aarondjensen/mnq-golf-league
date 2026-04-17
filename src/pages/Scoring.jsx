@@ -258,7 +258,7 @@ function computeMatchStatus(t1Pids, t2Pids, getScore, getStrokes, pars) {
 // ═══════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
-export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, openAllMatches, onAllMatchesOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps }) {
+export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, openAllMatches, onAllMatchesOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
   // 3-way view toggle: "myMatch" (default scoring view), "allMatches" (week overview), "lowNet" (leaderboard)
@@ -907,7 +907,25 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 while (schedule.some(s => s.week === makeupWeekNum && s.locked === true)) {
                   makeupWeekNum++;
                 }
-                const msgDetail = `This will skip this week and insert a makeup week at week ${makeupWeekNum}. Unlocked future weeks will shift forward. Locked weeks stay put.`;
+                // Count what will be wiped
+                const weekHoleScoreCount = Object.keys(holeScores).filter(k => k.startsWith(`w${week}_`)).length;
+                const weekMatchResultCount = matchResults.filter(r => r.week === week).length;
+                const weekCtpCount = ctpData.filter(c => c.week === week).length;
+                const willWipe = weekHoleScoreCount > 0 || weekMatchResultCount > 0 || weekCtpCount > 0;
+
+                const msgLines = [
+                  `This will skip this week and insert a makeup week at week ${makeupWeekNum}. Unlocked future weeks will shift forward. Locked weeks stay put.`,
+                ];
+                if (willWipe) {
+                  const parts = [];
+                  if (weekHoleScoreCount > 0) parts.push(`${weekHoleScoreCount} hole score${weekHoleScoreCount === 1 ? "" : "s"}`);
+                  if (weekMatchResultCount > 0) parts.push(`${weekMatchResultCount} signed match${weekMatchResultCount === 1 ? "" : "es"}`);
+                  if (weekCtpCount > 0) parts.push(`${weekCtpCount} CTP`);
+                  msgLines.push("");
+                  msgLines.push(`All existing data for this week will be permanently deleted: ${parts.join(", ")}. This data will need to be re-entered at the makeup week.`);
+                }
+                const msgDetail = msgLines.join("\n");
+
                 setConfirmModal({
                   title: `Rain out Week ${week}?`,
                   message: msgDetail,
@@ -922,6 +940,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
                     // Mark the week as rained out (clear matches since they're moved to makeup)
                     await saveWeekSchedule({ ...weekSch, rainedOut: true, matches: [] });
+
+                    // Hard-delete all partial data from this week so handicaps, stats,
+                    // and standings don't carry stale info once the makeup is played.
+                    if (clearWeekData) await clearWeekData(week);
 
                     // Build shift map: non-locked weeks at or after makeupWeekNum skip over locked weeks
                     const lockedWeekNums = new Set(schedule.filter(s => s.locked === true).map(s => s.week));
@@ -1109,7 +1131,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "20px", width: "100%", maxWidth: 320 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>MnQ Golf League</div>
               <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 6 }}>{confirmModal.title}</div>
-              <div style={{ fontSize: 13, color: K.t2, lineHeight: 1.5, marginBottom: 16 }}>{confirmModal.message}</div>
+              <div style={{ fontSize: 13, color: K.t2, lineHeight: 1.5, marginBottom: 16, whiteSpace: "pre-line" }}>{confirmModal.message}</div>
               <div style={{ display: "flex", gap: 8 }}>
                 <button onClick={confirmModal.onConfirm} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
                   Confirm
@@ -1830,7 +1852,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "20px", width: "100%", maxWidth: 320 }}>
             <div style={{ fontSize: 11, fontWeight: 700, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>MnQ Golf League</div>
             <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 6 }}>{confirmModal.title}</div>
-            <div style={{ fontSize: 13, color: K.t2, lineHeight: 1.5, marginBottom: 16 }}>{confirmModal.message}</div>
+            <div style={{ fontSize: 13, color: K.t2, lineHeight: 1.5, marginBottom: 16, whiteSpace: "pre-line" }}>{confirmModal.message}</div>
             <div style={{ display: "flex", gap: 8 }}>
               <button onClick={confirmModal.onConfirm} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
                 Confirm
