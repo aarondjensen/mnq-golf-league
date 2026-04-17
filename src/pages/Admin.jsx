@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { LEAGUE_ID, db } from "../firebase";
 import { K, FONTS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap,
-  formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, lastNamesOnly } from "../theme";
+  formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, lastNamesOnly,
+  buildStandingsForSeed as sharedBuildStandingsForSeed } from "../theme";
 
 
 export default function AdminView(props) {
@@ -21,7 +22,7 @@ export default function AdminView(props) {
   if (sec === "players") return <AdminPlayers players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} course={course} members={members} saveMember={saveMember} onBack={() => setSec(null)} />;
   if (sec === "teams") return <AdminTeams teams={teams} saveTeam={saveTeam} players={players} onBack={() => setSec(null)} />;
   if (sec === "course") return <AdminCourse course={course} saveCourseData={saveCourseData} onBack={() => setSec(null)} />;
-  if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} onBack={() => setSec(null)} />;
+  if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} autoSeedIfReady={props.autoSeedIfReady} onBack={() => setSec(null)} />;
   if (sec === "scoring") return <AdminScoring scoring={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
   if (sec === "members") return <AdminMembers members={members} saveMember={saveMember} deleteMember={deleteMember} players={players} onBack={() => setSec(null)} />;
   if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} resetSeasonData={props.resetSeasonData} importHistoricalScores={props.importHistoricalScores} recalcHandicaps={props.recalcHandicaps} matchResults={matchResults} saveMatchResult={saveMatchResult} onBack={() => setSec(null)} />;
@@ -507,7 +508,7 @@ function AdminCourse({ course, saveCourseData, onBack }) {
 }
 
 
-function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, teams, leagueConfig, saveLeagueConfig, matchResults, onBack }) {
+function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, teams, leagueConfig, saveLeagueConfig, matchResults, autoSeedIfReady, onBack }) {
   const [step, setStep] = useState(schedule.length > 0 ? "view" : "setup");
 
   // Single source of truth for "derive cfg from stored leagueConfig".
@@ -1506,6 +1507,36 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 </div>
               );
             })()}
+            {/* Seed All Remaining button — appears when RR is complete but seeded weeks are empty.
+                Primary purpose: recover from pre-auto-seed leagues where the commish has no
+                way to unstick seeded play. Normally auto-seed fires when the last RR week is
+                finalized, so this button just stays hidden. */}
+            {(() => {
+              if (!autoSeedIfReady) return null;
+              const rrWeeks = schedule.filter(s => !s.isPlayoff && !s.seeded && !s.rainedOut);
+              if (rrWeeks.length === 0) return null;
+              const allRRLocked = rrWeeks.every(s => s.locked === true);
+              if (!allRRLocked) return null;
+              const emptySeededWeeks = schedule.filter(s => s.seeded === true && !s.isPlayoff && !s.rainedOut && (!s.matches || s.matches.length === 0));
+              if (emptySeededWeeks.length === 0) return null;
+              const lastRRLockedWeek = Math.max(...rrWeeks.map(s => s.week));
+              const doRecoverySeed = async () => {
+                if (!window.confirm(`Seed ${emptySeededWeeks.length} empty seeded week${emptySeededWeeks.length === 1 ? "" : "s"} from current standings?`)) return;
+                const count = (await autoSeedIfReady(lastRRLockedWeek)) || 0;
+                if (count > 0) {
+                  alert(`Seeded ${count} week${count === 1 ? "" : "s"}.`);
+                } else {
+                  alert("No weeks needed seeding, or not enough data to seed.");
+                }
+              };
+              return (
+                <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
+                  <button onClick={doRecoverySeed} style={{ background: K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 700 }}>
+                    Seed {emptySeededWeeks.length} Remaining Week{emptySeededWeeks.length === 1 ? "" : "s"}
+                  </button>
+                </div>
+              );
+            })()}
             {/* Seed status pill — reflects setup config */}
             {(() => {
               const seededRegWeeks = schedule.filter(s => s.seeded === true && !s.isPlayoff);
@@ -1594,36 +1625,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     const playoffRound = isPlayoff ? schedule.filter(s => s.isPlayoff === true && s.week <= wk.week).length : 0;
 
     // Build current standings for seeding
-    const buildStandingsForSeed = () => {
-      const pts = {};
-      teams.forEach(t => { pts[t.id] = { teamId: t.id, points: 0, w: 0, l: 0, t: 0, hw: 0, gp: 0 }; });
-      (matchResults || []).forEach(r => {
-        if (!r) return;
-        // Only count locked weeks
-        const rWeek = schedule.find(s => s.week === r.week);
-        if (!rWeek || !rWeek.locked) return;
-        if (pts[r.team1Id]) { pts[r.team1Id].points += (r.team1Points || 0); if (r.t1HolesWon !== undefined) pts[r.team1Id].hw += r.t1HolesWon; }
-        if (pts[r.team2Id]) { pts[r.team2Id].points += (r.team2Points || 0); if (r.t2HolesWon !== undefined) pts[r.team2Id].hw += r.t2HolesWon; }
-        const d = (r.team1Points || 0) - (r.team2Points || 0);
-        if (d > 0) { if (pts[r.team1Id]) { pts[r.team1Id].w++; pts[r.team1Id].gp++; } if (pts[r.team2Id]) { pts[r.team2Id].l++; pts[r.team2Id].gp++; } }
-        else if (d < 0) { if (pts[r.team1Id]) { pts[r.team1Id].l++; pts[r.team1Id].gp++; } if (pts[r.team2Id]) { pts[r.team2Id].w++; pts[r.team2Id].gp++; } }
-        else { if (pts[r.team1Id]) { pts[r.team1Id].t++; pts[r.team1Id].gp++; } if (pts[r.team2Id]) { pts[r.team2Id].t++; pts[r.team2Id].gp++; } }
-      });
-      const isRecord = leagueConfig?.standingsMethod === "record";
-      const arr = Object.values(pts);
-      if (isRecord) {
-        arr.sort((a, b) => {
-          const aPct = a.gp ? (a.w + a.t * 0.5) / a.gp : 0;
-          const bPct = b.gp ? (b.w + b.t * 0.5) / b.gp : 0;
-          if (bPct !== aPct) return bPct - aPct;
-          if (b.w !== a.w) return b.w - a.w;
-          return a.l - b.l;
-        });
-      } else {
-        arr.sort((a, b) => b.points - a.points || b.hw - a.hw);
-      }
-      return arr;
-    };
+    const buildStandingsForSeed = () => sharedBuildStandingsForSeed(teams, matchResults, schedule, leagueConfig?.standingsMethod);
 
     const handleSeedWeek = async () => {
       // Determine seeds: if lockSeedsEnabled and a snapshot exists, use it;

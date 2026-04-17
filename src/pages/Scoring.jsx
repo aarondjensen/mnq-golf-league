@@ -258,7 +258,7 @@ function computeMatchStatus(t1Pids, t2Pids, getScore, getStrokes, pars) {
 // ═══════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
-export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, openAllMatches, onAllMatchesOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData }) {
+export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, openAllMatches, onAllMatchesOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData, autoSeedIfReady }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
   // 3-way view toggle: "myMatch" (default scoring view), "allMatches" (week overview), "lowNet" (leaderboard)
@@ -287,6 +287,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const [showCtpPopup, setShowCtpPopup] = useState(false);
   const [ctpSelections, setCtpSelections] = useState({}); // { holeNum: { playerId, distance } }
   const [lowNetSort, setLowNetSort] = useState("net"); // "net" | "gross" — Low Net leaderboard sort column
+  const [lowNetDir, setLowNetDir] = useState("asc"); // "asc" (best→worst) | "desc" (worst→best) — Low Net sort direction
   const initialJump = useRef(false);
   const matchGrn = K.matchGrn;
 
@@ -1059,14 +1060,22 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             await saveWeekSchedule({ ...weekSch, locked: true });
             // Auto-recalculate all handicaps from updated scores
             if (recalcHandicaps) recalcHandicaps();
+            // If this was the last RR week, auto-populate seeded regular-season weeks
+            // from current standings so the schedule is ready for seeded play.
+            let seededCount = 0;
+            if (autoSeedIfReady) {
+              seededCount = (await autoSeedIfReady(week)) || 0;
+            }
             setShowCtpPopup(false);
-            setToast("Week " + week + " finalized");
+            setToast(seededCount > 0
+              ? `Week ${week} finalized — ${seededCount} seeded week${seededCount === 1 ? "" : "s"} populated`
+              : `Week ${week} finalized`);
             setTimeout(() => {
               setToast(null);
               setShowAllMatches(false);
               setActiveMatch(null);
               setExpandedMatch(null);
-            }, 2000);
+            }, 2500);
           };
 
           return (<>
@@ -1191,16 +1200,29 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       };
     });
 
-    // Sort by selected column (always ascending: best → worst).
-    // Complete rounds sort by the chosen metric; incomplete players (no 9-hole round yet)
-    // stay at the bottom alphabetically regardless of sort column.
+    // Sort by selected column. Default is ascending (best → worst, lower is better in golf);
+    // tapping the same header toggles to descending (worst → best).
+    // Incomplete rounds (no 9-hole score yet) always stay at the bottom alphabetically,
+    // regardless of direction — they're shown as reference, not ranked.
     const sortKey = lowNetSort; // "net" or "gross"
+    const dirMult = lowNetDir === "asc" ? 1 : -1;
     rows.sort((a, b) => {
       if (a.complete && !b.complete) return -1;
       if (!a.complete && b.complete) return 1;
-      if (a.complete && b.complete) return a[sortKey] - b[sortKey];
+      if (a.complete && b.complete) return (a[sortKey] - b[sortKey]) * dirMult;
       return a.name.localeCompare(b.name);
     });
+
+    // Tap handler: switching columns resets to ascending (best first, golf-standard view).
+    // Tapping the already-active column flips direction.
+    const handleHeaderTap = (col) => {
+      if (lowNetSort !== col) {
+        setLowNetSort(col);
+        setLowNetDir("asc");
+      } else {
+        setLowNetDir(lowNetDir === "asc" ? "desc" : "asc");
+      }
+    };
 
     const fmtToPar = (tp) => {
       if (tp === null) return "—";
@@ -1218,61 +1240,72 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       paddingBottom: 1,
     });
 
+    // Chevron shown on the active header: ▾ ascending, ▴ descending. Reserved 10px slot
+    // keeps header cell width stable regardless of state.
+    const activeChevron = lowNetDir === "asc" ? " ▾" : " ▴";
+
     return (
       <div style={{ maxWidth: 540, margin: "0 auto" }}>
         <ViewToggle />
 
-        {/* Table header — Net and Gross are tappable to sort */}
+        {/* Table header — Net and Gross are tappable to sort; tapping the active column flips direction */}
         <div style={{ display: "flex", alignItems: "center", padding: "6px 10px", background: K.acc, borderRadius: "8px 8px 0 0", color: K.bg, fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: .5 }}>
-          <div style={{ width: 22, textAlign: "center", opacity: .8 }}>#</div>
-          <div style={{ flex: 1, paddingLeft: 8 }}>Player</div>
-          <div style={{ width: 36, textAlign: "center", opacity: .8 }}>Hcp</div>
-          <div style={{ width: 44, textAlign: "center", opacity: .8 }}>To Par</div>
-          <div onClick={() => setLowNetSort("net")} style={{ width: 40, textAlign: "center", ...headerCellStyle(sortKey === "net") }}>
-            Net{sortKey === "net" ? " ▾" : ""}
+          <div style={{ width: 22, flexShrink: 0, textAlign: "center", opacity: .8 }}>#</div>
+          <div style={{ flex: 1, minWidth: 0, paddingLeft: 8 }}>Player</div>
+          <div style={{ width: 36, flexShrink: 0, textAlign: "center", opacity: .8 }}>Hcp</div>
+          <div style={{ width: 44, flexShrink: 0, textAlign: "center", opacity: .8 }}>To Par</div>
+          <div onClick={() => handleHeaderTap("net")} style={{ width: 48, flexShrink: 0, textAlign: "center", ...headerCellStyle(sortKey === "net") }}>
+            Net<span style={{ display: "inline-block", width: 10, textAlign: "left" }}>{sortKey === "net" ? activeChevron : ""}</span>
           </div>
-          <div onClick={() => setLowNetSort("gross")} style={{ width: 44, textAlign: "center", ...headerCellStyle(sortKey === "gross") }}>
-            Gross{sortKey === "gross" ? " ▾" : ""}
+          <div onClick={() => handleHeaderTap("gross")} style={{ width: 56, flexShrink: 0, textAlign: "center", ...headerCellStyle(sortKey === "gross") }}>
+            Gross<span style={{ display: "inline-block", width: 10, textAlign: "left" }}>{sortKey === "gross" ? activeChevron : ""}</span>
           </div>
         </div>
 
         <div style={{ background: K.card, border: `1px solid ${K.bdr}`, borderTop: "none", borderRadius: "0 0 8px 8px", overflow: "hidden" }}>
-          {rows.map((r, i) => {
-            const isMe = r.pid === leagueUser.playerId;
-            const isLeader = r.complete && i === 0;
-            const isLast = i === rows.length - 1;
-            const showRank = r.complete;
-            // Tied with prior row on the active sort column?
-            const tiedAbove = r.complete && i > 0 && rows[i - 1].complete && rows[i - 1][sortKey] === r[sortKey];
-            // Green emphasis follows the active sort column
-            const netIsActive = sortKey === "net";
-            const grossIsActive = sortKey === "gross";
-            return (
-              <div key={r.pid} style={{
-                display: "flex", alignItems: "center", padding: "9px 10px",
-                borderBottom: isLast ? "none" : `1px solid ${K.bdr}30`,
-                background: isMe ? K.acc + "12" : "transparent",
-              }}>
-                <div style={{ width: 22, textAlign: "center", fontSize: 12, fontWeight: 700, color: isLeader ? K.matchGrn : K.t3 }}>
-                  {showRank ? (tiedAbove ? "T" : "") + (i + 1) : "—"}
+          {(() => {
+            // Rank = "position in ascending order" regardless of current display direction.
+            // So the best score is always rank 1 even when the list is flipped to worst→best.
+            const completeCount = rows.filter(r => r.complete).length;
+            return rows.map((r, i) => {
+              const isMe = r.pid === leagueUser.playerId;
+              const isLast = i === rows.length - 1;
+              const showRank = r.complete;
+              // True ascending position for this row (1-indexed). In desc mode, top rows are higher rank numbers.
+              const rank = showRank ? (lowNetDir === "asc" ? i + 1 : completeCount - i) : null;
+              const isLeader = rank === 1;
+              // Tied with the prior visible row on the active sort column
+              const tiedAbove = r.complete && i > 0 && rows[i - 1].complete && rows[i - 1][sortKey] === r[sortKey];
+              // Green emphasis follows the active sort column
+              const netIsActive = sortKey === "net";
+              const grossIsActive = sortKey === "gross";
+              return (
+                <div key={r.pid} style={{
+                  display: "flex", alignItems: "center", padding: "9px 10px",
+                  borderBottom: isLast ? "none" : `1px solid ${K.bdr}30`,
+                  background: isMe ? K.acc + "12" : "transparent",
+                }}>
+                  <div style={{ width: 22, flexShrink: 0, textAlign: "center", fontSize: 12, fontWeight: 700, color: isLeader ? K.matchGrn : K.t3 }}>
+                    {showRank ? (tiedAbove ? "T" : "") + rank : "—"}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0, paddingLeft: 8, fontSize: 13, fontWeight: isMe ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {r.name}
+                    {r.isAbsent && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 700, color: K.red, background: K.red + "15", padding: "1px 4px", borderRadius: 3 }}>ABS</span>}
+                  </div>
+                  <div style={{ width: 36, flexShrink: 0, textAlign: "center", fontSize: 11, fontWeight: 700, color: "#3b82f6" }}>{r.hcp}</div>
+                  <div style={{ width: 44, flexShrink: 0, textAlign: "center", fontSize: 13, fontWeight: 800, color: r.toPar === null ? K.t3 + "60" : r.toPar < 0 ? K.red : r.toPar === 0 ? K.t2 : K.t1 }}>
+                    {fmtToPar(r.toPar)}
+                  </div>
+                  <div style={{ width: 48, flexShrink: 0, textAlign: "center", fontSize: netIsActive ? 14 : 13, fontWeight: netIsActive ? 800 : 600, color: r.net === null ? K.t3 + "60" : (netIsActive && isLeader) ? K.matchGrn : netIsActive ? K.t1 : K.t2 }}>
+                    {r.net ?? "—"}
+                  </div>
+                  <div style={{ width: 56, flexShrink: 0, textAlign: "center", fontSize: grossIsActive ? 14 : 12, fontWeight: grossIsActive ? 800 : 600, color: r.gross === null ? K.t3 + "60" : (grossIsActive && isLeader) ? K.matchGrn : grossIsActive ? K.t1 : K.t2 }}>
+                    {r.gross ?? "—"}
+                  </div>
                 </div>
-                <div style={{ flex: 1, paddingLeft: 8, fontSize: 13, fontWeight: isMe ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {r.name}
-                  {r.isAbsent && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 700, color: K.red, background: K.red + "15", padding: "1px 4px", borderRadius: 3 }}>ABS</span>}
-                </div>
-                <div style={{ width: 36, textAlign: "center", fontSize: 11, fontWeight: 700, color: "#3b82f6" }}>{r.hcp}</div>
-                <div style={{ width: 44, textAlign: "center", fontSize: 13, fontWeight: 800, color: r.toPar === null ? K.t3 + "60" : r.toPar < 0 ? K.matchGrn : r.toPar === 0 ? K.t2 : K.t1 }}>
-                  {fmtToPar(r.toPar)}
-                </div>
-                <div style={{ width: 40, textAlign: "center", fontSize: netIsActive ? 14 : 13, fontWeight: netIsActive ? 800 : 600, color: r.net === null ? K.t3 + "60" : (netIsActive && isLeader) ? K.matchGrn : netIsActive ? K.t1 : K.t2 }}>
-                  {r.net ?? "—"}
-                </div>
-                <div style={{ width: 44, textAlign: "center", fontSize: grossIsActive ? 14 : 12, fontWeight: grossIsActive ? 800 : 600, color: r.gross === null ? K.t3 + "60" : (grossIsActive && isLeader) ? K.matchGrn : grossIsActive ? K.t1 : K.t2 }}>
-                  {r.gross ?? "—"}
-                </div>
-              </div>
-            );
-          })}
+              );
+            });
+          })()}
         </div>
 
         {rows.every(r => !r.complete) && (

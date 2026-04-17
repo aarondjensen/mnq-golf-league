@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "./firebase";
-import { K, I, DEFAULT_SCORING, applyTheme, getCSS, lastNamesOnly, calcPlayerHcp } from "./theme";
+import { K, I, DEFAULT_SCORING, applyTheme, getCSS, lastNamesOnly, calcPlayerHcp, buildStandingsForSeed } from "./theme";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
 
 // Fix #2: Lazy-load page components — Vite will code-split each into its own chunk.
@@ -408,6 +408,85 @@ export default function GolfLeagueApp() {
     await db.batchDelete("league_ctp", ctpFilter);
   }, []);
 
+  // Auto-seed empty seeded (non-playoff) weeks once the round-robin block completes.
+  // Called right after a week is finalized (locked) — if that finalization was the
+  // last RR/makeup week, populates every empty seeded regular-season week with
+  // matchups derived from current standings + customSeedWeeks config.
+  // Playoff weeks are NOT auto-seeded — they depend on seeded-week results and are
+  // still seeded manually per-round via Admin's Seed Week button.
+  // Idempotent: skips weeks that already have matches. Safe to call unconditionally
+  // after every week-lock.
+  const autoSeedIfReady = useCallback(async (justLockedWeek) => {
+    // Only fires on RR or RR-makeup finalization. If the locked week was seeded or
+    // playoff, that's not the trigger for this auto-seeder.
+    const lockedWk = schedule.find(s => s.week === justLockedWeek);
+    if (!lockedWk) return;
+    if (lockedWk.seeded === true || lockedWk.isPlayoff === true) return;
+
+    // Check: are all RR + RR-makeup weeks now locked?
+    const rrWeeks = schedule.filter(s => !s.isPlayoff && !s.seeded && !s.rainedOut);
+    const allRRLocked = rrWeeks.length > 0 && rrWeeks.every(s =>
+      // Either already locked in Firestore, or it's the week we're about to lock
+      s.locked === true || s.week === justLockedWeek
+    );
+    if (!allRRLocked) return;
+
+    // Build seed ranking from current standings. If the league has locked-seeds
+    // enabled and a snapshot exists, honor it; otherwise compute fresh and
+    // (if enabled) capture the snapshot now so subsequent seeded/playoff rounds
+    // use a stable seeding even as late scores drift.
+    const lockSeedsEnabled = leagueConfig?.lockSeedsEnabled === true;
+    const existingLocked = leagueConfig?.lockedSeeds;
+    let seeds;
+    if (existingLocked && existingLocked.length === teams.length) {
+      seeds = existingLocked;
+    } else {
+      // Build standings including the just-locked week's results even if the
+      // `schedule` prop hasn't yet re-rendered with locked:true (closure race).
+      const projectedSchedule = schedule.map(s =>
+        s.week === justLockedWeek ? { ...s, locked: true } : s
+      );
+      seeds = buildStandingsForSeed(teams, matchResults, projectedSchedule, leagueConfig?.standingsMethod).map(s => s.teamId);
+      if (lockSeedsEnabled) {
+        await db.upsert("league_config", { ...leagueConfig, id: leagueConfig?.id || `${LEAGUE_ID}_config`, league_id: LEAGUE_ID, lockedSeeds: seeds });
+      }
+    }
+
+    const n = seeds.length;
+    const pairCount = Math.floor(n / 2);
+    if (pairCount < 1) return;
+
+    // Seeded regular-season weeks, sorted. Only populate ones that are EMPTY —
+    // don't overwrite anything a commish may have manually seeded already.
+    const seededRegWeeks = schedule.filter(s => s.seeded === true && !s.isPlayoff && !s.rainedOut).sort((a, b) => a.week - b.week);
+    const customWeeks = leagueConfig?.customSeedWeeks;
+
+    let seededCount = 0;
+    for (let si = 0; si < seededRegWeeks.length; si++) {
+      const wk = seededRegWeeks[si];
+      if (wk.matches && wk.matches.length > 0) continue; // already seeded, skip
+      const weekPairs = (customWeeks && customWeeks[si]) || null;
+      const matches = [];
+      if (weekPairs && weekPairs.length === pairCount) {
+        for (const pair of weekPairs) {
+          const t1 = seeds[pair.s1 - 1];
+          const t2 = seeds[pair.s2 - 1];
+          if (t1 && t2) matches.push({ team1: t1, team2: t2 });
+        }
+      } else {
+        // Fallback: top vs bottom
+        for (let i = 0; i < pairCount; i++) {
+          matches.push({ team1: seeds[i], team2: seeds[n - 1 - i] });
+        }
+      }
+      if (matches.length) {
+        await db.upsert("league_schedule", { ...wk, matches, league_id: LEAGUE_ID });
+        seededCount++;
+      }
+    }
+    return seededCount;
+  }, [schedule, teams, matchResults, leagueConfig]);
+
   // Import historical scores from a [name, week, hole, score] array
   const importHistoricalScores = useCallback(async (data) => {
     // Build name -> id map (case-insensitive, trimmed)
@@ -690,12 +769,12 @@ export default function GolfLeagueApp() {
           {/* Fix #2: Wrap lazy-loaded tabs in Suspense */}
           <Suspense fallback={TabFallback}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} />}
-          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} deleteMatchResult={deleteMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} recalcHandicaps={recalcHandicaps} clearWeekData={clearWeekData} />}
+          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} deleteMatchResult={deleteMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} recalcHandicaps={recalcHandicaps} clearWeekData={clearWeekData} autoSeedIfReady={autoSeedIfReady} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} isComm={isComm} saveScore={saveScore} saveMatchResult={saveMatchResult} setPopupOpen={setPopupOpen} />}
           {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} />}
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
           {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} isComm={isComm} saveCtp={saveCtp} />}
-          {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} resetSeasonData={resetSeasonData} importHistoricalScores={importHistoricalScores} recalcHandicaps={recalcHandicaps} />}
+          {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} saveMatchResult={saveMatchResult} resetSeasonData={resetSeasonData} importHistoricalScores={importHistoricalScores} recalcHandicaps={recalcHandicaps} autoSeedIfReady={autoSeedIfReady} />}
           </Suspense>
           {commMode && <div style={{ height: 44 }} />}
           </div>
