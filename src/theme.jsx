@@ -73,6 +73,40 @@ export function formatTeeTime(baseTime, idx, interval = 8) {
   return `${hr}:${String(mn).padStart(2, '0')} ${ap}`;
 }
 
+// ── Shared utility: compute current standings array sorted for seeding ──
+// Only counts results from LOCKED weeks. Returns [{teamId, points, w, l, t, hw, gp}, ...]
+// sorted from 1st (index 0) to last. `standingsMethod`: "record" (win %) or default (points).
+// Used by both Admin (manual Seed Week button) and App (auto-seeding after RR finalizes).
+export function buildStandingsForSeed(teams, matchResults, schedule, standingsMethod) {
+  const pts = {};
+  teams.forEach(t => { pts[t.id] = { teamId: t.id, points: 0, w: 0, l: 0, t: 0, hw: 0, gp: 0 }; });
+  (matchResults || []).forEach(r => {
+    if (!r) return;
+    const rWeek = schedule.find(s => s.week === r.week);
+    if (!rWeek || !rWeek.locked) return;
+    if (pts[r.team1Id]) { pts[r.team1Id].points += (r.team1Points || 0); if (r.t1HolesWon !== undefined) pts[r.team1Id].hw += r.t1HolesWon; }
+    if (pts[r.team2Id]) { pts[r.team2Id].points += (r.team2Points || 0); if (r.t2HolesWon !== undefined) pts[r.team2Id].hw += r.t2HolesWon; }
+    const d = (r.team1Points || 0) - (r.team2Points || 0);
+    if (d > 0) { if (pts[r.team1Id]) { pts[r.team1Id].w++; pts[r.team1Id].gp++; } if (pts[r.team2Id]) { pts[r.team2Id].l++; pts[r.team2Id].gp++; } }
+    else if (d < 0) { if (pts[r.team1Id]) { pts[r.team1Id].l++; pts[r.team1Id].gp++; } if (pts[r.team2Id]) { pts[r.team2Id].w++; pts[r.team2Id].gp++; } }
+    else { if (pts[r.team1Id]) { pts[r.team1Id].t++; pts[r.team1Id].gp++; } if (pts[r.team2Id]) { pts[r.team2Id].t++; pts[r.team2Id].gp++; } }
+  });
+  const isRecord = standingsMethod === "record";
+  const arr = Object.values(pts);
+  if (isRecord) {
+    arr.sort((a, b) => {
+      const aPct = a.gp ? (a.w + a.t * 0.5) / a.gp : 0;
+      const bPct = b.gp ? (b.w + b.t * 0.5) / b.gp : 0;
+      if (bPct !== aPct) return bPct - aPct;
+      if (b.w !== a.w) return b.w - a.w;
+      return a.l - b.l;
+    });
+  } else {
+    arr.sort((a, b) => b.points - a.points || b.hw - a.hw);
+  }
+  return arr;
+}
+
 // ══════════════════════════════════════════════════════════════
 //  THEME
 // ══════════════════════════════════════════════════════════════
