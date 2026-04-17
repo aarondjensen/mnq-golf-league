@@ -558,6 +558,35 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     return pl ? pl.name.split(' ').map(n => n[0]).join('') : "?";
   }, [playerMap, absentPlayers]);
 
+  // ── Commish: force-attest all signed-but-unattested matches for this week ──
+  // Normal flow requires every present non-signer to tap Attest individually.
+  // This bypasses that when the real-world attestation loop stalls (e.g. players
+  // left, commissioner needs to close out the week).
+  const weekSignedUnattestedCount = useMemo(() => {
+    return matchResults.filter(r => r.week === week && !r.attested).length;
+  }, [matchResults, week]);
+
+  const handleAttestAllWeek = () => {
+    const pending = matchResults.filter(r => r.week === week && !r.attested);
+    if (pending.length === 0) {
+      setToast("No signed matches pending attestation");
+      setTimeout(() => setToast(null), 2000);
+      return;
+    }
+    setConfirmModal({
+      title: `Force-attest ${pending.length} match${pending.length === 1 ? "" : "es"}?`,
+      message: `This bypasses the opposing-team signature requirement for all signed matches in Week ${week}. Use when the normal attestation flow is blocked.`,
+      onConfirm: async () => {
+        setConfirmModal(null);
+        for (const r of pending) {
+          await saveMatchResult({ ...r, attested: true });
+        }
+        setToast(`${pending.length} match${pending.length === 1 ? "" : "es"} attested`);
+        setTimeout(() => setToast(null), 2000);
+      },
+    });
+  };
+
   // ── All Matches view ──
   if (showAllMatches && !activeMatch) {
     const formatTeeTime = (idx) => fmtTeeTimeUtil(leagueConfig?.startTime || "4:28 PM", idx, leagueConfig?.teeInterval || 8);
@@ -937,6 +966,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 });
               }} style={{ width: "100%", padding: 12, borderRadius: 10, marginBottom: 8, cursor: "pointer", background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 13, fontWeight: 700 }}>
                 Rain Out Week {week}
+              </button>
+            )}
+            {/* Attest All Signed — force-attest pending match results for this week */}
+            {!isWeekLocked && weekSignedUnattestedCount > 0 && (
+              <button onClick={handleAttestAllWeek} style={{ width: "100%", padding: 12, borderRadius: 10, marginBottom: 8, cursor: "pointer", background: "#3b82f615", border: `1.5px solid #3b82f650`, color: "#3b82f6", fontSize: 13, fontWeight: 700 }}>
+                Attest All Signed ({weekSignedUnattestedCount})
               </button>
             )}
             {allMatchesAttested && !isWeekLocked && saveWeekSchedule && (
