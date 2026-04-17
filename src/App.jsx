@@ -22,11 +22,21 @@ export default function GolfLeagueApp() {
   const [players, setPlayers] = useState([]);
   const [teams, setTeams] = useState([]);
   const [schedule, setSchedule] = useState([]);
+  // Ref mirror of schedule — same rationale as matchResultsRef below. Used so auto-seeding
+  // can see the just-locked week without waiting for a snapshot + re-render.
+  const scheduleRef = useRef([]);
+  useEffect(() => { scheduleRef.current = schedule; }, [schedule]);
   const [courseData, setCourseData] = useState(null);
   const [scoringRules, setScoringRules] = useState(DEFAULT_SCORING);
   const [holeScores, setHoleScores] = useState({});
   const [ctpData, setCtpData] = useState([]);
   const [matchResults, setMatchResults] = useState([]);
+  // Ref mirror of matchResults — used inside autoSeedIfReady so playoff-round auto-seeding
+  // can read the just-saved match result without waiting for a Firestore snapshot + re-render.
+  // Without this, Phase 2 (advance to next playoff round) could read stale matchResults and
+  // sporadically bail out with "prior round not fully scored" even when it was.
+  const matchResultsRef = useRef([]);
+  useEffect(() => { matchResultsRef.current = matchResults; }, [matchResults]);
   const [leagueConfig, setLeagueConfig] = useState({ name: "Golf League 2026", year: 2026 });
   const [members, setMembers] = useState([]);
   const [membersLoaded, setMembersLoaded] = useState(false);
@@ -207,7 +217,18 @@ export default function GolfLeagueApp() {
       if (pullYRef.current >= PULL_THRESHOLD) {
         setPullY(PULL_THRESHOLD); pullYRef.current = PULL_THRESHOLD;
         setRefreshing(true);
-        setTimeout(() => window.location.reload(), 600);
+        // Soft refresh: re-fetch non-subscribed docs (course/scoring/config) instead of a
+        // hard window.location.reload(). A hard reload would wipe in-flight admin edits,
+        // re-initialize every Firestore subscription, re-download every lazy chunk, and
+        // snap the user back to #standings. The real-time subscriptions already cover
+        // everything else, so all we actually need to refresh are these three.
+        setTimeout(() => {
+          refetchOneTimeReads();
+          setRefreshing(false);
+          setPullY(0);
+          pullYRef.current = 0;
+          touchStartY.current = 0;
+        }, 600);
       } else { setPullY(0); pullYRef.current = 0; touchStartY.current = 0; }
     };
     document.addEventListener('touchstart', handleStart, { passive: true });
@@ -220,7 +241,7 @@ export default function GolfLeagueApp() {
       document.removeEventListener('touchend', handleEnd);
       document.removeEventListener('touchcancel', handleEnd);
     };
-  }, [refreshing]);
+  }, [refreshing, refetchOneTimeReads]);
 
   // Safety: if pull indicator stuck, reset after 2s
   useEffect(() => {
@@ -255,6 +276,15 @@ export default function GolfLeagueApp() {
     return unsub;
   }, []);
 
+  // Re-fetch the three collections that don't have live subscriptions. Used on mount (below)
+  // and by pull-to-refresh so users can manually pick up changes to course / scoring rules /
+  // league config without a full page reload.
+  const refetchOneTimeReads = useCallback(() => {
+    db.get("league_course", LF).then(docs => { if (docs.length) setCourseData(docs[0]); });
+    db.get("league_scoring", LF).then(docs => { if (docs.length) setScoringRules(docs[0]); });
+    db.get("league_config", LF).then(docs => { if (docs.length) setLeagueConfig(docs[0]); });
+  }, []);
+
   // Real-time subscriptions
   useEffect(() => {
     if (!authUser) { setLeagueUser(null); setMembersLoaded(false); return; }
@@ -277,12 +307,10 @@ export default function GolfLeagueApp() {
 
     // These rarely change — one-time reads instead of persistent listeners
     // (course, scoring rules, config). Re-read on save via their save handlers.
-    db.get("league_course", LF).then(docs => { if (docs.length) setCourseData(docs[0]); });
-    db.get("league_scoring", LF).then(docs => { if (docs.length) setScoringRules(docs[0]); });
-    db.get("league_config", LF).then(docs => { if (docs.length) setLeagueConfig(docs[0]); });
+    refetchOneTimeReads();
 
     return () => unsubs.forEach(u => u && u());
-  }, [authUser?.uid]);
+  }, [authUser?.uid, refetchOneTimeReads]);
 
   // Subscribe to hole scores for a specific week (real-time for live scoring)
   useEffect(() => {
@@ -318,10 +346,15 @@ export default function GolfLeagueApp() {
 
   const CURRENT_SEASON = 2026;
 
+  // Cache for fetchAllScores. Declared here so saveScore / resetSeasonData can invalidate
+  // it before fetchAllScores reads it.
+  const allScoresCacheRef = useRef(null);
+
   // Data write helpers
   const saveScore = useCallback(async (week, playerId, hole, score) => {
     const id = `${LEAGUE_ID}_s${CURRENT_SEASON}_w${week}_p${playerId}_h${hole}`;
     setHoleScores(prev => ({ ...prev, [`w${week}_p${playerId}_h${hole}`]: score }));
+    allScoresCacheRef.current = null; // invalidate handicap-rollup cache
     await db.upsert("league_hole_scores", { id, league_id: LEAGUE_ID, season: CURRENT_SEASON, week, player_id: playerId, hole, score, ts: Date.now() });
   }, []);
 
@@ -341,8 +374,12 @@ export default function GolfLeagueApp() {
     return scores;
   }, []);
 
-  // Fetch ALL scores across all seasons (for handicap calc that carries over)
+  // Fetch ALL scores across all seasons (for handicap calc that carries over).
+  // Cached in-memory because this collection is huge (~11k+ docs for a 4-season league)
+  // and PlayersView re-fetches it on every tab mount. Cache is invalidated when a score
+  // is saved (see saveScore below) or when the user explicitly refreshes.
   const fetchAllScores = useCallback(async () => {
+    if (allScoresCacheRef.current) return allScoresCacheRef.current;
     const docs = await db.get("league_hole_scores", LF);
     const byPlayer = {};
     const roundMap = {};
@@ -360,6 +397,7 @@ export default function GolfLeagueApp() {
     for (const pid in byPlayer) {
       byPlayer[pid].sort((a, b) => a.season !== b.season ? a.season - b.season : a.week - b.week);
     }
+    allScoresCacheRef.current = byPlayer;
     return byPlayer;
   }, []);
 
@@ -386,10 +424,20 @@ export default function GolfLeagueApp() {
     for (const wk of schedule) {
       if (wk.id) await db.deleteDoc("league_schedule", wk.id);
     }
+    // Also clear season-bound snapshots stored on leagueConfig so the next season doesn't
+    // inherit last season's seeded pairings. playoffRounds, lockSeedsEnabled, and scoringRules
+    // are setup-level and are preserved intentionally.
+    const cleared = { ...leagueConfig };
+    delete cleared.lockedSeeds;
+    delete cleared.customSeedWeeks;
+    const cfgId = leagueConfig?.id || `${LEAGUE_ID}_config`;
+    await db.set("league_config", { ...cleared, id: cfgId, league_id: LEAGUE_ID });
+    setLeagueConfig({ ...cleared, id: cfgId, league_id: LEAGUE_ID });
     setHoleScores({});
     setMatchResults([]);
     setSchedule([]);
-  }, [schedule]);
+    allScoresCacheRef.current = null; // invalidate handicap-rollup cache
+  }, [schedule, leagueConfig]);
 
   // Hard-delete all data for a specific week of the current season.
   // Called when a week is rained out — partial scores and signed match results
@@ -418,12 +466,19 @@ export default function GolfLeagueApp() {
   // after every week-lock.
   // Returns: { seeded: <count of seeded regular-season weeks populated>, playoff: <count of playoff rounds populated> }
   const autoSeedIfReady = useCallback(async (justLockedWeek) => {
-    const lockedWk = schedule.find(s => s.week === justLockedWeek);
+    // Read from refs so we see the just-saved state, not closure-captured state that may
+    // be one render behind. This matters because this function is typically called
+    // immediately after await saveWeekSchedule() / saveMatchResult(), before Firestore
+    // has sent back an onSnapshot update to refresh the React state.
+    const currentSchedule = scheduleRef.current;
+    const currentMatchResults = matchResultsRef.current;
+
+    const lockedWk = currentSchedule.find(s => s.week === justLockedWeek);
     if (!lockedWk) return 0;
 
-    // Projected schedule that reflects the just-locked week — avoids closure races where
-    // the `schedule` prop hasn't yet re-rendered with locked:true.
-    const projectedSchedule = schedule.map(s =>
+    // Projected schedule that reflects the just-locked week — belt and suspenders on top
+    // of the ref read, in case the ref update hasn't flushed yet.
+    const projectedSchedule = currentSchedule.map(s =>
       s.week === justLockedWeek ? { ...s, locked: true } : s
     );
 
@@ -434,12 +489,12 @@ export default function GolfLeagueApp() {
     const needsFreshSeedsSnapshot = !(existingLocked && existingLocked.length === teams.length);
 
     const computeSeeds = () => buildStandingsForSeed(
-      teams, matchResults, projectedSchedule, leagueConfig?.standingsMethod
+      teams, currentMatchResults, projectedSchedule, leagueConfig?.standingsMethod
     ).map(s => s.teamId);
 
     // ── Phase 1: If we just locked the last RR week, auto-seed regular-season seeded weeks ──
     let seededCount = 0;
-    const rrWeeks = schedule.filter(s => !s.isPlayoff && !s.seeded && !s.rainedOut);
+    const rrWeeks = currentSchedule.filter(s => !s.isPlayoff && !s.seeded && !s.rainedOut);
     const allRRLocked = rrWeeks.length > 0 && rrWeeks.every(s =>
       s.locked === true || s.week === justLockedWeek
     );
@@ -458,7 +513,7 @@ export default function GolfLeagueApp() {
       const n = seeds.length;
       const pairCount = Math.floor(n / 2);
       if (pairCount >= 1) {
-        const seededRegWeeks = schedule.filter(s => s.seeded === true && !s.isPlayoff && !s.rainedOut).sort((a, b) => a.week - b.week);
+        const seededRegWeeks = currentSchedule.filter(s => s.seeded === true && !s.isPlayoff && !s.rainedOut).sort((a, b) => a.week - b.week);
         const customWeeks = leagueConfig?.customSeedWeeks;
 
         for (let si = 0; si < seededRegWeeks.length; si++) {
@@ -495,7 +550,7 @@ export default function GolfLeagueApp() {
     // just-locked week is a seeded regular-season week, not the RR finale), compute now.
     let playoffCount = 0;
 
-    const playoffWeeksList = schedule.filter(s => s.isPlayoff === true).sort((a, b) => a.week - b.week);
+    const playoffWeeksList = currentSchedule.filter(s => s.isPlayoff === true).sort((a, b) => a.week - b.week);
     if (playoffWeeksList.length === 0) {
       return { seeded: seededCount, playoff: 0 };
     }
@@ -547,7 +602,7 @@ export default function GolfLeagueApp() {
         const prevPWk = playoffWeeksList[pi - 1];
         if (!prevPWk.locked && prevPWk.week !== justLockedWeek) break; // prior round not finalized → stop
         if (!prevPWk.matches || prevPWk.matches.length === 0) break; // prior round not seeded
-        const prevResults = (matchResults || []).filter(r => r.week === prevPWk.week);
+        const prevResults = (currentMatchResults || []).filter(r => r.week === prevPWk.week);
         if (prevResults.length < prevPWk.matches.length) break; // prior round not fully scored
         prevPWk.matches.forEach((m) => {
           const r = prevResults.find(pr => pr.team1Id === m.team1 && pr.team2Id === m.team2);
@@ -612,9 +667,11 @@ export default function GolfLeagueApp() {
     }
 
     return { seeded: seededCount, playoff: playoffCount };
-  }, [schedule, teams, matchResults, leagueConfig]);
+  }, [teams, leagueConfig]);
 
-  // Import historical scores from a [name, week, hole, score] array
+  // Import historical scores from a [name, season, week, hole, score] array.
+  // See importHistoricalData.js for the source format. (A stale import2025Data.js
+  // used a 4-element format and is no longer referenced.)
   const importHistoricalScores = useCallback(async (data) => {
     // Build name -> id map (case-insensitive, trimmed)
     const nameMap = {};
@@ -712,6 +769,7 @@ export default function GolfLeagueApp() {
 
   if (authLoading) return <LoadingScreen />;
   if (!authUser) return <AuthScreen onGoogle={doGoogleSignIn} onEmail={doEmailSignIn} />;
+  // Show loading (not AuthScreen flash) while members collection finishes loading for the signed-in user
   if (!membersLoaded) return <LoadingScreen />;
   if (!leagueUser || !leagueUser.playerId) return <JoinScreen authUser={authUser} members={members} players={activePlayers} saveMember={saveMember} doSignOut={doSignOut} leagueConfig={leagueConfig} />;
 

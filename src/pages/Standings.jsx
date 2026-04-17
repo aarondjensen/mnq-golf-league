@@ -1,9 +1,11 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, CHEVRON_SIZE, calcCourseHandicap, calcNineHandicap } from "../theme";
+import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, CHEVRON_SIZE, calcCourseHandicap, calcNineHandicap, buildSeedMap } from "../theme";
 import { SharedScorecard } from "./Scoring";
 
-// Build standings from a set of match results
-function buildStandings(teams, results, isRecord, tiebreaker) {
+// Build standings from a set of match results.
+// Tiebreaker is always total holes won (the headToHead option was removed because it was
+// never implemented — the dropdown existed in Admin but the sort logic did nothing with it).
+function buildStandings(teams, results, isRecord) {
   const pts = {};
   teams.forEach(t => { pts[t.id] = { teamId: t.id, points: 0, w: 0, l: 0, t: 0, gamesPlayed: 0, hw: 0 }; });
   results.forEach(r => {
@@ -27,7 +29,6 @@ function buildStandings(teams, results, isRecord, tiebreaker) {
     }
   });
   const arr = Object.values(pts);
-  const hwTiebreak = tiebreaker === "holesWon" || !tiebreaker;
   if (isRecord) {
     arr.sort((a, b) => {
       const aPct = a.gamesPlayed ? (a.w + a.t * 0.5) / a.gamesPlayed : 0;
@@ -35,14 +36,12 @@ function buildStandings(teams, results, isRecord, tiebreaker) {
       if (bPct !== aPct) return bPct - aPct;
       if (b.w !== a.w) return b.w - a.w;
       if (a.l !== b.l) return a.l - b.l;
-      if (hwTiebreak) return b.hw - a.hw;
-      return 0;
+      return b.hw - a.hw;
     });
   } else {
     arr.sort((a, b) => {
       if (b.points !== a.points) return b.points - a.points;
-      if (hwTiebreak) return b.hw - a.hw;
-      return 0;
+      return b.hw - a.hw;
     });
   }
   return arr;
@@ -55,18 +54,13 @@ function buildStandings(teams, results, isRecord, tiebreaker) {
 function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
   const playoffRounds = leagueConfig?.playoffRounds || [];
   const playoffWeeks = schedule.filter(wk => wk.isPlayoff === true && !wk.rainedOut).sort((a, b) => a.week - b.week);
-  const seedMap = useMemo(() => {
-    const pts = {};
-    teams.forEach(t => { pts[t.id] = 0; });
-    matchResults.forEach(r => {
-      if (pts[r.team1Id] !== undefined) pts[r.team1Id] += (r.team1Points || 0);
-      if (pts[r.team2Id] !== undefined) pts[r.team2Id] += (r.team2Points || 0);
-    });
-    const sorted = Object.entries(pts).sort((a, b) => b[1] - a[1]);
-    const map = {};
-    sorted.forEach(([id], i) => { map[id] = i + 1; });
-    return map;
-  }, [teams, matchResults]);
+  // Use shared buildSeedMap so bracket seed badges match Schedule / Scoring / Admin.
+  // Prior implementation built its own seed map from raw points, ignoring locked status
+  // and standingsMethod, so bracket seeds could disagree with everywhere else in the app.
+  const seedMap = useMemo(
+    () => buildSeedMap(teams, matchResults, schedule, leagueConfig),
+    [teams, matchResults, schedule, leagueConfig]
+  );
 
   const gn = (id) => lastNamesOnly(teams.find(t => t.id === id)?.name || "TBD");
   const getSeed = (id) => seedMap[id] || "?";
@@ -522,7 +516,6 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
 // ════════════════════════════════════════════════════════════
 export default function StandingsView({ teams, players, matchResults, leagueConfig, schedule, fetchSeasonScores, course, fetchWeekScores }) {
   const isRecord = leagueConfig?.standingsMethod === "record";
-  const tiebreaker = leagueConfig?.tiebreaker || "holesWon";
   const [expanded, setExpanded] = useState(null);
   const [expandedResult, setExpandedResult] = useState(null);
   const [weekScores, setWeekScores] = useState({});
@@ -578,14 +571,14 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   }, [lockedWeeks]);
 
   const standings = useMemo(() => {
-    return buildStandings(teams, lockedResults, isRecord, tiebreaker);
+    return buildStandings(teams, lockedResults, isRecord);
   }, [teams, lockedResults, isRecord]);
 
   const prevStandings = useMemo(() => {
     if (latestLockedWeek === 0) return null;
     const prevResults = lockedResults.filter(r => r.week !== latestLockedWeek);
     if (prevResults.length === 0 && lockedResults.length > 0) return null;
-    return buildStandings(teams, prevResults, isRecord, tiebreaker);
+    return buildStandings(teams, prevResults, isRecord);
   }, [teams, lockedResults, latestLockedWeek, isRecord]);
 
   const prevPositionMap = useMemo(() => {

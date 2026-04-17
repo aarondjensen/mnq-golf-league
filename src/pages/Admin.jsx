@@ -25,7 +25,7 @@ export default function AdminView(props) {
   if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} autoSeedIfReady={props.autoSeedIfReady} onBack={() => setSec(null)} />;
   if (sec === "scoring") return <AdminScoring scoring={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
   if (sec === "members") return <AdminMembers members={members} saveMember={saveMember} deleteMember={deleteMember} players={players} onBack={() => setSec(null)} />;
-  if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} resetSeasonData={props.resetSeasonData} importHistoricalScores={props.importHistoricalScores} recalcHandicaps={props.recalcHandicaps} matchResults={matchResults} saveMatchResult={saveMatchResult} onBack={() => setSec(null)} />;
+  if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} resetSeasonData={props.resetSeasonData} importHistoricalScores={props.importHistoricalScores} recalcHandicaps={props.recalcHandicaps} matchResults={matchResults} saveMatchResult={saveMatchResult} schedule={schedule} teams={teams} onBack={() => setSec(null)} />;
 
   return (
     <div><SectionTitle>Commissioner Dashboard</SectionTitle>
@@ -55,7 +55,12 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, members, save
     await saveMember({ ...member, isCommissioner: !member.isCommissioner });
   };
 
-  const isDirty = orig && (f.name !== orig.name || f.teeBox !== orig.teeBox || (ed === "new"));
+  const isDirty = orig && (
+    f.name !== orig.name ||
+    f.teeBox !== orig.teeBox ||
+    String(f.handicapIndex ?? "") !== String(orig.handicapIndex ?? "") ||
+    (ed === "new")
+  );
   const save = async () => {
     if (!f.name.trim()) return;
     const id = ed === "new" ? `${LEAGUE_ID}_p${Date.now()}` : ed;
@@ -82,6 +87,22 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, members, save
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
           <input ref={nameRef} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Player name" style={{ ...inputStyle, padding: "7px 10px", fontWeight: 600 }} />
           <button onClick={() => { setEd(null); setOrig(null); }} style={{ background: "none", border: "none", color: K.t3, fontSize: 15, cursor: "pointer", padding: "2px 4px", lineHeight: 1, flexShrink: 0 }}>✕</button>
+        </div>
+        {/* Row 1b: Handicap index manual override. Normally recalculated automatically when
+            a week is locked; this input lets the commissioner set a starting HCP for a mid-
+            season joiner or correct a miscalculated value. */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+          <span style={{ fontSize: 11, color: K.t3, fontWeight: 600, letterSpacing: .8, textTransform: "uppercase", flexShrink: 0, width: 60 }}>HCP Index</span>
+          <input
+            type="number"
+            inputMode="decimal"
+            step="0.1"
+            value={f.handicapIndex ?? ""}
+            onChange={e => setF({ ...f, handicapIndex: e.target.value })}
+            onFocus={e => setTimeout(() => e.target.select(), 10)}
+            placeholder="0"
+            style={{ ...inputStyle, padding: "7px 10px", fontWeight: 700, textAlign: "center", flex: 1 }}
+          />
         </div>
         {/* Row 2: Tee box + Commissioner + Deactivate */}
         <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
@@ -422,6 +443,21 @@ function AdminCourse({ course, saveCourseData, onBack }) {
     return holeRefs.current[k];
   };
 
+  // Keep local state (and the ref-backed hole inputs) in sync when Firestore updates —
+  // unless the user is mid-edit. The inputs use defaultValue, so we must also poke them
+  // through their refs for the new values to appear visually.
+  useEffect(() => {
+    if (!dirty && course) {
+      setLc(course);
+      ['frontPars', 'backPars', 'frontHcps', 'backHcps'].forEach(key => {
+        (course[key] || []).forEach((v, i) => {
+          const ref = getRef(key, i);
+          if (ref.current) ref.current.value = String(v);
+        });
+      });
+    }
+  }, [course, dirty]);
+
   // On save, read all ref values into state
   const saveWithRefs = async () => {
     const updated = { ...lc };
@@ -587,7 +623,6 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
   }, [leagueConfig]);
 
   const saveSetup = async () => {
-    console.log("[saveSetup] START", { setupDirty, seedsDirty, localSeedWeeks });
     setSavingSetup(true);
     // Save the same shape the generate() function saves on completion, minus the
     // computed regularWeeks/roundRobinWeeks/seededWeeks/totalWeeks (those recompute on Generate).
@@ -600,13 +635,10 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     if (localSeedWeeks) {
       payload.customSeedWeeks = localSeedWeeks;
     }
-    console.log("[saveSetup] PAYLOAD", JSON.stringify(payload, null, 2));
-    const result = await saveLeagueConfig(payload);
-    console.log("[saveSetup] RESULT from saveLeagueConfig:", result);
+    await saveLeagueConfig(payload);
     setSavingSetup(false);
     setSetupDirty(false);
     setSeedsDirty(false);
-    console.log("[saveSetup] DONE");
   };
 
   const handleOnBack = async () => {
@@ -2342,13 +2374,29 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
 function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfig, onBack }) {
   const [lc, setLc] = useState({ ...scoring });
-  const [cfg, setCfg] = useState({ scoringFormat: "lowHighBonus", bonusType: "teamNetTotal", standingsMethod: "points", tiebreaker: "holesWon", ...leagueConfig });
+  const [cfg, setCfg] = useState({ scoringFormat: "lowHighBonus", bonusType: "teamNetTotal", standingsMethod: "points", ...leagueConfig });
   const [dirty, setDirty] = useState(false);
+
+  // Keep local form state in sync when Firestore updates — as long as the user isn't
+  // mid-edit. Prevents silently overwriting concurrent changes on Save.
+  useEffect(() => {
+    if (!dirty) {
+      setLc({ ...scoring });
+      setCfg({ scoringFormat: "lowHighBonus", bonusType: "teamNetTotal", standingsMethod: "points", ...leagueConfig });
+    }
+  }, [scoring, leagueConfig, dirty]);
+
   const save = async () => {
-    await saveScoringRules(lc);
-    await saveLeagueConfig({ ...leagueConfig, scoringFormat: cfg.scoringFormat, bonusType: cfg.bonusType, standingsMethod: cfg.standingsMethod, tiebreaker: cfg.tiebreaker });
-    setDirty(false);
+    try {
+      await saveScoringRules(lc);
+      await saveLeagueConfig({ ...leagueConfig, scoringFormat: cfg.scoringFormat, bonusType: cfg.bonusType, standingsMethod: cfg.standingsMethod });
+      setDirty(false);
+    } catch (e) {
+      console.error("AdminScoring save failed:", e);
+      alert("Save failed: " + e.message);
+    }
   };
+
   const F = ({ label, field }) => (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${K.bdr}15` }}>
       <span style={{ fontSize: 12, color: K.t2 }}>{label}</span>
@@ -2382,15 +2430,6 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
     </div>
   );
 
-  const Dropdown = ({ label, value, onChange, options }) => (
-    <div style={{ marginBottom: 12 }}>
-      <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>{label}</div>
-      <select value={value} onChange={e => { onChange(e.target.value); setDirty(true); }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }}>
-        {options.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-      </select>
-    </div>
-  );
-
   const handleBack = async () => {
     if (dirty) {
       const choice = window.confirm("You have unsaved changes. Save before leaving?");
@@ -2418,11 +2457,9 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
         { id: "record", label: "Win-Loss-Tie Record", desc: "Standings by win percentage — like a traditional sports league" },
       ]} value={cfg.standingsMethod} onChange={v => setCfg({ ...cfg, standingsMethod: v })} />
 
-      <SubLabel>Tiebreaker</SubLabel>
-      <Dropdown label="When teams are tied in standings" value={cfg.tiebreaker} onChange={v => setCfg({ ...cfg, tiebreaker: v })} options={[
-        { id: "holesWon", label: "Total Holes Won (season)" },
-        { id: "headToHead", label: "Head-to-Head Matchup Result" },
-      ]} />
+      {/* Tiebreaker: total holes won across the season. The prior UI offered a
+          "Head-to-Head" option but it was never wired up on the sort side, so the
+          dropdown has been removed — holes won is the only real tiebreaker. */}
 
       <div className="scoring-grid">
         <div>
@@ -2530,7 +2567,7 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
 }
 
 
-function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoricalScores, recalcHandicaps, matchResults, saveMatchResult, onBack }) {
+function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoricalScores, recalcHandicaps, matchResults, saveMatchResult, schedule, teams, onBack }) {
   const [lc, setLc] = useState({ ...config });
   const [dirty, setDirty] = useState(false);
   const [resetting, setResetting] = useState(false);
@@ -2538,6 +2575,12 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
   const [attestResult, setAttestResult] = useState(null);
   const [recalcing, setRecalcing] = useState(false);
   const [recalcResult, setRecalcResult] = useState(null);
+
+  // Keep local form state in sync when the Firestore doc updates — as long as the user
+  // hasn't started editing. Prevents silently overwriting a concurrent change made in
+  // another tab (or by another commissioner) when this user eventually hits Save.
+  useEffect(() => { if (!dirty) setLc({ ...config }); }, [config, dirty]);
+
   const save = async () => { await saveLeagueConfig(lc); setDirty(false); };
 
   const handleBack = async () => {
@@ -2562,16 +2605,25 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
       setAttestResult({ updated: 0, message: "No unattested match results" });
       return;
     }
-    if (!window.confirm(`Mark all ${unattested.length} unattested match result(s) as attested?\n\nTESTING ONLY — this bypasses the opposing-team signature requirement.`)) return;
+    if (!window.confirm(`Mark all ${unattested.length} unattested match result(s) as attested?\n\nDEV BUILD ONLY — bypasses the opposing-team signature requirement.`)) return;
     setAttesting(true);
     setAttestResult(null);
+    let completed = 0;
     try {
       for (const r of unattested) {
-        await saveMatchResult({ ...r, attested: true });
+        // Compute all non-signer player IDs for this match so UI components that read
+        // attestedBy (e.g., "1 of 3 attested" badges, isFullyAttested checks) see a
+        // consistent record instead of "attested: true" alongside a stale partial list.
+        const t1 = (teams || []).find(t => t.id === r.team1Id);
+        const t2 = (teams || []).find(t => t.id === r.team2Id);
+        const allPids = [t1?.player1, t1?.player2, t2?.player1, t2?.player2].filter(Boolean);
+        const nonSignerPids = allPids.filter(pid => pid !== r.signedByPlayerId);
+        await saveMatchResult({ ...r, attested: true, attestedBy: nonSignerPids });
+        completed++;
       }
-      setAttestResult({ updated: unattested.length });
+      setAttestResult({ updated: completed });
     } catch (e) {
-      setAttestResult({ error: e.message });
+      setAttestResult({ error: `${e.message} (${completed} of ${unattested.length} completed before error)` });
     }
     setAttesting(false);
   };
@@ -2612,10 +2664,11 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
             </button>
           </Card>
 
-          {saveMatchResult && (
+          {saveMatchResult && import.meta.env.DEV && (
           <Card style={{ padding: 14, border: `1px solid ${K.warn}30`, marginTop: 8 }}>
             <div style={{ fontSize: 12, color: K.t2, marginBottom: 10, lineHeight: 1.5 }}>
-              <strong>Testing only.</strong> Force-attest every match result, bypassing the opposing-team signature requirement. Remove this card before live play.
+              <strong>Dev build only — hidden in production.</strong> Force-attest every match
+              result, bypassing the opposing-team signature requirement.
             </div>
             <button onClick={handleAttestAll} disabled={attesting} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 13, fontWeight: 700, cursor: attesting ? "default" : "pointer", opacity: attesting ? 0.6 : 1 }}>
               {attesting ? "Attesting..." : "Attest All Match Results"}

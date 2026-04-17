@@ -533,12 +533,19 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   const hasAnyScores = allP.some(pid => { for (let h = 0; h < 9; h++) if (getS(pid, h) > 0) return true; return false; });
 
+  // Initial hole-auto-jump for live scoring: when opening a match mid-round, jump to the
+  // first unscored hole so the user doesn't start at hole 1. Original version had `[]` deps
+  // and fired once on mount, but at mount Firestore scores haven't arrived yet so
+  // currentHoleIdx was usually 0 and the jump never fired. Re-running until we've jumped
+  // once (guarded by initialJump.current) ensures we catch the first render where scores
+  // are present.
   useEffect(() => {
-    if (!initialJump.current && currentHoleIdx > 0 && hasAnyScores) {
-      setCurHole(currentHoleIdx);
+    if (initialJump.current) return;
+    if (hasAnyScores) {
+      if (currentHoleIdx > 0) setCurHole(currentHoleIdx);
+      initialJump.current = true;
     }
-    initialJump.current = true;
-  }, []);
+  }, [currentHoleIdx, hasAnyScores]);
 
   useEffect(() => {
     if (holeComplete && curHole < 8 && !editing && !allComplete) {
@@ -596,7 +603,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       onConfirm: async () => {
         setConfirmModal(null);
         for (const r of pending) {
-          await saveMatchResult({ ...r, attested: true });
+          // Populate attestedBy with all non-signer player IDs so downstream UI checks
+          // (e.g., isFullyAttested, "N of M attested" badges) stay internally consistent
+          // with attested:true.
+          const t1 = teams.find(t => t.id === r.team1Id);
+          const t2 = teams.find(t => t.id === r.team2Id);
+          const allPids = [t1?.player1, t1?.player2, t2?.player1, t2?.player2].filter(Boolean);
+          const nonSignerPids = allPids.filter(pid => pid !== r.signedByPlayerId);
+          await saveMatchResult({ ...r, attested: true, attestedBy: nonSignerPids });
         }
         setToast(`${pending.length} match${pending.length === 1 ? "" : "es"} attested`);
         setTimeout(() => setToast(null), 2000);
@@ -1649,9 +1663,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   {/* Unsign button — any of the 4 players can unsign before fully attested */}
                   {isInThisMatch && existingResult?.id && (
                     <button onClick={() => {
-                      if (window.confirm("Unsign this scorecard? All attestations will be reset and scores can be edited.")) {
-                        deleteMatchResult(existingResult.id);
-                      }
+                      setConfirmModal({
+                        title: "Unsign scorecard?",
+                        message: "All attestations will be reset and scores can be edited again.",
+                        onConfirm: () => {
+                          deleteMatchResult(existingResult.id);
+                          setConfirmModal(null);
+                        },
+                      });
                     }} style={{ width: "100%", padding: "7px 0", borderRadius: 8, marginTop: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                       Unsign & Edit
                     </button>

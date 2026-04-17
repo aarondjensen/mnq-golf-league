@@ -159,8 +159,13 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       matchResultText,
       matchWinnerId: finalStatus > 0 ? t1.id : finalStatus < 0 ? t2.id : null,
       finalizedByTeamId: res?.finalizedByTeamId || null,
-      signedByPlayerId: leagueUser?.playerId || null,
+      signedByPlayerId: res?.signedByPlayerId || leagueUser?.playerId || null,
+      // Preserve attestation state when a commissioner edits scores on an already-
+      // finalized match. The original code reset attestedBy to undefined, which meant
+      // any force-attest history was silently wiped and "N of M attested" badges
+      // would go stale on the very next edit.
       attested: res?.attested || false,
+      attestedBy: res?.attestedBy || [],
     });
 
     // Update local cache
