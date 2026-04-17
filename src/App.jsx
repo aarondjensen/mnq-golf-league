@@ -129,6 +129,46 @@ export default function GolfLeagueApp() {
     db.get("league_config", LF).then(docs => { if (docs.length) setLeagueConfig(docs[0]); });
   }, []);
 
+  // Check whether a new build has been deployed since the app was loaded. We compare
+  // the hashed asset URLs in the currently-loaded DOM against the asset URLs in a
+  // freshly-fetched index.html. Vite rebuilds produce new hashes for every deploy, so
+  // any mismatch means a new version exists on the server and the running client is
+  // stale.
+  //
+  // This exists because a pull-to-refresh naturally re-fetches DATA (Firestore docs)
+  // but NOT CODE — the JS bundle and CSS are cached by the browser and keyed by URL.
+  // Without this check, style/code changes never reach the running app until the user
+  // manually does a hard reload (or force-quits a PWA, which is how Aaron discovered
+  // the issue — he had to restart the whole app after a badge-color change shipped).
+  const hasNewBundle = useCallback(async () => {
+    try {
+      // Cache-bust both at the URL level and via the Cache-Control header. A service
+      // worker sitting in front could still intercept — if that ever becomes a problem,
+      // we'd need explicit bypass logic here — but this covers the plain-browser case.
+      const html = await fetch(`/index.html?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.text());
+      const freshAssets = [];
+      let m;
+      const scriptRe = /<script[^>]+src="([^"]+)"/g;
+      while ((m = scriptRe.exec(html)) !== null) freshAssets.push(m[1]);
+      const linkRe = /<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"/g;
+      while ((m = linkRe.exec(html)) !== null) freshAssets.push(m[1]);
+      // Alternate order — some builds emit href= before rel=
+      const linkRe2 = /<link[^>]+href="([^"]+)"[^>]+rel="stylesheet"/g;
+      while ((m = linkRe2.exec(html)) !== null) freshAssets.push(m[1]);
+      const toPath = (u) => { try { return new URL(u, location.href).pathname; } catch { return u; } };
+      const currentAssets = new Set([
+        ...Array.from(document.querySelectorAll('script[src]')).map(s => toPath(s.src)),
+        ...Array.from(document.querySelectorAll('link[rel="stylesheet"][href]')).map(l => toPath(l.href)),
+      ]);
+      return freshAssets.some(a => !currentAssets.has(toPath(a)));
+    } catch (e) {
+      // Network blip or weird HTML — don't fail pull-to-refresh over it. Just skip the
+      // update check and proceed with the normal data refresh.
+      console.warn('[update-check] failed:', e);
+      return false;
+    }
+  }, []);
+
   useEffect(() => {
     if (refreshing) return;
     const getScrollEl = () => appBodyRef.current || document.querySelector('.app-body');
@@ -231,12 +271,19 @@ export default function GolfLeagueApp() {
       if (pullYRef.current >= PULL_THRESHOLD) {
         setPullY(PULL_THRESHOLD); pullYRef.current = PULL_THRESHOLD;
         setRefreshing(true);
-        // Soft refresh: re-fetch non-subscribed docs (course/scoring/config) instead of a
-        // hard window.location.reload(). A hard reload would wipe in-flight admin edits,
-        // re-initialize every Firestore subscription, re-download every lazy chunk, and
-        // snap the user back to #standings. The real-time subscriptions already cover
-        // everything else, so all we actually need to refresh are these three.
-        setTimeout(() => {
+        // Two-part refresh: first check whether a new deploy exists and hard-reload
+        // if so (code/style changes won't land via a soft refetch). If no new build,
+        // fall back to re-fetching non-subscribed docs so users can manually pick up
+        // data changes without losing in-flight admin edits, active tab, etc.
+        setTimeout(async () => {
+          const needsUpdate = await hasNewBundle();
+          if (needsUpdate) {
+            // Full reload picks up the new JS/CSS. Any in-memory state is lost, which
+            // is the right trade — the user pulled to refresh knowing something should
+            // change, and a stale bundle can't render the change any other way.
+            window.location.reload();
+            return;
+          }
           refetchOneTimeReads();
           setRefreshing(false);
           setPullY(0);
@@ -255,7 +302,7 @@ export default function GolfLeagueApp() {
       document.removeEventListener('touchend', handleEnd);
       document.removeEventListener('touchcancel', handleEnd);
     };
-  }, [refreshing, refetchOneTimeReads]);
+  }, [refreshing, refetchOneTimeReads, hasNewBundle]);
 
   // Safety: if pull indicator stuck, reset after 2s
   useEffect(() => {
