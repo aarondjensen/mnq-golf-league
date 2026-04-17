@@ -286,6 +286,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const [justSigned, setJustSigned] = useState(false); // prevents flash between sign and Firestore update
   const [showCtpPopup, setShowCtpPopup] = useState(false);
   const [ctpSelections, setCtpSelections] = useState({}); // { holeNum: { playerId, distance } }
+  const [lowNetSort, setLowNetSort] = useState("net"); // "net" | "gross" — Low Net leaderboard sort column
   const initialJump = useRef(false);
   const matchGrn = K.matchGrn;
 
@@ -594,7 +595,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   // ── Three-way view toggle helper (used by My Match, All Matches, and Low Net views) ──
   const ViewToggle = () => (
-    <div style={{ display: "flex", justifyContent: "center", marginBottom: 10 }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 10 }}>
+      <div style={{ textAlign: "center", marginBottom: 6 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1.5 }}>Week {week}</div>
+        {weekSch?.date && <div style={{ fontSize: 10, color: K.t3, marginTop: 1 }}>{weekSch.date}</div>}
+      </div>
       <div style={{ display: "flex", background: K.inp, borderRadius: 20, border: `1px solid ${K.bdr}`, padding: 3 }}>
         {[
           { id: "myMatch", label: "My Match" },
@@ -677,11 +682,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     return (
       <div style={{ maxWidth: 540, margin: "0 auto" }}>
         <ViewToggle />
-
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1.5 }}>Week {week}</div>
-          {weekSch?.date && <div style={{ fontSize: 9, color: K.t3 }}>{weekSch.date}</div>}
-        </div>
 
         <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
           {matches.map((m, mi) => {
@@ -1191,11 +1191,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       };
     });
 
-    // Sort: complete rounds first (by net asc), then incomplete by name
+    // Sort by selected column (always ascending: best → worst).
+    // Complete rounds sort by the chosen metric; incomplete players (no 9-hole round yet)
+    // stay at the bottom alphabetically regardless of sort column.
+    const sortKey = lowNetSort; // "net" or "gross"
     rows.sort((a, b) => {
       if (a.complete && !b.complete) return -1;
       if (!a.complete && b.complete) return 1;
-      if (a.complete && b.complete) return a.net - b.net;
+      if (a.complete && b.complete) return a[sortKey] - b[sortKey];
       return a.name.localeCompare(b.name);
     });
 
@@ -1205,23 +1208,32 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       return tp > 0 ? `+${tp}` : `${tp}`;
     };
 
+    // Header cell style helper — sortable headers are visually interactive
+    const headerCellStyle = (isActive) => ({
+      cursor: "pointer",
+      fontWeight: isActive ? 900 : 800,
+      opacity: isActive ? 1 : 0.8,
+      textDecoration: "none",
+      borderBottom: isActive ? `2px solid ${K.bg}` : "2px solid transparent",
+      paddingBottom: 1,
+    });
+
     return (
       <div style={{ maxWidth: 540, margin: "0 auto" }}>
         <ViewToggle />
 
-        <div style={{ marginBottom: 10 }}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1.5 }}>Week {week} — Low Net</div>
-          {weekSch?.date && <div style={{ fontSize: 9, color: K.t3 }}>{weekSch.date}</div>}
-        </div>
-
-        {/* Table header */}
+        {/* Table header — Net and Gross are tappable to sort */}
         <div style={{ display: "flex", alignItems: "center", padding: "6px 10px", background: K.acc, borderRadius: "8px 8px 0 0", color: K.bg, fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: .5 }}>
           <div style={{ width: 22, textAlign: "center", opacity: .8 }}>#</div>
           <div style={{ flex: 1, paddingLeft: 8 }}>Player</div>
           <div style={{ width: 36, textAlign: "center", opacity: .8 }}>Hcp</div>
-          <div style={{ width: 44, textAlign: "center" }}>To Par</div>
-          <div style={{ width: 40, textAlign: "center" }}>Net</div>
-          <div style={{ width: 44, textAlign: "center", opacity: .8 }}>Gross</div>
+          <div style={{ width: 44, textAlign: "center", opacity: .8 }}>To Par</div>
+          <div onClick={() => setLowNetSort("net")} style={{ width: 40, textAlign: "center", ...headerCellStyle(sortKey === "net") }}>
+            Net{sortKey === "net" ? " ▾" : ""}
+          </div>
+          <div onClick={() => setLowNetSort("gross")} style={{ width: 44, textAlign: "center", ...headerCellStyle(sortKey === "gross") }}>
+            Gross{sortKey === "gross" ? " ▾" : ""}
+          </div>
         </div>
 
         <div style={{ background: K.card, border: `1px solid ${K.bdr}`, borderTop: "none", borderRadius: "0 0 8px 8px", overflow: "hidden" }}>
@@ -1230,8 +1242,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             const isLeader = r.complete && i === 0;
             const isLast = i === rows.length - 1;
             const showRank = r.complete;
-            // Tied with prior row?
-            const tiedAbove = r.complete && i > 0 && rows[i - 1].complete && rows[i - 1].net === r.net;
+            // Tied with prior row on the active sort column?
+            const tiedAbove = r.complete && i > 0 && rows[i - 1].complete && rows[i - 1][sortKey] === r[sortKey];
+            // Green emphasis follows the active sort column
+            const netIsActive = sortKey === "net";
+            const grossIsActive = sortKey === "gross";
             return (
               <div key={r.pid} style={{
                 display: "flex", alignItems: "center", padding: "9px 10px",
@@ -1249,10 +1264,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 <div style={{ width: 44, textAlign: "center", fontSize: 13, fontWeight: 800, color: r.toPar === null ? K.t3 + "60" : r.toPar < 0 ? K.matchGrn : r.toPar === 0 ? K.t2 : K.t1 }}>
                   {fmtToPar(r.toPar)}
                 </div>
-                <div style={{ width: 40, textAlign: "center", fontSize: 14, fontWeight: 800, color: r.net === null ? K.t3 + "60" : isLeader ? K.matchGrn : K.t1 }}>
+                <div style={{ width: 40, textAlign: "center", fontSize: netIsActive ? 14 : 13, fontWeight: netIsActive ? 800 : 600, color: r.net === null ? K.t3 + "60" : (netIsActive && isLeader) ? K.matchGrn : netIsActive ? K.t1 : K.t2 }}>
                   {r.net ?? "—"}
                 </div>
-                <div style={{ width: 44, textAlign: "center", fontSize: 12, fontWeight: 600, color: r.gross === null ? K.t3 + "60" : K.t2 }}>
+                <div style={{ width: 44, textAlign: "center", fontSize: grossIsActive ? 14 : 12, fontWeight: grossIsActive ? 800 : 600, color: r.gross === null ? K.t3 + "60" : (grossIsActive && isLeader) ? K.matchGrn : grossIsActive ? K.t1 : K.t2 }}>
                   {r.gross ?? "—"}
                 </div>
               </div>
