@@ -2052,15 +2052,43 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {(() => {
+              // doSwap: swap two team slots identified by (matchIdx, slot).
+              // Defensive: we deliberately IGNORE srcInfo.teamId / targetInfo.teamId and
+              // read the current occupants directly from the live `wk.matches`. This avoids
+              // a class of bugs where stale DOM attributes (`data-team-card`) or stale drag
+              // state could cause the handler to "swap in" a team that was already moved,
+              // producing a duplicate. Position indices are the only input that matters.
               const doSwap = (srcInfo, targetInfo) => {
-                if (srcInfo.teamId === targetInfo.teamId) return;
+                if (srcInfo.matchIdx === targetInfo.matchIdx && srcInfo.slot === targetInfo.slot) return;
                 const newMatches = wk.matches.map(mm => ({ ...mm }));
                 const srcMatch = newMatches[srcInfo.matchIdx];
                 const dstMatch = newMatches[targetInfo.matchIdx];
-                const dstTeamId = dstMatch[targetInfo.slot];
-                if (srcInfo.slot === "team1") srcMatch.team1 = dstTeamId;
-                else srcMatch.team2 = dstTeamId;
-                dstMatch[targetInfo.slot] = srcInfo.teamId;
+                if (!srcMatch || !dstMatch) return;
+                // Read the live occupants — NOT the teamIds passed in via srcInfo/targetInfo,
+                // which may be stale relative to the current state.
+                const liveSrcTeamId = srcMatch[srcInfo.slot];
+                const liveDstTeamId = dstMatch[targetInfo.slot];
+                if (!liveSrcTeamId || !liveDstTeamId) return;
+                if (liveSrcTeamId === liveDstTeamId) return; // same team — no-op
+                srcMatch[srcInfo.slot] = liveDstTeamId;
+                dstMatch[targetInfo.slot] = liveSrcTeamId;
+                // Post-swap integrity check — every team must appear exactly once across all matches.
+                // If something went sideways (e.g. wk.matches was malformed coming in), abort
+                // rather than commit duplicates to state.
+                const seen = new Set();
+                let ok = true;
+                for (const mm of newMatches) {
+                  for (const tid of [mm.team1, mm.team2]) {
+                    if (!tid) continue;
+                    if (seen.has(tid)) { ok = false; break; }
+                    seen.add(tid);
+                  }
+                  if (!ok) break;
+                }
+                if (!ok) {
+                  console.error("doSwap: integrity check failed, aborting", newMatches);
+                  return;
+                }
                 setLocalWk({ ...wk, matches: newMatches });
                 setWeekDirty(true);
               };
