@@ -546,6 +546,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
   const [generating, setGenerating] = useState(false);
   const [setupDirty, setSetupDirty] = useState(false);
   const [savingSetup, setSavingSetup] = useState(false);
+  // Local editing state for seeded-matchups pairings. Swaps update this; Save commits
+  // to Firestore. Prior design auto-saved on every tap but stale closures were silently
+  // overwriting saves. This pattern matches the rest of the Setup tab's Save flow.
+  const [localSeedWeeks, setLocalSeedWeeks] = useState(null); // null = sync from leagueConfig; array = dirty edits
+  const [seedsDirty, setSeedsDirty] = useState(false);
   // Snapshot of setup fields as currently stored in leagueConfig.
   // Used for dirty detection: cfg vs this snapshot.
   // customSeedWeeks/playoffRounds are saved through their own code paths — not tracked here.
@@ -577,13 +582,22 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     // Save the same shape the generate() function saves on completion, minus the
     // computed regularWeeks/roundRobinWeeks/seededWeeks/totalWeeks (those recompute on Generate).
     const { customSeedWeeks, lockSeedsEnabled, customSeedPairs, ...scheduleFields } = cfg;
-    await saveLeagueConfig({ ...leagueConfig, ...scheduleFields });
+    // Build the payload: scheduleFields from cfg, plus the currently-edited seed weeks
+    // if the user has touched them. Otherwise preserve whatever's in leagueConfig.
+    const payload = { ...leagueConfig, ...scheduleFields };
+    if (seedsDirty && localSeedWeeks) {
+      payload.customSeedWeeks = localSeedWeeks;
+    }
+    await saveLeagueConfig(payload);
     setSavingSetup(false);
     setSetupDirty(false);
+    setSeedsDirty(false);
+    // Keep localSeedWeeks pointing at the committed value so the UI stays in sync
+    // without a flash from the Firestore round-trip.
   };
 
   const handleOnBack = async () => {
-    if (setupDirty) {
+    if (setupDirty || seedsDirty) {
       const choice = window.confirm("You have unsaved setup changes. Save before leaving?");
       if (choice) await saveSetup();
     }
@@ -910,7 +924,14 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <BackBtn onClick={handleOnBack} />
           <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Schedule</span>
-          <button onClick={saveSetup} disabled={!setupDirty || savingSetup} style={{ background: setupDirty ? K.act : K.inp, border: setupDirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: setupDirty ? K.bg : K.t3, fontSize: 13, padding: "7px 16px", cursor: setupDirty && !savingSetup ? "pointer" : "default", fontWeight: 600, letterSpacing: .4, transition: "all .2s", opacity: savingSetup ? 0.6 : 1 }}>{savingSetup ? "Saving..." : setupDirty ? "Save" : "Saved"}</button>
+          {(() => {
+            // Roll up every dirty source that the top-right Save button should commit.
+            // setupDirty = general setup fields; seedsDirty = custom seeded matchups.
+            const anyDirty = setupDirty || seedsDirty;
+            return (
+              <button onClick={saveSetup} disabled={!anyDirty || savingSetup} style={{ background: anyDirty ? K.act : K.inp, border: anyDirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: anyDirty ? K.bg : K.t3, fontSize: 13, padding: "7px 16px", cursor: anyDirty && !savingSetup ? "pointer" : "default", fontWeight: 600, letterSpacing: .4, transition: "all .2s", opacity: savingSetup ? 0.6 : 1 }}>{savingSetup ? "Saving..." : anyDirty ? "Save" : "Saved"}</button>
+            );
+          })()}
         </div>
 
         {/* 3-tab toggle */}
@@ -1045,11 +1066,15 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 // Seed default: all weeks use top-vs-bottom
                 const defaultWeek = () => Array.from({ length: pairCount }, (_, i) => ({ s1: i + 1, s2: teams.length - i }));
                 const savedWeeks = leagueConfig?.customSeedWeeks;
-                const currentWeeks = (savedWeeks && savedWeeks.length === seededRegWeeks)
-                  ? savedWeeks
-                  : Array.from({ length: seededRegWeeks }, (_, i) =>
-                      savedWeeks && savedWeeks[i] && savedWeeks[i].length === pairCount ? savedWeeks[i] : defaultWeek()
-                    );
+                // Use local edits if dirty; otherwise derive from leagueConfig or fall back to defaults.
+                // `currentWeeks` is the working copy the UI renders from.
+                const currentWeeks = (seedsDirty && localSeedWeeks)
+                  ? localSeedWeeks
+                  : (savedWeeks && savedWeeks.length === seededRegWeeks)
+                    ? savedWeeks
+                    : Array.from({ length: seededRegWeeks }, (_, i) =>
+                        savedWeeks && savedWeeks[i] && savedWeeks[i].length === pairCount ? savedWeeks[i] : defaultWeek()
+                      );
 
                 const activeIdx = Math.min(selectedSeededWeek, seededRegWeeks - 1);
                 const activeWeekPairs = currentWeeks[activeIdx] || defaultWeek();
@@ -1062,11 +1087,14 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                   return { isValid: used.size === pairCount * 2 && missing.length === 0, missing, hasDuplicates: used.size !== pairCount * 2 };
                 };
 
-                // Swap two seed positions — save immediately to both local + Firestore
-                const swapSeeds = async (srcPos, dstPos) => {
+                // Swap two seed positions — stage the change locally. The top-right Save button
+                // commits all dirty seed weeks in one Firestore write. This avoids the stale-closure
+                // bug where rapid taps were racing against each other's saveLeagueConfig calls
+                // and silently losing edits.
+                const swapSeeds = (srcPos, dstPos) => {
                   if (srcPos.pairIdx === dstPos.pairIdx && srcPos.slot === dstPos.slot) return;
                   const next = currentWeeks.map((wk, wi) => {
-                    if (wi !== activeIdx) return [...wk];
+                    if (wi !== activeIdx) return wk.map(p => ({ ...p }));
                     const nextWk = wk.map(p => ({ ...p }));
                     const srcVal = nextWk[srcPos.pairIdx][srcPos.slot];
                     const dstVal = nextWk[dstPos.pairIdx][dstPos.slot];
@@ -1074,11 +1102,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                     nextWk[dstPos.pairIdx][dstPos.slot] = srcVal;
                     return nextWk;
                   });
-                  // Write directly to Firestore with ONLY the fields we want to update
-                  const configId = `${LEAGUE_ID}_config`;
-                  await db.upsert("league_config", { id: configId, league_id: LEAGUE_ID, customSeedWeeks: next });
-                  // Update local state to reflect immediately
-                  saveLeagueConfig({ ...leagueConfig, customSeedWeeks: next });
+                  setLocalSeedWeeks(next);
+                  setSeedsDirty(true);
                 };
 
                 const { isValid, missing, hasDuplicates } = validateWeek(activeWeekPairs);
@@ -1095,7 +1120,35 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
                 return (
                   <div style={{ marginBottom: 10 }}>
-                    <div style={{ fontSize: 11, color: K.t3, marginBottom: 6 }}>Seeded Regular Season Matchups</div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                      <div style={{ fontSize: 11, color: K.t3, display: "flex", alignItems: "center", gap: 6 }}>
+                        <span>Seeded Regular Season Matchups</span>
+                        {seedsDirty && (
+                          <span style={{ fontSize: 9, fontWeight: 800, color: K.act, background: K.act + "18", border: `1px solid ${K.act}60`, padding: "2px 6px", borderRadius: 4, letterSpacing: .8, textTransform: "uppercase" }}>
+                            Unsaved
+                          </span>
+                        )}
+                      </div>
+                      <button
+                        onClick={saveSetup}
+                        disabled={!seedsDirty || savingSetup}
+                        style={{
+                          background: seedsDirty ? K.act : "transparent",
+                          border: seedsDirty ? "none" : `1px solid ${K.bdr}`,
+                          borderRadius: 6,
+                          color: seedsDirty ? K.bg : K.t3,
+                          fontSize: 11,
+                          padding: "5px 12px",
+                          cursor: seedsDirty && !savingSetup ? "pointer" : "default",
+                          fontWeight: 700,
+                          letterSpacing: .4,
+                          transition: "all .2s",
+                          opacity: savingSetup ? 0.6 : 1,
+                        }}
+                      >
+                        {savingSetup ? "Saving..." : seedsDirty ? "Save" : "Saved"}
+                      </button>
+                    </div>
 
                     <div style={{ padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${isValid ? K.bdr : K.red + "60"}` }}>
                       {/* Week toggle pills */}
