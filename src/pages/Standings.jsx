@@ -131,7 +131,13 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
   };
 
   // Matchup card component
-  const MatchupCard = ({ mu, showConfig, configMu }) => {
+  const MatchupCard = ({ mu, showConfig, configMu, isConsolation }) => {
+    // Badge styling — bracket seeds get the prominent maize+navy treatment to highlight
+    // progression through the bracket. Non-playoff (consolation) matches use the original
+    // muted light-blue so they visually recede from the bracket they accompany.
+    const badgeStyle = isConsolation
+      ? { background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, color: K.logoBright }
+      : { background: K.act, border: `1px solid ${K.act}`, color: K.logoBlue };
     if (!mu && showConfig && configMu) {
       // Unfilled — show config labels
       return (
@@ -161,9 +167,9 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
         }}>
           <div style={{
             width: 18, height: 18, borderRadius: 5, flexShrink: 0, marginRight: 6,
-            background: K.act, border: `1px solid ${K.act}`,
+            ...badgeStyle,
             display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 9, fontWeight: 800, color: K.logoBlue,
+            fontSize: 9, fontWeight: 800,
           }}>{mu.seed1}</div>
           <div style={{ flex: 1, fontSize: 12, fontWeight: 700, color: mu.t1Won ? K.t1 : mu.t2Won ? K.t3 : K.t1 }}>
             {mu.name1}
@@ -186,9 +192,9 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
         }}>
           <div style={{
             width: 18, height: 18, borderRadius: 5, flexShrink: 0, marginRight: 6,
-            background: K.act, border: `1px solid ${K.act}`,
+            ...badgeStyle,
             display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 9, fontWeight: 800, color: K.logoBlue,
+            fontSize: 9, fontWeight: 800,
           }}>{mu.seed2}</div>
           <div style={{ flex: 1, fontSize: 12, fontWeight: 700, color: mu.t2Won ? K.t1 : mu.t1Won ? K.t3 : K.t1 }}>
             {mu.name2}
@@ -254,7 +260,7 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                   {round.consolationMatchups.map((mu, mi) => (
-                    <MatchupCard key={mi} mu={mu} />
+                    <MatchupCard key={mi} mu={mu} isConsolation />
                   ))}
                 </div>
               </div>
