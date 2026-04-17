@@ -713,11 +713,16 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   const wltCol = { width: 22, textAlign: "center", fontFamily: "'League Spartan', sans-serif" };
   const wltDash = { width: 8, textAlign: "center", color: K.t3 };
 
-  // ── Toggle pills (only show once playoffs have started) ──
+  // ── Toggle pills — always visible regardless of season phase ──
+  // Season: current standings (always meaningful).
+  // Playoffs: bracket view. During regular season this renders as a preview with seed
+  //   placeholders (#1, #2, ...); once playoff weeks populate, real team names appear.
+  // Individual: only meaningful during the individual tournament; shows a "starts Week X"
+  //   placeholder beforehand. Omitted entirely if the league doesn't run an individual event.
   const tabs = [
-    { id: "standings", label: "Standings" },
-    ...(playoffsStarted ? [{ id: "bracket", label: "Playoff Bracket" }] : []),
-    ...(playoffsStarted && hasIndividualEvent ? [{ id: "individual", label: "Individual Event" }] : []),
+    { id: "standings", label: "Season" },
+    { id: "bracket", label: "Playoffs" },
+    ...(hasIndividualEvent ? [{ id: "individual", label: "Individual" }] : []),
   ];
 
   return (
@@ -745,9 +750,21 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
         <PlayoffBracketView teams={teams} schedule={schedule} matchResults={matchResults} leagueConfig={leagueConfig} />
       )}
 
-      {/* Individual Event view */}
+      {/* Individual Event view — during regular season shows a "starts Week N" placeholder,
+          during playoffs shows the live leaderboard. Keeps the toggle itself consistent
+          regardless of season phase. */}
       {view === "individual" && (
-        <IndividualEventView players={players} teams={teams} schedule={schedule} course={course} leagueConfig={leagueConfig} fetchWeekScores={fetchWeekScores} />
+        playoffsStarted ? (
+          <IndividualEventView players={players} teams={teams} schedule={schedule} course={course} leagueConfig={leagueConfig} fetchWeekScores={fetchWeekScores} />
+        ) : (() => {
+          // Find the first playoff week — that's when the individual tournament kicks off.
+          const firstPlayoff = schedule.filter(wk => wk.isPlayoff === true && !wk.rainedOut).sort((a, b) => a.week - b.week)[0];
+          if (!firstPlayoff) {
+            return <EmptyState icon="trophy" title="No individual tournament configured" subtitle="Commissioner can enable it in Admin → Schedule." />;
+          }
+          const when = firstPlayoff.date ? `Week ${firstPlayoff.week} (${firstPlayoff.date})` : `Week ${firstPlayoff.week}`;
+          return <EmptyState icon="trophy" title="Individual Tournament" subtitle={`Starts ${when}`} />;
+        })()
       )}
 
       {/* Regular standings */}
