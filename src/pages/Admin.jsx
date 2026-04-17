@@ -513,6 +513,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     dayOfWeek: leagueConfig.dayOfWeek ?? "Tuesday",
     startTime: leagueConfig.startTime ?? "4:28 PM",
     teeInterval: leagueConfig.teeInterval ?? 8,
+    totalWeeks: leagueConfig.totalWeeks ?? null, // editable; null = fall back to subTotal
     regularWeeks: leagueConfig.regularWeeks ?? 14,
     roundRobinWeeks: leagueConfig.roundRobinWeeks ?? null,
     seededWeeks: leagueConfig.seededWeeks ?? null,
@@ -570,7 +571,9 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     : Math.max(0, cfg.regularWeeks - rrWeekCount);
   const computedRegularWeeks = rrWeekCount + seededWeekCount;
   const subTotal = rrWeekCount + seededWeekCount + cfg.playoffWeeks;
-  const totalWeeks = subTotal;
+  const totalWeeks = (cfg.totalWeeks !== null && cfg.totalWeeks !== undefined)
+    ? cfg.totalWeeks
+    : subTotal;
 
   // Round-robin generator: each team plays every other team once
   const generateRoundRobin = (teamIds) => {
@@ -620,6 +623,9 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
   const generate = async () => {
     if (teams.length < 2) return alert("Need at least 2 teams");
     if (!cfg.startDate) return alert("Set a season start date");
+    if (subTotal !== totalWeeks) {
+      return alert(`Week counts don't match.\n\nTotal Season Weeks: ${totalWeeks}\nRound-robin + seeded + playoffs: ${subTotal}\n\nAdjust the sub-categories so they add up to the total before generating.`);
+    }
 
     // ── Sequential schedule model ──
     // The schedule is always: [RR block] → [Seeded block] → [Playoff block]
@@ -803,7 +809,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
     // Save config (preserve directly-saved fields)
     const { customSeedWeeks, lockSeedsEnabled, customSeedPairs, ...scheduleFields } = cfg;
-    await saveLeagueConfig({ ...leagueConfig, ...scheduleFields, regularWeeks: computedRegularWeeks, roundRobinWeeks: rrWeekCount, seededWeeks: seededWeekCount });
+    await saveLeagueConfig({ ...leagueConfig, ...scheduleFields, regularWeeks: computedRegularWeeks, roundRobinWeeks: rrWeekCount, seededWeeks: seededWeekCount, totalWeeks });
     setGenerating(false);
     setStep("view");
   };
@@ -911,15 +917,26 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           <div>
             <SubLabel>Season Format</SubLabel>
             <Card style={{ padding: 14 }}>
-              {/* Total season weeks — computed read-only display */}
+              {/* Total season weeks — editable; must match sub-category sum to generate */}
               <div style={{ marginBottom: 12, padding: "10px 12px", background: K.act + "10", borderRadius: 8, border: `1px solid ${K.act}30` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: 13, fontWeight: 800, color: K.t1 }}>Total Season Weeks</span>
-                  <span style={{ minWidth: 60, padding: "6px 8px", borderRadius: 6, background: K.card, color: K.act, fontSize: 16, fontWeight: 800, textAlign: "center" }}>{totalWeeks}</span>
+                  <input type="number" min="1" value={totalWeeks} onChange={e => {
+                    const v = parseInt(e.target.value);
+                    setCfg({ ...cfg, totalWeeks: isNaN(v) ? 1 : Math.max(1, v) });
+                  }} style={{ width: 60, padding: "6px 8px", borderRadius: 6, border: `1px solid ${K.act}40`, background: K.card, color: K.act, fontSize: 16, fontWeight: 800, textAlign: "center" }} />
                 </div>
-                <div style={{ fontSize: 10, color: K.t3, marginTop: 6 }}>
-                  Round-robin + seeded + playoffs
-                </div>
+                {subTotal !== totalWeeks ? (
+                  <div style={{ fontSize: 10, color: subTotal > totalWeeks ? K.red : K.warn, marginTop: 6 }}>
+                    {subTotal > totalWeeks
+                      ? `Round-robin + seeded + playoffs = ${subTotal} — exceeds total by ${subTotal - totalWeeks}`
+                      : `Round-robin + seeded + playoffs = ${subTotal} — ${totalWeeks - subTotal} week(s) unallocated`}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 10, color: K.t3, marginTop: 6 }}>
+                    Round-robin + seeded + playoffs
+                  </div>
+                )}
               </div>
 
               {/* Sub-category inputs */}
