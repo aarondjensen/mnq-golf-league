@@ -69,35 +69,44 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
     return <EmptyState icon="trophy" title="No playoff bracket configured" subtitle="Commissioner can set up playoff rounds in Admin → Schedule → Edit Setup." />;
   }
 
-  // Build bracket data: for each round, get matches and results
+  // Build bracket data: for each round, separate bracket matches (those configured in
+  // playoffRounds.matchups) from consolation matches (pairings appended at seed-time for
+  // teams not in the bracket). Week's matches array is built with bracket first, then
+  // consolation — so we split by the config count.
   const bracketData = playoffRounds.map((round, ri) => {
     const roundWeek = playoffWeeks[ri];
-    const matches = roundWeek?.matches || [];
+    const allMatches = roundWeek?.matches || [];
+    const bracketSize = (round.matchups || []).length;
+    const bracketMatches = allMatches.slice(0, bracketSize);
+    const consolationMatches = allMatches.slice(bracketSize);
     const results = roundWeek ? matchResults.filter(r => r.week === roundWeek.week) : [];
     const isLocked = roundWeek?.locked === true;
+
+    const toMatchup = (m) => {
+      const res = results.find(r => r.team1Id === m.team1 && r.team2Id === m.team2);
+      const t1Pts = res?.team1Points || 0;
+      const t2Pts = res?.team2Points || 0;
+      return {
+        team1: m.team1, team2: m.team2,
+        seed1: getSeed(m.team1), seed2: getSeed(m.team2),
+        name1: gn(m.team1), name2: gn(m.team2),
+        t1Pts, t2Pts,
+        t1Won: res && t1Pts > t2Pts,
+        t2Won: res && t2Pts > t1Pts,
+        tied: res && t1Pts === t2Pts,
+        resultText: res?.matchResultText || "",
+        hasResult: !!res,
+      };
+    };
 
     return {
       name: round.name || `Round ${ri + 1}`,
       weekNum: roundWeek?.week,
       date: roundWeek?.date,
       isLocked,
-      matchups: matches.map((m, mi) => {
-        const res = results.find(r => r.team1Id === m.team1 && r.team2Id === m.team2);
-        const t1Pts = res?.team1Points || 0;
-        const t2Pts = res?.team2Points || 0;
-        return {
-          team1: m.team1, team2: m.team2,
-          seed1: getSeed(m.team1), seed2: getSeed(m.team2),
-          name1: gn(m.team1), name2: gn(m.team2),
-          t1Pts, t2Pts,
-          t1Won: res && t1Pts > t2Pts,
-          t2Won: res && t2Pts > t1Pts,
-          tied: res && t1Pts === t2Pts,
-          resultText: res?.matchResultText || "",
-          hasResult: !!res,
-        };
-      }),
-      // For unfilled rounds, show config labels
+      matchups: bracketMatches.map(toMatchup),
+      consolationMatchups: consolationMatches.map(toMatchup),
+      // For unfilled rounds, show config labels (bracket only — consolation has no config)
       config: round.matchups || [],
     };
   });
@@ -225,6 +234,31 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
                 return <MatchupCard key={mi} mu={mu} showConfig={!mu} configMu={configMu} />;
               })}
             </div>
+
+            {/* Consolation matchups — teams not in the bracket this round. These are
+                pairings chosen by pairNonBracketTeams at seed-time to minimize repeat
+                meetings across the full season. They don't progress the bracket, so
+                they're visually separated with a dashed divider + subtitle. */}
+            {round.consolationMatchups.length > 0 && (
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px dashed ${K.bdr}` }}>
+                <div style={{
+                  fontSize: 10, fontWeight: 700, color: K.t3,
+                  letterSpacing: 1.2, textTransform: "uppercase",
+                  marginBottom: 8,
+                  display: "flex", alignItems: "baseline", gap: 8,
+                }}>
+                  <span>Consolation</span>
+                  <span style={{ fontSize: 9, fontWeight: 400, color: K.t3, letterSpacing: 0, textTransform: "none" }}>
+                    Non-bracket tee times
+                  </span>
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {round.consolationMatchups.map((mu, mi) => (
+                    <MatchupCard key={mi} mu={mu} />
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Progression indicator between rounds */}
             {ri < bracketData.length - 1 && (
