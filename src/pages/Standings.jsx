@@ -139,17 +139,39 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
       ? { background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, color: K.logoBright }
       : { background: K.act, border: `1px solid ${K.act}`, color: K.logoBlue };
     if (!mu && showConfig && configMu) {
-      // Unfilled — show config labels
+      // Unfilled — show config labels. Single-row layout matches the filled variant.
       return (
-        <div style={{ background: K.card, borderRadius: 8, border: `1px solid ${K.bdr}`, overflow: "hidden", width: "100%" }}>
-          <div style={{ display: "flex", alignItems: "center", padding: "8px 10px", borderBottom: `1px solid ${K.bdr}30` }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: K.t3, flex: 1 }}>{slotLabel(configMu, "s1")}</div>
+        <div style={{
+          background: K.card, borderRadius: 8, border: `1px solid ${K.bdr}`,
+          overflow: "hidden", width: "100%",
+          display: "flex", alignItems: "stretch",
+        }}>
+          <div style={{
+            flex: 1, minWidth: 0, display: "flex", alignItems: "center",
+            padding: "8px 10px",
+            fontSize: 12, fontWeight: 600, color: K.t3,
+          }}>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {slotLabel(configMu, "s1")}
+            </span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", padding: "2px 10px", background: K.inp }}>
-            <span style={{ fontSize: 9, color: K.t3, fontWeight: 700 }}>VS</span>
+          <div style={{
+            flexShrink: 0, minWidth: 44,
+            background: K.inp,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "0 8px",
+            borderLeft: `1px solid ${K.bdr}40`, borderRight: `1px solid ${K.bdr}40`,
+          }}>
+            <span style={{ fontSize: 9, color: K.t3, fontWeight: 700, letterSpacing: 1 }}>VS</span>
           </div>
-          <div style={{ display: "flex", alignItems: "center", padding: "8px 10px" }}>
-            <div style={{ fontSize: 12, fontWeight: 600, color: K.t3, flex: 1 }}>{slotLabel(configMu, "s2")}</div>
+          <div style={{
+            flex: 1, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "flex-end",
+            padding: "8px 10px",
+            fontSize: 12, fontWeight: 600, color: K.t3,
+          }}>
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right" }}>
+              {slotLabel(configMu, "s2")}
+            </span>
           </div>
         </div>
       );
@@ -157,49 +179,81 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
 
     if (!mu) return null;
 
+    const t1Faded = mu.t2Won ? K.t3 : K.t1;
+    const t2Faded = mu.t1Won ? K.t3 : K.t1;
+    const t1BgTint = mu.t1Won ? K.matchGrn + "12" : "transparent";
+    const t2BgTint = mu.t2Won ? K.matchGrn + "12" : "transparent";
+    const outerBorder = mu.hasResult ? (mu.t1Won || mu.t2Won ? K.matchGrn + "40" : K.bdr) : K.bdr;
+
+    // Single-row horizontal layout: [seed·name·score]  VS/result  [score·name·seed]
+    // Winning team gets the green tint + left/right accent bar; losing team is muted.
     return (
-      <div style={{ background: K.card, borderRadius: 8, border: `1px solid ${mu.hasResult ? (mu.t1Won || mu.t2Won ? K.matchGrn + "40" : K.bdr) : K.bdr}`, overflow: "hidden", width: "100%" }}>
-        {/* Team 1 */}
+      <div style={{
+        background: K.card, borderRadius: 8, border: `1px solid ${outerBorder}`,
+        overflow: "hidden", width: "100%",
+        display: "flex", alignItems: "stretch",
+      }}>
+        {/* Team 1 — flex-grow so long names don't squeeze; tint runs the full half */}
         <div style={{
-          display: "flex", alignItems: "center", padding: "7px 10px",
-          background: mu.t1Won ? K.matchGrn + "12" : "transparent",
+          flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6,
+          padding: "7px 10px", background: t1BgTint,
           borderLeft: mu.t1Won ? `3px solid ${K.matchGrn}` : "3px solid transparent",
         }}>
           <div style={{
-            width: 18, height: 18, borderRadius: 5, flexShrink: 0, marginRight: 6,
+            width: 18, height: 18, borderRadius: 5, flexShrink: 0,
             ...badgeStyle,
             display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: 9, fontWeight: 800,
           }}>{mu.seed1}</div>
-          <div style={{ flex: 1, fontSize: 12, fontWeight: 700, color: mu.t1Won ? K.t1 : mu.t2Won ? K.t3 : K.t1 }}>
+          <div style={{
+            flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, color: t1Faded,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+          }}>
             {mu.name1}
           </div>
-          {mu.hasResult && <div style={{ fontSize: 13, fontWeight: 800, color: mu.t1Won ? K.matchGrn : K.t3, marginLeft: 6 }}>{mu.t1Pts}</div>}
+          {mu.hasResult && <div style={{ fontSize: 13, fontWeight: 800, color: mu.t1Won ? K.matchGrn : K.t3, flexShrink: 0 }}>{mu.t1Pts}</div>}
         </div>
-        {/* Divider */}
-        <div style={{ display: "flex", alignItems: "center", padding: "0 10px", background: K.inp, height: 20 }}>
-          <div style={{ flex: 1, height: 1, background: K.bdr + "40" }} />
-          <span style={{ fontSize: 9, fontWeight: 700, color: mu.hasResult ? K.acc : K.t3, padding: "0 8px", letterSpacing: 1 }}>
+
+        {/* VS / result pill — sits in the center, its own vertical strip */}
+        <div style={{
+          flexShrink: 0, minWidth: 44,
+          background: K.inp,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          padding: "0 8px",
+          borderLeft: `1px solid ${K.bdr}40`, borderRight: `1px solid ${K.bdr}40`,
+        }}>
+          <span style={{
+            fontSize: 9, fontWeight: 700,
+            color: mu.hasResult ? K.acc : K.t3,
+            letterSpacing: 1, whiteSpace: "nowrap",
+          }}>
             {mu.hasResult ? (mu.tied ? "TIED" : (mu.resultText || `${mu.t1Pts}-${mu.t2Pts}`)) : "VS"}
           </span>
-          <div style={{ flex: 1, height: 1, background: K.bdr + "40" }} />
         </div>
-        {/* Team 2 */}
+
+        {/* Team 2 — mirrored from team 1: score on the LEFT of name, seed on the RIGHT.
+            This reads naturally for a "who won" scan: the farther-right seed lines up
+            with the edge of the card. */}
         <div style={{
-          display: "flex", alignItems: "center", padding: "7px 10px",
-          background: mu.t2Won ? K.matchGrn + "12" : "transparent",
-          borderLeft: mu.t2Won ? `3px solid ${K.matchGrn}` : "3px solid transparent",
+          flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6,
+          padding: "7px 10px", background: t2BgTint,
+          borderRight: mu.t2Won ? `3px solid ${K.matchGrn}` : "3px solid transparent",
+          justifyContent: "flex-end",
         }}>
+          {mu.hasResult && <div style={{ fontSize: 13, fontWeight: 800, color: mu.t2Won ? K.matchGrn : K.t3, flexShrink: 0 }}>{mu.t2Pts}</div>}
           <div style={{
-            width: 18, height: 18, borderRadius: 5, flexShrink: 0, marginRight: 6,
+            flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, color: t2Faded,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            textAlign: "right",
+          }}>
+            {mu.name2}
+          </div>
+          <div style={{
+            width: 18, height: 18, borderRadius: 5, flexShrink: 0,
             ...badgeStyle,
             display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: 9, fontWeight: 800,
           }}>{mu.seed2}</div>
-          <div style={{ flex: 1, fontSize: 12, fontWeight: 700, color: mu.t2Won ? K.t1 : mu.t1Won ? K.t3 : K.t1 }}>
-            {mu.name2}
-          </div>
-          {mu.hasResult && <div style={{ fontSize: 13, fontWeight: 800, color: mu.t2Won ? K.matchGrn : K.t3, marginLeft: 6 }}>{mu.t2Pts}</div>}
         </div>
       </div>
     );

@@ -2432,8 +2432,17 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
             alert(`Previous playoff round (Week ${prevPlayoffWeek.week}) must be finalized first.`);
             return;
           }
+          // Slice to only the BRACKET matches from the prior round when building
+          // prevWinners/prevLosers — consolation matches share the matches array but
+          // must not feed into bracket progression. Bracket matches are always at the
+          // front of the array (consolation appended after at seed-time).
+          const prevRoundDef = (leagueConfig.playoffRounds || [])[playoffRound - 2];
+          const prevBracketCount = (prevRoundDef?.matchups || []).length;
+          const prevBracketMatches = prevBracketCount > 0
+            ? prevPlayoffWeek.matches.slice(0, prevBracketCount)
+            : prevPlayoffWeek.matches; // no config for prev round → treat all as bracket
           // Get winners and losers in match order
-          prevPlayoffWeek.matches.forEach((m, mi) => {
+          prevBracketMatches.forEach((m, mi) => {
             const r = prevResults.find(pr => pr.team1Id === m.team1 && pr.team2Id === m.team2);
             if (r) {
               const d = (r.team1Points || 0) - (r.team2Points || 0);

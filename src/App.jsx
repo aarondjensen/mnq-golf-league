@@ -653,6 +653,10 @@ export default function GolfLeagueApp() {
       if (!roundDef || !roundDef.matchups || !roundDef.matchups.length) break; // no config → can't seed this or later rounds
 
       // Round 2+ needs the prior playoff round to be locked AND have all match results.
+      // IMPORTANT: only consider BRACKET matches from the prior round when building the
+      // winners/losers lists — consolation matches now share the same week.matches array
+      // but must not feed into bracket progression (otherwise a consolation participant
+      // could be picked as "lowestLoser" and promoted into the next bracket round).
       let prevWinners = [];
       let prevLosers = [];
       if (pi > 0) {
@@ -661,7 +665,15 @@ export default function GolfLeagueApp() {
         if (!prevPWk.matches || prevPWk.matches.length === 0) break; // prior round not seeded
         const prevResults = (currentMatchResults || []).filter(r => r.week === prevPWk.week);
         if (prevResults.length < prevPWk.matches.length) break; // prior round not fully scored
-        prevPWk.matches.forEach((m) => {
+        // Slice to only the bracket portion — bracket matches were pushed first when the
+        // week was seeded, consolation appended after. The count comes from the PRIOR
+        // round's config, not this round's.
+        const prevRoundDef = playoffRoundsCfg[pi - 1];
+        const prevBracketCount = (prevRoundDef?.matchups || []).length;
+        const prevBracketMatches = prevBracketCount > 0
+          ? prevPWk.matches.slice(0, prevBracketCount)
+          : prevPWk.matches; // no config for prev round (round-1 fallback) → treat all as bracket
+        prevBracketMatches.forEach((m) => {
           const r = prevResults.find(pr => pr.team1Id === m.team1 && pr.team2Id === m.team2);
           if (r) {
             const d = (r.team1Points || 0) - (r.team2Points || 0);
