@@ -3,7 +3,7 @@ import { LEAGUE_ID, db } from "../firebase";
 import { K, FONTS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap,
   formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, lastNamesOnly,
-  buildStandingsForSeed as sharedBuildStandingsForSeed } from "../theme";
+  buildStandingsForSeed as sharedBuildStandingsForSeed, buildSeedMap } from "../theme";
 
 
 export default function AdminView(props) {
@@ -892,26 +892,12 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
   const gn = (id) => teams.find(t => t.id === id)?.name || "TBD";
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
-  // Compute current seed (standings rank) for each team
-  const seedMap = useMemo(() => {
-    // Use locked seeds if set, otherwise compute from current standings
-    const lockedSeeds = leagueConfig?.lockedSeeds;
-    if (lockedSeeds && lockedSeeds.length === teams.length) {
-      const map = {};
-      lockedSeeds.forEach((tid, i) => { map[tid] = i + 1; });
-      return map;
-    }
-    const pts = {};
-    teams.forEach(t => { pts[t.id] = 0; });
-    (matchResults || []).forEach(r => {
-      if (pts[r.team1Id] !== undefined) pts[r.team1Id] += (r.team1Points || 0);
-      if (pts[r.team2Id] !== undefined) pts[r.team2Id] += (r.team2Points || 0);
-    });
-    const sorted = Object.entries(pts).sort((a, b) => b[1] - a[1]);
-    const map = {};
-    sorted.forEach(([id], i) => { map[id] = i + 1; });
-    return map;
-  }, [teams, matchResults, leagueConfig?.lockedSeeds]);
+  // Compute current seed (standings rank) for each team — uses shared helper so Scoring
+  // and any other caller see the same seeding. Prefers lockedSeeds snapshot when present.
+  const seedMap = useMemo(
+    () => buildSeedMap(teams, matchResults, schedule, leagueConfig),
+    [teams, matchResults, schedule, leagueConfig]
+  );
 
   // ── Tab layout (setup / weekly / playoff) ──
   if (editWeek === null && (step === "setup" || step === "view" || step === "playoff")) {

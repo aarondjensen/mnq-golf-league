@@ -1,7 +1,8 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { K, FONTS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap,
-  lastNamesOnly, formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE } from "../theme";
+  lastNamesOnly, formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE,
+  buildSeedMap } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 
 // ═══════════════════════════════════════════════════════════════
@@ -329,6 +330,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   // ── Memoized strokes calculator ──
   const getStrokesMap = useMemo(() => buildStrokesCache(hcps), [hcps]);
+
+  // Seed numbers for team cards during seeded/playoff weeks (1 = best per current standings
+  // or locked-seeds snapshot). Hidden on pure round-robin weeks where every team plays every
+  // other team equally and seeds aren't meaningful.
+  const showSeeds = (weekSch?.seeded === true) || (weekSch?.isPlayoff === true);
+  const seedMap = useMemo(() => {
+    if (!showSeeds) return {};
+    return buildSeedMap(teams, matchResults, schedule, leagueConfig);
+  }, [showSeeds, teams, matchResults, schedule, leagueConfig]);
 
   const isWeekLocked = weekSch?.locked === true;
   const allMatchesFinalized = matches.every(m =>
@@ -769,6 +779,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div key={mi} style={{ background: K.card, borderRadius: 10, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}40`, overflow: "hidden" }}>
                 <button onClick={() => setExpandedMatch(isExp ? null : mi)} style={{ width: "100%", padding: "8px 10px", cursor: "pointer", textAlign: "left", background: "transparent", border: "none" }}>
                   <div style={{ display: "flex", alignItems: "center" }}>
+                    {showSeeds && (
+                      <div style={{ width: 22, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", marginRight: 4 }}>
+                        <div style={{ width: 20, height: 20, borderRadius: 5, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: K.logoBright }}>
+                          {seedMap[dispT1?.id] || "?"}
+                        </div>
+                      </div>
+                    )}
                     <div style={{ flex: 1, textAlign: "right", paddingRight: 4, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
                       <div style={{ fontSize: 14, fontWeight: t1NameWeight, color: t1NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT1?.player1)}</div>
                       <div style={{ fontSize: 14, fontWeight: t1NameWeight, color: t1NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT1?.player2)}</div>
@@ -803,6 +820,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       <div style={{ fontSize: 14, fontWeight: t2NameWeight, color: t2NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT2?.player1)}</div>
                       <div style={{ fontSize: 14, fontWeight: t2NameWeight, color: t2NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT2?.player2)}</div>
                     </div>
+                    {showSeeds && (
+                      <div style={{ width: 22, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", marginLeft: 4 }}>
+                        <div style={{ width: 20, height: 20, borderRadius: 5, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: K.logoBright }}>
+                          {seedMap[dispT2?.id] || "?"}
+                        </div>
+                      </div>
+                    )}
                     <div style={{ flexShrink: 0, marginLeft: 4, color: K.t3, fontSize: 12, transform: isExp ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</div>
                   </div>
                 </button>
@@ -878,11 +902,17 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     <div style={{ padding: "6px 8px 10px", borderTop: `1px solid ${K.bdr}30` }}>
                       <sc.HoleRow />
                       <sc.ParRow />
-                      <div style={{ fontSize: 9, fontWeight: 700, color: K.acc, textTransform: "uppercase", letterSpacing: 1, padding: "4px 4px 2px" }}>{dispT1.name}</div>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: K.acc, textTransform: "uppercase", letterSpacing: 1, padding: "4px 4px 2px" }}>
+                        {showSeeds && seedMap[dispT1?.id] && <span style={{ color: K.logoBright, marginRight: 4 }}>#{seedMap[dispT1.id]}</span>}
+                        {dispT1.name}
+                      </div>
                       {dispT1Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
                       <sc.TeamNetRow pids={dispT1Pids} isTeam1Side={true} />
                       <sc.MatchRow />
-                      <div style={{ fontSize: 9, fontWeight: 700, color: K.acc, textTransform: "uppercase", letterSpacing: 1, padding: "4px 4px 2px" }}>{dispT2.name}</div>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: K.acc, textTransform: "uppercase", letterSpacing: 1, padding: "4px 4px 2px" }}>
+                        {showSeeds && seedMap[dispT2?.id] && <span style={{ color: K.logoBright, marginRight: 4 }}>#{seedMap[dispT2.id]}</span>}
+                        {dispT2.name}
+                      </div>
                       {dispT2Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
                       <sc.TeamNetRow pids={dispT2Pids} isTeam1Side={false} />
                     </div>

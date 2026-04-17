@@ -107,6 +107,23 @@ export function buildStandingsForSeed(teams, matchResults, schedule, standingsMe
   return arr;
 }
 
+// ── Shared utility: { teamId -> seed number (1 = best) } ──
+// Prefers locked-seeds snapshot (leagueConfig.lockedSeeds) when present and complete.
+// Otherwise derives from standings via buildStandingsForSeed, so Admin, Scoring,
+// and any other caller all see the exact same seeding at any given moment.
+export function buildSeedMap(teams, matchResults, schedule, leagueConfig) {
+  const lockedSeeds = leagueConfig?.lockedSeeds;
+  if (lockedSeeds && Array.isArray(lockedSeeds) && lockedSeeds.length === teams.length) {
+    const map = {};
+    lockedSeeds.forEach((tid, i) => { map[tid] = i + 1; });
+    return map;
+  }
+  const standings = buildStandingsForSeed(teams, matchResults, schedule, leagueConfig?.standingsMethod);
+  const map = {};
+  standings.forEach((s, i) => { map[s.teamId] = i + 1; });
+  return map;
+}
+
 // ══════════════════════════════════════════════════════════════
 //  THEME
 // ══════════════════════════════════════════════════════════════

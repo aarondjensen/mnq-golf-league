@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect } from "react";
-import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, HERO_NUM_SIZE, CHEVRON_SIZE } from "../theme";
+import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, HERO_NUM_SIZE, CHEVRON_SIZE, buildSeedMap } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 import { SharedScorecard } from "./Scoring";
 
@@ -17,6 +17,16 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   useEffect(() => {
     if (setPopupOpen) setPopupOpen(!!editingMatch);
   }, [editingMatch, setPopupOpen]);
+
+  // Seed map for showing seed badges during seeded/playoff weeks.
+  // Uses shared helper — prefers lockedSeeds snapshot; falls back to current standings.
+  // Note: for past seeded weeks in leagues that DIDN'T lock seeds, this shows current
+  // standings rather than historical standings. The lockedSeeds workflow is the right
+  // tool if you want stable, at-the-time seeds for retrospective viewing.
+  const seedMap = useMemo(
+    () => buildSeedMap(teams, matchResults, schedule, leagueConfig),
+    [teams, matchResults, schedule, leagueConfig]
+  );
 
   const toggleWeek = (weekNum) => {
     setExpandedWeeks(prev => ({ ...prev, [weekNum]: !prev[weekNum] }));
@@ -524,6 +534,9 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const weekComplete = isWeekComplete(wk);
     const isRainedOut = wk.rainedOut === true;
     const isSeeded = wk.seeded === true && (!wk.matches || wk.matches.length === 0);
+    // Show seed badges on seeded (non-RR) and playoff weeks. RR weeks don't get seeds
+    // because every team plays every other team equally, so seeds aren't meaningful.
+    const showSeeds = (wk.seeded === true) || (wk.isPlayoff === true);
     const side = wk.side || getWeekSide(wk.week);
     const isExp = getExpanded(wk.week);
 
@@ -617,6 +630,12 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 return (
                   <div key={mi} style={{ background: K.card, borderRadius: 8, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}`, overflow: "hidden" }}>
                     <button onClick={() => res ? toggleMatchExpand(wk.week, mi) : null} style={{ width: "100%", padding: "8px 10px", display: "flex", alignItems: "center", background: "transparent", border: "none", cursor: res ? "pointer" : "default", textAlign: "left" }}>
+                      {/* Seed badge — left team */}
+                      {showSeeds && (
+                        <div style={{ width: 20, height: 20, flexShrink: 0, borderRadius: 5, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: K.logoBright, marginRight: 4 }}>
+                          {seedMap[t1?.id] || "?"}
+                        </div>
+                      )}
                       {/* Left team */}
                       <div style={{ flex: 1, textAlign: "right", paddingRight: res && score1 > score2 ? 8 : 18, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
                         <div style={{ fontSize: NAME_SIZE, fontWeight: res && score1 > score2 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player1)}</div>
@@ -647,6 +666,12 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                         <div style={{ fontSize: NAME_SIZE, fontWeight: res && score2 > score1 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player2)}</div>
                         <div style={{ fontSize: 12, color: K.t3, fontWeight: 600, marginTop: 2 }}>{fmtRecord(t2?.id, wk.week)}</div>
                       </div>
+                      {/* Seed badge — right team */}
+                      {showSeeds && (
+                        <div style={{ width: 20, height: 20, flexShrink: 0, borderRadius: 5, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: K.logoBright, marginLeft: 4 }}>
+                          {seedMap[t2?.id] || "?"}
+                        </div>
+                      )}
                       {/* Expand chevron — only for finalized matches */}
                       {res && (
                         <div style={{ flexShrink: 0, marginLeft: 4, color: K.t3, fontSize: 10, transform: isMatchExp ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</div>
