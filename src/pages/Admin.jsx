@@ -554,14 +554,22 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
   const [seedsDirty, setSeedsDirty] = useState(false);
   // Snapshot of setup fields as currently stored in leagueConfig.
   // Used for dirty detection: cfg vs this snapshot.
-  // customSeedWeeks/playoffRounds are saved through their own code paths — not tracked here.
+  // customSeedWeeks has its own localSeedWeeks tracker; everything else (including
+  // playoffRounds) flows through cfg and needs to be dirty-tracked here.
   const cfgSnapshot = useMemo(() => cfgFromLeague(leagueConfig), [leagueConfig]);
+  const storedPlayoffRounds = useMemo(
+    () => JSON.stringify(leagueConfig.playoffRounds ?? []),
+    [leagueConfig.playoffRounds]
+  );
 
   // Watch cfg; when any tracked setup field diverges from the stored snapshot, flag dirty.
+  // Primitive fields use identity compare; playoffRounds is an array of objects so it needs
+  // a deep compare via JSON serialization (fast enough for our small bracket configs).
   useEffect(() => {
-    const changed = Object.keys(cfgSnapshot).some(k => cfg[k] !== cfgSnapshot[k]);
-    setSetupDirty(changed);
-  }, [cfg, cfgSnapshot]);
+    const primitivesChanged = Object.keys(cfgSnapshot).some(k => cfg[k] !== cfgSnapshot[k]);
+    const playoffsChanged = JSON.stringify(cfg.playoffRounds ?? []) !== storedPlayoffRounds;
+    setSetupDirty(primitivesChanged || playoffsChanged);
+  }, [cfg, cfgSnapshot, storedPlayoffRounds]);
 
   // Sync cfg from leagueConfig when it loads/refreshes — but only while clean,
   // so user edits are never clobbered mid-edit.
