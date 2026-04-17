@@ -73,9 +73,25 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
   return (
     <div>
       <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
-        {playerStats.map(p => (
+        {playerStats.map(p => {
+          const isExpanded = expanded === p.id;
+          return (
           <div key={p.id}>
-            <div style={{ display: "flex", alignItems: "center", background: K.card, borderRadius: expanded === p.id ? `${CARD_RADIUS}px ${CARD_RADIUS}px 0 0` : CARD_RADIUS, border: `1px solid ${K.bdr}`, borderBottom: expanded === p.id ? "none" : `1px solid ${K.bdr}`, padding: "10px 14px", gap: 8 }}>
+            <div
+              onClick={() => setExpanded(isExpanded ? null : p.id)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpanded(isExpanded ? null : p.id); } }}
+              style={{
+                display: "flex", alignItems: "center",
+                background: K.card,
+                borderRadius: isExpanded ? `${CARD_RADIUS}px ${CARD_RADIUS}px 0 0` : CARD_RADIUS,
+                border: `1px solid ${K.bdr}`,
+                borderBottom: isExpanded ? "none" : `1px solid ${K.bdr}`,
+                padding: "10px 14px", gap: 8,
+                cursor: "pointer", userSelect: "none",
+              }}
+            >
               <div style={{ flex: 1, fontSize: NAME_SIZE, fontWeight: 600, display: "flex", alignItems: "center", gap: 6 }}>
                 {p.name}
                 {commPlayerIds.includes(p.id) && <span style={{ fontSize: 8, fontWeight: 700, color: K.warn, background: K.warn + "18", padding: "1px 5px", borderRadius: 3, textTransform: "uppercase", letterSpacing: .5 }}>Comm</span>}
@@ -91,14 +107,23 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
                     <span>{Math.abs(p.hcpChange)}</span>
                   </div>
                 )}
-                <button onClick={() => setExpanded(expanded === p.id ? null : p.id)} style={{
+                <div style={{
                   background: K.logoBright + "20", border: `1px solid ${K.logoBright}50`, borderRadius: 6,
-                  width: 38, height: 30, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 16, fontWeight: 800, color: K.t1, padding: 0,
-                }}>{p.idx}</button>
+                  width: 38, height: 30, display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 16, fontWeight: 800, color: K.t1,
+                }}>{p.idx}</div>
+                {/* Chevron — rotates when row is expanded so the affordance stays consistent
+                    with the rest of the app (Standings, Schedule use the same pattern). */}
+                <span style={{
+                  fontSize: CHEVRON_SIZE, color: K.t3,
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  width: 16, lineHeight: 1, marginLeft: 2,
+                  transform: isExpanded ? "rotate(180deg)" : "rotate(0deg)",
+                  transition: "transform .18s ease",
+                }}>▾</span>
               </div>
             </div>
-            {expanded === p.id && (
+            {isExpanded && (
               <div style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderTop: "none", borderRadius: `0 0 ${CARD_RADIUS}px ${CARD_RADIUS}px`, padding: "10px 10px", fontSize: 12 }}>
                 {p.recentRounds.length === 0 ? (
                   <div style={{ color: K.t3, fontStyle: "italic", padding: 4 }}>No completed rounds found</div>
@@ -128,7 +153,8 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
               </div>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
