@@ -489,26 +489,31 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
 
                       // Card Y positions. For r<=1: flow normally from top with BASE_GAP.
                       // For r>=2 advancement cards: topPad + index * (CARD_HEIGHT + gap).
-                      // For r>=2 consolation cards: align with prior round's card at the
-                      // corresponding "leftover" index — concretely, consolation card c
-                      // (0-indexed among consolation cards, so mi - advCount) aligns with
-                      // prior round's card at index (advCount*2 + c) if advancing normally,
-                      // but the typical case (3rd-place after a single championship) means
-                      // c=0 aligns with prior round's card at index 1 (the OTHER match).
-                      //
-                      // Simpler rule that works for the common cases:
-                      //   - 1 advancement + 1 consolation from a 2-match prior round:
-                      //     consolation Y = prior round card[1] Y
-                      //   - More broadly: consolation card c sits at prior card index (advCount + c)
-                      const priorG = ri > 0 ? geom[ri - 1] : null;
+                      // For r>=2 consolation cards: align with the LAST match of Round 1
+                      // (the first real bracket round). For a standard 8-team bracket this
+                      // means the 4th QF, which is the semantic "source" of the loser
+                      // bracket's inputs — losing SFs came from the second-half QFs.
                       const cardY = (mi) => {
                         if (ri <= 1) return mi * (CARD_HEIGHT + gap);
                         if (mi < advCount) return topPad + mi * (CARD_HEIGHT + gap);
-                        // Consolation card — align with prior round card at index
-                        // (advCount + (mi - advCount)) = mi's remapped slot
-                        const priorIdx = advCount + (mi - advCount);
-                        if (!priorG) return topPad + mi * (CARD_HEIGHT + gap);
-                        return priorG.topPad + priorIdx * (CARD_HEIGHT + priorG.gap);
+                        // Consolation card — align with the LAST match of the first real
+                        // bracket round (index 1 in bracketData — round 0 is qualifying).
+                        // If we don't have a Round 1, fall back to the prior round's last
+                        // match so the card is still in the column.
+                        const anchorRoundIdx = bracketData.length > 1 ? 1 : ri - 1;
+                        const anchorG = geom[anchorRoundIdx];
+                        const anchorRound = bracketData[anchorRoundIdx];
+                        const anchorMatchCount = Math.max(
+                          anchorRound?.matchups.length || 0,
+                          anchorRound?.config.length || 0,
+                          1
+                        );
+                        // For multiple consolation cards (future-proof), stack them starting
+                        // from the bottom of the anchor round upward.
+                        const consolationIdx = mi - advCount;
+                        const anchorCardIdx = Math.max(0, anchorMatchCount - 1 - consolationIdx);
+                        if (!anchorG) return topPad + mi * (CARD_HEIGHT + gap);
+                        return anchorG.topPad + anchorCardIdx * (CARD_HEIGHT + anchorG.gap);
                       };
 
                       // Total column height — max of advancement block end and consolation card end
