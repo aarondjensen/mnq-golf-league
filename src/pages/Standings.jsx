@@ -749,25 +749,33 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
   const [allRounds, setAllRounds] = useState(null); // { playerId: [{ season, week, gross }] }
   const [loading, setLoading] = useState(true);
 
-  // Find playoff weeks that are actually in-play. A week counts only when at least
-  // one match has been SIGNED — without that, any hole-score documents present in
-  // Firestore for that week are either stale test data or practice entries, not
-  // real round scores, and should not appear on the leaderboard.
+  // Identify the "final round" — the last round in the configured bracket. During
+  // the final round, the leaderboard updates live: we don't wait for signed match
+  // results, and we refresh scores on a short interval so everyone watching can
+  // see the tournament unfold in real time.
   //
-  // This also fixes the classic "test scores from Week N appear for players who
-  // never teed up that week" problem — resetting the season wipes scores but if
-  // scores are entered and then undone (without commission-level cleanup), the
-  // raw score docs can linger. Gating on signed match results ensures only
-  // officially played rounds show up here.
+  // Earlier rounds DO wait for a signed match — this protects the leaderboard
+  // from stale test data or abandoned partial entries. You can think of the
+  // non-final round gate as "official scores only" and the final round as
+  // "live scoring window, show everything".
+  const finalRoundWeek = useMemo(() => {
+    const allPlayoffWeeks = schedule
+      .filter(wk => wk.isPlayoff === true && !wk.rainedOut && wk.matches?.length > 0)
+      .sort((a, b) => a.week - b.week);
+    return allPlayoffWeeks[allPlayoffWeeks.length - 1]?.week ?? null;
+  }, [schedule]);
+
   const playoffWeeks = useMemo(() =>
     schedule.filter(wk => {
       if (wk.rainedOut || wk.isPlayoff !== true) return false;
       if (!(wk.matches?.length > 0)) return false;
-      // At least one match for this week must have been signed (match result saved).
-      const hasSignedMatch = (matchResults || []).some(r => r.week === wk.week);
-      return hasSignedMatch;
+      // FINAL round: always include (live scoring window).
+      if (wk.week === finalRoundWeek) return true;
+      // EARLIER rounds: require at least one signed match result for this week,
+      // so stale test scores or abandoned entries can't show up.
+      return (matchResults || []).some(r => r.week === wk.week);
     }).sort((a, b) => a.week - b.week),
-    [schedule, matchResults]
+    [schedule, matchResults, finalRoundWeek]
   );
   // Total number of rounds configured for the tournament. Sourced from the admin's
   // bracket setup so the header count stays stable even when later rounds aren't
@@ -796,8 +804,11 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
   useEffect(() => {
     if (!playoffWeeks.length || !fetchWeekScores) return;
     let cancelled = false;
-    setLoading(true);
-    (async () => {
+
+    // Full refresh — scores for all playoff weeks + history for per-round HCP calc.
+    // This is the initial load path.
+    const fullFetch = async (showLoading) => {
+      if (showLoading) setLoading(true);
       const all = {};
       for (const wk of playoffWeeks) {
         const wkScores = await fetchWeekScores(wk.week);
@@ -810,10 +821,49 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
         if (cancelled) return;
         setAllRounds(hist);
       }
-      setLoading(false);
-    })();
-    return () => { cancelled = true; };
-  }, [playoffWeeks, fetchWeekScores, fetchAllScores]);
+      if (showLoading) setLoading(false);
+    };
+
+    // Lightweight refresh — only the final round's scores. Used by the polling
+    // interval during live final-round play so we don't redownload earlier rounds
+    // on every tick (their scores are already final and won't change).
+    const finalRoundOnlyFetch = async () => {
+      if (!finalRoundWeek) return;
+      const wkScores = await fetchWeekScores(finalRoundWeek);
+      if (cancelled) return;
+      setScores(prev => {
+        // Keep prior rounds' data, replace the final round's keys.
+        const merged = { ...prev };
+        // Strip any old final-round keys first so deletions propagate.
+        for (const k of Object.keys(merged)) {
+          if (k.startsWith(`w${finalRoundWeek}_`)) delete merged[k];
+        }
+        return { ...merged, ...wkScores };
+      });
+    };
+
+    // Kick off the initial load.
+    fullFetch(true);
+
+    // LIVE LEADERBOARD — while the final round is a playoffWeek (i.e. it's
+    // scheduled and has matches), poll its scores every 20s. The final round
+    // is the only one where it's useful to see the leaderboard updating in
+    // real time — earlier rounds' positions don't change the tournament outcome.
+    //
+    // Polling is kept short (20s) because round play is typically under 2 hours
+    // and users checking the standings tab expect to see recent scores reflected.
+    // The full-history fetch doesn't re-poll since historical rounds don't change.
+    const isFinalRoundLive = !!finalRoundWeek && playoffWeeks.some(wk => wk.week === finalRoundWeek);
+    let pollId = null;
+    if (isFinalRoundLive) {
+      pollId = setInterval(() => { finalRoundOnlyFetch(); }, 20_000);
+    }
+
+    return () => {
+      cancelled = true;
+      if (pollId) clearInterval(pollId);
+    };
+  }, [playoffWeeks, finalRoundWeek, fetchWeekScores, fetchAllScores]);
 
   // Build leaderboard: each player's net total across playoff rounds.
   // KEY DIFFERENCE from prior implementation: handicap is NOT a single value per player.
@@ -865,10 +915,27 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
         ? handicapBeforeWeek(p, season, firstWk.week)
         : (calcPlayerHcp(allRounds?.[p.id] || [], recentN, bestN, frontPar) ?? (p.handicapIndex ?? 0));
 
+      // Find the player's teammate for this playoff season's roster. Used below to
+      // resolve scores when the player was marked absent for a round — the absent
+      // flag is recorded as `w{week}_p{pid}_habsent=1` with NO per-hole score docs,
+      // so we have to read the teammate's score documents instead.
+      const team = teams.find(t => t.player1 === p.id || t.player2 === p.id);
+      const teammateId = team
+        ? (team.player1 === p.id ? team.player2 : team.player1)
+        : null;
+
       for (const wk of playoffWeeks) {
         const side = wk.side || 'front';
         const pars = side === 'front' ? frontPars : backPars;
         const parTotal = pars.reduce((a, b) => a + b, 0);
+
+        // Detect absent: when the flag exists we sub in the teammate's raw scores
+        // as the player's effective scores (mirroring Scoring.jsx's absent handling).
+        // Without this, absent players appear to have zero scores for the week and
+        // get dropped from the leaderboard for that round — even though the MATCH
+        // was played normally by their teammate.
+        const isAbsent = scores[`w${wk.week}_p${p.id}_habsent`] === 1;
+        const effectivePid = isAbsent && teammateId ? teammateId : p.id;
 
         let gross = 0;
         let hasScores = false;
@@ -876,7 +943,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
         // App.jsx and the historical-data imports both use 0..8. Using h=1..9 here
         // would miss every score and produce an all-blank leaderboard.
         for (let h = 0; h <= 8; h++) {
-          const key = `w${wk.week}_p${p.id}_h${h}`;
+          const key = `w${wk.week}_p${effectivePid}_h${h}`;
           const s = scores[key];
           if (s && s > 0) { gross += s; hasScores = true; }
         }
@@ -884,18 +951,18 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
         if (hasScores) {
           // Per-round handicap — computed from history BEFORE this week, so it matches
           // what the player was actually playing off of when they teed up that round.
+          // Absent player still uses their OWN handicap (not teammate's) — the gross
+          // score is the teammate's, but net is computed against the player's hcp.
           const roundHcp = handicapBeforeWeek(p, season, wk.week);
           const net = gross - roundHcp;
           totalGross += gross;
           totalNet += net;
           roundsPlayed++;
-          rounds.push({ week: wk.week, date: wk.date, side, gross, net, nineHcp: roundHcp, parTotal, toPar: net - parTotal });
+          rounds.push({ week: wk.week, date: wk.date, side, gross, net, nineHcp: roundHcp, parTotal, toPar: net - parTotal, absent: isAbsent });
         }
       }
 
-      // Find team for display
-      const team = teams.find(t => t.player1 === p.id || t.player2 === p.id);
-
+      // team already found above (for teammate lookup during absent handling)
       return {
         playerId: p.id,
         name: p.name,
@@ -931,11 +998,36 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
 
   const leaderName = leaderboard[0]?.roundsPlayed > 0 ? leaderboard[0].name.split(" ").pop() : null;
 
+  // Show a LIVE badge when the final round is active — visible signal that the
+  // leaderboard is auto-refreshing every 20 seconds. Only shown when the final
+  // round is in the playoffWeeks list (i.e. it has matches seeded).
+  const isFinalRoundLive = !!finalRoundWeek && playoffWeeks.some(wk => wk.week === finalRoundWeek);
+
   return (
     <div style={{ padding: "0 2px" }}>
       {/* Header */}
-      <div style={{ fontSize: 11, color: K.t3, marginBottom: 10, textAlign: "center" }}>
-        Net stroke play · {totalRounds} round{totalRounds !== 1 ? "s" : ""} · All players
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 10 }}>
+        <div style={{ fontSize: 11, color: K.t3 }}>
+          Net stroke play · {totalRounds} round{totalRounds !== 1 ? "s" : ""} · All players
+        </div>
+        {isFinalRoundLive && (
+          <>
+            <style>{`
+              @keyframes mnqLivePulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
+            `}</style>
+            <div style={{
+              display: "inline-flex", alignItems: "center", gap: 4,
+              padding: "2px 7px", borderRadius: 10,
+              background: K.red + "18", border: `1px solid ${K.red}40`,
+            }}>
+              <div style={{
+                width: 6, height: 6, borderRadius: "50%", background: K.red,
+                animation: "mnqLivePulse 1.5s ease-in-out infinite",
+              }} />
+              <span style={{ fontSize: 9, fontWeight: 800, color: K.red, letterSpacing: .8 }}>LIVE</span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Leaderboard */}
