@@ -272,7 +272,7 @@ export const getTheme = (mode = "dark") => {
   };
 };
 
-const _savedMode = (() => { try { return typeof window !== 'undefined' && localStorage.getItem("mnq_theme") === "light" ? "light" : "dark"; } catch { return "dark"; } })();
+const _savedMode = (() => { try { return typeof window !== 'undefined' && localStorage.getItem("mnq_theme") === "dark" ? "dark" : "light"; } catch { return "light"; } })();
 export const K = { ...getTheme(_savedMode) };
 export function applyTheme(mode) {
   const next = getTheme(mode);

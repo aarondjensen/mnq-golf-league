@@ -71,7 +71,7 @@ export default function GolfLeagueApp() {
   const [openAllMatches, setOpenAllMatches] = useState(false);
   const [forceWeek, setForceWeek] = useState(null);
   const [darkMode, setDarkMode] = useState(() => {
-    try { return localStorage.getItem("mnq_theme") !== "light"; } catch { return true; }
+    try { return localStorage.getItem("mnq_theme") === "dark"; } catch { return false; }
   });
 
   // Pull-to-refresh
