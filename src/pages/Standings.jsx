@@ -407,25 +407,43 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
         //
         // Round 0 (qualifying) and Round 1 (bracket start) are visually disconnected —
         // both start at the top of their column with no offset.
+        //
+        // PEER ROUNDS: if a round has the SAME match count as the prior round, it's
+        // a consolation/third-place match running in parallel — we align it with the
+        // prior round's cards (same topPad, same gap) rather than doubling.
         const geom = (() => {
           const out = [];
           let tp = 0;
-          let prevSpacing = 0; // card-to-card center distance in the previous round
+          let prevSpacing = 0;     // card-to-card center distance in the previous round
+          let prevMatchCount = 0;  // match count in the previous round
           for (let r = 0; r < bracketData.length; r++) {
+            const currMatchCount = Math.max(
+              bracketData[r].matchups.length,
+              bracketData[r].config.length,
+              1
+            );
             if (r <= 1) {
               // Round 0 and Round 1 both start plain — no offset, standard gap.
               out.push({ gap: BASE_GAP, topPad: 0 });
               prevSpacing = CARD_HEIGHT + BASE_GAP; // Round 1 is the reference for Round 2
+            } else if (currMatchCount === prevMatchCount) {
+              // Peer round — matches a parallel bracket stream (e.g. a consolation
+              // or third-place game that runs the same week as a semifinal). Use the
+              // prior round's spacing and topPad so they line up side-by-side.
+              const newGap = prevSpacing - CARD_HEIGHT;
+              const prior = out[r - 1];
+              out.push({ gap: newGap, topPad: prior.topPad });
+              // prevSpacing stays the same for the next iteration
             } else {
-              // Round 2+ — each card's center must sit exactly between its pair from
-              // the prior round. So: new spacing = prev spacing × 2, new topPad
-              // accumulates by half the prior spacing.
+              // Advancement round — each card sits at the midpoint of its pair from
+              // the prior round. Spacing doubles, topPad accumulates by half the prior.
               tp = tp + prevSpacing / 2;
               const newSpacing = prevSpacing * 2;
               const newGap = newSpacing - CARD_HEIGHT;
               out.push({ gap: newGap, topPad: tp });
               prevSpacing = newSpacing;
             }
+            prevMatchCount = currMatchCount;
           }
           return out;
         })();
@@ -504,10 +522,23 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
                                 per source card.
                                 SKIP for Round 0 → Round 1: Round 0 is the qualifying
                                 round and its winners seed into Round 1 based on seed
-                                number, not direct advancement. Connectors there would
-                                visually imply "this match feeds that match" which isn't
-                                how the bracket works. */}
-                            {ri >= 1 && ri < bracketData.length - 1 && (
+                                number, not direct advancement.
+                                SKIP for peer rounds: if the next round has the SAME
+                                match count, it's a parallel consolation/third-place
+                                stream — it doesn't advance from these matches. */}
+                            {(() => {
+                              if (ri < 1 || ri >= bracketData.length - 1) return false;
+                              const nextCount = Math.max(
+                                bracketData[ri + 1].matchups.length,
+                                bracketData[ri + 1].config.length,
+                                1
+                              );
+                              // Advancement round = next round has fewer matches than this
+                              // one (pairs feed forward). Peer rounds (same count) are
+                              // parallel consolation/third-place streams and don't get
+                              // connector lines.
+                              return nextCount < matchCount;
+                            })() && (
                               <>
                                 {/* Outgoing horizontal stub from this card's midpoint */}
                                 <div style={{
