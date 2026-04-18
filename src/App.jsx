@@ -718,14 +718,36 @@ export default function GolfLeagueApp() {
       };
 
       const bracketMatches = [];
+      const usedTeamIds = new Set();
+      let hasDuplicate = false;
       for (const mu of roundDef.matchups) {
         const t1 = resolveSlot(mu, "s1");
         const t2 = resolveSlot(mu, "s2");
-        if (t1 && t2) bracketMatches.push({ team1: t1, team2: t2 });
+        if (!t1 || !t2) continue;
+        // SAFETY: a team can never play two matches in the same week. If the
+        // bracket configuration resolves the same team into two slots (most
+        // commonly when a config uses both "seed N" and "winner of M" that
+        // happens to be the same team), we skip the duplicate instead of
+        // writing a broken bracket. This produces an under-sized bracket
+        // which the admin will notice and can fix in the bracket config.
+        if (usedTeamIds.has(t1) || usedTeamIds.has(t2) || t1 === t2) {
+          hasDuplicate = true;
+          console.warn(
+            `[autoSeedIfReady] Skipping duplicate team in Round ${pi + 1} ` +
+            `(week ${pWk.week}): matchup ${JSON.stringify(mu)} resolves to ` +
+            `t1=${t1} t2=${t2} — already used: ${[...usedTeamIds].join(", ")}`
+          );
+          continue;
+        }
+        usedTeamIds.add(t1);
+        usedTeamIds.add(t2);
+        bracketMatches.push({ team1: t1, team2: t2 });
       }
 
-      // Sanity check: did we resolve every matchup the config expects?
-      if (bracketMatches.length !== roundDef.matchups.length) break;
+      // If the config is broken (duplicate team references), still try to seed
+      // what we can and let the admin see the incomplete bracket rather than
+      // writing a week where one team plays itself or plays twice.
+      if (bracketMatches.length !== roundDef.matchups.length && !hasDuplicate) break;
 
       // Add consolation matchups so teams not in the bracket still have tee times.
       // Picks pairings that minimize repeat meetings based on full-season history.

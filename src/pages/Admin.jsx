@@ -2478,14 +2478,42 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           return null;
         };
 
+        const usedTeamIds = new Set();
+        const duplicateInfo = [];
         for (const mu of roundDef.matchups) {
           const t1 = resolveSlot(mu, "s1");
           const t2 = resolveSlot(mu, "s2");
-          if (t1 && t2) matches.push({ team1: t1, team2: t2 });
+          if (!t1 || !t2) continue;
+          // SAFETY: a team cannot play two matches in the same week. If the bracket
+          // configuration resolves the same team into two slots (e.g. "seed 8" in
+          // one match + "winner of qualifying" in another where seed 8 won), skip
+          // the duplicate and warn the commissioner.
+          if (usedTeamIds.has(t1) || usedTeamIds.has(t2) || t1 === t2) {
+            duplicateInfo.push({ mu, t1, t2 });
+            continue;
+          }
+          usedTeamIds.add(t1);
+          usedTeamIds.add(t2);
+          matches.push({ team1: t1, team2: t2 });
         }
 
         if (matches.length !== roundDef.matchups.length) {
-          alert("Could not resolve all matchups. Make sure previous rounds are finalized and bracket is configured correctly.");
+          if (duplicateInfo.length > 0) {
+            // Show a commissioner-friendly explanation of what went wrong. The most
+            // common cause: the Round 2+ bracket config has "seed N" and "winner of
+            // prior match" pointing at the same team.
+            const dupDetail = duplicateInfo.map(d => {
+              const nameFor = (id) => teams.find(t => t.id === id)?.name || id;
+              return `· ${nameFor(d.t1)} vs ${nameFor(d.t2)}`;
+            }).join("\n");
+            alert(
+              `Bracket configuration has duplicate teams — the same team is ` +
+              `resolved into two matches. Fix the bracket matchups so each team ` +
+              `appears only once per round.\n\nSkipped:\n${dupDetail}`
+            );
+          } else {
+            alert("Could not resolve all matchups. Make sure previous rounds are finalized and bracket is configured correctly.");
+          }
           return;
         }
 
