@@ -9,13 +9,31 @@ import { LEAGUE_ID } from "../firebase";
 //  ScoreCell — golf scorecard notation (circles, squares, dots)
 // ═══════════════════════════════════════════════════════════════
 export function ScoreCell({ score, par, strokes, size = 13, color: colorOverride }) {
-  if (!score || score <= 0) return <span style={{ color: K.t3 + "30", fontSize: size }}>·</span>;
-  const diff = score - par;
   const s = size;
   const sh = s + 8;
+  const dotH = 10;
   const bc = colorOverride || K.t2;
   const textColor = colorOverride || undefined;
-  const dotH = 10;
+
+  // Empty cell: show the placeholder dot AND any stroke marks the player gets on
+  // this hole. This way a blank scorecard at the start of a round still
+  // communicates "this player has a stroke here" — useful for the team during
+  // play. Match the scored-cell layout (stroke-dots row above the score area)
+  // so row heights line up before and after a score is entered.
+  if (!score || score <= 0) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", height: dotH + sh, justifyContent: "flex-end" }}>
+        <div style={{ height: dotH, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+          {strokes > 0 && <span style={{ color: colorOverride || "#3b82f6", fontSize: 10, fontWeight: 900, letterSpacing: 1, lineHeight: 1 }}>{"•".repeat(strokes)}</span>}
+        </div>
+        <div style={{ width: sh, height: sh, display: "flex", alignItems: "center", justifyContent: "center" }}>
+          <span style={{ color: K.t3 + "30", fontSize: size, lineHeight: 1 }}>·</span>
+        </div>
+      </div>
+    );
+  }
+
+  const diff = score - par;
 
   let border = null;
   if (diff <= -2) {
