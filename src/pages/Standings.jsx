@@ -394,41 +394,29 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
 
         const COL_WIDTH = 132;         // column width — snug but fits the longest team names
         const CARD_HEIGHT = 52;        // approx height of a 2-team BracketCard after padding trim
-        const BASE_GAP = 10;           // gap between matchups in Round 1 — much tighter than before
+        const BASE_GAP = 10;           // gap between matchups — same across all rounds
         const COL_SPACING = 12;        // horizontal space between columns (connector width)
-        // Compression factor for later-round gaps. 1.0 = mathematically perfect centering
-        // (every card sits exactly at the midpoint of its pair), but that makes Round 2
-        // very tall and wastes vertical space on phones. Values < 1 pull later-round
-        // cards slightly above the true midpoint — barely perceptible since the connector
-        // lines still render proportionally, just with a tighter overall footprint.
-        const GAP_COMPRESSION = 0.55;
 
-        // Centering geometry — each round's matches are centered between their pair from
-        // the previous round. See GAP_COMPRESSION above for how we tighten later rounds.
+        // Uniform spacing across all rounds — every round uses BASE_GAP between its
+        // cards, so Round 2 feels as tight as Round 1 instead of doubling.
+        //
+        // Each round's first card is top-padded so it visually sits at the midpoint of
+        // its pair from the prior round. We compute that midpoint once (the pair span
+        // is CARD_HEIGHT + BASE_GAP) and accumulate it down through rounds. The
+        // connector lines still use the per-round gap, so visually the lines land
+        // correctly even though the actual position of the round-N card isn't
+        // mathematically centered — it's close enough to read as centered.
         const geom = (() => {
           const out = [];
-          let g = BASE_GAP;
           let tp = 0;
           for (let r = 0; r < bracketData.length; r++) {
             if (r === 0) {
               out.push({ gap: BASE_GAP, topPad: 0 });
             } else {
-              // Ideal values for true centering
-              const idealTp = tp + (CARD_HEIGHT + g) / 2;
-              const idealGap = CARD_HEIGHT + 2 * g;
-              // Compress both toward a tighter footprint — keep a minimum gap so cards
-              // never overlap or touch.
-              const compressed = Math.max(
-                CARD_HEIGHT + BASE_GAP,                         // minimum: one card + base gap (no overlap)
-                CARD_HEIGHT + (idealGap - CARD_HEIGHT) * GAP_COMPRESSION,
-              );
-              const compressedTp = Math.max(
-                BASE_GAP,                                       // minimum top pad so round's first card isn't flush to top
-                (idealTp) * GAP_COMPRESSION,
-              );
-              tp = compressedTp;
-              g = compressed;
-              out.push({ gap: g, topPad: tp });
+              // Shift this round's first card down by half a pair-span so it visually
+              // lines up with the midpoint of round r-1's first two cards.
+              tp = tp + (CARD_HEIGHT + BASE_GAP) / 2;
+              out.push({ gap: BASE_GAP, topPad: tp });
             }
           }
           return out;
@@ -479,49 +467,62 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
                         const mu = round.matchups[mi];
                         const configMu = round.config[mi];
                         const isLast = mi === matchCount - 1;
+
+                        // Compute where the next round's matching card sits vertically
+                        // relative to THIS card. We want the connector's vertical leg to
+                        // reach from this card's midpoint up or down to the midpoint of
+                        // the next round's target card.
+                        //
+                        // This card's Y-center (relative to its round's column top):
+                        //   topPad + mi * (CARD_HEIGHT + gap) + CARD_HEIGHT/2
+                        // Next round's target card index: Math.floor(mi / 2)
+                        // Next round's card Y-center:
+                        //   geom[ri+1].topPad + floor(mi/2) * (CARD_HEIGHT + geom[ri+1].gap) + CARD_HEIGHT/2
+                        let nextCardDeltaY = 0;
+                        if (ri < bracketData.length - 1) {
+                          const currCenterY = topPad + mi * (CARD_HEIGHT + gap) + CARD_HEIGHT / 2;
+                          const nextG = geom[ri + 1];
+                          const nextTargetIdx = Math.floor(mi / 2);
+                          const nextCenterY = nextG.topPad + nextTargetIdx * (CARD_HEIGHT + nextG.gap) + CARD_HEIGHT / 2;
+                          nextCardDeltaY = nextCenterY - currCenterY; // positive = next card is below, negative = above
+                        }
+
                         return (
                           <div key={mi} style={{ marginBottom: isLast ? 0 : gap, position: "relative" }}>
                             <BracketCard mu={mu} configMu={configMu} />
-                            {/* Connector from this card out to the next round's card.
-                                Horizontal stub, then vertical join for pairs, then a
-                                horizontal stub into the next round's card. COL_SPACING
-                                is 12px so we use 6px per half-stub. */}
+                            {/* Connector from this card out to the next round's target
+                                card. Horizontal stub → vertical leg to the target's
+                                Y-center → horizontal stub into the target. Drawn once
+                                per source card. */}
                             {ri < bracketData.length - 1 && (
                               <>
-                                {/* outgoing horizontal stub from this card */}
+                                {/* Outgoing horizontal stub from this card's midpoint */}
                                 <div style={{
                                   position: "absolute", top: "50%", right: -6,
                                   width: 6, height: 1, background: K.bdr,
                                 }} />
-                                {/* vertical join — top of pair goes down, bottom goes up */}
-                                {mi % 2 === 0 && mi + 1 < matchCount && (
-                                  <div style={{
-                                    position: "absolute", top: "50%", right: -6,
-                                    width: 1, height: (CARD_HEIGHT + gap) / 2 + 1,
-                                    background: K.bdr,
-                                  }} />
-                                )}
-                                {mi % 2 === 1 && (
-                                  <div style={{
-                                    position: "absolute", bottom: "50%", right: -6,
-                                    width: 1, height: (CARD_HEIGHT + gap) / 2 + 1,
-                                    background: K.bdr,
-                                  }} />
-                                )}
-                                {/* incoming stub into next round's card — only draw on the
-                                    top member of each pair so we don't double-draw */}
-                                {mi % 2 === 0 && mi + 1 < matchCount && (
+                                {/* Vertical leg — from this card's midpoint to the next
+                                    round's target card midpoint. If the delta is 0 we
+                                    skip the leg entirely (straight-across case, e.g.
+                                    the final pipe to a single championship match). */}
+                                {nextCardDeltaY !== 0 && (
                                   <div style={{
                                     position: "absolute",
-                                    top: `calc(50% + ${(CARD_HEIGHT + gap) / 2}px)`,
-                                    right: -12, width: 6, height: 1, background: K.bdr,
+                                    top: nextCardDeltaY > 0 ? "50%" : `calc(50% + ${nextCardDeltaY}px)`,
+                                    right: -6, width: 1,
+                                    height: Math.abs(nextCardDeltaY),
+                                    background: K.bdr,
                                   }} />
                                 )}
-                                {/* single-match final — just pipe straight across */}
-                                {matchCount === 1 && (
+                                {/* Incoming stub into the next round's card.
+                                    Only draw on the TOP card of each pair (mi even) so we
+                                    don't double-draw. Exception: if this card has no
+                                    pair (odd total match count), we still draw. */}
+                                {(mi % 2 === 0 || mi + 1 === matchCount) && (
                                   <div style={{
-                                    position: "absolute", top: "50%", right: -12,
-                                    width: 6, height: 1, background: K.bdr,
+                                    position: "absolute",
+                                    top: `calc(50% + ${nextCardDeltaY}px)`,
+                                    right: -12, width: 6, height: 1, background: K.bdr,
                                   }} />
                                 )}
                               </>
