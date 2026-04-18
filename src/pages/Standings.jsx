@@ -394,27 +394,32 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
 
         const COL_WIDTH = 132;         // column width — snug but fits the longest team names
         const CARD_HEIGHT = 52;        // approx height of a 2-team BracketCard after padding trim
-        const BASE_GAP = 10;           // gap between matchups — same across all rounds
+        const BASE_GAP = 16;           // gap between matchups — breathable, not cramped
         const COL_SPACING = 12;        // horizontal space between columns (connector width)
 
         // Uniform spacing across all rounds — every round uses BASE_GAP between its
         // cards, so Round 2 feels as tight as Round 1 instead of doubling.
         //
-        // Each round's first card is top-padded so it visually sits at the midpoint of
-        // its pair from the prior round. We compute that midpoint once (the pair span
-        // is CARD_HEIGHT + BASE_GAP) and accumulate it down through rounds. The
-        // connector lines still use the per-round gap, so visually the lines land
-        // correctly even though the actual position of the round-N card isn't
-        // mathematically centered — it's close enough to read as centered.
+        // Round 1 is the qualifying round that feeds the bracket — the winners' SEEDS
+        // get placed into the Round 2 bracket slots, not the specific match winners.
+        // So we intentionally do NOT connect Round 1 matches to Round 2 matches via
+        // converging lines; instead the connectors start from Round 2 onward.
+        //
+        // Rounds 2+ are the traditional bracket. Each round-N card's top pad is
+        // accumulated so it visually sits at the midpoint of its pair from round N-1
+        // (within the bracket, N >= 2).
         const geom = (() => {
           const out = [];
           let tp = 0;
           for (let r = 0; r < bracketData.length; r++) {
-            if (r === 0) {
+            if (r <= 1) {
+              // Round 0 (qualifying) and Round 1 (bracket round 1 — first "real" bracket
+              // round) both start at the top of their column, no offset. They're NOT
+              // vertically connected to each other.
               out.push({ gap: BASE_GAP, topPad: 0 });
             } else {
-              // Shift this round's first card down by half a pair-span so it visually
-              // lines up with the midpoint of round r-1's first two cards.
+              // Round 2+ bracket rounds — each first card centers between its pair
+              // from the prior round.
               tp = tp + (CARD_HEIGHT + BASE_GAP) / 2;
               out.push({ gap: BASE_GAP, topPad: tp });
             }
@@ -493,8 +498,13 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
                             {/* Connector from this card out to the next round's target
                                 card. Horizontal stub → vertical leg to the target's
                                 Y-center → horizontal stub into the target. Drawn once
-                                per source card. */}
-                            {ri < bracketData.length - 1 && (
+                                per source card.
+                                SKIP for Round 0 → Round 1: Round 0 is the qualifying
+                                round and its winners seed into Round 1 based on seed
+                                number, not direct advancement. Connectors there would
+                                visually imply "this match feeds that match" which isn't
+                                how the bracket works. */}
+                            {ri >= 1 && ri < bracketData.length - 1 && (
                               <>
                                 {/* Outgoing horizontal stub from this card's midpoint */}
                                 <div style={{
