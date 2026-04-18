@@ -396,18 +396,15 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
         const CARD_HEIGHT = 52;        // approx height of a 2-team BracketCard after padding trim
         const BASE_GAP = 10;           // gap between matchups in Round 1 — much tighter than before
         const COL_SPACING = 12;        // horizontal space between columns (connector width)
+        // Compression factor for later-round gaps. 1.0 = mathematically perfect centering
+        // (every card sits exactly at the midpoint of its pair), but that makes Round 2
+        // very tall and wastes vertical space on phones. Values < 1 pull later-round
+        // cards slightly above the true midpoint — barely perceptible since the connector
+        // lines still render proportionally, just with a tighter overall footprint.
+        const GAP_COMPRESSION = 0.55;
 
-        // Centering geometry — a clean recursive approach instead of the ad-hoc
-        // formulas below. Each round's matches are vertically centered between their
-        // pair from the previous round.
-        //
-        //   Round 0: cards at 0, (CH+BG), 2(CH+BG), 3(CH+BG)...
-        //   Round N: cards at centers halfway between pairs of Round N-1.
-        //
-        // For round N, we compute:
-        //   gap_N        = vertical distance between consecutive cards in this column
-        //   topPad_N     = distance from top to the FIRST card (so card 0 sits centered
-        //                  between round N-1's cards 0 and 1)
+        // Centering geometry — each round's matches are centered between their pair from
+        // the previous round. See GAP_COMPRESSION above for how we tighten later rounds.
         const geom = (() => {
           const out = [];
           let g = BASE_GAP;
@@ -416,8 +413,21 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
             if (r === 0) {
               out.push({ gap: BASE_GAP, topPad: 0 });
             } else {
-              tp = tp + (CARD_HEIGHT + g) / 2;
-              g = CARD_HEIGHT + 2 * g;
+              // Ideal values for true centering
+              const idealTp = tp + (CARD_HEIGHT + g) / 2;
+              const idealGap = CARD_HEIGHT + 2 * g;
+              // Compress both toward a tighter footprint — keep a minimum gap so cards
+              // never overlap or touch.
+              const compressed = Math.max(
+                CARD_HEIGHT + BASE_GAP,                         // minimum: one card + base gap (no overlap)
+                CARD_HEIGHT + (idealGap - CARD_HEIGHT) * GAP_COMPRESSION,
+              );
+              const compressedTp = Math.max(
+                BASE_GAP,                                       // minimum top pad so round's first card isn't flush to top
+                (idealTp) * GAP_COMPRESSION,
+              );
+              tp = compressedTp;
+              g = compressed;
               out.push({ gap: g, topPad: tp });
             }
           }
