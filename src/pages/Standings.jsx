@@ -54,6 +54,11 @@ function buildStandings(teams, results, isRecord) {
 function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
   const playoffRounds = leagueConfig?.playoffRounds || [];
   const playoffWeeks = schedule.filter(wk => wk.isPlayoff === true && !wk.rainedOut).sort((a, b) => a.week - b.week);
+  // "bracket" shows every round stacked (the prior default behavior).
+  // A numeric index (0-based) shows just that single round with its consolation block —
+  // useful during a playoff week when people just want to check this round's matchups
+  // and scores without scrolling past earlier rounds.
+  const [view, setView] = useState("bracket");
   // Use shared buildSeedMap so bracket seed badges match Schedule / Scoring / Admin.
   // Prior implementation built its own seed map from raw points, ignoring locked status
   // and standingsMethod, so bracket seeds could disagree with everywhere else in the app.
@@ -259,9 +264,66 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
     );
   };
 
+  // Which rounds to actually render based on the current toggle.
+  const roundsToRender = view === "bracket"
+    ? bracketData
+    : bracketData.filter((_, i) => i === view);
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {bracketData.map((round, ri) => {
+      {/* Toggle — each playoff round + a "Bracket" option for the full stacked view.
+          Shows inline across the top; wraps to a second line if there are many rounds. */}
+      <div style={{
+        display: "flex", flexWrap: "wrap", gap: 6,
+        background: K.inp, border: `1px solid ${K.bdr}`,
+        borderRadius: 8, padding: 4,
+      }}>
+        {bracketData.map((round, ri) => {
+          const isActive = view === ri;
+          return (
+            <button
+              key={ri}
+              onClick={() => setView(ri)}
+              style={{
+                flex: "1 1 auto", minWidth: 0,
+                padding: "8px 10px", borderRadius: 6,
+                background: isActive ? K.card : "transparent",
+                border: isActive ? `1px solid ${K.bdr}` : "1px solid transparent",
+                color: isActive ? K.t1 : K.t3,
+                fontSize: 11, fontWeight: 700, letterSpacing: .6, textTransform: "uppercase",
+                cursor: "pointer", whiteSpace: "nowrap",
+                overflow: "hidden", textOverflow: "ellipsis",
+                transition: "all .15s",
+              }}
+            >
+              {/* Short label so many rounds still fit on narrow screens; fall back to
+                  the configured round name if it's already short. */}
+              {round.name.length <= 10 ? round.name : `R${ri + 1}`}
+            </button>
+          );
+        })}
+        <button
+          onClick={() => setView("bracket")}
+          style={{
+            flex: "1 1 auto", minWidth: 0,
+            padding: "8px 10px", borderRadius: 6,
+            background: view === "bracket" ? K.card : "transparent",
+            border: view === "bracket" ? `1px solid ${K.bdr}` : "1px solid transparent",
+            color: view === "bracket" ? K.t1 : K.t3,
+            fontSize: 11, fontWeight: 700, letterSpacing: .6, textTransform: "uppercase",
+            cursor: "pointer", whiteSpace: "nowrap",
+            transition: "all .15s",
+          }}
+        >
+          Bracket
+        </button>
+      </div>
+
+      {roundsToRender.map((round, idx) => {
+        // idx is into the filtered array; ri is the round's position in the full
+        // bracketData so the progression-arrow logic still lines up with "is this the
+        // last round overall".
+        const ri = bracketData.indexOf(round);
         const matchCount = Math.max(round.matchups.length, round.config.length, 1);
         return (
           <div key={ri}>
@@ -320,8 +382,10 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
               </div>
             )}
 
-            {/* Progression indicator between rounds */}
-            {ri < bracketData.length - 1 && (
+            {/* Progression indicator between rounds — only in full Bracket view.
+                In single-round view it's the last thing shown for that round, so it
+                would just dangle. */}
+            {view === "bracket" && ri < bracketData.length - 1 && (
               <div style={{
                 textAlign: "center", padding: "8px 0 2px",
                 color: K.t3 + "80", fontSize: 14, lineHeight: 1,
@@ -331,8 +395,9 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
         );
       })}
 
-      {/* Champion block */}
-      {(() => {
+      {/* Champion block — only in full Bracket view. Per-round views show just that
+          round's matchups; showing the champion card alongside one round is misleading. */}
+      {view === "bracket" && (() => {
         const lastRound = bracketData[bracketData.length - 1];
         const finalMatch = lastRound?.matchups[0];
         const champion = finalMatch?.t1Won ? finalMatch.team1 : finalMatch?.t2Won ? finalMatch.team2 : null;
@@ -371,12 +436,22 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
   const [loading, setLoading] = useState(true);
   const fetched = useRef(false);
 
-  // Find playoff weeks
+  // Find playoff weeks that have matches seeded — these are the ones we can fetch
+  // scores for and show scored rounds against.
   const playoffWeeks = useMemo(() =>
     schedule.filter(wk => wk.isPlayoff === true && !wk.rainedOut && wk.matches?.length > 0)
       .sort((a, b) => a.week - b.week),
     [schedule]
   );
+  // Total number of rounds configured for the tournament. Sourced from the admin's
+  // bracket setup so the header count stays stable even when later rounds aren't
+  // seeded yet (Round 2 can't be seeded until Round 1 finishes). Falls back to the
+  // count of scheduled playoff weeks if the admin never configured playoffRounds.
+  const totalRounds = useMemo(() => {
+    const cfg = leagueConfig?.playoffRounds || [];
+    if (cfg.length > 0) return cfg.length;
+    return schedule.filter(wk => wk.isPlayoff === true && !wk.rainedOut).length;
+  }, [leagueConfig, schedule]);
 
   // Short name formatter for leaderboard display: "Aaron Jensen" -> "A. Jensen".
   // Single-name players (rare) render as-is.
@@ -522,7 +597,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
     <div style={{ padding: "0 2px" }}>
       {/* Header */}
       <div style={{ fontSize: 11, color: K.t3, marginBottom: 10, textAlign: "center" }}>
-        Net stroke play · {playoffWeeks.length} round{playoffWeeks.length !== 1 ? "s" : ""} · All players
+        Net stroke play · {totalRounds} round{totalRounds !== 1 ? "s" : ""} · All players
       </div>
 
       {/* Leaderboard */}
@@ -532,7 +607,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
           <div style={{ width: 28 }} />
           <div style={{ flex: 1 }}>Player</div>
           <div style={{ width: 36, textAlign: "center" }}>HCP</div>
-          {playoffWeeks.map((wk, i) => (
+          {Array.from({ length: totalRounds }, (_, i) => (
             <div key={i} style={{ width: 36, textAlign: "center" }}>R{i + 1}</div>
           ))}
           <div style={{ width: 44, textAlign: "right" }}>Net</div>
@@ -573,9 +648,14 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
                   score, but showing a single stable number keeps the leaderboard readable. */}
               <div style={{ width: 36, textAlign: "center", fontSize: 11, color: K.t3 }}>{p.startNineHcp}</div>
 
-              {/* Round scores */}
-              {playoffWeeks.map((wk, wi) => {
-                const round = p.rounds.find(r => r.week === wk.week);
+              {/* Round scores — one cell per CONFIGURED round, so the columns stay
+                  aligned with the header even before later rounds are seeded. An
+                  unseeded round shows a dash; a seeded round with no score for this
+                  player also shows a dash (same visual treatment — they haven't
+                  posted a score either way). */}
+              {Array.from({ length: totalRounds }, (_, wi) => {
+                const wk = playoffWeeks[wi];
+                const round = wk ? p.rounds.find(r => r.week === wk.week) : null;
                 return (
                   <div key={wi} style={{ width: 36, textAlign: "center", fontSize: 12, fontWeight: 600, color: round ? K.t1 : K.t3 + "40" }}>
                     {round ? round.net : "–"}
@@ -613,7 +693,37 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   );
 
   const hasIndividualEvent = leagueConfig?.individualEvent !== false; // default on
-  const [view, setView] = useState("standings"); // "standings" | "bracket" | "individual"
+  // Pick the right default tab when the page first mounts:
+  //   - "bracket" (Playoffs) — if any playoff week has already started play, has
+  //     matches seeded, or is the next unlocked week
+  //   - "standings" (Season) — otherwise (including the whole regular season and
+  //     post-tournament)
+  // Finished playoffs (all rounds locked) fall back to Season too, since the
+  // tournament is over and the final standings are the more useful landing view.
+  const defaultView = useMemo(() => {
+    const playoffWks = (schedule || []).filter(wk => wk.isPlayoff === true && !wk.rainedOut);
+    if (!playoffWks.length) return "standings";
+    const anyUnlockedPlayoff = playoffWks.some(wk => !wk.locked);
+    const anySeededPlayoff = playoffWks.some(wk => (wk.matches?.length || 0) > 0);
+    // "Playoffs are active" = there's at least one non-finalized playoff week AND
+    // either it's been seeded (matchups exist) OR the regular season is fully done
+    // (i.e. all non-playoff weeks are locked — we're about to enter playoffs).
+    if (!anyUnlockedPlayoff) return "standings"; // everything locked → season (= final)
+    if (anySeededPlayoff) return "bracket";
+    const nonPlayoffWks = (schedule || []).filter(wk => wk.isPlayoff !== true && !wk.rainedOut);
+    const regularSeasonDone = nonPlayoffWks.length > 0 && nonPlayoffWks.every(wk => wk.locked);
+    return regularSeasonDone ? "bracket" : "standings";
+  }, [schedule]);
+  const [view, setView] = useState(defaultView); // "standings" | "bracket" | "individual"
+  // If the schedule loads after first mount (common — subscriptions arrive async)
+  // and the default changes, respect the new default — but ONLY while the user
+  // hasn't manually picked a tab themselves. Tracked via a ref so re-selecting
+  // the same tab intentionally doesn't block later auto-switches.
+  const userPickedTab = useRef(false);
+  useEffect(() => {
+    if (!userPickedTab.current) setView(defaultView);
+  }, [defaultView]);
+  const pickTab = (id) => { userPickedTab.current = true; setView(id); };
 
   const handleExpand = (teamId) => {
     const next = expanded === teamId ? null : teamId;
@@ -810,7 +920,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
           <div style={{ display: "inline-flex", background: K.inp, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: 3 }}>
             {tabs.map(t => (
-              <button key={t.id} onClick={() => setView(t.id)} style={{
+              <button key={t.id} onClick={() => pickTab(t.id)} style={{
                 padding: "7px 14px", borderRadius: 6, border: "none", cursor: "pointer",
                 background: view === t.id ? K.card : "transparent",
                 color: view === t.id ? K.t1 : K.t3,
