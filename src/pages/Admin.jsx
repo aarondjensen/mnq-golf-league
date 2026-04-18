@@ -3146,7 +3146,7 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
   const save = async () => {
     try {
       await saveScoringRules(lc);
-      await saveLeagueConfig({ ...leagueConfig, scoringFormat: cfg.scoringFormat, bonusType: cfg.bonusType, standingsMethod: cfg.standingsMethod });
+      await saveLeagueConfig({ ...leagueConfig, scoringFormat: cfg.scoringFormat, bonusType: cfg.bonusType, standingsMethod: cfg.standingsMethod, playoffTiebreaker: cfg.playoffTiebreaker || "hardestHole" });
       setDirty(false);
     } catch (e) {
       console.error("AdminScoring save failed:", e);
@@ -3247,6 +3247,18 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
       {/* Tiebreaker: total holes won across the season. The prior UI offered a
           "Head-to-Head" option but it was never wired up on the sort side, so the
           dropdown has been removed — holes won is the only real tiebreaker. */}
+
+      {/* Playoff Tiebreaker — playoff matches can't end in a tie, so we need a
+          deterministic rule for deciding who advances when the overall match is even.
+          Handled separately from regular-season ties which are allowed. */}
+      <SubLabel>Playoff Tiebreaker</SubLabel>
+      <Radio items={[
+        { id: "hardestHole", label: "Hardest Handicap Hole", desc: "Winner decided by score on the hole with HCP index 1 on the nine played. Most common playoff tiebreaker." },
+        { id: "sumHoleHcpLosses", label: "Sum of HCP Indexes on Holes Lost", desc: "Lower total wins (losing on easy holes hurts more than losing on hard ones)." },
+        { id: "lowestNet", label: "Lowest Team Net Total", desc: "Combined team net score — lowest wins." },
+        { id: "lowestGross", label: "Lowest Team Gross Total", desc: "Combined team gross score — lowest wins." },
+        { id: "higherSeed", label: "Higher Seed Advances", desc: "Simplest option — the better regular-season seed wins the tie." },
+      ]} value={cfg.playoffTiebreaker || "hardestHole"} onChange={v => setCfg({ ...cfg, playoffTiebreaker: v })} />
 
       <div className="scoring-grid">
         {isPoints ? (<>

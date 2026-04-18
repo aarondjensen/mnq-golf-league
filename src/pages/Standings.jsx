@@ -190,18 +190,20 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
     const t2BgTint = mu.t2Won ? K.matchGrn + "12" : "transparent";
     const outerBorder = mu.hasResult ? (mu.t1Won || mu.t2Won ? K.matchGrn + "40" : K.bdr) : K.bdr;
 
-    // Single-row horizontal layout: [seed·name·score]  VS/result  [score·name·seed]
-    // Winning team gets the green tint + left/right accent bar; losing team is muted.
+    // Single-row horizontal layout: [seed · name]  VS/result  [name · seed]
+    // Winning team gets the green tint + accent bar; losing team is muted.
+    // Team names wrap onto multiple lines so both players show in full.
     return (
       <div style={{
         background: K.card, borderRadius: 8, border: `1px solid ${outerBorder}`,
         overflow: "hidden", width: "100%",
         display: "flex", alignItems: "stretch",
+        minHeight: 60,
       }}>
         {/* Team 1 — flex-grow so long names don't squeeze; tint runs the full half */}
         <div style={{
           flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6,
-          padding: "7px 10px", background: t1BgTint,
+          padding: "8px 10px", background: t1BgTint,
           borderLeft: mu.t1Won ? `3px solid ${K.matchGrn}` : "3px solid transparent",
         }}>
           <div style={{
@@ -212,14 +214,16 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
           }}>{mu.seed1}</div>
           <div style={{
             flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, color: t1Faded,
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            wordBreak: "break-word", lineHeight: 1.25,
           }}>
             {mu.name1}
           </div>
-          {mu.hasResult && <div style={{ fontSize: 13, fontWeight: 800, color: mu.t1Won ? K.matchGrn : K.t3, flexShrink: 0 }}>{mu.t1Pts}</div>}
         </div>
 
-        {/* VS / result pill — sits in the center, its own vertical strip */}
+        {/* VS / result pill — sits in the center, its own vertical strip.
+            For playoff matches (configured tiebreakers apply), ties are impossible —
+            winner is decided by the league's playoffTiebreaker. For regular matches
+            that can legitimately tie we still show VS when there's no winner yet. */}
         <div style={{
           flexShrink: 0, minWidth: 44,
           background: K.inp,
@@ -229,26 +233,23 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
         }}>
           <span style={{
             fontSize: 9, fontWeight: 700,
-            color: mu.hasResult ? K.acc : K.t3,
+            color: K.t3,
             letterSpacing: 1, whiteSpace: "nowrap",
           }}>
-            {mu.hasResult ? (mu.tied ? "TIED" : (mu.resultText || `${mu.t1Pts}-${mu.t2Pts}`)) : "VS"}
+            VS
           </span>
         </div>
 
-        {/* Team 2 — mirrored from team 1: score on the LEFT of name, seed on the RIGHT.
-            This reads naturally for a "who won" scan: the farther-right seed lines up
-            with the edge of the card. */}
+        {/* Team 2 — mirrored from team 1: seed on the RIGHT. Same wrap behavior. */}
         <div style={{
           flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6,
-          padding: "7px 10px", background: t2BgTint,
+          padding: "8px 10px", background: t2BgTint,
           borderRight: mu.t2Won ? `3px solid ${K.matchGrn}` : "3px solid transparent",
           justifyContent: "flex-end",
         }}>
-          {mu.hasResult && <div style={{ fontSize: 13, fontWeight: 800, color: mu.t2Won ? K.matchGrn : K.t3, flexShrink: 0 }}>{mu.t2Pts}</div>}
           <div style={{
             flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, color: t2Faded,
-            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+            wordBreak: "break-word", lineHeight: 1.25,
             textAlign: "right",
           }}>
             {mu.name2}
