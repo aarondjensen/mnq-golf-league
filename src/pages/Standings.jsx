@@ -276,12 +276,11 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {/* Toggle — each playoff round + a "Bracket" option for the full stacked view.
-          Shows inline across the top; wraps to a second line if there are many rounds.
-          Clicking a round tab switches to per-round view. In Bracket view, use the
-          clickable column headers above each round column to scroll that column left. */}
+      {/* Toggle — compact round abbreviations (R1, R2 ...) + "Bracket", all on one
+          row even on narrow phones. flex-wrap is off and each button flexes to an
+          equal share of the row width. */}
       <div style={{
-        display: "flex", flexWrap: "wrap", gap: 6,
+        display: "flex", flexWrap: "nowrap", gap: 4,
         background: K.inp, border: `1px solid ${K.bdr}`,
         borderRadius: 8, padding: 4,
       }}>
@@ -292,34 +291,38 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
               key={ri}
               onClick={() => setView(ri)}
               style={{
-                flex: "1 1 auto", minWidth: 0,
-                padding: "8px 10px", borderRadius: 6,
+                flex: "1 1 0", minWidth: 0,
+                padding: "8px 4px", borderRadius: 6,
                 background: isActive ? K.card : "transparent",
                 border: isActive ? `1px solid ${K.bdr}` : "1px solid transparent",
                 color: isActive ? K.t1 : K.t3,
-                fontSize: 11, fontWeight: 700, letterSpacing: .6, textTransform: "uppercase",
+                fontSize: 11, fontWeight: 700, letterSpacing: .4, textTransform: "uppercase",
                 cursor: "pointer", whiteSpace: "nowrap",
                 overflow: "hidden", textOverflow: "ellipsis",
                 transition: "all .15s",
+                textAlign: "center",
               }}
             >
-              {/* Short label so many rounds still fit on narrow screens; fall back to
-                  the configured round name if it's already short. */}
-              {round.name.length <= 10 ? round.name : `R${ri + 1}`}
+              {/* Always use the short R{n} form so everything fits on one line on
+                  phones. The round name is shown as the column header inside the
+                  Bracket view anyway. */}
+              R{ri + 1}
             </button>
           );
         })}
         <button
           onClick={() => setView("bracket")}
           style={{
-            flex: "1 1 auto", minWidth: 0,
-            padding: "8px 10px", borderRadius: 6,
+            flex: "2 1 0", minWidth: 0,
+            padding: "8px 4px", borderRadius: 6,
             background: view === "bracket" ? K.card : "transparent",
             border: view === "bracket" ? `1px solid ${K.bdr}` : "1px solid transparent",
             color: view === "bracket" ? K.t1 : K.t3,
-            fontSize: 11, fontWeight: 700, letterSpacing: .6, textTransform: "uppercase",
+            fontSize: 11, fontWeight: 700, letterSpacing: .4, textTransform: "uppercase",
             cursor: "pointer", whiteSpace: "nowrap",
+            overflow: "hidden", textOverflow: "ellipsis",
             transition: "all .15s",
+            textAlign: "center",
           }}
         >
           Bracket
