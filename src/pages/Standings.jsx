@@ -59,13 +59,10 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
   // useful during a playoff week when people just want to check this round's matchups
   // and scores without scrolling past earlier rounds.
   const [view, setView] = useState("bracket");
-  // Ref to the horizontal scroll container for the bracket columns. Used so the top
-  // round-tab buttons can scroll a specific round's column into view when we're
-  // already on the Bracket tab (nice for tall brackets that don't fit on one screen).
+  // Ref to the horizontal scroll container. Used so the clickable round-column
+  // headers INSIDE the bracket can scroll their column to the left edge — helpful
+  // for multi-round brackets that don't fit on one screen.
   const bracketScrollRef = useRef(null);
-  // Helper for the top-level toggle buttons — same as setView but a dedicated function
-  // makes click handlers below read more cleanly.
-  const pickRoundTab = (v) => setView(v);
   // Use shared buildSeedMap so bracket seed badges match Schedule / Scoring / Admin.
   // Prior implementation built its own seed map from raw points, ignoring locked status
   // and standingsMethod, so bracket seeds could disagree with everywhere else in the app.
@@ -281,8 +278,8 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {/* Toggle — each playoff round + a "Bracket" option for the full stacked view.
           Shows inline across the top; wraps to a second line if there are many rounds.
-          Clicking a round tab while already in Bracket view scrolls that round's
-          column to the far left instead of leaving bracket view. */}
+          Clicking a round tab switches to per-round view. In Bracket view, use the
+          clickable column headers above each round column to scroll that column left. */}
       <div style={{
         display: "flex", flexWrap: "wrap", gap: 6,
         background: K.inp, border: `1px solid ${K.bdr}`,
@@ -293,18 +290,7 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
           return (
             <button
               key={ri}
-              onClick={() => {
-                if (view === "bracket") {
-                  // Already in bracket view — scroll to this round's column instead.
-                  const container = bracketScrollRef.current;
-                  const col = container?.querySelector(`[data-round-col="${ri}"]`);
-                  if (container && col) {
-                    container.scrollTo({ left: col.offsetLeft, behavior: "smooth" });
-                  }
-                } else {
-                  pickRoundTab(ri);
-                }
-              }}
+              onClick={() => setView(ri)}
               style={{
                 flex: "1 1 auto", minWidth: 0,
                 padding: "8px 10px", borderRadius: 6,
@@ -324,7 +310,7 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
           );
         })}
         <button
-          onClick={() => pickRoundTab("bracket")}
+          onClick={() => setView("bracket")}
           style={{
             flex: "1 1 auto", minWidth: 0,
             padding: "8px 10px", borderRadius: 6,
@@ -411,15 +397,39 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
         const BASE_GAP = 10;           // gap between matchups in Round 1 — much tighter than before
         const COL_SPACING = 12;        // horizontal space between columns (connector width)
 
+        // Centering geometry — a clean recursive approach instead of the ad-hoc
+        // formulas below. Each round's matches are vertically centered between their
+        // pair from the previous round.
+        //
+        //   Round 0: cards at 0, (CH+BG), 2(CH+BG), 3(CH+BG)...
+        //   Round N: cards at centers halfway between pairs of Round N-1.
+        //
+        // For round N, we compute:
+        //   gap_N        = vertical distance between consecutive cards in this column
+        //   topPad_N     = distance from top to the FIRST card (so card 0 sits centered
+        //                  between round N-1's cards 0 and 1)
+        const geom = (() => {
+          const out = [];
+          let g = BASE_GAP;
+          let tp = 0;
+          for (let r = 0; r < bracketData.length; r++) {
+            if (r === 0) {
+              out.push({ gap: BASE_GAP, topPad: 0 });
+            } else {
+              tp = tp + (CARD_HEIGHT + g) / 2;
+              g = CARD_HEIGHT + 2 * g;
+              out.push({ gap: g, topPad: tp });
+            }
+          }
+          return out;
+        })();
+
         return (
           <div ref={bracketScrollRef} style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 4, scrollSnapType: "x proximity" }}>
             <div style={{ display: "flex", alignItems: "stretch", gap: 0, minWidth: (bracketData.length + 1) * (COL_WIDTH + COL_SPACING) }}>
               {bracketData.map((round, ri) => {
                 const matchCount = Math.max(round.matchups.length, round.config.length, 1);
-                // Each round's matchups sit at the midpoint of the pair from the prior
-                // round, which means the vertical gap between cards doubles each round.
-                const gap = ri === 0 ? BASE_GAP : BASE_GAP + (CARD_HEIGHT + BASE_GAP) * (Math.pow(2, ri) - 1);
-                const topPad = ri === 0 ? 0 : (gap - BASE_GAP) / 2 + (CARD_HEIGHT / 2);
+                const { gap, topPad } = geom[ri];
 
                 return (
                   <div
@@ -427,8 +437,22 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
                     data-round-col={ri}
                     style={{ width: COL_WIDTH, flexShrink: 0, display: "flex", flexDirection: "column", marginRight: ri < bracketData.length - 1 ? COL_SPACING : 0, scrollSnapAlign: "start" }}
                   >
-                    {/* Column header */}
-                    <div style={{ textAlign: "center", marginBottom: 10, height: 32 }}>
+                    {/* Column header — click to scroll this column to the left edge.
+                        Handy on multi-round brackets that don't fit on one screen. */}
+                    <button
+                      onClick={() => {
+                        const container = bracketScrollRef.current;
+                        const col = container?.querySelector(`[data-round-col="${ri}"]`);
+                        if (container && col) {
+                          container.scrollTo({ left: col.offsetLeft, behavior: "smooth" });
+                        }
+                      }}
+                      style={{
+                        textAlign: "center", marginBottom: 10, height: 32,
+                        background: "none", border: "none", padding: 0, cursor: "pointer",
+                        display: "block", width: "100%",
+                      }}
+                    >
                       <div style={{ fontSize: 10, fontWeight: 700, color: K.warn, letterSpacing: .8, textTransform: "uppercase" }}>
                         {round.name}
                       </div>
@@ -437,7 +461,7 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
                           Wk {round.weekNum}{round.date ? ` · ${round.date}` : ""}
                         </div>
                       )}
-                    </div>
+                    </button>
 
                     {/* Stack of matchup cards for this round, with the computed gap */}
                     <div style={{ display: "flex", flexDirection: "column", paddingTop: topPad }}>
@@ -500,11 +524,11 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
                 );
               })}
 
-              {/* Champion column — a trophy card centered against the final round */}
+              {/* Champion column — a trophy card centered against the final round's
+                  single match (same topPad means they line up horizontally). */}
               {(() => {
                 const lastIdx = bracketData.length - 1;
-                const lastGap = lastIdx === 0 ? BASE_GAP : BASE_GAP + (CARD_HEIGHT + BASE_GAP) * (Math.pow(2, lastIdx) - 1);
-                const lastTopPad = lastIdx === 0 ? 0 : (lastGap - BASE_GAP) / 2 + (CARD_HEIGHT / 2);
+                const lastTopPad = geom[lastIdx]?.topPad || 0;
                 return (
                   <div style={{ width: COL_WIDTH, flexShrink: 0, display: "flex", flexDirection: "column" }}>
                     <div style={{ height: 32 + 10 /* match header + its margin */ }} />

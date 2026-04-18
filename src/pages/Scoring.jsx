@@ -768,10 +768,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               centerText = res.matchResultText || `${score1}-${score2}`;
               centerColor = matchIsTied ? K.t3 : K.t1;
               if (res.attested) { progressLabel = "FINAL"; progressColor = K.grn; }
-              else {
-                progressLabel = `${resAttestedCount}/${resNonSigners.length} ATTEST`;
-                progressColor = "#3b82f6";
-              }
+              // When signed-but-not-yet-fully-attested, leave the center strip clean —
+              // the N/M ATTEST counter lives in the attesters row below now.
             } else if (thru > 0) {
               if (dispCum > 0) { centerText = dispCum + "UP"; centerColor = K.t1; }
               else if (dispCum < 0) { centerText = Math.abs(dispCum) + "UP"; centerColor = K.t1; }
@@ -872,17 +870,22 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   </div>
                 </button>
 
-                {/* Pending attesters row */}
+                {/* Pending attesters row — shows counter + who still needs to attest */}
                 {isSigned && (() => {
                   const pending = resNonSigners.filter(pid => !resAttestedBy.includes(pid));
                   if (!pending.length) return null;
                   return (
-                    <div style={{ display: "flex", justifyContent: "center", gap: 6, padding: "4px 10px 6px", borderTop: `1px solid ${K.bdr}20` }}>
-                      {pending.map(pid => {
-                        const p = playerMap[pid];
-                        const lastName = p ? p.name.split(' ').pop() : '?';
-                        return <span key={pid} style={{ fontSize: 9, fontWeight: 600, color: "#3b82f6", background: "#3b82f610", padding: "2px 6px", borderRadius: 3, border: `1px solid #3b82f625` }}>{lastName}</span>;
-                      })}
+                    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, padding: "4px 10px 6px", borderTop: `1px solid ${K.bdr}20` }}>
+                      <span style={{ fontSize: 10, fontWeight: 700, color: "#3b82f6", letterSpacing: .5, textTransform: "uppercase" }}>
+                        {resAttestedCount}/{resNonSigners.length} Attest
+                      </span>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
+                        {pending.map(pid => {
+                          const p = playerMap[pid];
+                          const lastName = p ? p.name.split(' ').pop() : '?';
+                          return <span key={pid} style={{ fontSize: 9, fontWeight: 600, color: "#3b82f6", background: "#3b82f610", padding: "2px 6px", borderRadius: 3, border: `1px solid #3b82f625` }}>{lastName}</span>;
+                        })}
+                      </div>
                     </div>
                   );
                 })()}
