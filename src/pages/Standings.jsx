@@ -744,18 +744,30 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
 // ════════════════════════════════════════════════════════════
 //  INDIVIDUAL TOURNAMENT VIEW
 // ════════════════════════════════════════════════════════════
-function IndividualEventView({ players, teams, schedule, course, leagueConfig, fetchWeekScores, fetchAllScores, scoringRules }) {
+function IndividualEventView({ players, teams, schedule, course, leagueConfig, fetchWeekScores, fetchAllScores, scoringRules, matchResults }) {
   const [scores, setScores] = useState({});
   const [allRounds, setAllRounds] = useState(null); // { playerId: [{ season, week, gross }] }
   const [loading, setLoading] = useState(true);
-  const fetched = useRef(false);
 
-  // Find playoff weeks that have matches seeded — these are the ones we can fetch
-  // scores for and show scored rounds against.
+  // Find playoff weeks that are actually in-play. A week counts only when at least
+  // one match has been SIGNED — without that, any hole-score documents present in
+  // Firestore for that week are either stale test data or practice entries, not
+  // real round scores, and should not appear on the leaderboard.
+  //
+  // This also fixes the classic "test scores from Week N appear for players who
+  // never teed up that week" problem — resetting the season wipes scores but if
+  // scores are entered and then undone (without commission-level cleanup), the
+  // raw score docs can linger. Gating on signed match results ensures only
+  // officially played rounds show up here.
   const playoffWeeks = useMemo(() =>
-    schedule.filter(wk => wk.isPlayoff === true && !wk.rainedOut && wk.matches?.length > 0)
-      .sort((a, b) => a.week - b.week),
-    [schedule]
+    schedule.filter(wk => {
+      if (wk.rainedOut || wk.isPlayoff !== true) return false;
+      if (!(wk.matches?.length > 0)) return false;
+      // At least one match for this week must have been signed (match result saved).
+      const hasSignedMatch = (matchResults || []).some(r => r.week === wk.week);
+      return hasSignedMatch;
+    }).sort((a, b) => a.week - b.week),
+    [schedule, matchResults]
   );
   // Total number of rounds configured for the tournament. Sourced from the admin's
   // bracket setup so the header count stays stable even when later rounds aren't
@@ -776,25 +788,31 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
   };
 
   // Fetch scores for all playoff weeks AND the full rounds history needed for
-  // per-week handicap snapshots.
+  // per-week handicap snapshots. Refetches on every mount/update of this view so
+  // the leaderboard always reflects the latest saved scores. Users typically land
+  // on the Individual tab only briefly, so re-running the fetches each time is
+  // not expensive in practice — and it guarantees freshness after pull-to-refresh
+  // or any background save.
   useEffect(() => {
-    if (fetched.current || !playoffWeeks.length || !fetchWeekScores) return;
-    fetched.current = true;
+    if (!playoffWeeks.length || !fetchWeekScores) return;
+    let cancelled = false;
+    setLoading(true);
     (async () => {
       const all = {};
       for (const wk of playoffWeeks) {
         const wkScores = await fetchWeekScores(wk.week);
         Object.assign(all, wkScores);
       }
+      if (cancelled) return;
       setScores(all);
-      // fetchAllScores is optional for graceful fallback; if absent, we fall back to
-      // player.handicapIndex for all rounds (the old, slightly-wrong behavior).
       if (fetchAllScores) {
         const hist = await fetchAllScores();
+        if (cancelled) return;
         setAllRounds(hist);
       }
       setLoading(false);
     })();
+    return () => { cancelled = true; };
   }, [playoffWeeks, fetchWeekScores, fetchAllScores]);
 
   // Build leaderboard: each player's net total across playoff rounds.
@@ -839,10 +857,13 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
 
       // Starting handicap — what the player had going into Round 1. Shown as a tournament
       // reference in the HCP column so it's stable across the whole tournament view and
-      // doesn't shift every week as scores come in.
+      // doesn't shift every week as scores come in. If no playoff rounds have started,
+      // fall back to the current week so the handicap reflects today's reality.
       const firstWk = playoffWeeks[0];
       const season = leagueConfig?.year || new Date().getFullYear();
-      const startHcp = handicapBeforeWeek(p, season, firstWk.week);
+      const startHcp = firstWk
+        ? handicapBeforeWeek(p, season, firstWk.week)
+        : (calcPlayerHcp(allRounds?.[p.id] || [], recentN, bestN, frontPar) ?? (p.handicapIndex ?? 0));
 
       for (const wk of playoffWeeks) {
         const side = wk.side || 'front';
@@ -851,7 +872,10 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
 
         let gross = 0;
         let hasScores = false;
-        for (let h = 1; h <= 9; h++) {
+        // Holes are stored 0-indexed in Firestore (h=0 through h=8) — saveScore in
+        // App.jsx and the historical-data imports both use 0..8. Using h=1..9 here
+        // would miss every score and produce an all-blank leaderboard.
+        for (let h = 0; h <= 8; h++) {
           const key = `w${wk.week}_p${p.id}_h${h}`;
           const s = scores[key];
           if (s && s > 0) { gross += s; hasScores = true; }
@@ -1257,7 +1281,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
           regardless of season phase. */}
       {view === "individual" && (
         playoffsStarted ? (
-          <IndividualEventView players={players} teams={teams} schedule={schedule} course={course} leagueConfig={leagueConfig} fetchWeekScores={fetchWeekScores} fetchAllScores={fetchAllScores} scoringRules={scoringRules} />
+          <IndividualEventView players={players} teams={teams} schedule={schedule} course={course} leagueConfig={leagueConfig} fetchWeekScores={fetchWeekScores} fetchAllScores={fetchAllScores} scoringRules={scoringRules} matchResults={matchResults} />
         ) : (() => {
           // Find the first playoff week — that's when the individual tournament kicks off.
           const firstPlayoff = schedule.filter(wk => wk.isPlayoff === true && !wk.rainedOut).sort((a, b) => a.week - b.week)[0];
