@@ -142,11 +142,19 @@ export default function GolfLeagueApp() {
   // manually does a hard reload (or force-quits a PWA, which is how Aaron discovered
   // the issue — he had to restart the whole app after a badge-color change shipped).
   const hasNewBundle = useCallback(async () => {
+    // Timeout guard — on slow or hung networks, an unrestrained fetch can sit
+    // indefinitely, which leaves refreshing=true and the pull indicator on
+    // screen forever. AbortController kills it after 4 seconds.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
     try {
       // Cache-bust both at the URL level and via the Cache-Control header. A service
       // worker sitting in front could still intercept — if that ever becomes a problem,
       // we'd need explicit bypass logic here — but this covers the plain-browser case.
-      const html = await fetch(`/index.html?t=${Date.now()}`, { cache: 'no-store' }).then(r => r.text());
+      const html = await fetch(`/index.html?t=${Date.now()}`, {
+        cache: 'no-store',
+        signal: controller.signal,
+      }).then(r => r.text());
       const freshAssets = [];
       let m;
       const scriptRe = /<script[^>]+src="([^"]+)"/g;
@@ -163,10 +171,12 @@ export default function GolfLeagueApp() {
       ]);
       return freshAssets.some(a => !currentAssets.has(toPath(a)));
     } catch (e) {
-      // Network blip or weird HTML — don't fail pull-to-refresh over it. Just skip the
-      // update check and proceed with the normal data refresh.
-      console.warn('[update-check] failed:', e);
+      // Network blip, timeout, or weird HTML — don't fail pull-to-refresh over it.
+      // Just skip the update check and proceed with the normal data refresh.
+      console.warn('[update-check] failed:', e.name || e);
       return false;
+    } finally {
+      clearTimeout(timer);
     }
   }, []);
 
@@ -276,20 +286,43 @@ export default function GolfLeagueApp() {
         // if so (code/style changes won't land via a soft refetch). If no new build,
         // fall back to re-fetching non-subscribed docs so users can manually pick up
         // data changes without losing in-flight admin edits, active tab, etc.
-        setTimeout(async () => {
-          const needsUpdate = await hasNewBundle();
-          if (needsUpdate) {
-            // Full reload picks up the new JS/CSS. Any in-memory state is lost, which
-            // is the right trade — the user pulled to refresh knowing something should
-            // change, and a stale bundle can't render the change any other way.
-            window.location.reload();
-            return;
-          }
-          refetchOneTimeReads();
+        //
+        // DEFENSE IN DEPTH: every path to clearing `refreshing` must be guaranteed.
+        //  - try/finally ensures setRefreshing(false) fires even if the refresh
+        //    logic throws unexpectedly
+        //  - hard safety timeout force-clears after 8s as a last resort against
+        //    any hang we didn't anticipate (hasNewBundle itself has a 4s fetch
+        //    timeout, so this 8s ceiling should never normally fire)
+        // Without these guards, a single hung fetch would leave the pull indicator
+        // stuck on screen indefinitely.
+        const hardSafety = setTimeout(() => {
+          console.warn('[pull-to-refresh] hard safety timeout — forcing reset');
           setRefreshing(false);
           setPullY(0);
           pullYRef.current = 0;
           touchStartY.current = 0;
+        }, 8000);
+        setTimeout(async () => {
+          try {
+            const needsUpdate = await hasNewBundle();
+            if (needsUpdate) {
+              // Full reload picks up the new JS/CSS. Any in-memory state is lost, which
+              // is the right trade — the user pulled to refresh knowing something should
+              // change, and a stale bundle can't render the change any other way.
+              clearTimeout(hardSafety);
+              window.location.reload();
+              return;
+            }
+            refetchOneTimeReads();
+          } catch (e) {
+            console.error('[pull-to-refresh] refresh failed:', e);
+          } finally {
+            clearTimeout(hardSafety);
+            setRefreshing(false);
+            setPullY(0);
+            pullYRef.current = 0;
+            touchStartY.current = 0;
+          }
         }, 600);
       } else { setPullY(0); pullYRef.current = 0; touchStartY.current = 0; }
     };
@@ -305,13 +338,29 @@ export default function GolfLeagueApp() {
     };
   }, [refreshing, refetchOneTimeReads, hasNewBundle]);
 
-  // Safety: if pull indicator stuck, reset after 2s
+  // Safety: if the pull indicator is visible but the refresh cycle isn't
+  // running (refreshing=false), something interrupted the gesture without a
+  // clean touchend/touchcancel firing. Reset after 2s so the user isn't stuck
+  // staring at a frozen spinner.
+  //
+  // The refreshing=true case is handled separately by the hard safety inside
+  // handleEnd (8s ceiling), plus try/finally around the async callback, plus
+  // AbortController inside hasNewBundle (4s fetch ceiling). Together those
+  // guarantee `refreshing` can never outlive the refresh attempt.
   useEffect(() => {
     if (pullY > 0 && !refreshing) {
       const safety = setTimeout(resetPull, 2000);
       return () => clearTimeout(safety);
     }
   }, [pullY, refreshing, resetPull]);
+
+  // Tab-change cleanup: popupOpen is set by child pages (Scoring, Schedule)
+  // via useEffect — but those effects have no cleanup on unmount, so a popup
+  // that was open when the user navigated away leaves popupOpen=true, which
+  // disables pull-to-refresh on the new tab until the new page's own effect
+  // runs. Reset it here as defense in depth so pull-to-refresh is never
+  // accidentally disabled on a freshly-loaded tab.
+  useEffect(() => { setPopupOpen(false); }, [tab]);
 
   // Lock body scroll when ANY popup is open (prevents iOS rubber-banding)
   useEffect(() => {
