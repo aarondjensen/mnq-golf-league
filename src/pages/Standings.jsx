@@ -622,18 +622,21 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
                     <div style={{ paddingTop: lastTopPad, display: "flex", justifyContent: "flex-start" }}>
                       <div style={{
                         width: "100%",
+                        height: CARD_HEIGHT,
+                        boxSizing: "border-box",
                         background: champCard ? K.gold + "15" : K.card,
                         border: `2px solid ${champCard ? K.gold + "50" : K.bdr}`,
-                        borderRadius: 8, padding: "10px 8px", textAlign: "center",
+                        borderRadius: 6, padding: "4px 6px", textAlign: "center",
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
                       }}>
-                        <div style={{ fontSize: 20, marginBottom: 2, lineHeight: 1 }}>🏆</div>
+                        <div style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>🏆</div>
                         {champCard ? (
-                          <>
-                            <div style={{ fontSize: 11, fontWeight: 800, color: K.gold, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{gn(champCard)}</div>
-                            <div style={{ fontSize: 8, color: K.t3, marginTop: 2, letterSpacing: 1, fontWeight: 600 }}>#{getSeed(champCard)} SEED</div>
-                          </>
+                          <div style={{ minWidth: 0, textAlign: "left" }}>
+                            <div style={{ fontSize: 11, fontWeight: 800, color: K.gold, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.15 }}>{gn(champCard)}</div>
+                            <div style={{ fontSize: 8, color: K.t3, marginTop: 1, letterSpacing: 1, fontWeight: 600 }}>#{getSeed(champCard)} SEED</div>
+                          </div>
                         ) : (
-                          <div style={{ fontSize: 8, color: K.t3, letterSpacing: 1, fontWeight: 600 }}>TBD</div>
+                          <div style={{ fontSize: 9, color: K.t3, letterSpacing: 1, fontWeight: 600 }}>TBD</div>
                         )}
                       </div>
                     </div>
