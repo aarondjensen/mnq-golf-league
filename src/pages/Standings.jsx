@@ -915,27 +915,35 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
         ? handicapBeforeWeek(p, season, firstWk.week)
         : (calcPlayerHcp(allRounds?.[p.id] || [], recentN, bestN, frontPar) ?? (p.handicapIndex ?? 0));
 
-      // Find the player's teammate for this playoff season's roster. Used below to
-      // resolve scores when the player was marked absent for a round — the absent
-      // flag is recorded as `w{week}_p{pid}_habsent=1` with NO per-hole score docs,
-      // so we have to read the teammate's score documents instead.
+      // Find the player's teammate for this playoff season's roster. Kept for the
+      // teamName label; no longer used to substitute scores (see withdrawal logic below).
       const team = teams.find(t => t.player1 === p.id || t.player2 === p.id);
-      const teammateId = team
-        ? (team.player1 === p.id ? team.player2 : team.player1)
-        : null;
+
+      // Individual-tournament withdrawal: being marked absent for ANY playoff week
+      // disqualifies the player from the tournament. Their played rounds stay on
+      // the leaderboard as a record of what they shot, but their total becomes WD
+      // and they drop to the bottom of the sort. This differs from the team match,
+      // where an absent player's teammate covers for them and the match proceeds —
+      // the individual event has no teammate mechanic.
+      let withdrew = false;
+      let wdRound = null;
 
       for (const wk of playoffWeeks) {
         const side = wk.side || 'front';
         const pars = side === 'front' ? frontPars : backPars;
         const parTotal = pars.reduce((a, b) => a + b, 0);
 
-        // Detect absent: when the flag exists we sub in the teammate's raw scores
-        // as the player's effective scores (mirroring Scoring.jsx's absent handling).
-        // Without this, absent players appear to have zero scores for the week and
-        // get dropped from the leaderboard for that round — even though the MATCH
-        // was played normally by their teammate.
         const isAbsent = scores[`w${wk.week}_p${p.id}_habsent`] === 1;
-        const effectivePid = isAbsent && teammateId ? teammateId : p.id;
+
+        if (isAbsent && !withdrew) {
+          // Mark withdrawal at the first round the player missed. Prior rounds
+          // (if any) remain in `rounds`; we stop accumulating here.
+          withdrew = true;
+          wdRound = wk.week;
+        }
+        // Once withdrawn, skip this and all subsequent rounds. No teammate
+        // substitution, no continued accumulation — the tournament is individual.
+        if (withdrew) continue;
 
         let gross = 0;
         let hasScores = false;
@@ -943,7 +951,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
         // App.jsx and the historical-data imports both use 0..8. Using h=1..9 here
         // would miss every score and produce an all-blank leaderboard.
         for (let h = 0; h <= 8; h++) {
-          const key = `w${wk.week}_p${effectivePid}_h${h}`;
+          const key = `w${wk.week}_p${p.id}_h${h}`;
           const s = scores[key];
           if (s && s > 0) { gross += s; hasScores = true; }
         }
@@ -951,14 +959,12 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
         if (hasScores) {
           // Per-round handicap — computed from history BEFORE this week, so it matches
           // what the player was actually playing off of when they teed up that round.
-          // Absent player still uses their OWN handicap (not teammate's) — the gross
-          // score is the teammate's, but net is computed against the player's hcp.
           const roundHcp = handicapBeforeWeek(p, season, wk.week);
           const net = gross - roundHcp;
           totalGross += gross;
           totalNet += net;
           roundsPlayed++;
-          rounds.push({ week: wk.week, date: wk.date, side, gross, net, nineHcp: roundHcp, parTotal, toPar: net - parTotal, absent: isAbsent });
+          rounds.push({ week: wk.week, date: wk.date, side, gross, net, nineHcp: roundHcp, parTotal, toPar: net - parTotal });
         }
       }
 
@@ -973,16 +979,24 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
         totalNet,
         roundsPlayed,
         rounds,
+        withdrew,
+        wdRound,
       };
     }).filter(p => p.roundsPlayed > 0 || playoffWeeks.length > 0);
 
-    // Sort by total net (lowest first), then gross as tiebreaker
+    // Sort order: ACTIVE (played at least one round, not withdrawn) → WD → NO DATA.
+    // Within ACTIVE, net low→high, gross as tiebreaker. Within WD and NO DATA,
+    // alphabetical for stable layout.
+    const bucket = (p) => p.withdrew ? 1 : p.roundsPlayed > 0 ? 0 : 2;
     board.sort((a, b) => {
-      if (a.roundsPlayed === 0 && b.roundsPlayed === 0) return a.name.localeCompare(b.name);
-      if (a.roundsPlayed === 0) return 1;
-      if (b.roundsPlayed === 0) return -1;
-      if (a.totalNet !== b.totalNet) return a.totalNet - b.totalNet;
-      return a.totalGross - b.totalGross;
+      const ab = bucket(a);
+      const bb = bucket(b);
+      if (ab !== bb) return ab - bb;
+      if (ab === 0) {
+        if (a.totalNet !== b.totalNet) return a.totalNet - b.totalNet;
+        return a.totalGross - b.totalGross;
+      }
+      return a.name.localeCompare(b.name);
     });
 
     return board;
@@ -1046,16 +1060,21 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
         {leaderboard.map((p, i) => {
           const mc = i === 0 ? K.gold : i === 1 ? K.silver : i === 2 ? K.bronze : K.logoBright;
           const hasRounds = p.roundsPlayed > 0;
+          const isWD = p.withdrew;
+          // Only active (non-WD) players with rounds get a rank badge; WD players
+          // are explicitly ineligible for ranking.
+          const showRank = hasRounds && !isWD;
 
           return (
             <div key={p.playerId} style={{
               display: "flex", alignItems: "center", background: K.card,
-              borderRadius: CARD_RADIUS, border: `1px solid ${i === 0 && hasRounds ? K.act + "30" : K.bdr}`,
+              borderRadius: CARD_RADIUS, border: `1px solid ${i === 0 && showRank ? K.act + "30" : K.bdr}`,
               padding: "10px 14px",
+              opacity: isWD ? 0.55 : 1,
             }}>
               {/* Rank */}
               <div style={{ width: 28, flexShrink: 0 }}>
-                {hasRounds && (
+                {showRank && (
                   <div style={{
                     width: 22, height: 22, borderRadius: 6,
                     background: i < 3 ? mc + "20" : K.logoBright + "20",
@@ -1082,20 +1101,32 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
                   aligned with the header even before later rounds are seeded. An
                   unseeded round shows a dash; a seeded round with no score for this
                   player also shows a dash (same visual treatment — they haven't
-                  posted a score either way). */}
+                  posted a score either way). The round the player withdrew in is
+                  marked "WD" in red. */}
               {Array.from({ length: totalRounds }, (_, wi) => {
                 const wk = playoffWeeks[wi];
                 const round = wk ? p.rounds.find(r => r.week === wk.week) : null;
+                const isWDRound = isWD && wk && wk.week === p.wdRound;
                 return (
-                  <div key={wi} style={{ width: 36, textAlign: "center", fontSize: 12, fontWeight: 600, color: round ? K.t1 : K.t3 + "40" }}>
-                    {round ? round.net : "–"}
+                  <div key={wi} style={{
+                    width: 36, textAlign: "center", fontSize: 12,
+                    fontWeight: isWDRound ? 800 : 600,
+                    color: isWDRound ? K.red : round ? K.t1 : K.t3 + "40",
+                  }}>
+                    {isWDRound ? "WD" : round ? round.net : "–"}
                   </div>
                 );
               })}
 
-              {/* Total net */}
-              <div style={{ width: 44, textAlign: "right", fontSize: HERO_NUM_SIZE - 4, fontWeight: HERO_NUM_WEIGHT, color: hasRounds ? K.t1 : K.t3, fontFamily: "'League Spartan', sans-serif" }}>
-                {hasRounds ? p.totalNet : "–"}
+              {/* Total net — WD players get "WD" in red regardless of how many
+                  rounds they played before withdrawing. */}
+              <div style={{
+                width: 44, textAlign: "right",
+                fontSize: HERO_NUM_SIZE - 4, fontWeight: HERO_NUM_WEIGHT,
+                color: isWD ? K.red : hasRounds ? K.t1 : K.t3,
+                fontFamily: "'League Spartan', sans-serif",
+              }}>
+                {isWD ? "WD" : hasRounds ? p.totalNet : "–"}
               </div>
             </div>
           );
