@@ -2267,24 +2267,9 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 </div>
               );
             })()}
-            {/* Seed status pill — reflects setup config */}
-            {(() => {
-              const seededRegWeeks = schedule.filter(s => s.seeded === true && !s.isPlayoff);
-              if (seededRegWeeks.length === 0) return null;
-              const lockSeedsEnabled = leagueConfig?.lockSeedsEnabled === true;
-              const lockedSeeds = leagueConfig?.lockedSeeds;
-              const captured = lockedSeeds && lockedSeeds.length === teams.length;
-
-              if (!lockSeedsEnabled) return null;
-
-              return (
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginBottom: 8 }}>
-                  <div style={{ background: K.act + "20", border: `1px solid ${K.act}60`, borderRadius: 8, color: K.act, fontSize: 11, padding: "6px 12px", fontWeight: 700, display: "flex", alignItems: "center", gap: 4 }}>
-                    🔒 {captured ? "Seeds Locked" : "Seeds Will Lock at Start of Seeded Play"}
-                  </div>
-                </div>
-              );
-            })()}
+            {/* Seed-lock banner removed — the lock behavior still happens quietly
+                based on leagueConfig.lockSeedsEnabled + lockedSeeds, but there's no
+                need to draw attention to it in the UI. */}
 
             <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
               {schedule.map(wk => {
