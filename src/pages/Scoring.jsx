@@ -1415,6 +1415,92 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   if (!t1 || !t2) return null;
 
+  // Shared playoff tiebreaker resolver. Called in two places:
+  //   1. finalizeMatch() when saving a tied playoff result
+  //   2. buildScorecardData() when rendering the Sign Scorecard preview
+  // Both callers pass the two teams' players, the per-hole results (1/-1/0),
+  // and the team IDs. Returns { winner: "t1" | "t2", label: string }.
+  const computePlayoffTiebreaker = ({ t1Players: tb1, t2Players: tb2, holeResults: hr, t1Id, t2Id }) => {
+    const tb = leagueConfig?.playoffTiebreaker || "hardestHole";
+    const netOnHole = (pids, h) => pids.reduce((a, pid) => a + (getS(pid, h) - getStrokes(pid, h)), 0);
+    const t1NetTotal = tb1.reduce((a, pid) => {
+      let s = 0;
+      for (let h = 0; h < 9; h++) s += (getS(pid, h) - getStrokes(pid, h));
+      return a + s;
+    }, 0);
+    const t2NetTotal = tb2.reduce((a, pid) => {
+      let s = 0;
+      for (let h = 0; h < 9; h++) s += (getS(pid, h) - getStrokes(pid, h));
+      return a + s;
+    }, 0);
+    const t1GrossTotal = tb1.reduce((a, pid) => {
+      let s = 0;
+      for (let h = 0; h < 9; h++) s += getS(pid, h);
+      return a + s;
+    }, 0);
+    const t2GrossTotal = tb2.reduce((a, pid) => {
+      let s = 0;
+      for (let h = 0; h < 9; h++) s += getS(pid, h);
+      return a + s;
+    }, 0);
+
+    let winner = null;
+    let label = "";
+
+    if (tb === "hardestHole") {
+      // Find the hole (0..8 on the nine played) whose course HCP index is lowest (1 = hardest).
+      let hardestHoleIdx = 0;
+      let lowestHcp = Infinity;
+      for (let h = 0; h < 9; h++) {
+        const hc = hcps[h] || Infinity;
+        if (hc < lowestHcp) { lowestHcp = hc; hardestHoleIdx = h; }
+      }
+      const n1 = netOnHole(tb1, hardestHoleIdx);
+      const n2 = netOnHole(tb2, hardestHoleIdx);
+      if (n1 < n2) winner = "t1";
+      else if (n2 < n1) winner = "t2";
+      label = `Hole ${hardestHoleIdx + 1}`;
+    } else if (tb === "sumHoleHcpLosses") {
+      // For each hole, the LOSING team adds that hole's course HCP index to their total.
+      // Lower total wins — losing on easy holes (HCP 17, 18) hurts more than hard holes.
+      let t1LossSum = 0, t2LossSum = 0;
+      for (let h = 0; h < 9; h++) {
+        const hc = hcps[h] || 0;
+        if (hr[h] === 1) t2LossSum += hc;
+        else if (hr[h] === -1) t1LossSum += hc;
+      }
+      if (t1LossSum < t2LossSum) winner = "t1";
+      else if (t2LossSum < t1LossSum) winner = "t2";
+      label = "HCP losses";
+    } else if (tb === "lowestNet") {
+      if (t1NetTotal < t2NetTotal) winner = "t1";
+      else if (t2NetTotal < t1NetTotal) winner = "t2";
+      label = "Low net";
+    } else if (tb === "lowestGross") {
+      if (t1GrossTotal < t2GrossTotal) winner = "t1";
+      else if (t2GrossTotal < t1GrossTotal) winner = "t2";
+      label = "Low gross";
+    } else if (tb === "higherSeed") {
+      // Better seed = lower number. Wrap in Number() in case seeds are stored as strings.
+      const s1 = Number(seedMap[t1Id]) || Infinity;
+      const s2 = Number(seedMap[t2Id]) || Infinity;
+      if (s1 < s2) winner = "t1";
+      else if (s2 < s1) winner = "t2";
+      label = "Higher seed";
+    }
+
+    // Final fallback — seed, then default to t1 so we never return a null winner.
+    if (!winner) {
+      const s1 = Number(seedMap[t1Id]) || Infinity;
+      const s2 = Number(seedMap[t2Id]) || Infinity;
+      if (s1 !== s2) winner = s1 < s2 ? "t1" : "t2";
+      else winner = "t1";
+      label = label ? `${label} → seed` : "Higher seed";
+    }
+
+    return { winner, label };
+  };
+
   const finalizeMatch = async () => {
     const isPlayoffWeek = weekSch?.isPlayoff === true;
     const sr = isPlayoffWeek
@@ -1474,6 +1560,30 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     else if (holesRemaining > 0) matchResultText = `${matchMargin}&${holesRemaining}`;
     else matchResultText = `${Math.abs(finalStatus)}UP`;
 
+    // PLAYOFF TIEBREAKER — playoff matches cannot end tied. If the raw result is a
+    // tie, apply the league-configured tiebreaker via the shared computePlayoffTiebreaker
+    // helper and override points + result text.
+    let finalT1Pts = t1Pts;
+    let finalT2Pts = t2Pts;
+    let winnerTeamId = finalStatus > 0 ? t1.id : finalStatus < 0 ? t2.id : null;
+    if (isPlayoffWeek && finalStatus === 0) {
+      const { winner: tbWinner, label: tbLabel } = computePlayoffTiebreaker({
+        t1Players, t2Players, holeResults, t1Id: t1.id, t2Id: t2.id,
+      });
+      // Award match-win points to the tiebreaker winner. In 1v1 team-net scoring
+      // there's only one match-line; in 2v2 by-position scoring there's also a bonus line.
+      if (tbWinner === "t1") {
+        finalT1Pts = isTeamNet ? sr.mw : sr.mw + sr.bw;
+        finalT2Pts = isTeamNet ? sr.ml : sr.ml + sr.bl;
+        winnerTeamId = t1.id;
+      } else {
+        finalT1Pts = isTeamNet ? sr.ml : sr.ml + sr.bl;
+        finalT2Pts = isTeamNet ? sr.mw : sr.mw + sr.bw;
+        winnerTeamId = t2.id;
+      }
+      matchResultText = `TIE (${tbLabel})`;
+    }
+
     // If all other players are absent, auto-attest since nobody can
     const presentNonSigners = allP.filter(pid => pid !== leagueUser.playerId && !isPlayerAbsent(pid));
     const autoAttest = presentNonSigners.length === 0;
@@ -1481,11 +1591,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     await saveMatchResult({
       id: `${LEAGUE_ID}_w${week}_${t1.id}_${t2.id}`, week,
       team1Id: t1.id, team2Id: t2.id,
-      team1Points: t1Pts, team2Points: t2Pts,
+      team1Points: finalT1Pts, team2Points: finalT2Pts,
       t1Total: t1Net, t2Total: t2Net,
       t1HolesWon: hw1, t2HolesWon: hw2,
       matchResultText,
-      matchWinnerId: finalStatus > 0 ? t1.id : finalStatus < 0 ? t2.id : null,
+      matchWinnerId: winnerTeamId,
       finalizedByTeamId: myTeam?.id || null,
       signedByPlayerId: leagueUser.playerId || null,
       attestedBy: [],
@@ -1521,9 +1631,26 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     const myHW = status.holeResults.filter(r => r === 1).length;
     const oppHW = status.holeResults.filter(r => r === -1).length;
     const finalStatus = status.runningStatus[8];
-    const isWin = finalStatus > 0;
-    const isLoss = finalStatus < 0;
-    const isTie = finalStatus === 0;
+    let isWin = finalStatus > 0;
+    let isLoss = finalStatus < 0;
+    let isTie = finalStatus === 0;
+
+    // PLAYOFF TIEBREAKER PREVIEW — if this is a tied playoff match, resolve the
+    // winner using the configured tiebreaker and reflect it here so the Sign
+    // Scorecard screen shows the correct W/L instead of a misleading "TIED".
+    // Uses computePlayoffTiebreaker() which is the same logic applied at save time.
+    const isPlayoffWeek = weekSch?.isPlayoff === true;
+    let tbClinchText = null;
+    if (isPlayoffWeek && isTie) {
+      const tbResult = computePlayoffTiebreaker({
+        t1Players: myPids, t2Players: oppPids,
+        holeResults: status.holeResults,
+        t1Id: myTeamObj.id, t2Id: oppTeamObj.id,
+      });
+      if (tbResult.winner === "t1") { isWin = true; isTie = false; }
+      else if (tbResult.winner === "t2") { isLoss = true; isTie = false; }
+      tbClinchText = `TIE (${tbResult.label})`;
+    }
 
     const matchResult = isWin ? "WIN" : isLoss ? "LOSS" : "TIE";
     const resultColor = isTie ? K.t2 : K.grn;
@@ -1531,9 +1658,17 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     const myPidsSorted = [...myPids].sort((a, b) => getHcp(a) - getHcp(b));
     const oppPidsSorted = [...oppPids].sort((a, b) => getHcp(a) - getHcp(b));
 
-    return { myPids, oppPids, myPidsSorted, oppPidsSorted, myTeamObj, oppTeamObj, myHW, oppHW, ...status, matchResult, resultColor, isMyT1 };
+    // Override clinchText so the tiebreaker label shows on the preview
+    const finalClinchText = tbClinchText || status.clinchText;
+
+    return { myPids, oppPids, myPidsSorted, oppPidsSorted, myTeamObj, oppTeamObj, myHW, oppHW, ...status, clinchText: finalClinchText, matchResult, resultColor, isMyT1 };
   };
 
+  // Shared playoff tiebreaker resolver. Called in two places:
+  //   1. finalizeMatch() when saving a tied playoff result
+  //   2. buildScorecardData() when rendering the Sign Scorecard preview
+  // Both callers pass the two teams' players, the per-hole results (1/-1/0),
+  // and the team IDs. Returns { winner: "t1" | "t2", label: string }.
   // ── Shared scorecard builder for both inline and popup views ──
   const buildSC = (team1Pids, team2Pids, hResults, rStatus, cHole, cText, variant, showTotals) => {
     return SharedScorecard({

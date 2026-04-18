@@ -816,23 +816,52 @@ export default function GolfLeagueApp() {
   const activePlayers = useMemo(() => players.filter(p => p.status !== "inactive"), [players]);
 
   // Show Live Scoring button only on match days between 4-8pm ET
+  // Minute-granularity clock tick — forces time-gated UI (like the Live Scoring
+  // button) to re-evaluate every minute without requiring a user action or
+  // full page reload. Cheap: one setState per minute, only when mounted.
+  const [minuteTick, setMinuteTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setMinuteTick(t => t + 1), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  // Live Scoring button appears from 30 minutes before the FIRST tee time of the
+  // day through 4 hours after — enough window to cover pre-round setup and a full
+  // 9-hole round with finalization. Anchored to league Eastern Time so travel
+  // doesn't break the schedule.
   const showLiveBtn = useMemo(() => {
     if (!schedule.length) return false;
     const now = new Date();
     const et = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-    const etHour = et.getHours();
-    if (etHour < 16 || etHour >= 20) return false;
     const year = leagueConfig?.year || new Date().getFullYear();
     const todayStr = et.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    return schedule.some(wk => {
+    // Find a scheduled week whose date string matches today's.
+    const todayWk = schedule.find(wk => {
       if (wk.rainedOut || !wk.matches || wk.matches.length === 0) return false;
       if (!wk.date) return false;
       const wkDate = new Date(`${wk.date}, ${year}`);
       if (isNaN(wkDate.getTime())) return false;
-      const wkStr = wkDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-      return wkStr === todayStr;
+      return wkDate.toLocaleDateString("en-US", { month: "short", day: "numeric" }) === todayStr;
     });
-  }, [schedule, leagueConfig]);
+    if (!todayWk) return false;
+
+    // Parse league's first tee time (e.g. "4:28 PM") into minutes-since-midnight.
+    // Conversions: "12 AM" -> 0, "12 PM" -> 12, "1 PM" -> 13.
+    const startTime = leagueConfig?.startTime || "4:28 PM";
+    const [timePart, ampm] = startTime.split(' ');
+    const [h, m] = timePart.split(':').map(Number);
+    let hour24 = h;
+    if (ampm === 'PM' && h !== 12) hour24 = h + 12;
+    else if (ampm === 'AM' && h === 12) hour24 = 0;
+    const firstTeeMins = hour24 * 60 + (m || 0);
+
+    // Current ET time in minutes-since-midnight
+    const nowMins = et.getHours() * 60 + et.getMinutes();
+
+    // Window: 30 min before first tee through 4 hours after.
+    // minuteTick is in the dep array below so this evaluates again each minute.
+    return nowMins >= firstTeeMins - 30 && nowMins <= firstTeeMins + 240;
+  }, [schedule, leagueConfig, minuteTick]);
 
   // Clear impersonation when commish mode is turned off
   useEffect(() => { if (!commMode) setImpersonating(null); }, [commMode]);
