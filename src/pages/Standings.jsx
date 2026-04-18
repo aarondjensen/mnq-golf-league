@@ -51,7 +51,7 @@ function buildStandings(teams, results, isRecord) {
 // ════════════════════════════════════════════════════════════
 //  PLAYOFF BRACKET VIEW
 // ════════════════════════════════════════════════════════════
-function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
+function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConfig }) {
   const playoffRounds = leagueConfig?.playoffRounds || [];
   const playoffWeeks = schedule.filter(wk => wk.isPlayoff === true && !wk.rainedOut).sort((a, b) => a.week - b.week);
   // "bracket" shows every round stacked (the prior default behavior).
@@ -72,6 +72,23 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
   );
 
   const gn = (id) => lastNamesOnly(teams.find(t => t.id === id)?.name || "TBD");
+
+  // Return an array of per-player last names (["JENSEN", "OLSON"]) for a team.
+  // Used so the matchup card can stack teammate names on separate rows instead
+  // of joining them into one "JENSEN / OLSON" string — matches the Scoring
+  // All Matches card format.
+  const playerLastNames = (teamId) => {
+    const t = teams.find(tm => tm.id === teamId);
+    if (!t) return ["TBD", ""];
+    const lookup = (pid) => {
+      if (!pid) return "";
+      const p = players?.find(pl => pl.id === pid);
+      if (!p?.name) return "";
+      const parts = p.name.trim().split(/\s+/);
+      return parts[parts.length - 1].toUpperCase();
+    };
+    return [lookup(t.player1), lookup(t.player2)];
+  };
   const getSeed = (id) => seedMap[id] || "?";
 
   if (!playoffRounds.length) {
@@ -99,6 +116,7 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
         team1: m.team1, team2: m.team2,
         seed1: getSeed(m.team1), seed2: getSeed(m.team2),
         name1: gn(m.team1), name2: gn(m.team2),
+        players1: playerLastNames(m.team1), players2: playerLastNames(m.team2),
         t1Pts, t2Pts,
         t1Won: res && t1Pts > t2Pts,
         t2Won: res && t2Pts > t1Pts,
@@ -216,11 +234,19 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
             display: "flex", alignItems: "center", justifyContent: "center",
             fontSize: 9, fontWeight: 800,
           }}>{mu.seed1}</div>
-          <div style={{
-            flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, color: t1Faded,
-            wordBreak: "break-word", lineHeight: 1.25,
-          }}>
-            {mu.name1}
+          {/* Teammate names always stacked on two lines so the card rhythm is
+              consistent regardless of name length. Falls back to combined name1
+              if the players1 array isn't populated. */}
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
+            {mu.players1 && mu.players1.some(n => n) ? mu.players1.map((nm, i) => (
+              <div key={i} style={{ fontSize: 12, fontWeight: 700, color: t1Faded, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2 }}>
+                {nm || "—"}
+              </div>
+            )) : (
+              <div style={{ fontSize: 12, fontWeight: 700, color: t1Faded, wordBreak: "break-word", lineHeight: 1.25 }}>
+                {mu.name1}
+              </div>
+            )}
           </div>
         </div>
 
@@ -244,19 +270,23 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
           </span>
         </div>
 
-        {/* Team 2 — mirrored from team 1: seed on the RIGHT. Same wrap behavior. */}
+        {/* Team 2 — mirrored from team 1: seed on the RIGHT. Same stacked behavior. */}
         <div style={{
           flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6,
           padding: "8px 10px", background: t2BgTint,
           borderRight: mu.t2Won ? `3px solid ${K.matchGrn}` : "3px solid transparent",
           justifyContent: "flex-end",
         }}>
-          <div style={{
-            flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, color: t2Faded,
-            wordBreak: "break-word", lineHeight: 1.25,
-            textAlign: "right",
-          }}>
-            {mu.name2}
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1, alignItems: "flex-end" }}>
+            {mu.players2 && mu.players2.some(n => n) ? mu.players2.map((nm, i) => (
+              <div key={i} style={{ fontSize: 12, fontWeight: 700, color: t2Faded, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, textAlign: "right", maxWidth: "100%" }}>
+                {nm || "—"}
+              </div>
+            )) : (
+              <div style={{ fontSize: 12, fontWeight: 700, color: t2Faded, wordBreak: "break-word", lineHeight: 1.25, textAlign: "right" }}>
+                {mu.name2}
+              </div>
+            )}
           </div>
           <div style={{
             width: 18, height: 18, borderRadius: 5, flexShrink: 0,
@@ -1219,7 +1249,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
 
       {/* Playoff Bracket view */}
       {view === "bracket" && (
-        <PlayoffBracketView teams={teams} schedule={schedule} matchResults={matchResults} leagueConfig={leagueConfig} />
+        <PlayoffBracketView teams={teams} players={players} schedule={schedule} matchResults={matchResults} leagueConfig={leagueConfig} />
       )}
 
       {/* Individual Event view — during regular season shows a "starts Week N" placeholder,
