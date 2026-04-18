@@ -108,6 +108,18 @@ export function SharedScorecard({
     </div>
   );
 
+  // Hole-Handicap row — shows the course HCP index for each of the 9 holes.
+  // Used on playoff scorecards so viewers can see which hole decided a tiebreaker
+  // (the "Hole X" label in a tied match's result corresponds to the lowest HCP
+  // index where the net scores differed). Visually lighter than the PAR row.
+  const HcpRow = () => (
+    <div style={{ display: "flex", borderBottom: gridLine, background: K.inp }}>
+      <div style={{ ...lblStyle, height: variant === "allMatches" ? 22 : 20 }}>HCP</div>
+      {hcps.map((h, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 10, color: K.t3, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", height: variant === "allMatches" ? 22 : 20, borderRight: i < 8 ? gridLine : "none" }}>{h}</div>)}
+      {totStyle && <div style={{ ...totStyle, height: 20 }} />}
+    </div>
+  );
+
   const PlayerRow = ({ pid }) => {
     const absent = isAbsent ? isAbsent(pid) : false;
     let grossTotal = 0;
@@ -183,9 +195,21 @@ export function SharedScorecard({
           if (clinchHole !== null && i > clinchHole) return <div key={i} style={{ flex: 1, height: 28, ...colBorderR }} />;
           if (isClinch) {
             const color = rs > 0 ? mGrn : rs < 0 ? K.red : K.t3;
+            // Tiebreaker clinch like "TIE (Hole 5)" — split into stacked two-line
+            // display: big "TIE" on top, small label on bottom.
+            const tbMatch = (clinchText || "").match(/^TIE\s*\(([^)]+)\)\s*$/i);
+            if (tbMatch) {
+              return <div key={i} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", height: 28, ...colBorderR }}>
+                <div style={{ border: `1.5px solid ${color}`, borderRadius: 4, padding: "1px 3px", display: "flex", flexDirection: "column", alignItems: "center", lineHeight: 1, maxWidth: "100%" }}>
+                  <span style={{ fontSize: variant === "allMatches" ? 9 : 10, fontWeight: 800, color, letterSpacing: .3 }}>TIE</span>
+                  <span style={{ fontSize: variant === "allMatches" ? 6 : 7, fontWeight: 700, color, textTransform: "uppercase", letterSpacing: .3, whiteSpace: "nowrap", marginTop: 1 }}>{tbMatch[1]}</span>
+                </div>
+              </div>;
+            }
+            // Regular clinch ("3&2", "2UP", plain "TIED"): single centered token.
             return <div key={i} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", height: 28, ...colBorderR }}>
-              <div style={{ border: `1.5px solid ${color}`, borderRadius: 4, padding: "0 3px", lineHeight: "22px" }}>
-                <span style={{ fontSize: variant === "allMatches" ? 12 : 14, fontWeight: 800, color }}>{clinchText}</span>
+              <div style={{ border: `1.5px solid ${color}`, borderRadius: 4, padding: "0 3px", lineHeight: "22px", maxWidth: "100%" }}>
+                <span style={{ fontSize: variant === "allMatches" ? 12 : 14, fontWeight: 800, color, whiteSpace: "nowrap" }}>{clinchText}</span>
               </div>
             </div>;
           }
@@ -199,7 +223,7 @@ export function SharedScorecard({
     );
   };
 
-  return { HoleRow, ParRow, PlayerRow, TeamNetRow, MatchRow };
+  return { HoleRow, ParRow, HcpRow, PlayerRow, TeamNetRow, MatchRow };
 }
 
 
@@ -946,6 +970,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     <div style={{ padding: "6px 8px 10px", borderTop: `1px solid ${K.bdr}30` }}>
                       <sc.HoleRow />
                       <sc.ParRow />
+                      {weekSch?.isPlayoff && <sc.HcpRow />}
                       <div style={{ fontSize: 9, fontWeight: 700, color: K.acc, textTransform: "uppercase", letterSpacing: 1, padding: "4px 4px 2px" }}>
                         {showSeeds && seedMap[dispT1?.id] && <span style={{ color: K.logoBright, marginRight: 4 }}>#{seedMap[dispT1.id]}</span>}
                         {dispT1.name}
@@ -1448,18 +1473,22 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     let label = "";
 
     if (tb === "hardestHole") {
-      // Find the hole (0..8 on the nine played) whose course HCP index is lowest (1 = hardest).
-      let hardestHoleIdx = 0;
-      let lowestHcp = Infinity;
-      for (let h = 0; h < 9; h++) {
-        const hc = hcps[h] || Infinity;
-        if (hc < lowestHcp) { lowestHcp = hc; hardestHoleIdx = h; }
+      // Sort the nine holes played by course HCP index (1 = hardest first), then
+      // walk them in order until we find one where net scores differ. This makes
+      // "hardest hole" cascade: if the #1 HCP hole is tied, try the #2 HCP hole, etc.
+      // Only when all nine holes are also tied on this measure do we fall through
+      // to the seed fallback below.
+      const holesByHcp = Array.from({ length: 9 }, (_, h) => h)
+        .sort((a, b) => (hcps[a] || Infinity) - (hcps[b] || Infinity));
+      let decidingHoleIdx = null;
+      for (const h of holesByHcp) {
+        const n1 = netOnHole(tb1, h);
+        const n2 = netOnHole(tb2, h);
+        if (n1 < n2) { winner = "t1"; decidingHoleIdx = h; break; }
+        if (n2 < n1) { winner = "t2"; decidingHoleIdx = h; break; }
+        // tied on this hole — continue to the next-hardest
       }
-      const n1 = netOnHole(tb1, hardestHoleIdx);
-      const n2 = netOnHole(tb2, hardestHoleIdx);
-      if (n1 < n2) winner = "t1";
-      else if (n2 < n1) winner = "t2";
-      label = `Hole ${hardestHoleIdx + 1}`;
+      label = decidingHoleIdx !== null ? `Hole ${decidingHoleIdx + 1}` : "Hole-by-HCP";
     } else if (tb === "sumHoleHcpLosses") {
       // For each hole, the LOSING team adds that hole's course HCP index to their total.
       // Lower total wins — losing on easy holes (HCP 17, 18) hurts more than hard holes.
@@ -1490,12 +1519,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     }
 
     // Final fallback — seed, then default to t1 so we never return a null winner.
+    // Label stays concise ("Seed") so it fits in the scorecard's clinch cell.
     if (!winner) {
       const s1 = Number(seedMap[t1Id]) || Infinity;
       const s2 = Number(seedMap[t2Id]) || Infinity;
       if (s1 !== s2) winner = s1 < s2 ? "t1" : "t2";
       else winner = "t1";
-      label = label ? `${label} → seed` : "Higher seed";
+      label = "Seed";
     }
 
     return { winner, label };
@@ -1769,6 +1799,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, overflow: "hidden", marginBottom: 4 }}>
               <scComp.HoleRow />
               <scComp.ParRow />
+              {weekSch?.isPlayoff && <scComp.HcpRow />}
               {sc.myPids.map(pid => <scComp.PlayerRow key={pid} pid={pid} />)}
               <scComp.TeamNetRow pids={sc.myPids} isTeam1Side={true} />
             </div>
@@ -1776,6 +1807,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, overflow: "hidden" }}>
               <scComp.HoleRow />
               <scComp.ParRow />
+              {weekSch?.isPlayoff && <scComp.HcpRow />}
               {sc.oppPids.map(pid => <scComp.PlayerRow key={pid} pid={pid} />)}
               <scComp.TeamNetRow pids={sc.oppPids} isTeam1Side={false} />
             </div>
@@ -1958,6 +1990,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "0 0 10px", width: "100%", maxWidth: 420, overflow: "hidden", overscrollBehavior: "contain" }}>
             <sc.HoleRow />
             <sc.ParRow />
+            {weekSch?.isPlayoff && <sc.HcpRow />}
             <div style={{ padding: "0 4px" }}>
               {scMyPids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
               <sc.TeamNetRow pids={scMyPids} isTeam1Side={true} />
@@ -2033,25 +2066,45 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             <div style={{ background: K.bg, border: `1.5px solid ${sc.resultColor}50`, borderRadius: 16, padding: "16px 12px 20px", width: "100%", maxWidth: 420 }}>
               {/* Header */}
               <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginBottom: 14, padding: "0 4px" }}>
-                <div style={{ flex: 1, textAlign: "right" }}>
+                <div style={{ flex: 1, textAlign: "right", minWidth: 0 }}>
                   {sc.myPidsSorted.map(pid => {
                     const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
                     const pl = playerMap[effectivePid];
                     const last = pl?.name?.split(' ').slice(1).join(' ') || pl?.name || "?";
-                    return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "WIN" ? K.matchGrn : K.t1, lineHeight: 1.3 }}>{last}</div>;
+                    return <div key={pid} style={{ fontSize: 20, fontWeight: 800, color: sc.matchResult === "WIN" ? K.matchGrn : K.t1, lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{last}</div>;
                   })}
                 </div>
                 {sc.matchResult === "WIN" && <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>}
-                <div style={{ textAlign: "center", minWidth: 60 }}>
-                  <div style={{ fontSize: 26, fontWeight: 800, color: sc.matchResult === "TIE" ? K.t2 : K.matchGrn, lineHeight: 1 }}>{sc.clinchText || "TIED"}</div>
+                {/* Center result block.
+                    For a tiebreaker-resolved match, the clinchText is "TIE (HCP losses)"
+                    or similar. We split it: the word "TIE" on top in big type, and the
+                    tiebreaker label in small type below. Keeps the header compact and
+                    avoids wrapping into the scorecard grid below. */}
+                <div style={{ textAlign: "center", flexShrink: 0, width: 80 }}>
+                  {(() => {
+                    const raw = sc.clinchText || "TIED";
+                    const tbMatch = raw.match(/^TIE\s*\(([^)]+)\)\s*$/i);
+                    if (tbMatch) {
+                      return (
+                        <>
+                          <div style={{ fontSize: 24, fontWeight: 800, color: K.matchGrn, lineHeight: 1 }}>TIE</div>
+                          <div style={{ fontSize: 9, fontWeight: 700, color: K.t3, letterSpacing: .5, textTransform: "uppercase", marginTop: 3, lineHeight: 1.15, whiteSpace: "normal", wordBreak: "break-word" }}>{tbMatch[1]}</div>
+                        </>
+                      );
+                    }
+                    // Regular result (e.g. "3&2", "2UP", or plain "TIED" for non-playoff)
+                    return (
+                      <div style={{ fontSize: 26, fontWeight: 800, color: sc.matchResult === "TIE" ? K.t2 : K.matchGrn, lineHeight: 1, whiteSpace: "nowrap" }}>{raw}</div>
+                    );
+                  })()}
                 </div>
                 {sc.matchResult === "LOSS" && <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>}
-                <div style={{ flex: 1, textAlign: "left" }}>
+                <div style={{ flex: 1, textAlign: "left", minWidth: 0 }}>
                   {sc.oppPidsSorted.map(pid => {
                     const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
                     const pl = playerMap[effectivePid];
                     const last = pl?.name?.split(' ').slice(1).join(' ') || pl?.name || "?";
-                    return <div key={pid} style={{ fontSize: 22, fontWeight: 800, color: sc.matchResult === "LOSS" ? K.matchGrn : K.t1, lineHeight: 1.3 }}>{last}</div>;
+                    return <div key={pid} style={{ fontSize: 20, fontWeight: 800, color: sc.matchResult === "LOSS" ? K.matchGrn : K.t1, lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{last}</div>;
                   })}
                 </div>
               </div>
@@ -2060,6 +2113,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, overflow: "hidden", marginBottom: 4 }}>
                 <scComp.HoleRow />
                 <scComp.ParRow />
+                {weekSch?.isPlayoff && <scComp.HcpRow />}
                 {sc.myPids.map(pid => <scComp.PlayerRow key={pid} pid={pid} />)}
                 <scComp.TeamNetRow pids={sc.myPids} isTeam1Side={true} />
               </div>
@@ -2070,6 +2124,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, overflow: "hidden" }}>
                 <scComp.HoleRow />
                 <scComp.ParRow />
+                {weekSch?.isPlayoff && <scComp.HcpRow />}
                 {sc.oppPids.map(pid => <scComp.PlayerRow key={pid} pid={pid} />)}
                 <scComp.TeamNetRow pids={sc.oppPids} isTeam1Side={false} />
               </div>
