@@ -58,7 +58,7 @@ function ConfirmModal({ modal }) {
 
 
 export default function AdminView(props) {
-  const { players, savePlayer, deletePlayer, teams, saveTeam, deleteTeam, schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, course, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, members, saveMember, deleteMember, matchResults, saveMatchResult } = props;
+  const { players, savePlayer, deletePlayer, teams, saveTeam, deleteTeam, schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, course, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, members, saveMember, deleteMember, matchResults, saveMatchResult, clearWeekData } = props;
   const [sec, setSec] = useState(null);
 
   // ── Derive actionable status for the dashboard banner ──
@@ -209,7 +209,7 @@ export default function AdminView(props) {
   if (sec === "players") return <AdminPlayers players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} course={course} teams={teams} members={members} saveMember={saveMember} onBack={() => setSec(null)} />;
   if (sec === "teams") return <AdminTeams teams={teams} saveTeam={saveTeam} players={players} onBack={() => setSec(null)} />;
   if (sec === "course") return <AdminCourse course={course} saveCourseData={saveCourseData} onBack={() => setSec(null)} />;
-  if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} autoSeedIfReady={props.autoSeedIfReady} onBack={() => setSec(null)} />;
+  if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} autoSeedIfReady={props.autoSeedIfReady} clearWeekData={clearWeekData} onBack={() => setSec(null)} />;
   if (sec === "scoring") return <AdminScoring scoring={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
   if (sec === "members") return <AdminMembers members={members} saveMember={saveMember} deleteMember={deleteMember} players={players} onBack={() => setSec(null)} />;
   if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} resetSeasonData={props.resetSeasonData} importHistoricalScores={props.importHistoricalScores} recalcHandicaps={props.recalcHandicaps} matchResults={matchResults} saveMatchResult={saveMatchResult} schedule={schedule} teams={teams} scoringRules={scoringRules} saveScoringRules={saveScoringRules} onBack={() => setSec(null)} />;
@@ -1115,7 +1115,7 @@ function AdminCourse({ course, saveCourseData, onBack }) {
 }
 
 
-function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, teams, leagueConfig, saveLeagueConfig, matchResults, autoSeedIfReady, onBack }) {
+function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, teams, leagueConfig, saveLeagueConfig, matchResults, autoSeedIfReady, clearWeekData, onBack }) {
   const [step, setStep] = useState(schedule.length > 0 ? "view" : "setup");
 
   // Single source of truth for "derive cfg from stored leagueConfig".
@@ -2877,6 +2877,55 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
         {/* Normal week — show matches */}
         {!isSeeded && !isRainedOut && (<>
+          {/* Duplicate team detector + repair — covers the edge case where a bad
+              bracket config has already been seeded + finalized with duplicates,
+              so normal drag/drop editing won't work (the affected team isn't on
+              the grid to swap in, and the integrity check blocks any swap). The
+              repair flow clears the week's matches + match results + scores so
+              the week can be fully re-seeded from a corrected bracket config. */}
+          {(() => {
+            if (!wk.matches || wk.matches.length === 0) return null;
+            const seen = new Set();
+            const dupes = new Set();
+            for (const m of wk.matches) {
+              for (const tid of [m.team1, m.team2]) {
+                if (!tid) continue;
+                if (seen.has(tid)) dupes.add(tid);
+                seen.add(tid);
+              }
+            }
+            if (dupes.size === 0) return null;
+            const dupeNames = [...dupes].map(id => teams.find(t => t.id === id)?.name || id).join(", ");
+            return (
+              <div style={{ background: K.red + "12", border: `1.5px solid ${K.red}60`, borderRadius: 10, padding: 12, marginBottom: 10 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, color: K.red, marginBottom: 4, letterSpacing: .3 }}>
+                  ⚠ DUPLICATE TEAM DETECTED
+                </div>
+                <div style={{ fontSize: 12, color: K.t2, marginBottom: 10, lineHeight: 1.4 }}>
+                  {dupeNames} {dupes.size === 1 ? "appears" : "appear"} in more than one match this week. This happens when the bracket configuration has "seed N" and "winner of prior round" both resolving to the same team. Fix the bracket config in League Setup, then repair this week to clear scores and re-seed.
+                </div>
+                <button onClick={() => {
+                  setConfirmModal({
+                    title: `Repair Week ${wk.week}?`,
+                    message: `This will DELETE all match results, hole scores, and CTP entries for Week ${wk.week}, then clear the pairings so you can re-seed.\n\nUse this only after you've fixed the bracket configuration in League Setup. This action cannot be undone.`,
+                    confirmLabel: "Repair Week",
+                    destructive: true,
+                    onConfirm: async () => {
+                      setConfirmModal(null);
+                      if (clearWeekData) await clearWeekData(wk.week);
+                      const cleaned = { ...wk, matches: [], locked: false, seeded: true };
+                      await saveWeekSchedule(cleaned);
+                      setLocalWk(cleaned);
+                    },
+                    onCancel: () => setConfirmModal(null),
+                  });
+                }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.red, border: "none", color: "#fff", fontSize: 12, fontWeight: 800, cursor: "pointer", letterSpacing: .3 }}>
+                  Repair Week — Clear Scores & Pairings
+                </button>
+              </div>
+            );
+          })()}
+
           {/* Action buttons — top of pairings */}
           <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
             {!isFinalized && (
