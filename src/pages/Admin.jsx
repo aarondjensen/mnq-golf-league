@@ -2502,14 +2502,64 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
             // Show a commissioner-friendly explanation of what went wrong. The most
             // common cause: the Round 2+ bracket config has "seed N" and "winner of
             // prior match" pointing at the same team.
-            const dupDetail = duplicateInfo.map(d => {
-              const nameFor = (id) => teams.find(t => t.id === id)?.name || id;
-              return `· ${nameFor(d.t1)} vs ${nameFor(d.t2)}`;
-            }).join("\n");
+            // Analyze which slot configs resolved to the same team — this tells the
+            // commissioner exactly which bracket slots to change, not just which
+            // teams collided. Example output:
+            //   "Match 1 slot 2 (seed #8) and Match 3 slot 2 (Winner M1)
+            //    both resolve to B Bergeron/E Olson."
+            const slotDesc = (mu, side) => {
+              const type = mu[side + "type"];
+              const val = mu[side];
+              if (type === "seed") return `seed #${val}`;
+              if (type === "winner") {
+                if (val === "lowestWinner" || val === "lowestSeed") return "Lowest winner";
+                if (val === "nextLowestWinner" || val === "nextLowestSeed") return "Next lowest winner";
+                if (val?.startsWith("winner_")) return `Winner of M${parseInt(val.split("_")[1]) + 1}`;
+                return `winner:${val}`;
+              }
+              if (type === "loser") {
+                if (val === "highestLoser") return "Highest loser";
+                if (val === "nextHighestLoser") return "Next highest loser";
+                if (val?.startsWith("loser_")) return `Loser of M${parseInt(val.split("_")[1]) + 1}`;
+                return `loser:${val}`;
+              }
+              return "?";
+            };
+            // For each duplicate, find where ELSE that team appeared. Walk through
+            // all matchups and for each resolved team, record which (mi, side) placed it.
+            const placements = new Map(); // teamId → [{matchIdx, side, mu}]
+            roundDef.matchups.forEach((mu, mi) => {
+              const r1 = resolveSlot(mu, "s1");
+              const r2 = resolveSlot(mu, "s2");
+              if (r1) {
+                if (!placements.has(r1)) placements.set(r1, []);
+                placements.get(r1).push({ mi, side: "s1", mu });
+              }
+              if (r2) {
+                if (!placements.has(r2)) placements.set(r2, []);
+                placements.get(r2).push({ mi, side: "s2", mu });
+              }
+            });
+            const nameFor = (id) => teams.find(t => t.id === id)?.name || id;
+            const conflictLines = [];
+            for (const [teamId, spots] of placements.entries()) {
+              if (spots.length < 2) continue;
+              const s = spots.map(sp =>
+                `Match ${sp.mi + 1} slot ${sp.side === "s1" ? 1 : 2} (${slotDesc(sp.mu, sp.side)})`
+              ).join(" AND ");
+              conflictLines.push(`  • ${s}\n    both resolve to ${nameFor(teamId)}`);
+            }
             alert(
-              `Bracket configuration has duplicate teams — the same team is ` +
-              `resolved into two matches. Fix the bracket matchups so each team ` +
-              `appears only once per round.\n\nSkipped:\n${dupDetail}`
+              `BRACKET CONFIG ERROR — duplicate teams\n\n` +
+              `The bracket for this round has two slots that point to the same ` +
+              `team, so the seeding can't produce a valid bracket.\n\n` +
+              `Conflicts:\n${conflictLines.join("\n\n")}\n\n` +
+              `HOW TO FIX:\n` +
+              `1. Go back to Admin → Schedule → Playoff tab\n` +
+              `2. Find this round's matchups and change one of the conflicting\n` +
+              `    slots (usually the wrong one is a "seed #N" that should\n` +
+              `    instead be a "winner of" reference from a prior round).\n` +
+              `3. Save, then come back here and try Seed Week again.`
             );
           } else {
             alert("Could not resolve all matchups. Make sure previous rounds are finalized and bracket is configured correctly.");
@@ -2811,8 +2861,28 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           let previewPairings = [];
           if (isPlayoff && roundDef?.matchups?.length) {
             roundDef.matchups.forEach((mu, i) => {
-              const s1Label = mu.s1type === "seed" ? `#${mu.s1}` : (mu.s1 === "lowestWinner" ? "Lowest winner" : mu.s1 === "nextLowestWinner" ? "Next lowest" : mu.s1?.startsWith("winner_") ? `Winner M${parseInt(mu.s1.split("_")[1]) + 1}` : "?");
-              const s2Label = mu.s2type === "seed" ? `#${mu.s2}` : (mu.s2 === "lowestWinner" ? "Lowest winner" : mu.s2 === "nextLowestWinner" ? "Next lowest" : mu.s2?.startsWith("winner_") ? `Winner M${parseInt(mu.s2.split("_")[1]) + 1}` : "?");
+              // Label generator — covers all slot types so the preview never shows
+              // a bare "?" that leaves the commissioner wondering what's broken.
+              // Unrecognized configs surface as "UNSET" with warning styling so the
+              // user knows exactly which slot to fix in the bracket config.
+              const labelFor = (type, val) => {
+                if (type === "seed") return val ? `#${val}` : "UNSET seed";
+                if (type === "winner") {
+                  if (val === "lowestWinner" || val === "lowestSeed") return "Lowest winner";
+                  if (val === "nextLowestWinner" || val === "nextLowestSeed") return "Next lowest";
+                  if (val?.startsWith("winner_")) return `Winner M${parseInt(val.split("_")[1]) + 1}`;
+                  return "UNSET winner";
+                }
+                if (type === "loser") {
+                  if (val === "highestLoser") return "Highest loser";
+                  if (val === "nextHighestLoser") return "Next highest loser";
+                  if (val?.startsWith("loser_")) return `Loser M${parseInt(val.split("_")[1]) + 1}`;
+                  return "UNSET loser";
+                }
+                return "UNSET";
+              };
+              const s1Label = labelFor(mu.s1type, mu.s1);
+              const s2Label = labelFor(mu.s2type, mu.s2);
               const t1 = mu.s1type === "seed" ? getTeamBySeed(mu.s1) : null;
               const t2 = mu.s2type === "seed" ? getTeamBySeed(mu.s2) : null;
               previewPairings.push({
