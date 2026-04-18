@@ -400,28 +400,31 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
         // Uniform spacing across all rounds — every round uses BASE_GAP between its
         // cards, so Round 2 feels as tight as Round 1 instead of doubling.
         //
-        // Round 1 is the qualifying round that feeds the bracket — the winners' SEEDS
-        // get placed into the Round 2 bracket slots, not the specific match winners.
-        // So we intentionally do NOT connect Round 1 matches to Round 2 matches via
-        // converging lines; instead the connectors start from Round 2 onward.
+        // For rounds 2+ (the traditional bracket), each card must sit at the midpoint
+        // of its pair from the prior round. That requires the card-to-card SPACING
+        // (defined as CARD_HEIGHT + gap) to double each round — otherwise later-round
+        // cards drift off-center.
         //
-        // Rounds 2+ are the traditional bracket. Each round-N card's top pad is
-        // accumulated so it visually sits at the midpoint of its pair from round N-1
-        // (within the bracket, N >= 2).
+        // Round 0 (qualifying) and Round 1 (bracket start) are visually disconnected —
+        // both start at the top of their column with no offset.
         const geom = (() => {
           const out = [];
           let tp = 0;
+          let prevSpacing = 0; // card-to-card center distance in the previous round
           for (let r = 0; r < bracketData.length; r++) {
             if (r <= 1) {
-              // Round 0 (qualifying) and Round 1 (bracket round 1 — first "real" bracket
-              // round) both start at the top of their column, no offset. They're NOT
-              // vertically connected to each other.
+              // Round 0 and Round 1 both start plain — no offset, standard gap.
               out.push({ gap: BASE_GAP, topPad: 0 });
+              prevSpacing = CARD_HEIGHT + BASE_GAP; // Round 1 is the reference for Round 2
             } else {
-              // Round 2+ bracket rounds — each first card centers between its pair
-              // from the prior round.
-              tp = tp + (CARD_HEIGHT + BASE_GAP) / 2;
-              out.push({ gap: BASE_GAP, topPad: tp });
+              // Round 2+ — each card's center must sit exactly between its pair from
+              // the prior round. So: new spacing = prev spacing × 2, new topPad
+              // accumulates by half the prior spacing.
+              tp = tp + prevSpacing / 2;
+              const newSpacing = prevSpacing * 2;
+              const newGap = newSpacing - CARD_HEIGHT;
+              out.push({ gap: newGap, topPad: tp });
+              prevSpacing = newSpacing;
             }
           }
           return out;
