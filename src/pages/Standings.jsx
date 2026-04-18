@@ -400,50 +400,38 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
         // Uniform spacing across all rounds — every round uses BASE_GAP between its
         // cards, so Round 2 feels as tight as Round 1 instead of doubling.
         //
-        // For rounds 2+ (the traditional bracket), each card must sit at the midpoint
-        // of its pair from the prior round. That requires the card-to-card SPACING
-        // (defined as CARD_HEIGHT + gap) to double each round — otherwise later-round
-        // cards drift off-center.
+        // Bracket geometry — each card must sit at the midpoint of its pair from the
+        // prior round. The card-to-card SPACING doubles each advancement round.
         //
         // Round 0 (qualifying) and Round 1 (bracket start) are visually disconnected —
         // both start at the top of their column with no offset.
         //
-        // PEER ROUNDS: if a round has the SAME match count as the prior round, it's
-        // a consolation/third-place match running in parallel — we align it with the
-        // prior round's cards (same topPad, same gap) rather than doubling.
+        // CONSOLATION/THIRD-PLACE MATCHES: Rounds can have more cards than a pure
+        // advancement bracket would require (e.g. Round 4 = { Championship, 3rd Place }
+        // when Round 3 = 2 SFs). The FIRST card of each such round IS an advancement
+        // match (Championship is SF winners). Any additional cards are parallel
+        // consolation matches — placed at the same Y as cards in the PRIOR round.
         const geom = (() => {
           const out = [];
           let tp = 0;
-          let prevSpacing = 0;     // card-to-card center distance in the previous round
-          let prevMatchCount = 0;  // match count in the previous round
+          let prevSpacing = 0;  // card-to-card center distance in the previous round
           for (let r = 0; r < bracketData.length; r++) {
-            const currMatchCount = Math.max(
-              bracketData[r].matchups.length,
-              bracketData[r].config.length,
-              1
-            );
             if (r <= 1) {
               // Round 0 and Round 1 both start plain — no offset, standard gap.
               out.push({ gap: BASE_GAP, topPad: 0 });
               prevSpacing = CARD_HEIGHT + BASE_GAP; // Round 1 is the reference for Round 2
-            } else if (currMatchCount === prevMatchCount) {
-              // Peer round — matches a parallel bracket stream (e.g. a consolation
-              // or third-place game that runs the same week as a semifinal). Use the
-              // prior round's spacing and topPad so they line up side-by-side.
-              const newGap = prevSpacing - CARD_HEIGHT;
-              const prior = out[r - 1];
-              out.push({ gap: newGap, topPad: prior.topPad });
-              // prevSpacing stays the same for the next iteration
             } else {
-              // Advancement round — each card sits at the midpoint of its pair from
-              // the prior round. Spacing doubles, topPad accumulates by half the prior.
+              // Advancement round — first card sits at midpoint of prior round's first
+              // pair, subsequent cards double the spacing to keep pairs aligned. This
+              // handles both pure advancement rounds AND consolation-extended rounds
+              // (the consolation match will appear at a Y position that corresponds to
+              // the nearest prior-round card — more details in the connector logic).
               tp = tp + prevSpacing / 2;
               const newSpacing = prevSpacing * 2;
               const newGap = newSpacing - CARD_HEIGHT;
               out.push({ gap: newGap, topPad: tp });
               prevSpacing = newSpacing;
             }
-            prevMatchCount = currMatchCount;
           }
           return out;
         })();
@@ -487,94 +475,133 @@ function PlayoffBracketView({ teams, schedule, matchResults, leagueConfig }) {
                       )}
                     </button>
 
-                    {/* Stack of matchup cards for this round, with the computed gap */}
+                    {/* Stack of matchup cards for this round. Absolute positioning so
+                        we can place consolation matches (e.g. 3rd-place game) at the
+                        Y of their peer from the prior round, while the first card(s)
+                        sit at the correct advancement-centered Y. */}
+                    {(() => {
+                      // For round >= 2, an "advancement" card count is max(1, ceil(prev/2)).
+                      // Any card index >= advCount is a consolation/parallel match.
+                      const prevCount = ri > 0
+                        ? Math.max(bracketData[ri - 1].matchups.length, bracketData[ri - 1].config.length, 1)
+                        : 0;
+                      const advCount = ri <= 1 ? matchCount : Math.max(1, Math.ceil(prevCount / 2));
+
+                      // Card Y positions. For r<=1: flow normally from top with BASE_GAP.
+                      // For r>=2 advancement cards: topPad + index * (CARD_HEIGHT + gap).
+                      // For r>=2 consolation cards: align with prior round's card at the
+                      // corresponding "leftover" index — concretely, consolation card c
+                      // (0-indexed among consolation cards, so mi - advCount) aligns with
+                      // prior round's card at index (advCount*2 + c) if advancing normally,
+                      // but the typical case (3rd-place after a single championship) means
+                      // c=0 aligns with prior round's card at index 1 (the OTHER match).
+                      //
+                      // Simpler rule that works for the common cases:
+                      //   - 1 advancement + 1 consolation from a 2-match prior round:
+                      //     consolation Y = prior round card[1] Y
+                      //   - More broadly: consolation card c sits at prior card index (advCount + c)
+                      const priorG = ri > 0 ? geom[ri - 1] : null;
+                      const cardY = (mi) => {
+                        if (ri <= 1) return mi * (CARD_HEIGHT + gap);
+                        if (mi < advCount) return topPad + mi * (CARD_HEIGHT + gap);
+                        // Consolation card — align with prior round card at index
+                        // (advCount + (mi - advCount)) = mi's remapped slot
+                        const priorIdx = advCount + (mi - advCount);
+                        if (!priorG) return topPad + mi * (CARD_HEIGHT + gap);
+                        return priorG.topPad + priorIdx * (CARD_HEIGHT + priorG.gap);
+                      };
+
+                      // Total column height — max of advancement block end and consolation card end
+                      const columnHeight = Math.max(
+                        ...Array.from({ length: matchCount }, (_, mi) => cardY(mi) + CARD_HEIGHT)
+                      );
+
+                      return (
+                        <div style={{ position: "relative", height: columnHeight }}>
+                          {Array.from({ length: matchCount }, (_, mi) => {
+                            const mu = round.matchups[mi];
+                            const configMu = round.config[mi];
+                            const myY = cardY(mi);
+                            const isConsolation = ri >= 2 && mi >= advCount;
+
+                            // Compute connector target — next round's matching advancement card.
+                            // Only draw for advancement cards in round >= 1.
+                            let nextCardDeltaY = 0;
+                            let shouldDrawConnector = false;
+                            if (ri >= 1 && ri < bracketData.length - 1 && !isConsolation) {
+                              const nextRound = bracketData[ri + 1];
+                              const nextPrevCount = matchCount;
+                              const nextAdvCount = Math.max(1, Math.ceil(nextPrevCount / 2));
+                              const nextTargetIdx = Math.floor(mi / 2);
+                              // Only draw if the next round has an advancement target at this index
+                              if (nextTargetIdx < nextAdvCount) {
+                                const nextG = geom[ri + 1];
+                                const nextY = nextG.topPad + nextTargetIdx * (CARD_HEIGHT + nextG.gap);
+                                const currCenterY = myY + CARD_HEIGHT / 2;
+                                const nextCenterY = nextY + CARD_HEIGHT / 2;
+                                nextCardDeltaY = nextCenterY - currCenterY;
+                                shouldDrawConnector = true;
+                              }
+                            }
+
+                            return (
+                              <div key={mi} style={{ position: "absolute", top: myY, left: 0, right: 0 }}>
+                                <BracketCard mu={mu} configMu={configMu} />
+                                {shouldDrawConnector && (
+                                  <>
+                                    <div style={{
+                                      position: "absolute", top: "50%", right: -6,
+                                      width: 6, height: 1, background: K.bdr,
+                                    }} />
+                                    {nextCardDeltaY !== 0 && (
+                                      <div style={{
+                                        position: "absolute",
+                                        top: nextCardDeltaY > 0 ? "50%" : `calc(50% + ${nextCardDeltaY}px)`,
+                                        right: -6, width: 1,
+                                        height: Math.abs(nextCardDeltaY),
+                                        background: K.bdr,
+                                      }} />
+                                    )}
+                                    {(mi % 2 === 0 || mi + 1 === advCount) && (
+                                      <div style={{
+                                        position: "absolute",
+                                        top: `calc(50% + ${nextCardDeltaY}px)`,
+                                        right: -12, width: 6, height: 1, background: K.bdr,
+                                      }} />
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                    {/* Legacy stack removed — see the absolutely-positioned block above */}
+                    {false && (
                     <div style={{ display: "flex", flexDirection: "column", paddingTop: topPad }}>
                       {Array.from({ length: matchCount }, (_, mi) => {
                         const mu = round.matchups[mi];
                         const configMu = round.config[mi];
                         const isLast = mi === matchCount - 1;
 
-                        // Compute where the next round's matching card sits vertically
-                        // relative to THIS card. We want the connector's vertical leg to
-                        // reach from this card's midpoint up or down to the midpoint of
-                        // the next round's target card.
-                        //
-                        // This card's Y-center (relative to its round's column top):
-                        //   topPad + mi * (CARD_HEIGHT + gap) + CARD_HEIGHT/2
-                        // Next round's target card index: Math.floor(mi / 2)
-                        // Next round's card Y-center:
-                        //   geom[ri+1].topPad + floor(mi/2) * (CARD_HEIGHT + geom[ri+1].gap) + CARD_HEIGHT/2
                         let nextCardDeltaY = 0;
                         if (ri < bracketData.length - 1) {
                           const currCenterY = topPad + mi * (CARD_HEIGHT + gap) + CARD_HEIGHT / 2;
                           const nextG = geom[ri + 1];
                           const nextTargetIdx = Math.floor(mi / 2);
                           const nextCenterY = nextG.topPad + nextTargetIdx * (CARD_HEIGHT + nextG.gap) + CARD_HEIGHT / 2;
-                          nextCardDeltaY = nextCenterY - currCenterY; // positive = next card is below, negative = above
+                          nextCardDeltaY = nextCenterY - currCenterY;
                         }
 
                         return (
                           <div key={mi} style={{ marginBottom: isLast ? 0 : gap, position: "relative" }}>
                             <BracketCard mu={mu} configMu={configMu} />
-                            {/* Connector from this card out to the next round's target
-                                card. Horizontal stub → vertical leg to the target's
-                                Y-center → horizontal stub into the target. Drawn once
-                                per source card.
-                                SKIP for Round 0 → Round 1: Round 0 is the qualifying
-                                round and its winners seed into Round 1 based on seed
-                                number, not direct advancement.
-                                SKIP for peer rounds: if the next round has the SAME
-                                match count, it's a parallel consolation/third-place
-                                stream — it doesn't advance from these matches. */}
-                            {(() => {
-                              if (ri < 1 || ri >= bracketData.length - 1) return false;
-                              const nextCount = Math.max(
-                                bracketData[ri + 1].matchups.length,
-                                bracketData[ri + 1].config.length,
-                                1
-                              );
-                              // Advancement round = next round has fewer matches than this
-                              // one (pairs feed forward). Peer rounds (same count) are
-                              // parallel consolation/third-place streams and don't get
-                              // connector lines.
-                              return nextCount < matchCount;
-                            })() && (
-                              <>
-                                {/* Outgoing horizontal stub from this card's midpoint */}
-                                <div style={{
-                                  position: "absolute", top: "50%", right: -6,
-                                  width: 6, height: 1, background: K.bdr,
-                                }} />
-                                {/* Vertical leg — from this card's midpoint to the next
-                                    round's target card midpoint. If the delta is 0 we
-                                    skip the leg entirely (straight-across case, e.g.
-                                    the final pipe to a single championship match). */}
-                                {nextCardDeltaY !== 0 && (
-                                  <div style={{
-                                    position: "absolute",
-                                    top: nextCardDeltaY > 0 ? "50%" : `calc(50% + ${nextCardDeltaY}px)`,
-                                    right: -6, width: 1,
-                                    height: Math.abs(nextCardDeltaY),
-                                    background: K.bdr,
-                                  }} />
-                                )}
-                                {/* Incoming stub into the next round's card.
-                                    Only draw on the TOP card of each pair (mi even) so we
-                                    don't double-draw. Exception: if this card has no
-                                    pair (odd total match count), we still draw. */}
-                                {(mi % 2 === 0 || mi + 1 === matchCount) && (
-                                  <div style={{
-                                    position: "absolute",
-                                    top: `calc(50% + ${nextCardDeltaY}px)`,
-                                    right: -12, width: 6, height: 1, background: K.bdr,
-                                  }} />
-                                )}
-                              </>
-                            )}
                           </div>
                         );
                       })}
                     </div>
+                    )}
                   </div>
                 );
               })}
