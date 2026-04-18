@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } fro
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "./firebase";
 import { K, I, DEFAULT_SCORING, applyTheme, getCSS, lastNamesOnly, calcPlayerHcp, buildStandingsForSeed, pairNonBracketTeams, collectPriorMatchups } from "./theme";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
+import ErrorBoundary from "./ErrorBoundary";
 
 // Fix #2: Lazy-load page components — Vite will code-split each into its own chunk.
 // Only the active tab's code is downloaded and parsed on navigation.
@@ -1077,7 +1078,11 @@ export default function GolfLeagueApp() {
             );
           })()}
           <div className="main-content fi" key={tab}>
-          {/* Fix #2: Wrap lazy-loaded tabs in Suspense */}
+          {/* Wrap lazy-loaded tabs in ErrorBoundary + Suspense. The `key={tab}` on
+              the parent div remounts this subtree on tab change, which also resets
+              the error boundary — so a crashed page self-heals when the user
+              navigates away and comes back. */}
+          <ErrorBoundary>
           <Suspense fallback={TabFallback}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} fetchAllScores={fetchAllScores} />}
           {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} deleteMatchResult={deleteMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} recalcHandicaps={recalcHandicaps} clearWeekData={clearWeekData} autoSeedIfReady={autoSeedIfReady} />}
@@ -1087,6 +1092,7 @@ export default function GolfLeagueApp() {
           {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} isComm={isComm} saveCtp={saveCtp} />}
           {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} saveMatchResult={saveMatchResult} resetSeasonData={resetSeasonData} importHistoricalScores={importHistoricalScores} recalcHandicaps={recalcHandicaps} autoSeedIfReady={autoSeedIfReady} clearWeekData={clearWeekData} />}
           </Suspense>
+          </ErrorBoundary>
           {commMode && <div style={{ height: 44 }} />}
           </div>
         </div>
