@@ -782,67 +782,94 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               centerColor = K.act;
             }
 
-            const centerFontSize = !isFinalOrSigned && thru === 0 ? 18 : centerText.length > 3 ? 17 : 20;
-            const dimColor = K.t2;
-            const t1NameWeight = isFinalOrSigned && t1Leading ? 700 : 600;
-            const t2NameWeight = isFinalOrSigned && t2Leading ? 700 : 600;
-            const t1NameColor = !isFinalOrSigned ? dimColor : t1Leading ? K.t1 : dimColor;
-            const t2NameColor = !isFinalOrSigned ? dimColor : t2Leading ? K.t1 : dimColor;
-
             return (
               <div key={mi} style={{ background: K.card, borderRadius: 10, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}40`, overflow: "hidden" }}>
-                <button onClick={() => setExpandedMatch(isExp ? null : mi)} style={{ width: "100%", padding: "8px 10px", cursor: "pointer", textAlign: "left", background: "transparent", border: "none" }}>
-                  <div style={{ display: "flex", alignItems: "center" }}>
-                    {showSeeds && (
-                      <div style={{ width: 22, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", marginRight: 4 }}>
-                        <div style={{ width: 20, height: 20, borderRadius: 5, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: K.logoBright }}>
-                          {seedMap[dispT1?.id] || "?"}
-                        </div>
-                      </div>
-                    )}
-                    <div style={{ flex: 1, textAlign: "right", paddingRight: 4, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 3 }}>
-                      <div style={{ fontSize: 14, fontWeight: t1NameWeight, color: t1NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT1?.player1)}</div>
-                      <div style={{ fontSize: 14, fontWeight: t1NameWeight, color: t1NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT1?.player2)}</div>
-                    </div>
-                    <div style={{ width: 16, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      {t1Leading && (
-                        <svg width="10" height="12" viewBox="0 0 10 12" style={{ transform: "rotate(-90deg)" }}>
-                          {isFinalOrSigned
-                            ? <polygon points="5,0 10,12 0,12" fill={K.matchGrn} />
-                            : <polygon points="5,1 9,11 1,11" fill="none" stroke={K.matchGrn} strokeWidth="1.5" />
-                          }
-                        </svg>
+                <button onClick={() => setExpandedMatch(isExp ? null : mi)} style={{ width: "100%", padding: 0, cursor: "pointer", textAlign: "left", background: "transparent", border: "none", display: "block" }}>
+                  {/* Standings-style single-row card: [seed · team]  VS/status  [team · seed].
+                      Green tint + accent bar on the leading/winning team's half. Team names
+                      wrap onto two lines so both players show in full, not ellipsed. */}
+                  <div style={{ display: "flex", alignItems: "stretch", minHeight: 60 }}>
+                    {/* TEAM 1 — left half */}
+                    <div style={{
+                      flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6,
+                      padding: "8px 10px",
+                      background: t1Leading ? K.matchGrn + "18" : "transparent",
+                      borderLeft: t1Leading ? `3px solid ${K.matchGrn}` : "3px solid transparent",
+                      opacity: t2Leading && isFinalOrSigned ? 0.6 : 1,
+                    }}>
+                      {showSeeds && (
+                        <div style={{
+                          width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                          background: K.act, border: `1px solid ${K.act}`, color: K.logoBlue,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 9, fontWeight: 800,
+                        }}>{seedMap[dispT1?.id] || "?"}</div>
                       )}
+                      <div style={{
+                        flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, color: K.t1,
+                        wordBreak: "break-word", lineHeight: 1.25,
+                      }}>
+                        {dn(dispT1?.player1)} / {dn(dispT1?.player2)}
+                      </div>
                     </div>
-                    <div style={{ textAlign: "center", width: 80, flexShrink: 0 }}>
-                      <div style={{ fontSize: centerFontSize, fontWeight: 800, color: centerColor, letterSpacing: .5 }}>{centerText}</div>
+
+                    {/* VS / status strip — shows tee time before play, live status during,
+                        match result after. Primary line + optional smaller label below. */}
+                    <div style={{
+                      flexShrink: 0, minWidth: 68,
+                      background: K.inp,
+                      display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column",
+                      padding: "4px 6px",
+                      borderLeft: `1px solid ${K.bdr}40`, borderRight: `1px solid ${K.bdr}40`,
+                      gap: 1,
+                    }}>
+                      <div style={{
+                        fontSize: centerText.length > 3 ? 12 : 13, fontWeight: 800,
+                        color: centerColor, letterSpacing: .3,
+                        whiteSpace: "nowrap", textAlign: "center", lineHeight: 1.1,
+                      }}>{centerText}</div>
                       {progressLabel && (
-                        <div style={{ fontSize: 9, fontWeight: 700, color: progressColor, textTransform: "uppercase", letterSpacing: 1, marginTop: 1 }}>{progressLabel}</div>
-                      )}
-                    </div>
-                    <div style={{ width: 16, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      {t2Leading && (
-                        <svg width="10" height="12" viewBox="0 0 10 12" style={{ transform: "rotate(90deg)" }}>
-                          {isFinalOrSigned
-                            ? <polygon points="5,0 10,12 0,12" fill={K.matchGrn} />
-                            : <polygon points="5,1 9,11 1,11" fill="none" stroke={K.matchGrn} strokeWidth="1.5" />
-                          }
-                        </svg>
-                      )}
-                    </div>
-                    <div style={{ flex: 1, textAlign: "left", paddingLeft: 4, overflow: "hidden", display: "flex", flexDirection: "column", gap: 3 }}>
-                      <div style={{ fontSize: 14, fontWeight: t2NameWeight, color: t2NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT2?.player1)}</div>
-                      <div style={{ fontSize: 14, fontWeight: t2NameWeight, color: t2NameColor, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", textTransform: "uppercase" }}>{dn(dispT2?.player2)}</div>
-                    </div>
-                    {showSeeds && (
-                      <div style={{ width: 22, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", marginLeft: 4 }}>
-                        <div style={{ width: 20, height: 20, borderRadius: 5, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: K.logoBright }}>
-                          {seedMap[dispT2?.id] || "?"}
+                        <div style={{ fontSize: 8, fontWeight: 700, color: progressColor, textTransform: "uppercase", letterSpacing: .8, whiteSpace: "nowrap" }}>
+                          {progressLabel}
                         </div>
+                      )}
+                    </div>
+
+                    {/* TEAM 2 — right half (mirrored: seed on the right) */}
+                    <div style={{
+                      flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6,
+                      padding: "8px 10px",
+                      background: t2Leading ? K.matchGrn + "18" : "transparent",
+                      borderRight: t2Leading ? `3px solid ${K.matchGrn}` : "3px solid transparent",
+                      justifyContent: "flex-end",
+                      opacity: t1Leading && isFinalOrSigned ? 0.6 : 1,
+                    }}>
+                      <div style={{
+                        flex: 1, minWidth: 0, fontSize: 12, fontWeight: 700, color: K.t1,
+                        wordBreak: "break-word", lineHeight: 1.25,
+                        textAlign: "right",
+                      }}>
+                        {dn(dispT2?.player1)} / {dn(dispT2?.player2)}
                       </div>
-                    )}
-                    <div style={{ flexShrink: 0, marginLeft: 4, color: K.t3, fontSize: 12, transform: isExp ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</div>
+                      {showSeeds && (
+                        <div style={{
+                          width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                          background: K.act, border: `1px solid ${K.act}`, color: K.logoBlue,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 9, fontWeight: 800,
+                        }}>{seedMap[dispT2?.id] || "?"}</div>
+                      )}
+                    </div>
                   </div>
+
+                  {/* Chevron — small, below the card so the main row stays clean */}
+                  <div style={{
+                    display: "flex", justifyContent: "center", padding: "2px 0 4px",
+                    background: K.inp + "80",
+                    borderTop: `1px solid ${K.bdr}30`,
+                    color: K.t3, fontSize: 10,
+                    transform: isExp ? "rotate(180deg)" : "none", transition: "transform .2s",
+                  }}>▾</div>
                 </button>
 
                 {/* Pending attesters row */}
