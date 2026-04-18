@@ -805,17 +805,23 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             }
 
             return (
-              <div key={mi} style={{ background: K.card, borderRadius: 10, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}40`, overflow: "hidden" }}>
+              <div key={mi} style={{
+                background: K.card,
+                borderRadius: 10,
+                border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}60`,
+                overflow: "hidden",
+                boxShadow: isMyMatch ? `0 2px 8px ${K.act}18` : "0 1px 3px rgba(0,0,0,.12), 0 1px 2px rgba(0,0,0,.08)",
+              }}>
                 <button onClick={() => setExpandedMatch(isExp ? null : mi)} style={{ width: "100%", padding: 0, cursor: "pointer", textAlign: "left", background: "transparent", border: "none", display: "block" }}>
                   {/* Standings-style single-row card: [seed · team]  VS/status  [team · seed].
                       Green tint + accent bar on the leading/winning team's half. Team names
-                      wrap onto two lines so both players show in full, not ellipsed. */}
+                      stack on two lines so both players show in full. */}
                   <div style={{ display: "flex", alignItems: "stretch", minHeight: 60 }}>
                     {/* TEAM 1 — left half. Teammate names always stacked on two lines so
                         the row has a consistent height + rhythm regardless of name length. */}
                     <div style={{
-                      flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6,
-                      padding: "10px 10px",
+                      flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8,
+                      padding: "10px 12px",
                       background: t1Leading ? K.matchGrn + "18" : "transparent",
                       borderLeft: t1Leading ? `3px solid ${K.matchGrn}` : "3px solid transparent",
                       opacity: t2Leading && isFinalOrSigned ? 0.6 : 1,
@@ -867,8 +873,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
                     {/* TEAM 2 — right half (mirrored: seed on the right). Stacked names too. */}
                     <div style={{
-                      flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6,
-                      padding: "10px 10px",
+                      flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8,
+                      padding: "10px 12px",
                       background: t2Leading ? K.matchGrn + "18" : "transparent",
                       borderRight: t2Leading ? `3px solid ${K.matchGrn}` : "3px solid transparent",
                       justifyContent: "flex-end",
@@ -894,21 +900,61 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   </div>
                 </button>
 
-                {/* Pending attesters row — shows counter + who still needs to attest */}
+                {/* Attestation status — compact, inline. When signed-but-not-attested,
+                    we show:
+                      1. A small signed-by indicator at the bottom-left
+                      2. An attestation progress bar on the bottom edge of the card
+                      3. Pending-player initial chips at the bottom-right
+                    No full-width text label — the progress bar visually conveys "N of M"
+                    without needing to read a counter, and the whole strip is short. */}
                 {isSigned && (() => {
                   const pending = resNonSigners.filter(pid => !resAttestedBy.includes(pid));
                   if (!pending.length) return null;
+
+                  const signer = playerMap[res?.signedByPlayerId];
+                  const signerLast = signer ? signer.name.split(' ').pop() : null;
+                  const totalNeeded = resNonSigners.length;
+                  const donePct = totalNeeded > 0 ? (resAttestedCount / totalNeeded) * 100 : 0;
+
                   return (
-                    <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, padding: "4px 10px 6px", borderTop: `1px solid ${K.bdr}20` }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, color: "#3b82f6", letterSpacing: .5, textTransform: "uppercase" }}>
-                        {resAttestedCount}/{resNonSigners.length} Attest
-                      </span>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
-                        {pending.map(pid => {
-                          const p = playerMap[pid];
-                          const lastName = p ? p.name.split(' ').pop() : '?';
-                          return <span key={pid} style={{ fontSize: 9, fontWeight: 600, color: "#3b82f6", background: "#3b82f610", padding: "2px 6px", borderRadius: 3, border: `1px solid #3b82f625` }}>{lastName}</span>;
-                        })}
+                    <div style={{ borderTop: `1px solid ${K.bdr}30` }}>
+                      {/* Thin progress bar — blue fill showing attestation progress */}
+                      <div style={{ height: 2, background: K.bdr + "30", position: "relative" }}>
+                        <div style={{
+                          position: "absolute", top: 0, left: 0, bottom: 0,
+                          width: `${donePct}%`,
+                          background: "#3b82f6",
+                          transition: "width .2s",
+                        }} />
+                      </div>
+                      {/* Single status row: signer on left, pending initials on right */}
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 10px", gap: 8 }}>
+                        {signerLast ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: K.t3 }}>
+                            <span style={{ fontSize: 9 }}>✓</span>
+                            <span style={{ fontWeight: 600 }}>Signed by {signerLast}</span>
+                          </div>
+                        ) : <div />}
+                        {/* Pending initial dots — one per player still to attest */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <span style={{ fontSize: 9, fontWeight: 600, color: K.t3, letterSpacing: .3, marginRight: 2 }}>
+                            Pending
+                          </span>
+                          {pending.map(pid => {
+                            const p = playerMap[pid];
+                            const initials = p ? p.name.split(' ').map(n => n[0]).join('').toUpperCase() : '?';
+                            return (
+                              <div key={pid} style={{
+                                width: 18, height: 18, borderRadius: "50%",
+                                background: "transparent",
+                                border: `1.5px solid #3b82f6`,
+                                color: "#3b82f6",
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                fontSize: 8, fontWeight: 800, letterSpacing: -.2,
+                              }}>{initials}</div>
+                            );
+                          })}
+                        </div>
                       </div>
                     </div>
                   );
