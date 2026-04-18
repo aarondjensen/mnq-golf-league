@@ -150,14 +150,86 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     else if (holesRemaining > 0) matchResultText = `${matchMargin}&${holesRemaining}`;
     else matchResultText = `${Math.abs(finalStatus)}UP`;
 
+    // PLAYOFF TIEBREAKER — mirrors Scoring.jsx's finalizeMatch logic. Playoff
+    // matches cannot end tied, so when a commissioner's score edit produces a tie,
+    // apply the configured tiebreaker to pick a winner and override both the
+    // saved points and the matchResultText (which becomes "TIE (Hole N)" or similar).
+    let finalT1Pts = t1Pts;
+    let finalT2Pts = t2Pts;
+    let winnerTeamId = finalStatus > 0 ? t1.id : finalStatus < 0 ? t2.id : null;
+    if (isPlayoffWeek && finalStatus === 0) {
+      const tb = leagueConfig?.playoffTiebreaker || "hardestHole";
+      const netOnHole = (pids, h) => pids.reduce((a, pid) => a + (getS(pid, h) - getStr(pid, h)), 0);
+      let winner = null;
+      let label = "";
+
+      if (tb === "hardestHole") {
+        // Walk holes in order of HCP index (1 = hardest first); first hole where
+        // net scores differ breaks the tie.
+        const holesByHcp = Array.from({ length: 9 }, (_, h) => h)
+          .sort((a, b) => (hcps[a] || Infinity) - (hcps[b] || Infinity));
+        for (const h of holesByHcp) {
+          const n1 = netOnHole(t1Pids, h);
+          const n2 = netOnHole(t2Pids, h);
+          if (n1 < n2) { winner = "t1"; label = `Hole ${h + 1}`; break; }
+          if (n2 < n1) { winner = "t2"; label = `Hole ${h + 1}`; break; }
+        }
+        if (!label) label = "Hole-by-HCP";
+      } else if (tb === "sumHoleHcpLosses") {
+        let t1LossSum = 0, t2LossSum = 0;
+        for (let h = 0; h < 9; h++) {
+          const hc = hcps[h] || 0;
+          if (holeResults[h] === 1) t2LossSum += hc;
+          else if (holeResults[h] === -1) t1LossSum += hc;
+        }
+        if (t1LossSum < t2LossSum) winner = "t1";
+        else if (t2LossSum < t1LossSum) winner = "t2";
+        label = "HCP losses";
+      } else if (tb === "lowestNet") {
+        if (t1Net < t2Net) winner = "t1";
+        else if (t2Net < t1Net) winner = "t2";
+        label = "Low net";
+      } else if (tb === "lowestGross") {
+        if (t1Gross < t2Gross) winner = "t1";
+        else if (t2Gross < t1Gross) winner = "t2";
+        label = "Low gross";
+      } else if (tb === "higherSeed") {
+        const s1 = Number(seedMap[t1.id]) || Infinity;
+        const s2 = Number(seedMap[t2.id]) || Infinity;
+        if (s1 < s2) winner = "t1";
+        else if (s2 < s1) winner = "t2";
+        label = "Higher seed";
+      }
+      // Final fallback — seed, then t1.
+      if (!winner) {
+        const s1 = Number(seedMap[t1.id]) || Infinity;
+        const s2 = Number(seedMap[t2.id]) || Infinity;
+        if (s1 !== s2) winner = s1 < s2 ? "t1" : "t2";
+        else winner = "t1";
+        label = "Seed";
+      }
+
+      const isTeamNet = scoringFormat === "teamNetTotal";
+      if (winner === "t1") {
+        finalT1Pts = isTeamNet ? sr.mw : sr.mw + sr.bw;
+        finalT2Pts = isTeamNet ? sr.ml : sr.ml + sr.bl;
+        winnerTeamId = t1.id;
+      } else {
+        finalT1Pts = isTeamNet ? sr.ml : sr.ml + sr.bl;
+        finalT2Pts = isTeamNet ? sr.mw : sr.mw + sr.bw;
+        winnerTeamId = t2.id;
+      }
+      matchResultText = `TIE (${label})`;
+    }
+
     await saveMatchResult({
       id: `${LEAGUE_ID}_w${weekNum}_${t1.id}_${t2.id}`, week: weekNum,
       team1Id: t1.id, team2Id: t2.id,
-      team1Points: t1Pts, team2Points: t2Pts,
+      team1Points: finalT1Pts, team2Points: finalT2Pts,
       t1Total: t1Net, t2Total: t2Net,
       t1HolesWon: hw1, t2HolesWon: hw2,
       matchResultText,
-      matchWinnerId: finalStatus > 0 ? t1.id : finalStatus < 0 ? t2.id : null,
+      matchWinnerId: winnerTeamId,
       finalizedByTeamId: res?.finalizedByTeamId || null,
       signedByPlayerId: res?.signedByPlayerId || leagueUser?.playerId || null,
       // Preserve attestation state when a commissioner edits scores on an already-
@@ -362,17 +434,34 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
     const teeTimeShort = myMatch ? fmtTeeTime(origIdx).replace(/\s*(AM|PM)$/i, '') : "—";
 
-    let resultText = "";
+    // Parse the match result into two parts so the Schedule column can stack
+    // them on two lines: W/L/T on top, margin detail (like "1UP", "3&1", "TIE"
+    // plus tiebreaker label) below. Keeps the column narrow and scannable.
+    let wlLetter = "";
+    let detailText = "";
     if (res) {
       const isT1 = myMatch.team1 === myTeam.id;
       const myPts = isT1 ? res.team1Points : res.team2Points;
       const oppPts = isT1 ? res.team2Points : res.team1Points;
-      const wl = myPts > oppPts ? "W" : myPts < oppPts ? "L" : "T";
-      resultText = res.matchResultText ? `${wl} ${res.matchResultText}` : `${wl} ${myPts}-${oppPts}`;
-      if (res.matchResultText === "TIED") resultText = "T";
+      wlLetter = myPts > oppPts ? "W" : myPts < oppPts ? "L" : "T";
+      // Detail lines:
+      //   "TIED"              -> no detail (plain T)
+      //   "TIE (Hole N)"      -> "Hole N" (playoff tiebreaker, the T is already on top)
+      //   "1UP" / "3&1"       -> shown as-is
+      const raw = res.matchResultText || `${myPts}-${oppPts}`;
+      if (raw === "TIED") {
+        detailText = "";
+      } else {
+        const tbMatch = raw.match(/^TIE\s*\(([^)]+)\)\s*$/i);
+        if (tbMatch) {
+          detailText = tbMatch[1];
+        } else {
+          detailText = raw;
+        }
+      }
     }
 
-    const resultColor = resultText.startsWith("W") ? K.matchGrn : resultText.startsWith("L") ? K.red : K.t2;
+    const resultColor = wlLetter === "W" ? K.matchGrn : wlLetter === "L" ? K.red : K.t2;
 
     const isCurrent = wk.week === schedule[currentWeekIdx]?.week;
 
@@ -393,8 +482,21 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         >
           <div style={{ width: 22, fontSize: 14, fontWeight: 700, color: K.t1, flexShrink: 0 }}>{wk.week}</div>
           <div style={{ width: 52, fontSize: 12, fontWeight: 600, color: K.t1, flexShrink: 0 }}>{wk.date || "—"}</div>
-          <div style={{ width: 40, fontSize: 14, fontWeight: 700, flexShrink: 0, color: isRainedOut ? K.warn : isComplete ? resultColor : isSeeded ? K.t3 : K.act }}>
-            {isRainedOut ? "—" : isComplete ? resultText : isSeeded ? "—" : teeTimeShort}
+          <div style={{ width: 44, flexShrink: 0, color: isRainedOut ? K.warn : isComplete ? resultColor : isSeeded ? K.t3 : K.act }}>
+            {isRainedOut ? (
+              <span style={{ fontSize: 14, fontWeight: 700 }}>—</span>
+            ) : isComplete ? (
+              <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
+                <span style={{ fontSize: 14, fontWeight: 800, color: resultColor }}>{wlLetter}</span>
+                {detailText && (
+                  <span style={{ fontSize: 10, fontWeight: 600, color: resultColor, marginTop: 1 }}>{detailText}</span>
+                )}
+              </div>
+            ) : isSeeded ? (
+              <span style={{ fontSize: 14, fontWeight: 700 }}>—</span>
+            ) : (
+              <span style={{ fontSize: 14, fontWeight: 700 }}>{teeTimeShort}</span>
+            )}
           </div>
           <div style={{ width: 38, fontSize: 11, fontWeight: 600, color: "#3b82f6", flexShrink: 0 }}>
             {isRainedOut ? "" : side === 'front' ? 'Front' : 'Back'}
@@ -651,13 +753,26 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                       {res && score1 > score2 && (
                         <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, marginRight: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>
                       )}
-                      {/* Center — match result or tee time */}
-                      <div style={{ textAlign: "center", minWidth: 74, flexShrink: 0, padding: "0 2px" }}>
-                        {res ? (
-                          <div style={{ fontSize: HERO_NUM_SIZE, fontWeight: 800, color: resultColor, letterSpacing: .5 }}>
-                            {res.matchResultText || `${score1}–${score2}`}
-                          </div>
-                        ) : (
+                      {/* Center — match result or tee time. Tiebreaker results like
+                          "TIE (Hole 5)" display as stacked lines: big TIE on top, small
+                          hole label below. Width kept generous so long labels don't
+                          crowd against the team names on either side. */}
+                      <div style={{ textAlign: "center", minWidth: 82, flexShrink: 0, padding: "0 4px" }}>
+                        {res ? (() => {
+                          const raw = res.matchResultText || `${score1}–${score2}`;
+                          const tbMatch = raw.match(/^TIE\s*\(([^)]+)\)\s*$/i);
+                          if (tbMatch) {
+                            return (
+                              <>
+                                <div style={{ fontSize: HERO_NUM_SIZE, fontWeight: 800, color: resultColor, letterSpacing: .5, lineHeight: 1 }}>TIE</div>
+                                <div style={{ fontSize: 10, fontWeight: 700, color: K.t3, letterSpacing: .5, textTransform: "uppercase", marginTop: 2, lineHeight: 1.1 }}>{tbMatch[1]}</div>
+                              </>
+                            );
+                          }
+                          return (
+                            <div style={{ fontSize: HERO_NUM_SIZE, fontWeight: 800, color: resultColor, letterSpacing: .5 }}>{raw}</div>
+                          );
+                        })() : (
                           <div style={{ fontSize: 18, fontWeight: 800, color: K.act, letterSpacing: .3 }}>{fmtTeeTime(origIdx)}</div>
                         )}
                       </div>
