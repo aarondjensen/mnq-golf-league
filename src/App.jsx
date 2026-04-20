@@ -437,11 +437,39 @@ export default function GolfLeagueApp() {
 
   // Auth actions
   const doGoogleSignIn = async () => { try { await signInWithPopup(_auth, _googleProvider); } catch (e) { console.error(e); throw e; } };
+  // Email sign-in-or-create. Modern Firebase no longer returns `auth/user-not-found`
+  // on sign-in attempts — for email-enumeration protection, every "email doesn't exist
+  // OR password is wrong" case now returns `auth/invalid-credential`. The old branch
+  // that tried to auto-create on `auth/user-not-found` never fired in practice, which
+  // was breaking first-time sign-ups.
+  //
+  // New approach: on `auth/invalid-credential`, attempt to create the account. If the
+  // email is actually registered and the password was just wrong, createUser returns
+  // `auth/email-already-in-use` — at which point we know it was a password error and
+  // can surface a clear message. This avoids depending on `fetchSignInMethodsForEmail`
+  // alone, which also returns empty when email-enumeration protection is on.
   const doEmailSignIn = async (email, pw) => {
-    try { await signInWithEmailAndPassword(_auth, email, pw); }
-    catch (e) {
-      if (e.code === "auth/user-not-found") { const c = await createUserWithEmailAndPassword(_auth, email, pw); await updateProfile(c.user, { displayName: email.split("@")[0] }); }
-      else throw e;
+    try {
+      await signInWithEmailAndPassword(_auth, email, pw);
+    } catch (e) {
+      // Treat both the legacy and modern "unknown account" codes the same way.
+      if (e.code === "auth/user-not-found" || e.code === "auth/invalid-credential" || e.code === "auth/invalid-login-credentials") {
+        try {
+          const c = await createUserWithEmailAndPassword(_auth, email, pw);
+          await updateProfile(c.user, { displayName: email.split("@")[0] });
+        } catch (createErr) {
+          if (createErr.code === "auth/email-already-in-use") {
+            // Account exists → the original sign-in failed because the password was wrong.
+            const err = new Error("Wrong password");
+            err.code = "auth/wrong-password";
+            throw err;
+          }
+          // Weak password / malformed email / network — pass through to the UI.
+          throw createErr;
+        }
+      } else {
+        throw e;
+      }
     }
   };
   const doSignOut = async () => { await signOut(_auth); setLeagueUser(null); setTab("standings"); };

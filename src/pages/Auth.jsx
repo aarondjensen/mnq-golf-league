@@ -24,7 +24,22 @@ export function AuthScreen({ onGoogle, onEmail }) {
   const handleEmail = async () => {
     if (!email || !pw) { setError("Enter email and password"); return; }
     setBusy(true); setError("");
-    try { await onEmail(email, pw); } catch (e) { setError(e.code === "auth/wrong-password" ? "Wrong password" : e.code === "auth/invalid-email" ? "Invalid email" : e.message || "Sign-in failed"); }
+    try { await onEmail(email, pw); }
+    catch (e) {
+      // Map Firebase auth codes to human-readable messages. `auth/invalid-credential`
+      // is the modern catch-all for wrong-password-or-unknown-email, but by the time
+      // we get here App.jsx's doEmailSignIn has already distinguished the two — so
+      // invalid-credential surfacing here means the create-account fallback itself
+      // failed (weak password, etc.).
+      const msg =
+        e.code === "auth/wrong-password" ? "Wrong password" :
+        e.code === "auth/invalid-email" ? "Invalid email" :
+        e.code === "auth/weak-password" ? "Password must be at least 6 characters" :
+        e.code === "auth/too-many-requests" ? "Too many attempts. Try again in a few minutes." :
+        e.code === "auth/network-request-failed" ? "Network error. Check your connection." :
+        e.message || "Sign-in failed";
+      setError(msg);
+    }
     setBusy(false);
   };
 
