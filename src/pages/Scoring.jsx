@@ -393,6 +393,34 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   if (!course?.name) return <EmptyState icon="flag" title="Course not configured" subtitle="Commissioner needs to set up the course." />;
   if (!matches.length) return <EmptyState icon="calendar" title="No matches this week" subtitle="Commissioner needs to set the schedule." />;
 
+  // ── Onboarding fallback ──
+  // A brand-new user can land here with no match of their own to score — either
+  // because they're not linked to a player yet (commissioner hasn't assigned
+  // them from the Accounts admin page), or their player isn't on a team yet,
+  // or their team happens to have a bye this week. Without this guard, the
+  // default "myMatch" view falls through to code below that assumes `t1`/`t2`
+  // are non-null and crashes.
+  //
+  // Fix: if the user has no `myMatch` and hasn't opened a specific match via
+  // the All Matches view, route them to All Matches so they can see what's
+  // happening. If they ALSO don't have a linked player at all, show a clear
+  // empty state pointing them at the commissioner.
+  if (!activeMatch && !myMatch) {
+    // No linked player at all → explain what's going on.
+    if (!leagueUser.playerId) {
+      return <EmptyState icon="user" title="Account not linked" subtitle="Your commissioner needs to link your account to a player profile before you can score. In the meantime, you can view other matches from the Schedule tab." />;
+    }
+    // Linked to a player but no match this week (not on a team, bye, etc.)
+    // → auto-switch to All Matches view so they can browse everyone else's games.
+    // Using a render-triggered side effect here is intentional and safe because
+    // the state change forces a re-render that takes the `showAllMatches`
+    // branch above; no infinite loop (guard condition changes on re-render).
+    if (view !== "allMatches") {
+      setView("allMatches");
+      return null;
+    }
+  }
+
   const matchToScore = activeMatch || myMatch;
   const t1 = matchToScore ? teams.find(t => t.id === matchToScore.team1) : null;
   const t2 = matchToScore ? teams.find(t => t.id === matchToScore.team2) : null;
@@ -589,6 +617,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     }
   }, [currentHoleIdx, hasAnyScores]);
 
+  // Signature of the current hole's scores — changes whenever ANY player's
+  // score on this hole changes, even if the hole remains "complete" through
+  // the change (e.g. editing a 2 to a 3). Used as an effect dep below so the
+  // auto-advance timer restarts on every edit rather than locking in at the
+  // moment the hole first becomes complete.
+  const curHoleScoreSig = allP.map(pid => getS(pid, curHole)).join(",");
+
   useEffect(() => {
     if (holeComplete && curHole < 8 && !editing && !allComplete) {
       const holeNum = side === 'front' ? curHole + 1 : curHole + 10;
@@ -601,7 +636,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       }, 1800);
       return () => clearTimeout(timer);
     }
-  }, [holeComplete, curHole, editing, allComplete]);
+    // Include curHoleScoreSig so that editing a score within the 1800ms window
+    // (e.g. correcting a 2 to a 3 before auto-advance fires) cancels the old
+    // timer and starts a fresh one. Without this dep, the timer latches at the
+    // moment of first completion and can't be interrupted by subsequent edits
+    // on the same hole — producing the confusing "I pressed − and the screen
+    // jumped to the next hole" behavior new users report.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holeComplete, curHole, editing, allComplete, curHoleScoreSig]);
 
   useEffect(() => {
     if (toast) {

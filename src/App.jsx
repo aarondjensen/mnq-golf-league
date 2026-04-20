@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
-import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile } from "./firebase";
+import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
 import { K, I, DEFAULT_SCORING, applyTheme, getCSS, lastNamesOnly, calcPlayerHcp, buildStandingsForSeed, pairNonBracketTeams, collectPriorMatchups } from "./theme";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
 import ErrorBoundary from "./ErrorBoundary";
@@ -473,6 +473,21 @@ export default function GolfLeagueApp() {
     }
   };
   const doSignOut = async () => { await signOut(_auth); setLeagueUser(null); setTab("standings"); };
+  // Password reset — Firebase sends an email with a one-time reset link, and
+  // the reset happens on Firebase's hosted page (no custom UI needed here).
+  // We catch the common failure modes so the Auth screen can surface them; any
+  // other error propagates for the generic handler.
+  //
+  // Note on enumeration protection: with Firebase's email-enumeration
+  // protection enabled (on by default for new projects), this call succeeds
+  // even when the email doesn't exist — no email is sent, but the caller
+  // can't tell the difference. That's intentional Firebase behavior, and it's
+  // why we always show the user a success message regardless of whether an
+  // account actually got the email.
+  const doPasswordReset = async (email) => {
+    if (!email) { const e = new Error("Enter your email first"); e.code = "auth/missing-email"; throw e; }
+    await sendPasswordResetEmail(_auth, email);
+  };
 
   const CURRENT_SEASON = 2026;
 
@@ -991,7 +1006,7 @@ export default function GolfLeagueApp() {
     : leagueUser;
 
   if (authLoading) return <LoadingScreen />;
-  if (!authUser) return <AuthScreen onGoogle={doGoogleSignIn} onEmail={doEmailSignIn} />;
+  if (!authUser) return <AuthScreen onGoogle={doGoogleSignIn} onEmail={doEmailSignIn} onPasswordReset={doPasswordReset} />;
   // Show loading (not AuthScreen flash) while members collection finishes loading for the signed-in user
   if (!membersLoaded) return <LoadingScreen />;
   if (!leagueUser || !leagueUser.playerId) return <JoinScreen authUser={authUser} members={members} players={activePlayers} saveMember={saveMember} doSignOut={doSignOut} leagueConfig={leagueConfig} />;

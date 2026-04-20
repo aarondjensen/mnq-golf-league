@@ -13,7 +13,12 @@ export function LoadingScreen() {
 }
 
 
-export function AuthScreen({ onGoogle, onEmail }) {
+export function AuthScreen({ onGoogle, onEmail, onPasswordReset }) {
+  // Mode state machine:
+  //   main       — pick Google or Email
+  //   email      — enter email + password to sign in (or auto-create account)
+  //   reset      — enter email to request a reset link
+  //   reset_sent — confirmation screen after the reset email was requested
   const [mode, setMode] = useState("main");
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
@@ -42,27 +47,77 @@ export function AuthScreen({ onGoogle, onEmail }) {
     }
     setBusy(false);
   };
+  const handleReset = async () => {
+    if (!email) { setError("Enter your email"); return; }
+    setBusy(true); setError("");
+    try {
+      await onPasswordReset(email);
+      setMode("reset_sent");
+    } catch (e) {
+      const msg =
+        e.code === "auth/invalid-email" ? "Invalid email" :
+        e.code === "auth/missing-email" ? "Enter your email" :
+        e.code === "auth/too-many-requests" ? "Too many attempts. Try again in a few minutes." :
+        e.code === "auth/network-request-failed" ? "Network error. Check your connection." :
+        e.message || "Could not send reset email";
+      setError(msg);
+    }
+    setBusy(false);
+  };
 
   return (
     <div style={{ minHeight: "100vh", background: K.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'League Spartan', sans-serif" }}>
       <link href={FONTS} rel="stylesheet" />
       <div style={{ width: 340, textAlign: "center" }} className="fi">
         <img src="/MnQ_logo_transparent_bg.png" alt="Maize-N-Que Golf" style={{ width: 280, objectFit: "contain", marginBottom: 8 }} />
-        <div style={{ color: K.t3, fontSize: 12, marginBottom: 32 }}>Sign in to continue</div>
+        <div style={{ color: K.t3, fontSize: 12, marginBottom: 32 }}>
+          {mode === "reset" ? "Reset your password" :
+           mode === "reset_sent" ? "Check your email" :
+           "Sign in to continue"}
+        </div>
 
-        {mode === "main" ? (<>
+        {mode === "main" && (<>
           <button onClick={handleGoogle} disabled={busy} style={{ width: "100%", padding: "14px 16px", borderRadius: 12, cursor: "pointer", fontSize: 15, fontWeight: 600, background: "#fff", color: "#333", border: "none", display: "flex", alignItems: "center", justifyContent: "center", gap: 10, marginBottom: 10, opacity: busy ? .6 : 1 }}>
             <svg width="20" height="20" viewBox="0 0 48 48"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#34A853" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#FBBC05" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
             Continue with Google
           </button>
           <div style={{ display: "flex", alignItems: "center", gap: 12, margin: "14px 0" }}><div style={{ flex: 1, height: 1, background: K.bdr }} /><span style={{ fontSize: 11, color: K.t3 }}>or</span><div style={{ flex: 1, height: 1, background: K.bdr }} /></div>
           <button onClick={() => setMode("email")} style={{ width: "100%", padding: "14px 16px", borderRadius: 12, cursor: "pointer", fontSize: 14, fontWeight: 600, background: K.card, color: K.t1, border: `1px solid ${K.bdr}` }}>Sign in with Email</button>
-        </>) : (<>
+        </>)}
+
+        {mode === "email" && (<>
           <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" type="email" autoComplete="email" style={{ width: "100%", padding: "13px 16px", borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 15, marginBottom: 8, textAlign: "center" }} />
           <input value={pw} onChange={e => setPw(e.target.value)} placeholder="Password" type="password" autoComplete="current-password" onKeyDown={e => e.key === "Enter" && handleEmail()} style={{ width: "100%", padding: "13px 16px", borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 15, marginBottom: 12, textAlign: "center" }} />
           <button onClick={handleEmail} disabled={busy} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer", marginBottom: 10, opacity: busy ? .6 : 1 }}>Sign In / Create Account</button>
-          <button onClick={() => { setMode("main"); setError(""); }} style={{ background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer" }}>← Back to options</button>
+          {/* Forgot password — jumps to reset mode, keeping the typed email so the
+              user doesn't have to retype it. Plain text link is intentionally
+              understated since it's not the primary action. */}
+          <button onClick={() => { setMode("reset"); setError(""); }} style={{ background: "none", border: "none", color: K.acc, fontSize: 12, cursor: "pointer", marginBottom: 10, textDecoration: "underline" }}>Forgot password?</button>
+          <button onClick={() => { setMode("main"); setError(""); }} style={{ background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", display: "block", margin: "0 auto" }}>← Back to options</button>
         </>)}
+
+        {mode === "reset" && (<>
+          <div style={{ color: K.t2, fontSize: 12, marginBottom: 14, lineHeight: 1.5 }}>
+            Enter the email you use to sign in. We'll send a link to reset your password.
+          </div>
+          <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" type="email" autoComplete="email" onKeyDown={e => e.key === "Enter" && handleReset()} style={{ width: "100%", padding: "13px 16px", borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 15, marginBottom: 12, textAlign: "center" }} />
+          <button onClick={handleReset} disabled={busy} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer", marginBottom: 10, opacity: busy ? .6 : 1 }}>Send Reset Link</button>
+          <button onClick={() => { setMode("email"); setError(""); }} style={{ background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer" }}>← Back to sign in</button>
+        </>)}
+
+        {mode === "reset_sent" && (<>
+          <div style={{ color: K.t1, fontSize: 14, fontWeight: 700, marginBottom: 8 }}>
+            Reset link sent
+          </div>
+          <div style={{ color: K.t2, fontSize: 12, marginBottom: 6, lineHeight: 1.5 }}>
+            If an account exists for <span style={{ color: K.t1, fontWeight: 600 }}>{email}</span>, you'll receive an email with a link to reset your password.
+          </div>
+          <div style={{ color: K.t3, fontSize: 11, marginBottom: 20, lineHeight: 1.5 }}>
+            Check your spam folder if it doesn't arrive in a few minutes.
+          </div>
+          <button onClick={() => { setMode("email"); setPw(""); setError(""); }} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer", marginBottom: 10 }}>Back to Sign In</button>
+        </>)}
+
         {error && <div style={{ color: K.red, fontSize: 12, marginTop: 10 }}>{error}</div>}
       </div>
     </div>
