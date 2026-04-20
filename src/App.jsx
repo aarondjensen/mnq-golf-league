@@ -622,22 +622,39 @@ export default function GolfLeagueApp() {
       teams, currentMatchResults, projectedSchedule, leagueConfig?.standingsMethod
     ).map(s => s.teamId);
 
-    // ── Phase 1: If we just locked the last RR week, auto-seed regular-season seeded weeks ──
+    // ── Phase 1: Seed / re-seed regular-season seeded weeks ──
+    // Fires whenever a week locks AND the round-robin is complete. Walks every
+    // UNLOCKED seeded regular-season week and (re)builds its matchups from
+    // current standings, so upcoming seeded weeks always reflect the latest
+    // results. Locked weeks are never touched — their scores are already
+    // recorded against their existing matchups.
+    //
+    // Previously this only ran on the final RR lock, freezing the seeded
+    // matchups at the end-of-RR snapshot. Now it re-runs after every lock,
+    // giving the dynamic week-to-week update the admin expects.
+    //
+    // With `lockSeedsEnabled=true`, seeds are frozen at the first pass (snapshot
+    // saved to leagueConfig.lockedSeeds) and subsequent re-seeds reuse that
+    // snapshot — matchups still rotate week-to-week via the customSeedWeeks
+    // template, but the seed identities don't move. With `lockSeedsEnabled=false`
+    // (default), seeds recompute from fresh standings on every pass — full
+    // dynamic behavior.
     let seededCount = 0;
     const rrWeeks = currentSchedule.filter(s => !s.isPlayoff && !s.seeded && !s.rainedOut);
     const allRRLocked = rrWeeks.length > 0 && rrWeeks.every(s =>
       s.locked === true || s.week === justLockedWeek
     );
-    const justLockedIsRR = lockedWk.seeded !== true && lockedWk.isPlayoff !== true;
 
-    if (justLockedIsRR && allRRLocked) {
-      if (needsFreshSeedsSnapshot) {
-        seeds = computeSeeds();
-        if (lockSeedsEnabled) {
-          await db.upsert("league_config", { ...leagueConfig, id: leagueConfig?.id || `${LEAGUE_ID}_config`, league_id: LEAGUE_ID, lockedSeeds: seeds });
-        }
-      } else {
-        seeds = existingLocked;
+    if (allRRLocked) {
+      // Seed source: locked snapshot when both (a) the admin wants frozen
+      // seeds and (b) a valid snapshot exists. Otherwise recompute fresh.
+      const useLocked = lockSeedsEnabled && existingLocked && existingLocked.length === teams.length;
+      seeds = useLocked ? existingLocked : computeSeeds();
+
+      // First entry into seeded play with lockSeedsEnabled → capture the
+      // snapshot so subsequent passes stay consistent with it.
+      if (!useLocked && lockSeedsEnabled) {
+        await db.upsert("league_config", { ...leagueConfig, id: leagueConfig?.id || `${LEAGUE_ID}_config`, league_id: LEAGUE_ID, lockedSeeds: seeds });
       }
 
       const n = seeds.length;
@@ -648,7 +665,9 @@ export default function GolfLeagueApp() {
 
         for (let si = 0; si < seededRegWeeks.length; si++) {
           const wk = seededRegWeeks[si];
-          if (wk.matches && wk.matches.length > 0) continue; // already seeded, skip
+          // Never overwrite a locked week — its scores and match results are
+          // tied to the existing matchups.
+          if (wk.locked === true) continue;
           const weekPairs = (customWeeks && customWeeks[si]) || null;
           const matches = [];
           if (weekPairs && weekPairs.length === pairCount) {
