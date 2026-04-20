@@ -1382,6 +1382,60 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     const teamIds = teams.map(t => t.id);
     const rrRounds = generateRoundRobin(teamIds);
 
+    // ── Round-robin integrity: ensure each pairing happens at most once ──
+    // Build a stable signature for a set of matches. Two rounds with the same
+    // signature are the same set of pairings regardless of order.
+    //
+    // Why this exists: rrCursor-based placement (below) walks rrRounds from
+    // index 0 and doesn't know which rounds are already consumed by preserved
+    // (locked / makeup) weeks. On regenerate, a locked week originally holding
+    // rrRounds[5] would be preserved with its matchups intact — but the new
+    // empty slots would still start placing from rrRounds[0], so one of the
+    // new slots would also get rrRounds[5] (duplicate), and rrRounds[8] would
+    // never be placed (missing). Filtering rrRounds down to only the rounds
+    // NOT already present as preserved matchups guarantees uniqueness.
+    const roundSignature = (matches) => matches.map(m => {
+      const [a, b] = m.team1 < m.team2 ? [m.team1, m.team2] : [m.team2, m.team1];
+      return `${a}~${b}`;
+    }).sort().join("|");
+
+    const consumedSignatures = new Set();
+    let preservedRRCount = 0;
+    for (const wk of cleanSchedule) {
+      if (wk.isPlayoff || wk.seeded || wk.rainedOut) continue;
+      if (!wk.matches || wk.matches.length === 0) continue;
+      // A week "consumes" a round-robin round if its matchups will appear in
+      // the final schedule. That's true for locked weeks (scores tied to them)
+      // and makeup weeks (carrying forward a rained-out week's matches).
+      if (wk.locked === true || wk.makeupFor) {
+        consumedSignatures.add(roundSignature(wk.matches));
+        preservedRRCount++;
+      }
+    }
+
+    // Rounds still available to place on new (empty) slots. Preserves the
+    // generator's natural order so scheduling stays predictable when no weeks
+    // are preserved (the common case on first-time generate).
+    const availableRounds = rrRounds.filter(r => !consumedSignatures.has(roundSignature(r)));
+
+    // Pre-flight cap: round-robin has a finite number of unique pairings
+    // (teams.length - 1 for even counts). If the user configured more RR
+    // weeks than fit, wrapping rrRounds would produce duplicate matchups —
+    // exactly what we're trying to avoid. Cap rrTarget at what's actually
+    // achievable, and warn the commissioner so they understand why the
+    // season ended up shorter than configured.
+    const maxPossibleRR = preservedRRCount + availableRounds.length;
+    let rrTargetEffective = rrWeekCount;
+    if (rrTargetEffective > maxPossibleRR) {
+      alert(
+        `Round-Robin configured for ${rrTargetEffective} weeks, but only ` +
+        `${maxPossibleRR} unique matchup sets are available for ${teams.length} teams` +
+        (preservedRRCount > 0 ? ` (${preservedRRCount} preserved week${preservedRRCount === 1 ? "" : "s"} already consume a round each)` : "") +
+        `.\n\nShortening round-robin to ${maxPossibleRR} weeks so each pairing plays at most once.`
+      );
+      rrTargetEffective = maxPossibleRR;
+    }
+
     // Count how many RR rainouts exist (these need makeup weeks in the RR block)
     const rrRainouts = cleanSchedule.filter(s =>
       s.rainedOut === true && !s.isPlayoff && !s.seeded
@@ -1392,11 +1446,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
     // Walk through week positions sequentially, building each block in order
     let weekNum = 0;
-    let rrCursor = 0;       // which round-robin round to assign next
+    let rrCursor = 0;       // index into availableRounds for next new slot
     let rrPlayed = 0;       // how many RR matchups have been placed (played + makeup)
     let seededPlaced = 0;
     let playoffPlaced = 0;
-    const rrTarget = rrWeekCount;    // how many RR rounds needed
+    const rrTarget = rrTargetEffective;  // capped above
     const seededTarget = seededWeekCount;
     const playoffTarget = cfg.playoffWeeks;
 
@@ -1443,12 +1497,21 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         continue; // don't count toward rrPlayed — this is a seeded/playoff week we're skipping past
       }
 
-      // Empty slot — place new RR week
-      const roundIdx = rrCursor % rrRounds.length;
+      // Empty slot — place new RR week from available (unconsumed) rounds.
+      // rrCursor indexes into availableRounds, which already excludes any
+      // rounds consumed by preserved locked/makeup weeks, so this never
+      // produces a duplicate matchup set.
+      if (rrCursor >= availableRounds.length) {
+        // Shouldn't happen after the pre-flight rrTargetEffective cap;
+        // defensive bail so we never silently duplicate.
+        console.error("[generate] availableRounds exhausted unexpectedly", { rrCursor, available: availableRounds.length, rrPlayed, rrTarget });
+        break;
+      }
+      const round = availableRounds[rrCursor];
       rrCursor++;
       await setWeekSchedule({
         id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum,
-        matches: rrRounds[roundIdx], side,
+        matches: round, side,
         date: getWeekDate(weekNum - 1), isPlayoff: false,
         // Only attach makeupFor if there are actual RR rainouts being made up.
         // Firestore strict setDoc rejects fields with undefined values, so omit entirely.
@@ -2199,7 +2262,14 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           ) : (<>
             {/* Shuffle button — only shows if no weeks are locked */}
             {(() => {
-              const rrWeeks = schedule.filter(s => !s.isPlayoff && !s.seeded && !s.rainedOut && !s.makeupFor);
+              // Include new-RR weeks even when they carry the `makeupFor: "rr"`
+              // marker (set during a post-rainout regenerate). Only exclude
+              // TRUE makeups, which hold a specific rained-out week's matchups
+              // and are keyed by the numeric week they're making up for.
+              const rrWeeks = schedule.filter(s =>
+                !s.isPlayoff && !s.seeded && !s.rainedOut &&
+                (!s.makeupFor || s.makeupFor === "rr")
+              );
               const anyLocked = schedule.some(s => s.locked);
               if (anyLocked || rrWeeks.length < 2) return null;
               const doShuffle = () => {
