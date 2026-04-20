@@ -1436,6 +1436,85 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       rrTargetEffective = maxPossibleRR;
     }
 
+    // ── Tee-time balancing ──
+    // The circle-method round-robin produces match orderings where team 1 always
+    // appears in the first match of every round. Since each team's match position
+    // within the round maps directly to their tee time (match 0 = first tee time,
+    // match 1 = second, etc.), that gives team 1 the earliest tee time every week
+    // indefinitely while other teams get stuck in other slots.
+    //
+    // Fix: reorder the matches WITHIN each generated round so that tee-time slots
+    // are distributed evenly across all teams. Algorithm: for each round, try
+    // every permutation of its matches and pick the one that minimizes the sum
+    // of squared slot-counts across teams (quadratic penalty discourages any team
+    // from repeatedly landing in the same slot). Seed the running histogram with
+    // any preserved (locked/makeup) weeks' existing slot assignments so we
+    // harmonize with scores already recorded.
+    //
+    // Performance: permutation count is matchesPerRound!. For typical leagues
+    // (4–6 matches/round) this is 24–720 permutations × ~10 rounds = fast. Above
+    // 7 matches/round we fall back to Fisher-Yates shuffle to keep generate() snappy.
+    const teeCount = {};
+    teams.forEach(t => { teeCount[t.id] = []; });
+    const bumpTee = (tid, slot) => {
+      if (!tid) return;
+      if (!teeCount[tid]) teeCount[tid] = [];
+      teeCount[tid][slot] = (teeCount[tid][slot] || 0) + 1;
+    };
+    // Seed from already-preserved weeks' existing match orders.
+    for (const wk of cleanSchedule) {
+      if (wk.isPlayoff || wk.seeded || wk.rainedOut) continue;
+      if (!wk.matches || wk.matches.length === 0) continue;
+      if (wk.locked === true || wk.makeupFor) {
+        wk.matches.forEach((m, slot) => { bumpTee(m.team1, slot); bumpTee(m.team2, slot); });
+      }
+    }
+    const permute = (arr) => {
+      if (arr.length <= 1) return [arr];
+      const out = [];
+      for (let i = 0; i < arr.length; i++) {
+        const rest = arr.slice(0, i).concat(arr.slice(i + 1));
+        for (const p of permute(rest)) out.push([arr[i], ...p]);
+      }
+      return out;
+    };
+    const scorePerm = (perm) => {
+      let score = 0;
+      for (let slot = 0; slot < perm.length; slot++) {
+        const m = perm[slot];
+        for (const tid of [m.team1, m.team2]) {
+          if (!tid) continue;
+          const c = (teeCount[tid]?.[slot] || 0) + 1;
+          score += c * c;
+        }
+      }
+      return score;
+    };
+    const balanceRound = (round) => {
+      if (round.length <= 1) return round;
+      // Perf cap: 7! = 5040 is fine, 8! = 40320 starts to sting with many rounds.
+      if (round.length > 7) {
+        const shuffled = [...round];
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        return shuffled;
+      }
+      let best = round;
+      let bestScore = scorePerm(round);
+      for (const perm of permute(round)) {
+        const s = scorePerm(perm);
+        if (s < bestScore) { bestScore = s; best = perm; }
+      }
+      return best;
+    };
+    const balancedRounds = availableRounds.map(round => {
+      const best = balanceRound(round);
+      best.forEach((m, slot) => { bumpTee(m.team1, slot); bumpTee(m.team2, slot); });
+      return best;
+    });
+
     // Count how many RR rainouts exist (these need makeup weeks in the RR block)
     const rrRainouts = cleanSchedule.filter(s =>
       s.rainedOut === true && !s.isPlayoff && !s.seeded
@@ -1497,17 +1576,19 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         continue; // don't count toward rrPlayed — this is a seeded/playoff week we're skipping past
       }
 
-      // Empty slot — place new RR week from available (unconsumed) rounds.
-      // rrCursor indexes into availableRounds, which already excludes any
-      // rounds consumed by preserved locked/makeup weeks, so this never
-      // produces a duplicate matchup set.
-      if (rrCursor >= availableRounds.length) {
+      // Empty slot — place new RR week from balanced (unconsumed, tee-time-
+      // balanced) rounds. rrCursor indexes into balancedRounds, which already
+      // excludes any rounds consumed by preserved locked/makeup weeks AND has
+      // been reordered within each round to spread tee-time slots evenly
+      // across teams, so this never produces a duplicate matchup set nor
+      // parks the same team in the first tee time every week.
+      if (rrCursor >= balancedRounds.length) {
         // Shouldn't happen after the pre-flight rrTargetEffective cap;
         // defensive bail so we never silently duplicate.
-        console.error("[generate] availableRounds exhausted unexpectedly", { rrCursor, available: availableRounds.length, rrPlayed, rrTarget });
+        console.error("[generate] balancedRounds exhausted unexpectedly", { rrCursor, available: balancedRounds.length, rrPlayed, rrTarget });
         break;
       }
-      const round = availableRounds[rrCursor];
+      const round = balancedRounds[rrCursor];
       rrCursor++;
       await setWeekSchedule({
         id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum,
@@ -2275,17 +2356,72 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
               const doShuffle = () => {
                 setConfirmModal({
                   title: "Shuffle round-robin order?",
-                  message: "Randomizes which week each matchup is played. Only available before any week is locked.",
+                  message: "Randomizes which week each matchup is played AND each team's tee-time slot across weeks. Only available before any week is locked.",
                   confirmLabel: "Shuffle",
                   onConfirm: async () => {
                     setConfirmModal(null);
+                    // Two-level shuffle:
+                    //  1. Fisher-Yates on the weeks (which matchup set is played which week)
+                    //  2. Within each week, re-balance tee-time slots across teams using the
+                    //     same permutation-search algorithm generate() uses. This ensures
+                    //     shuffle actively fixes tee-time fairness instead of just preserving
+                    //     whatever order each week originally had.
                     const matchups = rrWeeks.map(w => w.matches || []);
                     for (let i = matchups.length - 1; i > 0; i--) {
                       const j = Math.floor(Math.random() * (i + 1));
                       [matchups[i], matchups[j]] = [matchups[j], matchups[i]];
                     }
+                    // Tee-time balancing across the shuffled week order
+                    const tc = {};
+                    teams.forEach(t => { tc[t.id] = []; });
+                    const bump = (tid, slot) => {
+                      if (!tid) return;
+                      if (!tc[tid]) tc[tid] = [];
+                      tc[tid][slot] = (tc[tid][slot] || 0) + 1;
+                    };
+                    const permuteLocal = (arr) => {
+                      if (arr.length <= 1) return [arr];
+                      const out = [];
+                      for (let i = 0; i < arr.length; i++) {
+                        const rest = arr.slice(0, i).concat(arr.slice(i + 1));
+                        for (const p of permuteLocal(rest)) out.push([arr[i], ...p]);
+                      }
+                      return out;
+                    };
+                    const scorePermLocal = (perm) => {
+                      let s = 0;
+                      for (let slot = 0; slot < perm.length; slot++) {
+                        const m = perm[slot];
+                        for (const tid of [m.team1, m.team2]) {
+                          if (!tid) continue;
+                          const c = (tc[tid]?.[slot] || 0) + 1;
+                          s += c * c;
+                        }
+                      }
+                      return s;
+                    };
+                    const balanced = matchups.map(round => {
+                      if (!round || round.length <= 1) return round || [];
+                      let best = round;
+                      if (round.length <= 7) {
+                        let bestScore = scorePermLocal(round);
+                        for (const perm of permuteLocal(round)) {
+                          const s = scorePermLocal(perm);
+                          if (s < bestScore) { bestScore = s; best = perm; }
+                        }
+                      } else {
+                        // Perf fallback for very large rounds
+                        best = [...round];
+                        for (let i = best.length - 1; i > 0; i--) {
+                          const j = Math.floor(Math.random() * (i + 1));
+                          [best[i], best[j]] = [best[j], best[i]];
+                        }
+                      }
+                      best.forEach((m, slot) => { bump(m.team1, slot); bump(m.team2, slot); });
+                      return best;
+                    });
                     for (let i = 0; i < rrWeeks.length; i++) {
-                      await saveWeekSchedule({ ...rrWeeks[i], matches: matchups[i] });
+                      await saveWeekSchedule({ ...rrWeeks[i], matches: balanced[i] });
                     }
                   },
                   onCancel: () => setConfirmModal(null),
