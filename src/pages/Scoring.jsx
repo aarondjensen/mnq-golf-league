@@ -422,7 +422,25 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     setCtpSelections(existing);
     setShowCtpPopup(true);
   };
+
+  // Three banner states for the commish (all hidden when week is already locked):
+  //   1. Ready → maize tappable button: "Finalize Week N" (all matches attested)
+  //   2. Waiting → muted info strip: "Waiting on N match(es) · X of Y attested"
+  //                (when some but not all matches are done). Key UX need: the
+  //                banner disappearing without explanation when a match goes
+  //                unattested confuses commissioners who think the feature is
+  //                broken. This strip gives them a visible breadcrumb while
+  //                they wait.
+  //   3. Nothing to show → no banner (no matches scored yet, or not commish).
+  const attestedCount = matches.filter(m =>
+    matchResults.some(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true)
+  ).length;
+  const matchCount = matches.length;
+  const hasSomeProgress = attestedCount > 0 && attestedCount < matchCount;
+
   const showFinalizeBanner = isComm && allMatchesAttested && !isWeekLocked && !!saveWeekSchedule;
+  const showWaitingBanner = isComm && !allMatchesAttested && hasSomeProgress && !isWeekLocked;
+
   const FinalizeBanner = showFinalizeBanner ? (
     <button
       onClick={openFinalize}
@@ -439,6 +457,20 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       <span>Finalize Week {week}</span>
       <span style={{ fontSize: 16, fontWeight: 800, opacity: .85 }}>›</span>
     </button>
+  ) : showWaitingBanner ? (
+    <div style={{
+      width: "100%", padding: "8px 14px", borderRadius: 10,
+      marginBottom: 8,
+      background: K.inp, border: `1px dashed ${K.bdr}`,
+      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+      fontSize: 12, color: K.t2,
+    }}>
+      <span style={{ fontSize: 10, fontWeight: 700, color: K.t3, letterSpacing: 1, textTransform: "uppercase" }}>Waiting</span>
+      <span style={{ color: K.bdr }}>·</span>
+      <span style={{ fontWeight: 600 }}>
+        {attestedCount} of {matchCount} match{matchCount === 1 ? "" : "es"} attested
+      </span>
+    </div>
   ) : null;
 
   if (!course?.name) return <EmptyState icon="flag" title="Course not configured" subtitle="Commissioner needs to set up the course." />;
