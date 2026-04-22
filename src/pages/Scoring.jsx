@@ -1060,64 +1060,103 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   </div>
                 </button>
 
-                {/* Attestation status — compact, inline. When signed-but-not-attested,
-                    we show:
-                      1. A small signed-by indicator at the bottom-left
-                      2. An attestation progress bar on the bottom edge of the card
-                      3. Pending-player initial chips at the bottom-right
-                    No full-width text label — the progress bar visually conveys "N of M"
-                    without needing to read a counter, and the whole strip is short. */}
-                {isSigned && (() => {
-                  const pending = resNonSigners.filter(pid => !resAttestedBy.includes(pid));
-                  if (!pending.length) return null;
-
+                {/* Attestation status row — renders in two states:
+                    1. SIGNED-BUT-NOT-FULLY-ATTESTED: progress bar + "Signed by X"
+                       + pending initials (each non-signer who still needs to attest).
+                    2. FULLY ATTESTED: a persistent "Signed by X · Attested by Y, Z"
+                       attribution line, so there's a permanent record on the card of
+                       who signed and who attested — visible even after the match goes
+                       to FINAL. Previously this information disappeared once attestation
+                       completed, leaving no visible trace of who did what.
+                    Nothing renders when the match hasn't been signed yet. */}
+                {res && (() => {
                   const signer = playerMap[res?.signedByPlayerId];
                   const signerLast = signer ? signer.name.split(' ').pop() : null;
-                  const totalNeeded = resNonSigners.length;
-                  const donePct = totalNeeded > 0 ? (resAttestedCount / totalNeeded) * 100 : 0;
 
-                  return (
-                    <div style={{ borderTop: `1px solid ${K.bdr}30` }}>
-                      {/* Thin progress bar — blue fill showing attestation progress */}
-                      <div style={{ height: 2, background: K.bdr + "30", position: "relative" }}>
-                        <div style={{
-                          position: "absolute", top: 0, left: 0, bottom: 0,
-                          width: `${donePct}%`,
-                          background: "#3b82f6",
-                          transition: "width .2s",
-                        }} />
-                      </div>
-                      {/* Single status row: signer on left, pending initials on right */}
-                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 10px", gap: 8 }}>
-                        {signerLast ? (
-                          <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: K.t3 }}>
-                            <span style={{ fontSize: 9 }}>✓</span>
-                            <span style={{ fontWeight: 600 }}>Signed by {signerLast}</span>
+                  // Pre-attestation: show progress bar + pending initials
+                  if (isSigned) {
+                    const pending = resNonSigners.filter(pid => !resAttestedBy.includes(pid));
+                    if (!pending.length) return null;
+                    const totalNeeded = resNonSigners.length;
+                    const donePct = totalNeeded > 0 ? (resAttestedCount / totalNeeded) * 100 : 0;
+
+                    return (
+                      <div style={{ borderTop: `1px solid ${K.bdr}30` }}>
+                        {/* Thin progress bar — blue fill showing attestation progress */}
+                        <div style={{ height: 2, background: K.bdr + "30", position: "relative" }}>
+                          <div style={{
+                            position: "absolute", top: 0, left: 0, bottom: 0,
+                            width: `${donePct}%`,
+                            background: "#3b82f6",
+                            transition: "width .2s",
+                          }} />
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 10px", gap: 8 }}>
+                          {signerLast ? (
+                            <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: K.t3 }}>
+                              <span style={{ fontSize: 9 }}>✓</span>
+                              <span style={{ fontWeight: 600 }}>Signed by {signerLast}</span>
+                            </div>
+                          ) : <div />}
+                          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                            <span style={{ fontSize: 9, fontWeight: 600, color: K.t3, letterSpacing: .3, marginRight: 2 }}>
+                              Pending
+                            </span>
+                            {pending.map(pid => {
+                              const p = playerMap[pid];
+                              const initials = p ? p.name.split(' ').map(n => n[0]).join('').toUpperCase() : '?';
+                              return (
+                                <div key={pid} style={{
+                                  width: 18, height: 18, borderRadius: "50%",
+                                  background: "transparent",
+                                  border: `1.5px solid #3b82f6`,
+                                  color: "#3b82f6",
+                                  display: "flex", alignItems: "center", justifyContent: "center",
+                                  fontSize: 8, fontWeight: 800, letterSpacing: -.2,
+                                }}>{initials}</div>
+                              );
+                            })}
                           </div>
-                        ) : <div />}
-                        {/* Pending initial dots — one per player still to attest */}
-                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                          <span style={{ fontSize: 9, fontWeight: 600, color: K.t3, letterSpacing: .3, marginRight: 2 }}>
-                            Pending
-                          </span>
-                          {pending.map(pid => {
-                            const p = playerMap[pid];
-                            const initials = p ? p.name.split(' ').map(n => n[0]).join('').toUpperCase() : '?';
-                            return (
-                              <div key={pid} style={{
-                                width: 18, height: 18, borderRadius: "50%",
-                                background: "transparent",
-                                border: `1.5px solid #3b82f6`,
-                                color: "#3b82f6",
-                                display: "flex", alignItems: "center", justifyContent: "center",
-                                fontSize: 8, fontWeight: 800, letterSpacing: -.2,
-                              }}>{initials}</div>
-                            );
-                          })}
                         </div>
                       </div>
-                    </div>
-                  );
+                    );
+                  }
+
+                  // Post-attestation: persistent attribution line.
+                  // Only renders when the match is actually attested AND someone signed —
+                  // skips when res.attested is true but no signer recorded (e.g. very old
+                  // legacy data). Attesters list is filtered to players who were actually
+                  // required to attest (non-signers, present), so absent teammates don't
+                  // show up as attesters even if their ID happened to appear in attestedBy.
+                  if (res.attested && signerLast) {
+                    const attesterNames = resNonSigners
+                      .filter(pid => resAttestedBy.includes(pid))
+                      .map(pid => {
+                        const p = playerMap[pid];
+                        return p ? p.name.split(' ').pop() : null;
+                      })
+                      .filter(Boolean);
+                    return (
+                      <div style={{
+                        borderTop: `1px solid ${K.bdr}30`,
+                        padding: "5px 10px",
+                        display: "flex", alignItems: "center", gap: 6,
+                        fontSize: 10, color: K.t3, lineHeight: 1.3,
+                        flexWrap: "wrap",
+                      }}>
+                        <span style={{ fontSize: 9, color: K.grn }}>✓</span>
+                        <span><span style={{ fontWeight: 600, color: K.t2 }}>Signed</span> by {signerLast}</span>
+                        {attesterNames.length > 0 && (
+                          <>
+                            <span style={{ color: K.bdr }}>·</span>
+                            <span><span style={{ fontWeight: 600, color: K.t2 }}>Attested</span> by {attesterNames.join(", ")}</span>
+                          </>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  return null;
                 })()}
 
                 {/* Expanded scorecard — uses SharedScorecard */}
