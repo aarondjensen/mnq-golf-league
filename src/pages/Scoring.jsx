@@ -232,6 +232,16 @@ export function SharedScorecard({
             </div>;
           }
           const color = rs > 0 ? mGrn : rs < 0 ? K.red : K.t3;
+          // null = no data (one or both teams missing scores on this hole) — render
+          // blank, NOT "TIED". A tie requires actual scores from both teams that
+          // happen to be equal; missing data is a different state and the older
+          // code conflated them. The collapsed-card cumulative `runningStatus[h]`
+          // is also null here, so accumulation correctly skips this hole and
+          // resumes on the next hole that has data — but the visible cell needs
+          // to clearly say "we don't know yet" rather than "tied".
+          if (rs === null) {
+            return <div key={i} style={{ flex: 1, height: 28, ...colBorderR }} />;
+          }
           return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: variant === "allMatches" ? 12 : 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>
             {rs > 0 ? <><span style={{ fontSize: variant === "allMatches" ? 12 : 14 }}>▲</span>{rs}</> : rs < 0 ? <><span style={{ fontSize: variant === "allMatches" ? 12 : 14 }}>▼</span>{Math.abs(rs)}</> : <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: .5 }}>TIED</span>}
           </div>;
@@ -482,14 +492,34 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     saveScore(week, pid, "absent", nowAbsent ? 1 : 0);
   };
 
+  // Sync local absent state from Firestore. Reruns whenever:
+  //  - matchKey changes (user navigates to a different match)
+  //  - holeScores updates (Firestore subscription delivers data)
+  //
+  // The holeScores dep is critical: on app cold-start, this effect fires once
+  // before Firestore has responded — at that point `holeScores` is empty and
+  // every `_habsent` read is undefined, so we'd reset absentPlayers to {}.
+  // Without holeScores in the deps, the effect would never re-run when the
+  // real data arrived, leaving absent flags silently dropped on reopen.
+  // The user-visible bug: mark someone absent → close/reopen app → they're
+  // shown as present again, even though Firestore still has the absent flag.
+  //
+  // The early-return guard avoids a setState (and the resulting re-render) on
+  // every score keystroke when the absent set hasn't actually changed —
+  // holeScores updates fire constantly during scoring, but absent state
+  // changes rarely.
   useEffect(() => {
     if (!t1 || !t2) return;
     const abs = {};
     [...t1Players, ...t2Players].forEach(pid => {
       if (holeScores[`w${week}_p${pid}_habsent`] === 1) abs[pid] = true;
     });
+    const sameKeys = Object.keys(abs).sort().join(",");
+    const prevKeys = Object.keys(absentPlayers).sort().join(",");
+    if (sameKeys === prevKeys) return;
     setAbsentPlayers(abs);
-  }, [matchKey]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchKey, holeScores, week]);
 
   const allP = (t1 && t2) ? (isTeamNet
     ? [...t1Players, ...t2Players]
@@ -811,14 +841,42 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             const mT2Pids = [rawT2.player1, rawT2.player2];
             const thru = getThru(mT1Pids, mT2Pids);
 
-            // Compute live match score
+            // Compute live match score (collapsed card header).
+            // Must be absent-aware: when a player is absent, their teammate's
+            // score is substituted (mirroring how the expanded scorecard's MATCH
+            // row computes hole results via amGetEffectiveScore at line ~971).
+            // Without this substitution, an absent player's missing score reads
+            // as 0 in the net calculation, making their side appear to win every
+            // hole by a huge margin — which is how a match that's actually 1UP
+            // through 5 was displaying as "5UP" in the card header.
+            //
+            // Both teammates absent: imputed net-bogey (par + 1 + strokes), same
+            // fallback amGetEffectiveScore uses.
+            const isAbsentLocal = (pid) => holeScores[`w${week}_p${pid}_habsent`] === 1;
+            const teammateOf = (pid) => {
+              if (mT1Pids.includes(pid)) return mT1Pids.find(p => p !== pid);
+              if (mT2Pids.includes(pid)) return mT2Pids.find(p => p !== pid);
+              return null;
+            };
+            const effectiveScore = (pid, h) => {
+              if (isAbsentLocal(pid)) {
+                const tm = teammateOf(pid);
+                if (!tm || isAbsentLocal(tm)) {
+                  const strokesOnHole = getStrokesMap(amGetHcp(pid))[h] || 0;
+                  return (pars[h] || 4) + 1 + strokesOnHole;
+                }
+                return amGetScore(tm, h);
+              }
+              return amGetScore(pid, h);
+            };
+
             let dispCum = 0;
             if (thru > 0) {
               let cum = 0;
               for (let h = 0; h < thru; h++) {
                 let n1 = 0, n2 = 0;
-                mT1Pids.forEach(pid => { n1 += amGetScore(pid, h) - amGetStrokes(pid, h); });
-                mT2Pids.forEach(pid => { n2 += amGetScore(pid, h) - amGetStrokes(pid, h); });
+                mT1Pids.forEach(pid => { n1 += effectiveScore(pid, h) - amGetStrokes(pid, h); });
+                mT2Pids.forEach(pid => { n2 += effectiveScore(pid, h) - amGetStrokes(pid, h); });
                 if (n1 < n2) cum += 1; else if (n2 < n1) cum -= 1;
               }
               dispCum = swapped ? -cum : cum;
