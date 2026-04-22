@@ -400,6 +400,47 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     matchResults.some(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true)
   );
 
+  // ── Finalize-week banner ──
+  // When every match in the week is attested but the week isn't locked, the
+  // commissioner needs to do a final pass (assign Closest-to-the-Pin winners,
+  // then lock the week). The legacy entry point lives at the bottom of the
+  // All Matches view, but commissioners frequently miss it because they
+  // don't switch tabs after attestation completes. This banner surfaces the
+  // action at the top of EVERY scoring view (My Match, All Matches, Low Net)
+  // so the next step is always one tap away.
+  //
+  // openFinalize replicates the existing button's logic — pre-populate CTP
+  // selections from any prior week-CTP records, then open the popup. The
+  // popup itself (line ~1355) is unchanged; it owns the actual lock + recalc.
+  const openFinalize = () => {
+    const par3Holes = pars.map((p, i) => p === 3 ? (side === 'front' ? i + 1 : i + 10) : null).filter(Boolean);
+    const existing = {};
+    par3Holes.forEach(h => {
+      const c = ctpData.find(cd => cd.week === week && cd.holeNum === h);
+      if (c) existing[h] = { playerId: c.playerId || "", distance: c.distance || "" };
+    });
+    setCtpSelections(existing);
+    setShowCtpPopup(true);
+  };
+  const showFinalizeBanner = isComm && allMatchesAttested && !isWeekLocked && !!saveWeekSchedule;
+  const FinalizeBanner = showFinalizeBanner ? (
+    <button
+      onClick={openFinalize}
+      style={{
+        width: "100%", padding: "10px 14px", borderRadius: 10,
+        marginBottom: 8, cursor: "pointer",
+        background: K.act, border: "none", color: K.bg,
+        fontSize: 13, fontWeight: 800, letterSpacing: .3,
+        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+        boxShadow: `0 2px 8px ${K.act}40`,
+      }}
+    >
+      <span style={{ fontSize: 11, fontWeight: 700, opacity: .85, letterSpacing: 1, textTransform: "uppercase" }}>Ready</span>
+      <span>Finalize Week {week}</span>
+      <span style={{ fontSize: 16, fontWeight: 800, opacity: .85 }}>›</span>
+    </button>
+  ) : null;
+
   if (!course?.name) return <EmptyState icon="flag" title="Course not configured" subtitle="Commissioner needs to set up the course." />;
   if (!matches.length) return <EmptyState icon="calendar" title="No matches this week" subtitle="Commissioner needs to set the schedule." />;
 
@@ -821,6 +862,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     return (
       <div style={{ maxWidth: 540, margin: "0 auto" }}>
         <ViewToggle />
+        {FinalizeBanner}
 
         <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
           {matches.map((m, mi) => {
@@ -1520,6 +1562,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     return (
       <div style={{ maxWidth: 540, margin: "0 auto" }}>
         <ViewToggle />
+        {FinalizeBanner}
 
         {/* Table header — Net and Gross are tappable to sort; tapping the active column flips direction */}
         <div style={{ display: "flex", alignItems: "center", padding: "6px 10px", background: K.acc, borderRadius: "8px 8px 0 0", color: K.bg, fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: .5 }}>
@@ -1883,6 +1926,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         </div>
       )}
       {!activeMatch && <ViewToggle />}
+      {!activeMatch && FinalizeBanner}
       {/* Status banners */}
       {isWeekLocked && (
         <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 4, fontSize: 13, color: K.warn, fontWeight: 700, textAlign: "center" }}>
