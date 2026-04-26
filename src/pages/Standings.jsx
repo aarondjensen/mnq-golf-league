@@ -1,6 +1,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, CHEVRON_SIZE, calcCourseHandicap, calcNineHandicap, calcPlayerHcp, buildSeedMap } from "../theme";
 import { SharedScorecard } from "./Scoring";
+import { readScoreEffective, getStrokesForHole } from "../lib/matchCalc";
 
 // Build standings from a set of match results.
 // Tiebreaker is always total holes won (the headToHead option was removed because it was
@@ -1302,40 +1303,16 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     const t1Pids = [teams.find(t => t.id === mr.team1Id)?.player1, teams.find(t => t.id === mr.team1Id)?.player2].filter(Boolean);
     const t2Pids = [teams.find(t => t.id === mr.team2Id)?.player1, teams.find(t => t.id === mr.team2Id)?.player2].filter(Boolean);
 
-    const sorted = hcps.map((h, i) => ({ idx: i, hcp: h })).sort((a, b) => a.hcp - b.hcp);
-    const getStrokesMap = (nh) => {
-      const mp = {}; let rem = Math.abs(nh);
-      for (const h of sorted) { if (rem <= 0) break; mp[h.idx] = (mp[h.idx] || 0) + 1; rem--; }
-      for (const h of sorted) { if (rem <= 0) break; mp[h.idx] = (mp[h.idx] || 0) + 1; rem--; }
-      return mp;
-    };
-    const getHcp = (pid) => { const p = players.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
-    const getStrokes = (pid, h) => getStrokesMap(getHcp(pid))[h] || 0;
+    // Render-time helpers — score reading and strokes delegate to lib/matchCalc.js
+    // so absent-handling stays consistent with Live Scoring and Schedule. Locals
+    // are just thin closures binding the component's pars/hcps/players.
     const getInitials = (pid) => { const p = players.find(pl => pl.id === pid); return p ? p.name.split(' ').map(n => n[0]).join('') : "?"; };
     const isAbsent = (pid) => wkScores[`w${mr.week}_p${pid}_habsent`] === 1;
-
-    // Absent-aware getScore — substitutes teammate's score when a player is
-    // marked absent. Mirrors Schedule.jsx and Scoring.jsx (amGetEffectiveScore).
-    // Without this, the mini-scorecard's TeamNetRow shows blank cells for any
-    // team with an absent player and the team net total is wrong, even though
-    // the displayed match result remains correct via a happy coincidence.
-    const getRawScore = (pid, h) => wkScores[`w${mr.week}_p${pid}_h${h}`] || 0;
-    const teammateOf = (pid) => {
-      if (t1Pids.includes(pid)) return t1Pids.find(p => p !== pid) || null;
-      if (t2Pids.includes(pid)) return t2Pids.find(p => p !== pid) || null;
-      return null;
-    };
-    const getScore = (pid, h) => {
-      if (isAbsent(pid)) {
-        const tm = teammateOf(pid);
-        if (!tm || isAbsent(tm)) {
-          const strokesOnHole = getStrokesMap(getHcp(pid))[h] || 0;
-          return (pars[h] || 4) + 1 + strokesOnHole;
-        }
-        return getRawScore(tm, h);
-      }
-      return getRawScore(pid, h);
-    };
+    const getStrokes = (pid, h) => getStrokesForHole({ pid, h, players, hcps });
+    const getScore = (pid, h) => readScoreEffective({
+      pid, h, week: mr.week, holeScores: wkScores,
+      t1Pids, t2Pids, pars, hcps, players,
+    });
 
     // Compute hole results + running status
     const holeResults = [];

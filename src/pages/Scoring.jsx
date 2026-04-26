@@ -4,6 +4,7 @@ import { K, FONTS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, Empt
   lastNamesOnly, formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE,
   buildSeedMap } from "../theme";
 import { LEAGUE_ID } from "../firebase";
+import { computeMatchResult } from "../lib/matchCalc";
 
 // ═══════════════════════════════════════════════════════════════
 //  ScoreCell — golf scorecard notation (circles, squares, dots)
@@ -1811,99 +1812,35 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   const finalizeMatch = async () => {
     const isPlayoffWeek = weekSch?.isPlayoff === true;
-    const sr = isPlayoffWeek
-      ? { mw: scoringRules.playoffMatchWin, mt: scoringRules.playoffMatchTie, ml: scoringRules.playoffMatchLoss, bw: scoringRules.playoffBonusWin, bt: scoringRules.playoffBonusTie, bl: scoringRules.playoffBonusLoss }
-      : { mw: scoringRules.matchWin, mt: scoringRules.matchTie, ml: scoringRules.matchLoss, bw: scoringRules.totalNetBonusWin, bt: scoringRules.totalNetBonusTie, bl: scoringRules.totalNetBonusLoss };
 
-    let t1Pts = 0, t2Pts = 0;
-    const t1Net = t1Players.reduce((a, pid) => a + getRunning(pid).net, 0);
-    const t2Net = t2Players.reduce((a, pid) => a + getRunning(pid).net, 0);
-    const t1Gross = t1Players.reduce((a, pid) => a + getRunning(pid).gross, 0);
-    const t2Gross = t2Players.reduce((a, pid) => a + getRunning(pid).gross, 0);
+    // Single source of truth: compute all match-result fields via matchCalc.
+    // Replaces ~80 lines of inline calculation that duplicated logic also
+    // present in Schedule.jsx's saveEditedScores. See lib/matchCalc.js for
+    // the full algorithm.
+    const calc = computeMatchResult({
+      match: { team1: t1.id, team2: t2.id },
+      week,
+      isPlayoff: isPlayoffWeek,
+      teams,
+      players,
+      holeScores,
+      pars,
+      hcps,
+      scoringRules,
+      leagueConfig,
+      seedMap,
+    });
 
-    if (isTeamNet) {
-      if (t1Net < t2Net) { t1Pts = sr.mw; t2Pts = sr.ml; }
-      else if (t1Net > t2Net) { t1Pts = sr.ml; t2Pts = sr.mw; }
-      else { t1Pts = sr.mt; t2Pts = sr.mt; }
-    } else {
-      const t1s = [...t1Players].sort((a, b) => getHcp(a) - getHcp(b));
-      const t2s = [...t2Players].sort((a, b) => getHcp(a) - getHcp(b));
-      const t1L = getRunning(t1s[0]).net, t2L = getRunning(t2s[0]).net;
-      const t1H = getRunning(t1s[1]).net, t2H = getRunning(t2s[1]).net;
-      if (t1L < t2L) { t1Pts += sr.mw; t2Pts += sr.ml; } else if (t1L > t2L) { t1Pts += sr.ml; t2Pts += sr.mw; } else { t1Pts += sr.mt; t2Pts += sr.mt; }
-      if (t1H < t2H) { t1Pts += sr.mw; t2Pts += sr.ml; } else if (t1H > t2H) { t1Pts += sr.ml; t2Pts += sr.mw; } else { t1Pts += sr.mt; t2Pts += sr.mt; }
-
-      const bonusType = leagueConfig?.bonusType || "teamNetTotal";
-      let b1, b2;
-      if (bonusType === "lowestNet") { b1 = Math.min(getRunning(t1s[0]).net, getRunning(t1s[1]).net); b2 = Math.min(getRunning(t2s[0]).net, getRunning(t2s[1]).net); }
-      else if (bonusType === "totalGross") { b1 = t1Gross; b2 = t2Gross; }
-      else { b1 = t1Net; b2 = t2Net; }
-      if (b1 < b2) { t1Pts += sr.bw; t2Pts += sr.bl; } else if (b1 > b2) { t1Pts += sr.bl; t2Pts += sr.bw; } else { t1Pts += sr.bt; t2Pts += sr.bt; }
-    }
-
-    let hw1 = 0, hw2 = 0;
-    const holeResults = [];
-    for (let h = 0; h < 9; h++) {
-      let n1 = 0, n2 = 0;
-      t1Players.forEach(pid => { n1 += getS(pid, h) - getStrokes(pid, h); });
-      t2Players.forEach(pid => { n2 += getS(pid, h) - getStrokes(pid, h); });
-      if (n1 < n2) { hw1++; holeResults.push(1); } else if (n2 < n1) { hw2++; holeResults.push(-1); } else { holeResults.push(0); }
-    }
-
-    const runningStatus = []; let cum = 0;
-    holeResults.forEach(r => { cum += r; runningStatus.push(cum); });
-
-    let matchEndHole = 8;
-    let matchMargin = Math.abs(runningStatus[8]);
-    for (let h = 0; h < 9; h++) {
-      const lead = Math.abs(runningStatus[h]);
-      const remaining = 8 - h;
-      if (lead > remaining) { matchEndHole = h; matchMargin = lead; break; }
-    }
-    const holesRemaining = 8 - matchEndHole;
-    const finalStatus = runningStatus[8];
-
-    let matchResultText;
-    if (finalStatus === 0) matchResultText = "TIED";
-    else if (holesRemaining > 0) matchResultText = `${matchMargin}&${holesRemaining}`;
-    else matchResultText = `${Math.abs(finalStatus)}UP`;
-
-    // PLAYOFF TIEBREAKER — playoff matches cannot end tied. If the raw result is a
-    // tie, apply the league-configured tiebreaker via the shared computePlayoffTiebreaker
-    // helper and override points + result text.
-    let finalT1Pts = t1Pts;
-    let finalT2Pts = t2Pts;
-    let winnerTeamId = finalStatus > 0 ? t1.id : finalStatus < 0 ? t2.id : null;
-    if (isPlayoffWeek && finalStatus === 0) {
-      const { winner: tbWinner, label: tbLabel } = computePlayoffTiebreaker({
-        t1Players, t2Players, holeResults, t1Id: t1.id, t2Id: t2.id,
-      });
-      // Award match-win points to the tiebreaker winner. In 1v1 team-net scoring
-      // there's only one match-line; in 2v2 by-position scoring there's also a bonus line.
-      if (tbWinner === "t1") {
-        finalT1Pts = isTeamNet ? sr.mw : sr.mw + sr.bw;
-        finalT2Pts = isTeamNet ? sr.ml : sr.ml + sr.bl;
-        winnerTeamId = t1.id;
-      } else {
-        finalT1Pts = isTeamNet ? sr.ml : sr.ml + sr.bl;
-        finalT2Pts = isTeamNet ? sr.mw : sr.mw + sr.bw;
-        winnerTeamId = t2.id;
-      }
-      matchResultText = `TIE (${tbLabel})`;
-    }
-
-    // If all other players are absent, auto-attest since nobody can
+    // Workflow metadata — not derivable from scores, so it stays caller-side.
+    // autoAttest fires when no other present player can attest (e.g. solo
+    // match, or all teammates marked absent).
     const presentNonSigners = allP.filter(pid => pid !== leagueUser.playerId && !isPlayerAbsent(pid));
     const autoAttest = presentNonSigners.length === 0;
 
     await saveMatchResult({
-      id: `${LEAGUE_ID}_w${week}_${t1.id}_${t2.id}`, week,
-      team1Id: t1.id, team2Id: t2.id,
-      team1Points: finalT1Pts, team2Points: finalT2Pts,
-      t1Total: t1Net, t2Total: t2Net,
-      t1HolesWon: hw1, t2HolesWon: hw2,
-      matchResultText,
-      matchWinnerId: winnerTeamId,
+      ...calc,
+      id: `${LEAGUE_ID}_w${week}_${t1.id}_${t2.id}`,
+      week,
       finalizedByTeamId: myTeam?.id || null,
       signedByPlayerId: leagueUser.playerId || null,
       attestedBy: [],
@@ -1946,7 +1883,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     // PLAYOFF TIEBREAKER PREVIEW — if this is a tied playoff match, resolve the
     // winner using the configured tiebreaker and reflect it here so the Sign
     // Scorecard screen shows the correct W/L instead of a misleading "TIED".
-    // Uses computePlayoffTiebreaker() which is the same logic applied at save time.
+    // The logic mirrors matchCalc.js's tiebreaker (which is what runs at save
+    // time) — both must agree, since the preview is the user's last sanity
+    // check before signing. If you change the tiebreaker rules, change them
+    // in BOTH places.
     const isPlayoffWeek = weekSch?.isPlayoff === true;
     let tbClinchText = null;
     if (isPlayoffWeek && isTie) {

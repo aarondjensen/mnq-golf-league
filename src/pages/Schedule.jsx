@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, HERO_NUM_SIZE, CHEVRON_SIZE, buildSeedMap } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 import { SharedScorecard } from "./Scoring";
+import { computeMatchResult, readScoreEffective, getStrokesForHole } from "../lib/matchCalc";
 
 export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen }) {
   const [showAll, setShowAll] = useState(false);
@@ -86,172 +87,38 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       }
     }
 
-    // Recalculate match result
-    const sorted = hcps.map((h, i) => ({ idx: i, hcp: h })).sort((a, b) => a.hcp - b.hcp);
-    const getStrokesMap = (nh) => {
-      const mp = {}; let rem = Math.abs(nh);
-      for (const h of sorted) { if (rem <= 0) break; mp[h.idx] = (mp[h.idx] || 0) + 1; rem--; }
-      for (const h of sorted) { if (rem <= 0) break; mp[h.idx] = (mp[h.idx] || 0) + 1; rem--; }
-      return mp;
-    };
-    const getHcp = (pid) => { const p = players.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
-    const getStr = (pid, h) => getStrokesMap(getHcp(pid))[h] || 0;
-    // Absent-aware score read: see comments in render-time getScore below for
-    // full rationale. This is the commissioner-edit recalculation path; it
-    // needs the same substitution so that team-net totals reflect the absent
-    // teammate's score, not 0. We read `_habsent` from oldScores (the original
-    // Firestore data) since editScores only contains per-hole numerics.
-    const isAbsentEdit = (pid) => oldScores[`w${weekNum}_p${pid}_habsent`] === 1;
-    const teammateOfEdit = (pid) => {
-      if (t1Pids.includes(pid)) return t1Pids.find(p => p !== pid) || null;
-      if (t2Pids.includes(pid)) return t2Pids.find(p => p !== pid) || null;
-      return null;
-    };
-    const getRawS = (pid, h) => editScores[`${pid}_${h}`] || 0;
-    const getS = (pid, h) => {
-      if (isAbsentEdit(pid)) {
-        const tm = teammateOfEdit(pid);
-        if (!tm || isAbsentEdit(tm)) {
-          const strokesOnHole = getStrokesMap(getHcp(pid))[h] || 0;
-          return (pars[h] || 4) + 1 + strokesOnHole;
-        }
-        return getRawS(tm, h);
+    // Build the holeScores object that matchCalc expects, by overlaying our
+    // edited per-hole values on top of the existing Firestore data. The
+    // `_habsent` flags carry through unchanged (commissioner edit doesn't
+    // touch absent state — that's a separate concern).
+    const holeScoresForCalc = { ...oldScores };
+    allPids.forEach(pid => {
+      for (let h = 0; h < 9; h++) {
+        holeScoresForCalc[`w${weekNum}_p${pid}_h${h}`] = editScores[`${pid}_${h}`] || 0;
       }
-      return getRawS(pid, h);
-    };
+    });
 
-    const getNet = (pids) => { let net = 0; pids.forEach(pid => { for (let h = 0; h < 9; h++) net += getS(pid, h) - getStr(pid, h); }); return net; };
-    const getGross = (pids) => { let g = 0; pids.forEach(pid => { for (let h = 0; h < 9; h++) g += getS(pid, h); }); return g; };
-    const t1Net = getNet(t1Pids), t2Net = getNet(t2Pids);
-    const t1Gross = getGross(t1Pids), t2Gross = getGross(t2Pids);
-
-    const isPlayoffWeek = wk.isPlayoff === true;
-    const sr = isPlayoffWeek
-      ? { mw: scoringRules.playoffMatchWin, mt: scoringRules.playoffMatchTie, ml: scoringRules.playoffMatchLoss, bw: scoringRules.playoffBonusWin, bt: scoringRules.playoffBonusTie, bl: scoringRules.playoffBonusLoss }
-      : { mw: scoringRules.matchWin, mt: scoringRules.matchTie, ml: scoringRules.matchLoss, bw: scoringRules.totalNetBonusWin, bt: scoringRules.totalNetBonusTie, bl: scoringRules.totalNetBonusLoss };
-
-    let t1Pts = 0, t2Pts = 0;
-    const scoringFormat = leagueConfig?.scoringFormat || "lowHighBonus";
-    if (scoringFormat === "teamNetTotal") {
-      if (t1Net < t2Net) { t1Pts = sr.mw; t2Pts = sr.ml; } else if (t1Net > t2Net) { t1Pts = sr.ml; t2Pts = sr.mw; } else { t1Pts = sr.mt; t2Pts = sr.mt; }
-    } else {
-      const t1s = [...t1Pids].sort((a, b) => getHcp(a) - getHcp(b));
-      const t2s = [...t2Pids].sort((a, b) => getHcp(a) - getHcp(b));
-      const pNet = (pid) => { let n = 0; for (let h = 0; h < 9; h++) n += getS(pid, h) - getStr(pid, h); return n; };
-      const t1L = pNet(t1s[0]), t2L = pNet(t2s[0]), t1H = pNet(t1s[1]), t2H = pNet(t2s[1]);
-      if (t1L < t2L) { t1Pts += sr.mw; t2Pts += sr.ml; } else if (t1L > t2L) { t1Pts += sr.ml; t2Pts += sr.mw; } else { t1Pts += sr.mt; t2Pts += sr.mt; }
-      if (t1H < t2H) { t1Pts += sr.mw; t2Pts += sr.ml; } else if (t1H > t2H) { t1Pts += sr.ml; t2Pts += sr.mw; } else { t1Pts += sr.mt; t2Pts += sr.mt; }
-      const bonusType = leagueConfig?.bonusType || "teamNetTotal";
-      let b1, b2;
-      if (bonusType === "lowestNet") { b1 = Math.min(pNet(t1s[0]), pNet(t1s[1])); b2 = Math.min(pNet(t2s[0]), pNet(t2s[1])); }
-      else if (bonusType === "totalGross") { b1 = t1Gross; b2 = t2Gross; }
-      else { b1 = t1Net; b2 = t2Net; }
-      if (b1 < b2) { t1Pts += sr.bw; t2Pts += sr.bl; } else if (b1 > b2) { t1Pts += sr.bl; t2Pts += sr.bw; } else { t1Pts += sr.bt; t2Pts += sr.bt; }
-    }
-
-    let hw1 = 0, hw2 = 0;
-    const holeResults = [];
-    for (let h = 0; h < 9; h++) {
-      let n1 = 0, n2 = 0;
-      t1Pids.forEach(pid => { n1 += getS(pid, h) - getStr(pid, h); });
-      t2Pids.forEach(pid => { n2 += getS(pid, h) - getStr(pid, h); });
-      if (n1 < n2) { hw1++; holeResults.push(1); } else if (n2 < n1) { hw2++; holeResults.push(-1); } else { holeResults.push(0); }
-    }
-    const runningStatus = []; let cum = 0;
-    holeResults.forEach(r => { cum += r; runningStatus.push(cum); });
-
-    let matchEndHole = 8, matchMargin = Math.abs(runningStatus[8]);
-    for (let h = 0; h < 9; h++) {
-      const lead = Math.abs(runningStatus[h]); const rem = 8 - h;
-      if (lead > rem) { matchEndHole = h; matchMargin = lead; break; }
-    }
-    const finalStatus = runningStatus[8];
-    const holesRemaining = 8 - matchEndHole;
-    let matchResultText;
-    if (finalStatus === 0) matchResultText = "TIED";
-    else if (holesRemaining > 0) matchResultText = `${matchMargin}&${holesRemaining}`;
-    else matchResultText = `${Math.abs(finalStatus)}UP`;
-
-    // PLAYOFF TIEBREAKER — mirrors Scoring.jsx's finalizeMatch logic. Playoff
-    // matches cannot end tied, so when a commissioner's score edit produces a tie,
-    // apply the configured tiebreaker to pick a winner and override both the
-    // saved points and the matchResultText (which becomes "TIE (Hole N)" or similar).
-    let finalT1Pts = t1Pts;
-    let finalT2Pts = t2Pts;
-    let winnerTeamId = finalStatus > 0 ? t1.id : finalStatus < 0 ? t2.id : null;
-    if (isPlayoffWeek && finalStatus === 0) {
-      const tb = leagueConfig?.playoffTiebreaker || "hardestHole";
-      const netOnHole = (pids, h) => pids.reduce((a, pid) => a + (getS(pid, h) - getStr(pid, h)), 0);
-      let winner = null;
-      let label = "";
-
-      if (tb === "hardestHole") {
-        // Walk holes in order of HCP index (1 = hardest first); first hole where
-        // net scores differ breaks the tie.
-        const holesByHcp = Array.from({ length: 9 }, (_, h) => h)
-          .sort((a, b) => (hcps[a] || Infinity) - (hcps[b] || Infinity));
-        for (const h of holesByHcp) {
-          const n1 = netOnHole(t1Pids, h);
-          const n2 = netOnHole(t2Pids, h);
-          if (n1 < n2) { winner = "t1"; label = `Hole ${h + 1}`; break; }
-          if (n2 < n1) { winner = "t2"; label = `Hole ${h + 1}`; break; }
-        }
-        if (!label) label = "Hole-by-HCP";
-      } else if (tb === "sumHoleHcpLosses") {
-        let t1LossSum = 0, t2LossSum = 0;
-        for (let h = 0; h < 9; h++) {
-          const hc = hcps[h] || 0;
-          if (holeResults[h] === 1) t2LossSum += hc;
-          else if (holeResults[h] === -1) t1LossSum += hc;
-        }
-        if (t1LossSum < t2LossSum) winner = "t1";
-        else if (t2LossSum < t1LossSum) winner = "t2";
-        label = "HCP losses";
-      } else if (tb === "lowestNet") {
-        if (t1Net < t2Net) winner = "t1";
-        else if (t2Net < t1Net) winner = "t2";
-        label = "Low net";
-      } else if (tb === "lowestGross") {
-        if (t1Gross < t2Gross) winner = "t1";
-        else if (t2Gross < t1Gross) winner = "t2";
-        label = "Low gross";
-      } else if (tb === "higherSeed") {
-        const s1 = Number(seedMap[t1.id]) || Infinity;
-        const s2 = Number(seedMap[t2.id]) || Infinity;
-        if (s1 < s2) winner = "t1";
-        else if (s2 < s1) winner = "t2";
-        label = "Higher seed";
-      }
-      // Final fallback — seed, then t1.
-      if (!winner) {
-        const s1 = Number(seedMap[t1.id]) || Infinity;
-        const s2 = Number(seedMap[t2.id]) || Infinity;
-        if (s1 !== s2) winner = s1 < s2 ? "t1" : "t2";
-        else winner = "t1";
-        label = "Seed";
-      }
-
-      const isTeamNet = scoringFormat === "teamNetTotal";
-      if (winner === "t1") {
-        finalT1Pts = isTeamNet ? sr.mw : sr.mw + sr.bw;
-        finalT2Pts = isTeamNet ? sr.ml : sr.ml + sr.bl;
-        winnerTeamId = t1.id;
-      } else {
-        finalT1Pts = isTeamNet ? sr.ml : sr.ml + sr.bl;
-        finalT2Pts = isTeamNet ? sr.mw : sr.mw + sr.bw;
-        winnerTeamId = t2.id;
-      }
-      matchResultText = `TIE (${label})`;
-    }
+    // Single source of truth: compute via matchCalc.js. Same calculation
+    // Scoring.jsx uses on Sign Scorecard, so a commissioner-edit and a fresh
+    // sign produce identical match_results given identical scores.
+    const calc = computeMatchResult({
+      match: m,
+      week: weekNum,
+      isPlayoff: wk.isPlayoff === true,
+      teams,
+      players,
+      holeScores: holeScoresForCalc,
+      pars,
+      hcps,
+      scoringRules,
+      leagueConfig,
+      seedMap,
+    });
 
     await saveMatchResult({
-      id: `${LEAGUE_ID}_w${weekNum}_${t1.id}_${t2.id}`, week: weekNum,
-      team1Id: t1.id, team2Id: t2.id,
-      team1Points: finalT1Pts, team2Points: finalT2Pts,
-      t1Total: t1Net, t2Total: t2Net,
-      t1HolesWon: hw1, t2HolesWon: hw2,
-      matchResultText,
-      matchWinnerId: winnerTeamId,
+      ...calc,
+      id: `${LEAGUE_ID}_w${weekNum}_${t1.id}_${t2.id}`,
+      week: weekNum,
       finalizedByTeamId: res?.finalizedByTeamId || null,
       signedByPlayerId: res?.signedByPlayerId || leagueUser?.playerId || null,
       // Preserve attestation state when a commissioner edits scores on an already-
@@ -593,45 +460,18 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const t1Pids = [t1?.player1, t1?.player2].filter(Boolean);
     const t2Pids = [t2?.player1, t2?.player2].filter(Boolean);
 
-    const sorted = hcps.map((h, i) => ({ idx: i, hcp: h })).sort((a, b) => a.hcp - b.hcp);
-    const getStrokesMap = (nh) => {
-      const mp = {}; let rem = Math.abs(nh);
-      for (const h of sorted) { if (rem <= 0) break; mp[h.idx] = (mp[h.idx] || 0) + 1; rem--; }
-      for (const h of sorted) { if (rem <= 0) break; mp[h.idx] = (mp[h.idx] || 0) + 1; rem--; }
-      return mp;
-    };
-    const getHcp = (pid) => { const p = players.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
-    const getStrokes = (pid, h) => getStrokesMap(getHcp(pid))[h] || 0;
+    // Render-time helpers — most score reading and stroke calculation now
+    // delegates to lib/matchCalc.js so absent-handling stays consistent across
+    // every view (Live Scoring, Schedule, Standings). The only locals kept are
+    // utility wrappers that bind the component's pars/hcps/players closures so
+    // the call sites stay readable.
     const getInitials = (pid) => { const p = players.find(pl => pl.id === pid); return p ? p.name.split(' ').map(n => n[0]).join('') : "?"; };
     const isAbsent = (pid) => wkScores[`w${wk.week}_p${pid}_habsent`] === 1;
-
-    // Raw score read from Firestore (no absent handling).
-    const getRawScore = (pid, h) => wkScores[`w${wk.week}_p${pid}_h${h}`] || 0;
-    // Teammate lookup: returns the OTHER player on the same team, or null.
-    const teammateOf = (pid) => {
-      if (t1Pids.includes(pid)) return t1Pids.find(p => p !== pid) || null;
-      if (t2Pids.includes(pid)) return t2Pids.find(p => p !== pid) || null;
-      return null;
-    };
-    // Absent-aware score read. When a player is absent, their teammate's score
-    // is substituted (same model as Scoring.jsx amGetEffectiveScore — line 971).
-    // When BOTH teammates are absent, fall back to net-bogey on each hole.
-    // Without this, the historical match scorecards in Schedule view showed
-    // empty "NET" cells for any team with an absent player, because the raw 0
-    // tripped the TeamNetRow's "missing data" guard. The match summary at the
-    // top of the card was still correct (it ignored the 0 by happy accident),
-    // but the displayed scorecard underneath was visibly broken.
-    const getScore = (pid, h) => {
-      if (isAbsent(pid)) {
-        const tm = teammateOf(pid);
-        if (!tm || isAbsent(tm)) {
-          const strokesOnHole = getStrokesMap(getHcp(pid))[h] || 0;
-          return (pars[h] || 4) + 1 + strokesOnHole;
-        }
-        return getRawScore(tm, h);
-      }
-      return getRawScore(pid, h);
-    };
+    const getStrokes = (pid, h) => getStrokesForHole({ pid, h, players, hcps });
+    const getScore = (pid, h) => readScoreEffective({
+      pid, h, week: wk.week, holeScores: wkScores,
+      t1Pids, t2Pids, pars, hcps, players,
+    });
 
     // Compute hole results + running status
     const holeResults = [];
