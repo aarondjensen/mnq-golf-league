@@ -18,12 +18,6 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   // make-up round). Persisted to Firestore on save via saveScore(week, pid,
   // "absent", 0|1). Default treats "no entry yet" as not absent.
   const [editAbsent, setEditAbsent] = useState({}); // { pid: boolean }
-  // Anchor scroll position captured when the popup opens. The popup positions
-  // itself relative to this Y coordinate (rather than fixed-center) so it
-  // appears in the user's current viewport — right over the scorecard they
-  // tapped Edit Scores on, instead of forcing them to scroll up to a centered
-  // modal somewhere off-screen.
-  const [editAnchorY, setEditAnchorY] = useState(0);
   const [saving, setSaving] = useState(false);
 
   // Notify parent when edit popup is open
@@ -60,6 +54,11 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   }, [expandedMatchKey, matchScores, fetchWeekScores]);
 
   // ── Commissioner score editing ──
+  // Stripped the bounding-rect anchor calculation that the previous fix used —
+  // it positioned the popup in document coordinates which then required the
+  // user to be scrolled to exactly the right spot. Switched to viewport-fixed
+  // positioning so the popup is ALWAYS visible regardless of where the user
+  // scrolled before tapping Edit Scores.
   const openEditScores = (wk, m, res) => {
     const wkScores = matchScores[wk.week] || {};
     const t1 = teams.find(t => t.id === m.team1);
@@ -75,7 +74,6 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     });
     setEditScores(initial);
     setEditAbsent(initialAbsent);
-    setEditAnchorY(window.scrollY || window.pageYOffset || 0);
     setEditingMatch({ wk, m, res });
   };
 
@@ -843,19 +841,26 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           return true;
         });
 
-        // Position popup near where the user was looking when they tapped
-        // "Edit Scores". `top` is offset 60px below the captured scrollY so the
-        // popup sits below the page header rather than overlapping it. The
-        // overlay still covers the full viewport so taps outside dismiss as
-        // expected. maxHeight + overflowY:auto keeps a tall popup scrollable
-        // within itself if it would otherwise fall off the bottom of the screen.
+        // Popup positioning: `position: fixed` with a small top offset so the
+        // popup is ALWAYS visible regardless of where the user scrolled before
+        // tapping Edit Scores. maxHeight + overflowY:auto keep a tall popup
+        // contained — if its content exceeds the viewport, the inner card
+        // scrolls rather than overflowing off-screen. Earlier versions tried
+        // to anchor to the clicked button's document Y; that left the popup
+        // stuck off-screen on long pages, which is the bug this revision fixes.
         return (<>
           <div onClick={() => setEditingMatch(null)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 500 }} />
-          <div data-popup style={{ position: "absolute", top: editAnchorY + 60, left: 0, right: 0, zIndex: 550, display: "flex", justifyContent: "center", padding: 10, pointerEvents: "none" }}>
+          <div data-popup style={{
+            position: "fixed", top: 20, left: 0, right: 0, bottom: 20,
+            zIndex: 550,
+            display: "flex", justifyContent: "center", alignItems: "flex-start",
+            padding: "0 10px",
+            pointerEvents: "none",
+          }}>
             <div onClick={e => e.stopPropagation()} data-popup-scroll style={{
               background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14,
               padding: "14px 12px", width: "100%", maxWidth: 460,
-              maxHeight: "calc(100vh - 80px)", overflowY: "auto", overscrollBehavior: "contain",
+              maxHeight: "100%", overflowY: "auto", overscrollBehavior: "contain",
               pointerEvents: "auto",
               boxShadow: "0 12px 40px rgba(0,0,0,.4)",
             }}>
