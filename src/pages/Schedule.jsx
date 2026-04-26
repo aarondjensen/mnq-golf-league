@@ -466,6 +466,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     // utility wrappers that bind the component's pars/hcps/players closures so
     // the call sites stay readable.
     const getInitials = (pid) => { const p = players.find(pl => pl.id === pid); return p ? p.name.split(' ').map(n => n[0]).join('') : "?"; };
+    const getHcp = (pid) => { const p = players.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
     const isAbsent = (pid) => wkScores[`w${wk.week}_p${pid}_habsent`] === 1;
     const getStrokes = (pid, h) => getStrokesForHole({ pid, h, players, hcps });
     const getScore = (pid, h) => readScoreEffective({

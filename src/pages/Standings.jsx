@@ -1307,6 +1307,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     // so absent-handling stays consistent with Live Scoring and Schedule. Locals
     // are just thin closures binding the component's pars/hcps/players.
     const getInitials = (pid) => { const p = players.find(pl => pl.id === pid); return p ? p.name.split(' ').map(n => n[0]).join('') : "?"; };
+    const getHcp = (pid) => { const p = players.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
     const isAbsent = (pid) => wkScores[`w${mr.week}_p${pid}_habsent`] === 1;
     const getStrokes = (pid, h) => getStrokesForHole({ pid, h, players, hcps });
     const getScore = (pid, h) => readScoreEffective({
