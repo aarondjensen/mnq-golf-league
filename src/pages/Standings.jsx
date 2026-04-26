@@ -1156,29 +1156,29 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
 
   const hasIndividualEvent = leagueConfig?.individualEvent !== false; // default on
   // Default tab on first mount, strictly aligned to season phase:
-  //   - "bracket" (Playoffs) → if playoffs are currently active (at least one
-  //     playoff week is seeded with matches, exists, isn't rained out, AND
-  //     has at least one unlocked round still to play). After playoffs fully
-  //     conclude (all rounds locked), revert to Season since final standings
-  //     are the most useful landing view.
-  //   - "standings" (Season) → in every other case, including the whole
-  //     regular season and the gap between regular season ending and playoff
-  //     bracket being generated. This is what the commissioner asked for:
-  //     "during regular season, always default to Season; during playoffs,
-  //     always default to Playoffs."
-  //
-  // Earlier versions of this also flipped to Playoffs when the regular season
-  // finished but playoffs weren't yet seeded — that was rejected as too eager.
-  // Now the toggle waits for actual playoff bracket existence before flipping.
+  //   - "bracket" (Playoffs) → playoffs are CURRENTLY ACTIVE, defined as
+  //     "at least one playoff week has been locked OR has match results" AND
+  //     "at least one playoff week is still unlocked." So we only flip to
+  //     bracket once a playoff round has actually been PLAYED — pre-seeded
+  //     placeholder matchups in future playoff weeks no longer trip the
+  //     toggle prematurely (which was the bug Aaron hit during regular
+  //     season Week 2: playoff weeks had been pre-populated with empty
+  //     matchups by an earlier schedule generate, so `matches.length > 0`
+  //     fired even though no playoff golf had been played).
+  //   - "standings" (Season) → in every other case: regular season, gap
+  //     between regular season ending and playoffs starting, and after
+  //     playoffs fully conclude. Final-standings view is the most useful
+  //     landing once everything's locked.
   const defaultView = useMemo(() => {
     const playoffWks = (schedule || []).filter(wk => wk.isPlayoff === true && !wk.rainedOut);
     if (!playoffWks.length) return "standings";
-    const anySeededPlayoff = playoffWks.some(wk => (wk.matches?.length || 0) > 0);
+    const anyPlayoffPlayed = playoffWks.some(wk =>
+      wk.locked === true || (matchResults || []).some(r => r.week === wk.week)
+    );
     const anyUnlockedPlayoff = playoffWks.some(wk => !wk.locked);
-    // Playoffs active: bracket exists AND there's still play left
-    if (anySeededPlayoff && anyUnlockedPlayoff) return "bracket";
+    if (anyPlayoffPlayed && anyUnlockedPlayoff) return "bracket";
     return "standings";
-  }, [schedule]);
+  }, [schedule, matchResults]);
   const [view, setView] = useState(defaultView); // "standings" | "bracket" | "individual"
   // If the schedule loads after first mount (common — subscriptions arrive async)
   // and the default changes, respect the new default — but ONLY while the user
