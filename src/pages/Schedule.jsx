@@ -12,6 +12,12 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   const [matchScores, setMatchScores] = useState({}); // { week: { key: score } }
   const [editingMatch, setEditingMatch] = useState(null); // { wk, m, res }
   const [editScores, setEditScores] = useState({}); // { "pid_h": score }
+  // Per-player absent flags within the edit popup. Initialized from Firestore
+  // when the popup opens, then toggled inline if the commissioner needs to
+  // mark someone absent or restore them to present (e.g. after a scheduled
+  // make-up round). Persisted to Firestore on save via saveScore(week, pid,
+  // "absent", 0|1). Default treats "no entry yet" as not absent.
+  const [editAbsent, setEditAbsent] = useState({}); // { pid: boolean }
   const [saving, setSaving] = useState(false);
 
   // Notify parent when edit popup is open
@@ -54,12 +60,15 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const t2 = teams.find(t => t.id === m.team2);
     const allPids = [t1?.player1, t1?.player2, t2?.player1, t2?.player2].filter(Boolean);
     const initial = {};
+    const initialAbsent = {};
     allPids.forEach(pid => {
       for (let h = 0; h < 9; h++) {
         initial[`${pid}_${h}`] = wkScores[`w${wk.week}_p${pid}_h${h}`] || 0;
       }
+      initialAbsent[pid] = wkScores[`w${wk.week}_p${pid}_habsent`] === 1;
     });
     setEditScores(initial);
+    setEditAbsent(initialAbsent);
     setEditingMatch({ wk, m, res });
   };
 
@@ -85,16 +94,30 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         const oldVal = oldScores[`w${weekNum}_p${pid}_h${h}`] || 0;
         if (newVal !== oldVal) await saveScore(weekNum, pid, h, newVal);
       }
+      // Also persist any absent-flag changes. saveScore's "absent" sentinel
+      // hole writes the `_habsent` doc instead of a per-hole score. Only fire
+      // when the value actually changed to avoid spurious writes.
+      const newAbsent = editAbsent[pid] ? 1 : 0;
+      const oldAbsent = oldScores[`w${weekNum}_p${pid}_habsent`] === 1 ? 1 : 0;
+      if (newAbsent !== oldAbsent) await saveScore(weekNum, pid, "absent", newAbsent);
     }
 
     // Build the holeScores object that matchCalc expects, by overlaying our
-    // edited per-hole values on top of the existing Firestore data. The
-    // `_habsent` flags carry through unchanged (commissioner edit doesn't
-    // touch absent state — that's a separate concern).
+    // edited per-hole values AND absent flags on top of the existing Firestore
+    // data. We use the latest editAbsent state so re-marking a player as
+    // present (e.g. after they play a make-up round) takes effect immediately
+    // in the recalculation.
     const holeScoresForCalc = { ...oldScores };
     allPids.forEach(pid => {
       for (let h = 0; h < 9; h++) {
         holeScoresForCalc[`w${weekNum}_p${pid}_h${h}`] = editScores[`${pid}_${h}`] || 0;
+      }
+      // Mirror the new absent state into the calc input. Setting to undefined
+      // when not absent lets readScoreEffective's `=== 1` check fail correctly.
+      if (editAbsent[pid]) {
+        holeScoresForCalc[`w${weekNum}_p${pid}_habsent`] = 1;
+      } else {
+        delete holeScoresForCalc[`w${weekNum}_p${pid}_habsent`];
       }
     });
 
@@ -129,9 +152,16 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       attestedBy: res?.attestedBy || [],
     });
 
-    // Update local cache
+    // Update local cache — keep both per-hole scores and absent flags in sync
+    // with what we just persisted, so the UI reflects the change without
+    // waiting for the realtime subscription to round-trip.
     const updatedScores = { ...(matchScores[weekNum] || {}) };
-    allPids.forEach(pid => { for (let h = 0; h < 9; h++) updatedScores[`w${weekNum}_p${pid}_h${h}`] = editScores[`${pid}_${h}`] || 0; });
+    allPids.forEach(pid => {
+      for (let h = 0; h < 9; h++) updatedScores[`w${weekNum}_p${pid}_h${h}`] = editScores[`${pid}_${h}`] || 0;
+      const absentKey = `w${weekNum}_p${pid}_habsent`;
+      if (editAbsent[pid]) updatedScores[absentKey] = 1;
+      else delete updatedScores[absentKey];
+    });
     setMatchScores(prev => ({ ...prev, [weekNum]: updatedScores }));
     setSaving(false);
     setEditingMatch(null);
@@ -794,7 +824,16 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         const getHcp = (pid) => { const p = players.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
         const setS = (pid, h, val) => setEditScores(prev => ({ ...prev, [`${pid}_${h}`]: val }));
         const getS = (pid, h) => editScores[`${pid}_${h}`] || 0;
-        const allFilled = allPids.every(pid => { for (let h = 0; h < 9; h++) if (getS(pid, h) <= 0) return false; return true; });
+        const isAbs = (pid) => !!editAbsent[pid];
+        const toggleAbsent = (pid) => setEditAbsent(prev => ({ ...prev, [pid]: !prev[pid] }));
+        // Save is allowed when every PRESENT player has a score for every hole.
+        // Absent players are skipped — their teammate's score substitutes during
+        // recalculation (handled by matchCalc), so the row staying blank is fine.
+        const allFilled = allPids.every(pid => {
+          if (isAbs(pid)) return true;
+          for (let h = 0; h < 9; h++) if (getS(pid, h) <= 0) return false;
+          return true;
+        });
 
         return (<>
           <div onClick={() => setEditingMatch(null)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 500 }} />
@@ -803,6 +842,10 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>Edit Scores — Week {wk.week}</div>
                 <button onClick={() => setEditingMatch(null)} style={{ background: "none", border: "none", color: K.t3, fontSize: 16, cursor: "pointer" }}>✕</button>
+              </div>
+              {/* Hint for absent toggle */}
+              <div style={{ fontSize: 9, color: K.t3, marginBottom: 8, textAlign: "center", fontStyle: "italic" }}>
+                Tap a player's name to toggle absent status
               </div>
               {/* Hole header */}
               <div style={{ display: "flex", marginBottom: 2 }}>
@@ -821,11 +864,26 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
               {/* Player score rows */}
               {[...t1Pids, null, ...t2Pids].map((pid, idx) => {
                 if (pid === null) return <div key="sep" style={{ height: 1, background: K.bdr + "40", margin: "4px 0" }} />;
+                const absent = isAbs(pid);
                 return (
-                  <div key={pid} style={{ display: "flex", alignItems: "center", marginBottom: 3 }}>
-                    <div style={{ width: 56, flexShrink: 0, fontSize: 10, fontWeight: 700, color: K.t1, paddingLeft: 2, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
-                      {getName(pid)} <span style={{ fontSize: 8, color: K.t3 }}>({getHcp(pid)})</span>
-                    </div>
+                  <div key={pid} style={{ display: "flex", alignItems: "center", marginBottom: 3, opacity: absent ? 0.55 : 1 }}>
+                    <button
+                      onClick={() => toggleAbsent(pid)}
+                      style={{
+                        width: 56, flexShrink: 0, fontSize: 10, fontWeight: 700,
+                        color: absent ? K.red : K.t1,
+                        textAlign: "left", paddingLeft: 2,
+                        overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
+                        background: "none", border: "none",
+                        cursor: "pointer",
+                      }}
+                      title={absent ? "Click to mark present" : "Click to mark absent"}
+                    >
+                      {getName(pid)}
+                      {absent
+                        ? <span style={{ fontSize: 7, fontWeight: 800, color: K.red, background: K.red + "15", padding: "1px 3px", borderRadius: 2, marginLeft: 3 }}>ABS</span>
+                        : <span style={{ fontSize: 8, color: K.t3, marginLeft: 3 }}>({getHcp(pid)})</span>}
+                    </button>
                     {Array.from({ length: 9 }, (_, h) => {
                       const val = getS(pid, h);
                       const par = pars[h];
@@ -837,10 +895,14 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                             type="number"
                             value={val || ""}
                             onChange={e => setS(pid, h, parseInt(e.target.value) || 0)}
+                            disabled={absent}
                             style={{
                               width: "100%", maxWidth: 30, height: 28, textAlign: "center", fontSize: 13, fontWeight: 700,
-                              background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 4, color,
+                              background: absent ? "transparent" : K.inp,
+                              border: `1px solid ${absent ? K.bdr + "40" : K.bdr}`,
+                              borderRadius: 4, color,
                               padding: 0, outline: "none",
+                              cursor: absent ? "not-allowed" : "text",
                             }}
                           />
                         </div>
