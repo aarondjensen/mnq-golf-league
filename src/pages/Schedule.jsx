@@ -18,6 +18,12 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   // make-up round). Persisted to Firestore on save via saveScore(week, pid,
   // "absent", 0|1). Default treats "no entry yet" as not absent.
   const [editAbsent, setEditAbsent] = useState({}); // { pid: boolean }
+  // Anchor scroll position captured when the popup opens. The popup positions
+  // itself relative to this Y coordinate (rather than fixed-center) so it
+  // appears in the user's current viewport — right over the scorecard they
+  // tapped Edit Scores on, instead of forcing them to scroll up to a centered
+  // modal somewhere off-screen.
+  const [editAnchorY, setEditAnchorY] = useState(0);
   const [saving, setSaving] = useState(false);
 
   // Notify parent when edit popup is open
@@ -69,6 +75,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     });
     setEditScores(initial);
     setEditAbsent(initialAbsent);
+    setEditAnchorY(window.scrollY || window.pageYOffset || 0);
     setEditingMatch({ wk, m, res });
   };
 
@@ -821,6 +828,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         const t2Pids = [t2?.player1, t2?.player2].filter(Boolean);
         const allPids = [...t1Pids, ...t2Pids];
         const getName = (pid) => { const p = players.find(pl => pl.id === pid); return p ? p.name.split(' ').pop() : "?"; };
+        const getInitials = (pid) => { const p = players.find(pl => pl.id === pid); return p ? p.name.split(' ').map(n => n[0]).join('').toUpperCase() : "?"; };
         const getHcp = (pid) => { const p = players.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
         const setS = (pid, h, val) => setEditScores(prev => ({ ...prev, [`${pid}_${h}`]: val }));
         const getS = (pid, h) => editScores[`${pid}_${h}`] || 0;
@@ -835,79 +843,110 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           return true;
         });
 
+        // Position popup near where the user was looking when they tapped
+        // "Edit Scores". `top` is offset 60px below the captured scrollY so the
+        // popup sits below the page header rather than overlapping it. The
+        // overlay still covers the full viewport so taps outside dismiss as
+        // expected. maxHeight + overflowY:auto keeps a tall popup scrollable
+        // within itself if it would otherwise fall off the bottom of the screen.
         return (<>
           <div onClick={() => setEditingMatch(null)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 500 }} />
-          <div data-popup style={{ position: "fixed", inset: 0, zIndex: 550, display: "flex", alignItems: "center", justifyContent: "center", padding: 10 }}>
-            <div onClick={e => e.stopPropagation()} data-popup-scroll style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "14px 10px", width: "100%", maxWidth: 420, maxHeight: "85vh", overflowY: "auto", overscrollBehavior: "contain" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <div data-popup style={{ position: "absolute", top: editAnchorY + 60, left: 0, right: 0, zIndex: 550, display: "flex", justifyContent: "center", padding: 10, pointerEvents: "none" }}>
+            <div onClick={e => e.stopPropagation()} data-popup-scroll style={{
+              background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14,
+              padding: "14px 12px", width: "100%", maxWidth: 460,
+              maxHeight: "calc(100vh - 80px)", overflowY: "auto", overscrollBehavior: "contain",
+              pointerEvents: "auto",
+              boxShadow: "0 12px 40px rgba(0,0,0,.4)",
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>Edit Scores — Week {wk.week}</div>
-                <button onClick={() => setEditingMatch(null)} style={{ background: "none", border: "none", color: K.t3, fontSize: 16, cursor: "pointer" }}>✕</button>
+                <button onClick={() => setEditingMatch(null)} style={{ background: "none", border: "none", color: K.t3, fontSize: 18, cursor: "pointer", padding: "0 4px" }}>✕</button>
               </div>
-              {/* Hint for absent toggle */}
-              <div style={{ fontSize: 9, color: K.t3, marginBottom: 8, textAlign: "center", fontStyle: "italic" }}>
-                Tap a player's name to toggle absent status
-              </div>
+
               {/* Hole header */}
-              <div style={{ display: "flex", marginBottom: 2 }}>
-                <div style={{ width: 56, flexShrink: 0 }} />
+              <div style={{ display: "flex", marginBottom: 2, paddingLeft: 64 }}>
                 {Array.from({ length: 9 }, (_, i) => (
                   <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, fontWeight: 700, color: K.t3 }}>{side === 'front' ? i + 1 : i + 10}</div>
                 ))}
               </div>
               {/* Par row */}
-              <div style={{ display: "flex", marginBottom: 6 }}>
-                <div style={{ width: 56, flexShrink: 0, fontSize: 9, fontWeight: 700, color: K.t3, paddingLeft: 2 }}>Par</div>
+              <div style={{ display: "flex", marginBottom: 8, paddingLeft: 64 }}>
                 {pars.map((p, i) => (
                   <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 600, color: K.t2 }}>{p}</div>
                 ))}
               </div>
-              {/* Player score rows */}
+
+              {/* Player score rows — two-line layout: top line is initials +
+                  name + handicap pill + absent toggle; bottom line is the
+                  9 score input cells. This stops the player name from eating
+                  into the score input area and exposes the handicap reliably. */}
               {[...t1Pids, null, ...t2Pids].map((pid, idx) => {
-                if (pid === null) return <div key="sep" style={{ height: 1, background: K.bdr + "40", margin: "4px 0" }} />;
+                if (pid === null) return <div key="sep" style={{ height: 1, background: K.bdr + "40", margin: "8px 0" }} />;
                 const absent = isAbs(pid);
                 return (
-                  <div key={pid} style={{ display: "flex", alignItems: "center", marginBottom: 3, opacity: absent ? 0.55 : 1 }}>
-                    <button
-                      onClick={() => toggleAbsent(pid)}
-                      style={{
-                        width: 56, flexShrink: 0, fontSize: 10, fontWeight: 700,
-                        color: absent ? K.red : K.t1,
-                        textAlign: "left", paddingLeft: 2,
-                        overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
-                        background: "none", border: "none",
-                        cursor: "pointer",
-                      }}
-                      title={absent ? "Click to mark present" : "Click to mark absent"}
-                    >
-                      {getName(pid)}
-                      {absent
-                        ? <span style={{ fontSize: 7, fontWeight: 800, color: K.red, background: K.red + "15", padding: "1px 3px", borderRadius: 2, marginLeft: 3 }}>ABS</span>
-                        : <span style={{ fontSize: 8, color: K.t3, marginLeft: 3 }}>({getHcp(pid)})</span>}
-                    </button>
-                    {Array.from({ length: 9 }, (_, h) => {
-                      const val = getS(pid, h);
-                      const par = pars[h];
-                      const diff = val > 0 ? val - par : 0;
-                      const color = val <= 0 ? K.t3 : diff < 0 ? K.red : diff === 0 ? K.t1 : K.t1;
-                      return (
-                        <div key={h} style={{ flex: 1, display: "flex", justifyContent: "center" }}>
-                          <input
-                            type="number"
-                            value={val || ""}
-                            onChange={e => setS(pid, h, parseInt(e.target.value) || 0)}
-                            disabled={absent}
-                            style={{
-                              width: "100%", maxWidth: 30, height: 28, textAlign: "center", fontSize: 13, fontWeight: 700,
-                              background: absent ? "transparent" : K.inp,
-                              border: `1px solid ${absent ? K.bdr + "40" : K.bdr}`,
-                              borderRadius: 4, color,
-                              padding: 0, outline: "none",
-                              cursor: absent ? "not-allowed" : "text",
-                            }}
-                          />
-                        </div>
-                      );
-                    })}
+                  <div key={pid} style={{ marginBottom: 10, opacity: absent ? 0.55 : 1 }}>
+                    {/* Player meta row — initials avatar, name, hcp, absent toggle */}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                      <div style={{
+                        width: 26, height: 26, borderRadius: "50%",
+                        background: absent ? K.red + "20" : K.acc + "20",
+                        color: absent ? K.red : K.acc,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        fontSize: 10, fontWeight: 800, letterSpacing: -.2,
+                        flexShrink: 0,
+                      }}>{getInitials(pid)}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: K.t1, flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {getName(pid)}
+                      </div>
+                      <div style={{
+                        fontSize: 10, fontWeight: 700, color: K.t3,
+                        background: K.inp, padding: "2px 7px", borderRadius: 10,
+                        flexShrink: 0,
+                      }}>HCP {getHcp(pid)}</div>
+                      <button
+                        onClick={() => toggleAbsent(pid)}
+                        style={{
+                          fontSize: 9, fontWeight: 800, letterSpacing: .3,
+                          padding: "3px 9px", borderRadius: 10,
+                          background: absent ? K.red : "transparent",
+                          color: absent ? K.bg : K.t3,
+                          border: `1px solid ${absent ? K.red : K.bdr}`,
+                          cursor: "pointer", flexShrink: 0,
+                          textTransform: "uppercase",
+                        }}
+                        title={absent ? "Click to mark present" : "Click to mark absent"}
+                      >
+                        {absent ? "✓ Absent" : "Mark Absent"}
+                      </button>
+                    </div>
+                    {/* Score input row */}
+                    <div style={{ display: "flex", paddingLeft: 64 }}>
+                      {Array.from({ length: 9 }, (_, h) => {
+                        const val = getS(pid, h);
+                        const par = pars[h];
+                        const diff = val > 0 ? val - par : 0;
+                        const color = val <= 0 ? K.t3 : diff < 0 ? K.red : K.t1;
+                        return (
+                          <div key={h} style={{ flex: 1, display: "flex", justifyContent: "center" }}>
+                            <input
+                              type="number"
+                              value={val || ""}
+                              onChange={e => setS(pid, h, parseInt(e.target.value) || 0)}
+                              disabled={absent}
+                              style={{
+                                width: "100%", maxWidth: 32, height: 30, textAlign: "center", fontSize: 14, fontWeight: 700,
+                                background: absent ? "transparent" : K.inp,
+                                border: `1px solid ${absent ? K.bdr + "40" : K.bdr}`,
+                                borderRadius: 4, color,
+                                padding: 0, outline: "none",
+                                cursor: absent ? "not-allowed" : "text",
+                              }}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })}
