@@ -96,7 +96,29 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     };
     const getHcp = (pid) => { const p = players.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
     const getStr = (pid, h) => getStrokesMap(getHcp(pid))[h] || 0;
-    const getS = (pid, h) => editScores[`${pid}_${h}`] || 0;
+    // Absent-aware score read: see comments in render-time getScore below for
+    // full rationale. This is the commissioner-edit recalculation path; it
+    // needs the same substitution so that team-net totals reflect the absent
+    // teammate's score, not 0. We read `_habsent` from oldScores (the original
+    // Firestore data) since editScores only contains per-hole numerics.
+    const isAbsentEdit = (pid) => oldScores[`w${weekNum}_p${pid}_habsent`] === 1;
+    const teammateOfEdit = (pid) => {
+      if (t1Pids.includes(pid)) return t1Pids.find(p => p !== pid) || null;
+      if (t2Pids.includes(pid)) return t2Pids.find(p => p !== pid) || null;
+      return null;
+    };
+    const getRawS = (pid, h) => editScores[`${pid}_${h}`] || 0;
+    const getS = (pid, h) => {
+      if (isAbsentEdit(pid)) {
+        const tm = teammateOfEdit(pid);
+        if (!tm || isAbsentEdit(tm)) {
+          const strokesOnHole = getStrokesMap(getHcp(pid))[h] || 0;
+          return (pars[h] || 4) + 1 + strokesOnHole;
+        }
+        return getRawS(tm, h);
+      }
+      return getRawS(pid, h);
+    };
 
     const getNet = (pids) => { let net = 0; pids.forEach(pid => { for (let h = 0; h < 9; h++) net += getS(pid, h) - getStr(pid, h); }); return net; };
     const getGross = (pids) => { let g = 0; pids.forEach(pid => { for (let h = 0; h < 9; h++) g += getS(pid, h); }); return g; };
@@ -571,7 +593,6 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const t1Pids = [t1?.player1, t1?.player2].filter(Boolean);
     const t2Pids = [t2?.player1, t2?.player2].filter(Boolean);
 
-    const getScore = (pid, h) => wkScores[`w${wk.week}_p${pid}_h${h}`] || 0;
     const sorted = hcps.map((h, i) => ({ idx: i, hcp: h })).sort((a, b) => a.hcp - b.hcp);
     const getStrokesMap = (nh) => {
       const mp = {}; let rem = Math.abs(nh);
@@ -583,6 +604,34 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const getStrokes = (pid, h) => getStrokesMap(getHcp(pid))[h] || 0;
     const getInitials = (pid) => { const p = players.find(pl => pl.id === pid); return p ? p.name.split(' ').map(n => n[0]).join('') : "?"; };
     const isAbsent = (pid) => wkScores[`w${wk.week}_p${pid}_habsent`] === 1;
+
+    // Raw score read from Firestore (no absent handling).
+    const getRawScore = (pid, h) => wkScores[`w${wk.week}_p${pid}_h${h}`] || 0;
+    // Teammate lookup: returns the OTHER player on the same team, or null.
+    const teammateOf = (pid) => {
+      if (t1Pids.includes(pid)) return t1Pids.find(p => p !== pid) || null;
+      if (t2Pids.includes(pid)) return t2Pids.find(p => p !== pid) || null;
+      return null;
+    };
+    // Absent-aware score read. When a player is absent, their teammate's score
+    // is substituted (same model as Scoring.jsx amGetEffectiveScore — line 971).
+    // When BOTH teammates are absent, fall back to net-bogey on each hole.
+    // Without this, the historical match scorecards in Schedule view showed
+    // empty "NET" cells for any team with an absent player, because the raw 0
+    // tripped the TeamNetRow's "missing data" guard. The match summary at the
+    // top of the card was still correct (it ignored the 0 by happy accident),
+    // but the displayed scorecard underneath was visibly broken.
+    const getScore = (pid, h) => {
+      if (isAbsent(pid)) {
+        const tm = teammateOf(pid);
+        if (!tm || isAbsent(tm)) {
+          const strokesOnHole = getStrokesMap(getHcp(pid))[h] || 0;
+          return (pars[h] || 4) + 1 + strokesOnHole;
+        }
+        return getRawScore(tm, h);
+      }
+      return getRawScore(pid, h);
+    };
 
     // Compute hole results + running status
     const holeResults = [];

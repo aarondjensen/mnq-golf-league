@@ -1154,26 +1154,29 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   );
 
   const hasIndividualEvent = leagueConfig?.individualEvent !== false; // default on
-  // Pick the right default tab when the page first mounts:
-  //   - "bracket" (Playoffs) — if any playoff week has already started play, has
-  //     matches seeded, or is the next unlocked week
-  //   - "standings" (Season) — otherwise (including the whole regular season and
-  //     post-tournament)
-  // Finished playoffs (all rounds locked) fall back to Season too, since the
-  // tournament is over and the final standings are the more useful landing view.
+  // Default tab on first mount, strictly aligned to season phase:
+  //   - "bracket" (Playoffs) → if playoffs are currently active (at least one
+  //     playoff week is seeded with matches, exists, isn't rained out, AND
+  //     has at least one unlocked round still to play). After playoffs fully
+  //     conclude (all rounds locked), revert to Season since final standings
+  //     are the most useful landing view.
+  //   - "standings" (Season) → in every other case, including the whole
+  //     regular season and the gap between regular season ending and playoff
+  //     bracket being generated. This is what the commissioner asked for:
+  //     "during regular season, always default to Season; during playoffs,
+  //     always default to Playoffs."
+  //
+  // Earlier versions of this also flipped to Playoffs when the regular season
+  // finished but playoffs weren't yet seeded — that was rejected as too eager.
+  // Now the toggle waits for actual playoff bracket existence before flipping.
   const defaultView = useMemo(() => {
     const playoffWks = (schedule || []).filter(wk => wk.isPlayoff === true && !wk.rainedOut);
     if (!playoffWks.length) return "standings";
-    const anyUnlockedPlayoff = playoffWks.some(wk => !wk.locked);
     const anySeededPlayoff = playoffWks.some(wk => (wk.matches?.length || 0) > 0);
-    // "Playoffs are active" = there's at least one non-finalized playoff week AND
-    // either it's been seeded (matchups exist) OR the regular season is fully done
-    // (i.e. all non-playoff weeks are locked — we're about to enter playoffs).
-    if (!anyUnlockedPlayoff) return "standings"; // everything locked → season (= final)
-    if (anySeededPlayoff) return "bracket";
-    const nonPlayoffWks = (schedule || []).filter(wk => wk.isPlayoff !== true && !wk.rainedOut);
-    const regularSeasonDone = nonPlayoffWks.length > 0 && nonPlayoffWks.every(wk => wk.locked);
-    return regularSeasonDone ? "bracket" : "standings";
+    const anyUnlockedPlayoff = playoffWks.some(wk => !wk.locked);
+    // Playoffs active: bracket exists AND there's still play left
+    if (anySeededPlayoff && anyUnlockedPlayoff) return "bracket";
+    return "standings";
   }, [schedule]);
   const [view, setView] = useState(defaultView); // "standings" | "bracket" | "individual"
   // If the schedule loads after first mount (common — subscriptions arrive async)
@@ -1299,7 +1302,6 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     const t1Pids = [teams.find(t => t.id === mr.team1Id)?.player1, teams.find(t => t.id === mr.team1Id)?.player2].filter(Boolean);
     const t2Pids = [teams.find(t => t.id === mr.team2Id)?.player1, teams.find(t => t.id === mr.team2Id)?.player2].filter(Boolean);
 
-    const getScore = (pid, h) => wkScores[`w${mr.week}_p${pid}_h${h}`] || 0;
     const sorted = hcps.map((h, i) => ({ idx: i, hcp: h })).sort((a, b) => a.hcp - b.hcp);
     const getStrokesMap = (nh) => {
       const mp = {}; let rem = Math.abs(nh);
@@ -1311,6 +1313,29 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     const getStrokes = (pid, h) => getStrokesMap(getHcp(pid))[h] || 0;
     const getInitials = (pid) => { const p = players.find(pl => pl.id === pid); return p ? p.name.split(' ').map(n => n[0]).join('') : "?"; };
     const isAbsent = (pid) => wkScores[`w${mr.week}_p${pid}_habsent`] === 1;
+
+    // Absent-aware getScore — substitutes teammate's score when a player is
+    // marked absent. Mirrors Schedule.jsx and Scoring.jsx (amGetEffectiveScore).
+    // Without this, the mini-scorecard's TeamNetRow shows blank cells for any
+    // team with an absent player and the team net total is wrong, even though
+    // the displayed match result remains correct via a happy coincidence.
+    const getRawScore = (pid, h) => wkScores[`w${mr.week}_p${pid}_h${h}`] || 0;
+    const teammateOf = (pid) => {
+      if (t1Pids.includes(pid)) return t1Pids.find(p => p !== pid) || null;
+      if (t2Pids.includes(pid)) return t2Pids.find(p => p !== pid) || null;
+      return null;
+    };
+    const getScore = (pid, h) => {
+      if (isAbsent(pid)) {
+        const tm = teammateOf(pid);
+        if (!tm || isAbsent(tm)) {
+          const strokesOnHole = getStrokesMap(getHcp(pid))[h] || 0;
+          return (pars[h] || 4) + 1 + strokesOnHole;
+        }
+        return getRawScore(tm, h);
+      }
+      return getRawScore(pid, h);
+    };
 
     // Compute hole results + running status
     const holeResults = [];
