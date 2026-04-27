@@ -136,6 +136,38 @@ function readScore({ pid, h, week, holeScores, t1Pids, t2Pids, pars, hcps, playe
   return raw(pid);
 }
 
+// Absent-aware strokes reader. Mirrors readScore's substitution model: when
+// a player is effectively absent and their teammate is present, the present
+// teammate is "playing both positions" — both score slots use the teammate's
+// gross AND the teammate's strokes. Without this, we'd compute net as
+// (teammate_gross - teammate_strokes) + (teammate_gross - absent_strokes),
+// which mixes the two players' handicap allocations even though only one is
+// actually playing. Using the present teammate's strokes for both slots
+// gives net = 2 * (teammate_gross - teammate_strokes), which is the league's
+// intended absent-substitution model and matches what the live scoring view
+// has always displayed.
+//
+// Both-absent path falls through to the player's own strokes — the impute
+// (net bogey) uses pid's handicap, since there's no "playing teammate" to
+// borrow strokes from.
+function readStrokesEffective({ pid, h, week, holeScores, t1Pids, t2Pids, players, hcps }) {
+  const isAbsent = (p) => holeScores[`w${week}_p${p}_habsent`] === 1;
+  const hasAnyScore = (p) => {
+    for (let i = 0; i < 9; i++) {
+      if ((holeScores[`w${week}_p${p}_h${i}`] || 0) > 0) return true;
+    }
+    return false;
+  };
+  const effectivelyAbsent = (p) => isAbsent(p) && !hasAnyScore(p);
+  if (effectivelyAbsent(pid)) {
+    const tm = teammateOf(pid, t1Pids, t2Pids);
+    if (tm && !effectivelyAbsent(tm)) {
+      return getStrokes(tm, h, players, hcps);
+    }
+  }
+  return getStrokes(pid, h, players, hcps);
+}
+
 // Per-player gross / net / thru. Mirrors Scoring.jsx getRunning(). Used to
 // compute team-level totals for points allocation.
 function playerTotals({ pid, week, holeScores, t1Pids, t2Pids, pars, hcps, players }) {
@@ -144,7 +176,7 @@ function playerTotals({ pid, week, holeScores, t1Pids, t2Pids, pars, hcps, playe
     const s = readScore({ pid, h, week, holeScores, t1Pids, t2Pids, pars, hcps, players });
     if (s > 0) {
       gross += s;
-      net += s - getStrokes(pid, h, players, hcps);
+      net += s - readStrokesEffective({ pid, h, week, holeScores, t1Pids, t2Pids, players, hcps });
       thru++;
     }
   }
@@ -166,12 +198,12 @@ function holeResult({ h, week, holeScores, t1Pids, t2Pids, pars, hcps, players }
   t1Pids.forEach(pid => {
     const s = readScore({ pid, h, week, holeScores, t1Pids, t2Pids, pars, hcps, players });
     if (s <= 0) ok1 = false;
-    else n1 += s - getStrokes(pid, h, players, hcps);
+    else n1 += s - readStrokesEffective({ pid, h, week, holeScores, t1Pids, t2Pids, players, hcps });
   });
   t2Pids.forEach(pid => {
     const s = readScore({ pid, h, week, holeScores, t1Pids, t2Pids, pars, hcps, players });
     if (s <= 0) ok2 = false;
-    else n2 += s - getStrokes(pid, h, players, hcps);
+    else n2 += s - readStrokesEffective({ pid, h, week, holeScores, t1Pids, t2Pids, players, hcps });
   });
   if (!ok1 || !ok2) return null;
   if (n1 < n2) return 1;
@@ -220,11 +252,11 @@ function computePlayoffTiebreaker({
       let n1 = 0, n2 = 0;
       t1Pids.forEach(pid => {
         n1 += readScore({ pid, h, week, holeScores, t1Pids, t2Pids, pars, hcps, players })
-            - getStrokes(pid, h, players, hcps);
+            - readStrokesEffective({ pid, h, week, holeScores, t1Pids, t2Pids, players, hcps });
       });
       t2Pids.forEach(pid => {
         n2 += readScore({ pid, h, week, holeScores, t1Pids, t2Pids, pars, hcps, players })
-            - getStrokes(pid, h, players, hcps);
+            - readStrokesEffective({ pid, h, week, holeScores, t1Pids, t2Pids, players, hcps });
       });
       if (n1 < n2) { winner = "t1"; decidingHoleIdx = h; break; }
       if (n2 < n1) { winner = "t2"; decidingHoleIdx = h; break; }
@@ -497,9 +529,25 @@ export function readScoreEffective({
   return readScore({ pid, h, week, holeScores, t1Pids, t2Pids, pars, hcps, players });
 }
 
+// readStrokesEffective — absent-aware strokes reader, parallel to readScoreEffective.
+// Use this in render paths instead of the older getStrokesForHole when you have
+// week + holeScores + t1Pids + t2Pids available (Standings/Schedule mini-cards do).
+export function readStrokesEffectiveExt({
+  pid, h, week, holeScores, t1Pids, t2Pids, players, hcps,
+}) {
+  return readStrokesEffective({ pid, h, week, holeScores, t1Pids, t2Pids, players, hcps });
+}
+
 // Exported strokes helper for the same reason — render paths need to compute
-// `score - strokes` for net display, and we want exactly one source.
-export function getStrokesForHole({ pid, h, players, hcps }) {
+// `score - strokes` for net display, and we want exactly one source. Now
+// absent-aware: when extra context (week, holeScores, t1Pids, t2Pids) is
+// passed, applies the absent-substitution model. When called with just the
+// minimal args it falls back to the player's own strokes (used by call sites
+// that don't have week-specific context).
+export function getStrokesForHole({ pid, h, players, hcps, week, holeScores, t1Pids, t2Pids }) {
+  if (week !== undefined && holeScores && t1Pids && t2Pids) {
+    return readStrokesEffective({ pid, h, week, holeScores, t1Pids, t2Pids, players, hcps });
+  }
   return getStrokes(pid, h, players, hcps);
 }
 

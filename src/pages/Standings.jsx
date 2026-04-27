@@ -1421,7 +1421,10 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     const getInitials = (pid) => { const p = players.find(pl => pl.id === pid); return p ? p.name.split(' ').map(n => n[0]).join('') : "?"; };
     const getHcp = (pid) => { const p = players.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
     const isAbsent = (pid) => wkScores[`w${mr.week}_p${pid}_habsent`] === 1;
-    const getStrokes = (pid, h) => getStrokesForHole({ pid, h, players, hcps });
+    const getStrokes = (pid, h) => getStrokesForHole({
+      pid, h, players, hcps,
+      week: mr.week, holeScores: wkScores, t1Pids, t2Pids,
+    });
     const getScore = (pid, h) => readScoreEffective({
       pid, h, week: mr.week, holeScores: wkScores,
       t1Pids, t2Pids, pars, hcps, players,

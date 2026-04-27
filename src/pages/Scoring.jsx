@@ -645,12 +645,16 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     return getRawScore(pid, h);
   };
   const getNineHcp = (pid) => {
-    // Always use the player's own handicap. The previous swap-when-absent
-    // logic had the live view show absent rows with the teammate's stroke
-    // pattern, which disagreed with matchCalc, Standings, and Schedule.
-    // Score gets substituted from the teammate via getS; strokes stay
-    // attached to the absent player themselves.
-    const p = playerMap[pid];
+    // Absent-substitution model: present teammate "plays both positions",
+    // so their handicap drives strokes for both score slots. Falls back to
+    // own handicap when both teammates are absent (impute path) or when
+    // the player is present. Mirrors matchCalc.js's readStrokesEffective.
+    if (isBothAbsent(pid)) {
+      const p = playerMap[pid];
+      return p ? Math.round(p.handicapIndex || 0) : 0;
+    }
+    const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
+    const p = playerMap[effectivePid];
     return p ? Math.round(p.handicapIndex || 0) : 0;
   };
   const getStrokes = (pid, h) => getStrokesMap(getNineHcp(pid))[h] || 0;
@@ -903,16 +907,31 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       return parts.length > 1 ? parts[parts.length - 1] : parts[0];
     };
     const amGetHcp = (pid) => {
-      // Always use the player's OWN handicap, even when absent. The score
-      // gets substituted from the teammate (see amGetEffectiveScore below),
-      // but strokes are an attribute of the absent player themselves — the
-      // team gets the absent player's stroke benefit on the doubled score.
-      // This matches matchCalc.js's getStrokes (which always uses the
-      // player's own handicap) and Standings/Schedule's mini-scorecards
-      // (which use getStrokesForHole). Earlier this function returned the
-      // teammate's handicap when absent, which made absent rows display
-      // the present teammate's stroke dots and made the All Matches team
-      // net diverge from the saved match_result.
+      // Absent-substitution model: when a player is marked absent and their
+      // teammate is present, the present teammate is "playing both positions".
+      // Both score slots use the teammate's gross AND the teammate's handicap
+      // for stroke allocation. Without this, the absent row would render its
+      // own stroke pattern over the teammate's substituted score, mismatching
+      // what the team actually receives. matchCalc.js's readStrokesEffective
+      // applies the same rule to net calculation, so display and saved totals
+      // stay in sync.
+      const absent = holeScores[`w${week}_p${pid}_habsent`] === 1;
+      if (absent) {
+        for (const m of matches) {
+          const mt1 = teams.find(t => t.id === m.team1);
+          const mt2 = teams.find(t => t.id === m.team2);
+          const t1p = [mt1?.player1, mt1?.player2].filter(Boolean);
+          const t2p = [mt2?.player1, mt2?.player2].filter(Boolean);
+          let tm = null;
+          if (t1p.includes(pid)) tm = t1p.find(p => p !== pid);
+          else if (t2p.includes(pid)) tm = t2p.find(p => p !== pid);
+          if (tm && holeScores[`w${week}_p${tm}_habsent`] !== 1) {
+            const p = playerMap[tm];
+            return p ? Math.round(p.handicapIndex || 0) : 0;
+          }
+          if (tm !== null) break;
+        }
+      }
       const p = playerMap[pid];
       return p ? Math.round(p.handicapIndex || 0) : 0;
     };
