@@ -16,7 +16,7 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
     if (!start) return `${season}`;
     const d = new Date(start + "T12:00:00");
     d.setDate(d.getDate() + (week - 1) * 7);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   useEffect(() => {
@@ -149,37 +149,52 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
 
                   // Render one row. Used for both recent (numbered, possibly
                   // accent-bordered if in best-N) and dropped rounds (dimmed,
-                  // unnumbered).
+                  // unnumbered). Layout: date pinned left, side label centered,
+                  // score pinned right, with the "dropped" tag (when present)
+                  // tucked between side and score so the score stays on the
+                  // right edge for fast scanning.
                   const renderRound = (s, opts) => {
-                    const { recencyIdx, isBest, dropped } = opts;
+                    const { isBest, dropped } = opts;
                     const date = getRoundDate(s.season, s.week);
                     const side = getRoundSide(s.season, s.week);
-                    const sideLabel = side === 'front' ? 'F9' : 'B9';
+                    const sideLabel = side === 'front' ? 'Front 9' : 'Back 9';
                     return (
                       <div style={{
-                        display: "flex", alignItems: "center", gap: 10,
+                        display: "flex", alignItems: "center",
                         background: K.card,
                         border: `1px solid ${isBest ? K.act + "60" : K.bdr}`,
                         borderRadius: 6,
-                        padding: "8px 10px",
+                        padding: "10px 14px",
                         marginBottom: 4,
                         opacity: dropped ? 0.55 : 1,
                       }}>
-                        <div style={{ width: 56, fontSize: 11, color: K.t3, fontWeight: 600 }}>{date}</div>
+                        {/* Date — left-anchored */}
                         <div style={{
-                          width: 38, fontSize: 17, fontWeight: 800,
-                          color: isBest ? K.act : (dropped ? K.t3 : K.t2),
-                          textAlign: "right",
-                        }}>{s.gross}</div>
+                          fontSize: 12, color: K.t2, fontWeight: 600,
+                          minWidth: 110,
+                        }}>{date}</div>
+
+                        {/* Front/Back — centered in the remaining space */}
                         <div style={{
-                          width: 26, fontSize: 10, fontWeight: 700,
-                          color: K.t3, letterSpacing: .3,
-                          background: K.inp, border: `1px solid ${K.bdr}`,
-                          borderRadius: 4, padding: "2px 0", textAlign: "center",
+                          flex: 1, textAlign: "center",
+                          fontSize: 12, fontWeight: 700, color: K.t2,
+                          letterSpacing: .3,
                         }}>{sideLabel}</div>
-                        <div style={{ flex: 1, textAlign: "right", fontSize: 11, color: K.t3, fontWeight: 600 }}>
-                          {dropped && <span style={{ fontStyle: "italic" }}>dropped</span>}
-                        </div>
+
+                        {/* Optional "dropped" indicator */}
+                        {dropped && (
+                          <div style={{
+                            fontSize: 11, color: K.t3, fontWeight: 600,
+                            fontStyle: "italic", marginRight: 14,
+                          }}>dropped</div>
+                        )}
+
+                        {/* Score — right-anchored */}
+                        <div style={{
+                          fontSize: 18, fontWeight: 800,
+                          color: isBest ? K.act : (dropped ? K.t3 : K.t1),
+                          minWidth: 30, textAlign: "right",
+                        }}>{s.gross}</div>
                       </div>
                     );
                   };
@@ -190,14 +205,13 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
 
                   return (
                     <>
-                      {recent.map((s, i) => {
-                        const recencyIdx = i + 1;
+                      {recent.map((s) => {
                         const isBest = p.best.some(b =>
                           b.season === s.season && b.week === s.week && b.gross === s.gross
                         );
                         return (
                           <div key={`recent-${s.season}-${s.week}`}>
-                            {renderRound(s, { recencyIdx, isBest, dropped: false })}
+                            {renderRound(s, { isBest, dropped: false })}
                           </div>
                         );
                       })}
