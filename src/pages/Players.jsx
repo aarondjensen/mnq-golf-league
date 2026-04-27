@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { K, EmptyState, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, CHEVRON_SIZE, calcPlayerHcp } from "../theme";
+import { K, EmptyState, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, CHEVRON_SIZE, calcPlayerHcp, getWeekSide } from "../theme";
 
 export default function PlayersView({ players, course, schedule, scoringRules, fetchAllScores, members }) {
   const recentN = scoringRules.hcpRecentCount ?? 8;
@@ -36,6 +36,13 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
       const allRounds = allScores[p.id] || [];
       const totalRounds = allRounds.length;
       const recentRounds = allRounds.slice(-recentN);
+      // Two rounds just before the recentN window — these "just dropped out of
+      // the calc" and get shown below the divider for context. Bounded by
+      // available history; if a player has only just barely enough rounds
+      // for recentN, droppedRounds is empty.
+      const droppedStart = Math.max(0, allRounds.length - recentN - 2);
+      const droppedEnd = Math.max(0, allRounds.length - recentN);
+      const droppedRounds = allRounds.slice(droppedStart, droppedEnd);
       // Mirror calcPlayerHcp's proportional scaling for transparency in the expanded view
       const ratio = bestN / recentN;
       const scaledBest = recentRounds.length > 0 ? Math.max(1, Math.round(ratio * recentRounds.length)) : 0;
@@ -64,7 +71,7 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
         }
       }
 
-      return { ...p, totalRounds, recentRounds, best, idx, hcpChange };
+      return { ...p, totalRounds, recentRounds, droppedRounds, best, idx, hcpChange };
     }).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   }, [players, allScores, course, recentN, bestN]);
 
@@ -127,29 +134,111 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
               <div style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderTop: "none", borderRadius: `0 0 ${CARD_RADIUS}px ${CARD_RADIUS}px`, padding: "10px 10px", fontSize: 12 }}>
                 {p.recentRounds.length === 0 ? (
                   <div style={{ color: K.t3, fontStyle: "italic", padding: 4 }}>No completed rounds found</div>
-                ) : (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 5 }}>
-                    {p.recentRounds.map((s, i) => {
-                      const isBest = p.best.some(b => b.season === s.season && b.week === s.week && b.gross === s.gross);
-                      const roundDate = getRoundDate(s.season, s.week);
-                      return (
-                        <div key={i} style={{
-                          background: K.card,
-                          border: `1px solid ${isBest ? K.act + "50" : K.bdr}`,
-                          borderRadius: 6, padding: "6px 4px", textAlign: "center",
-                        }}>
-                          <div style={{ fontSize: 11, color: K.t3, marginBottom: 3, fontWeight: 500 }}>{roundDate}</div>
-                          <div style={{ fontSize: 18, fontWeight: 700, color: isBest ? K.act : K.t2 }}>{s.gross}</div>
+                ) : (() => {
+                  // Resolve front/back for a given (season, week). Current season
+                  // can override via schedule.side; historical seasons fall back
+                  // to the default odd=front, even=back alternation.
+                  const currentSeason = new Date().getFullYear();
+                  const getRoundSide = (season, week) => {
+                    if (season === currentSeason && schedule) {
+                      const wk = schedule.find(s => s.week === week);
+                      if (wk?.side) return wk.side;
+                    }
+                    return getWeekSide(week);
+                  };
+
+                  // Render one row. Used for both recent (numbered, possibly
+                  // accent-bordered if in best-N) and dropped rounds (dimmed,
+                  // unnumbered).
+                  const renderRound = (s, opts) => {
+                    const { recencyIdx, isBest, dropped } = opts;
+                    const date = getRoundDate(s.season, s.week);
+                    const side = getRoundSide(s.season, s.week);
+                    const sideLabel = side === 'front' ? 'F9' : 'B9';
+                    return (
+                      <div style={{
+                        display: "flex", alignItems: "center", gap: 10,
+                        background: K.card,
+                        border: `1px solid ${isBest ? K.act + "60" : K.bdr}`,
+                        borderRadius: 6,
+                        padding: "8px 10px",
+                        marginBottom: 4,
+                        opacity: dropped ? 0.55 : 1,
+                      }}>
+                        <div style={{ width: 56, fontSize: 11, color: K.t3, fontWeight: 600 }}>{date}</div>
+                        <div style={{
+                          width: 38, fontSize: 17, fontWeight: 800,
+                          color: isBest ? K.act : (dropped ? K.t3 : K.t2),
+                          textAlign: "right",
+                        }}>{s.gross}</div>
+                        <div style={{
+                          width: 26, fontSize: 10, fontWeight: 700,
+                          color: K.t3, letterSpacing: .3,
+                          background: K.inp, border: `1px solid ${K.bdr}`,
+                          borderRadius: 4, padding: "2px 0", textAlign: "center",
+                        }}>{sideLabel}</div>
+                        <div style={{ flex: 1, textAlign: "right", fontSize: 11, color: K.t3, fontWeight: 600 }}>
+                          {dropped ? (
+                            <span style={{ fontStyle: "italic" }}>dropped</span>
+                          ) : (
+                            <span>{recencyIdx} of {recentN}{isBest ? " · best" : ""}</span>
+                          )}
                         </div>
-                      );
-                    })}
-                  </div>
-                )}
-                {p.best.length > 0 && (
-                  <div style={{ color: K.t2, paddingTop: 8, marginTop: 6, textAlign: "center", fontSize: 12 }}>
-                    Best {p.best.length} of {p.recentRounds.length}: {p.best.map(b => b.gross).join(", ")} · Avg: {(p.best.reduce((a, b) => a + b.gross, 0) / p.best.length).toFixed(1)} · <strong style={{ color: K.t1 }}>HCP: {p.idx}</strong>
-                  </div>
-                )}
+                      </div>
+                    );
+                  };
+
+                  // Most recent first — reverse a copy so we don't mutate state.
+                  const recent = [...p.recentRounds].reverse();
+                  const dropped = [...p.droppedRounds].reverse();
+
+                  return (
+                    <>
+                      {recent.map((s, i) => {
+                        const recencyIdx = i + 1;
+                        const isBest = p.best.some(b =>
+                          b.season === s.season && b.week === s.week && b.gross === s.gross
+                        );
+                        return (
+                          <div key={`recent-${s.season}-${s.week}`}>
+                            {renderRound(s, { recencyIdx, isBest, dropped: false })}
+                          </div>
+                        );
+                      })}
+
+                      {/* Divider — only renders when there are dropped rounds to show */}
+                      {dropped.length > 0 && (
+                        <div style={{
+                          position: "relative", margin: "10px 4px 8px",
+                          borderTop: `1px dashed ${K.bdr}`,
+                        }}>
+                          <div style={{
+                            position: "absolute", top: -8, left: "50%",
+                            transform: "translateX(-50%)",
+                            background: K.inp, padding: "0 8px",
+                            fontSize: 9, fontWeight: 700, color: K.t3,
+                            letterSpacing: .8, textTransform: "uppercase",
+                            whiteSpace: "nowrap",
+                          }}>
+                            Dropped from calc
+                          </div>
+                        </div>
+                      )}
+
+                      {dropped.map((s) => (
+                        <div key={`dropped-${s.season}-${s.week}`}>
+                          {renderRound(s, { dropped: true })}
+                        </div>
+                      ))}
+
+                      {p.best.length > 0 && (
+                        <div style={{ color: K.t2, paddingTop: 8, marginTop: 6, textAlign: "center", fontSize: 12, borderTop: `1px solid ${K.bdr}40` }}>
+                          Best {p.best.length} of {p.recentRounds.length}: {p.best.map(b => b.gross).join(", ")} · Avg: {(p.best.reduce((a, b) => a + b.gross, 0) / p.best.length).toFixed(1)} · <strong style={{ color: K.t1 }}>HCP: {p.idx}</strong>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
               </div>
             )}
           </div>
