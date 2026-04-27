@@ -1269,6 +1269,16 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   // session-scoped Set so each match heals at most once per mount, which
   // prevents subscription-update loops even though the diff check would
   // already make it idempotent.
+  //
+  // seedMap MUST be declared before this effect — it's referenced in the
+  // dependency array, and a `const` lower in scope hits a TDZ ReferenceError
+  // ("Cannot access before initialization"). Built from saved matchResults
+  // so there's no circular dependency on auto-heal output.
+  const seedMap = useMemo(
+    () => buildSeedMap(teams, matchResults, schedule, leagueConfig),
+    [teams, matchResults, schedule, leagueConfig]
+  );
+
   const healedRef = useRef(new Set());
   useEffect(() => {
     if (!course || !scoringRules || !leagueConfig || !saveMatchResult) return;
@@ -1315,14 +1325,6 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
       }
     });
   }, [matchResults, weekScores, course, scoringRules, leagueConfig, saveMatchResult, schedule, teams, players, seedMap]);
-
-  // seedMap is needed by computeMatchResult for playoff tiebreakers; for
-  // regular-season matches it's a no-op. Built from saved matchResults so
-  // there's no circular dependency on auto-heal output.
-  const seedMap = useMemo(
-    () => buildSeedMap(teams, matchResults, schedule, leagueConfig),
-    [teams, matchResults, schedule, leagueConfig]
-  );
 
   const lockedWeeks = useMemo(() => {
     const set = new Set();
