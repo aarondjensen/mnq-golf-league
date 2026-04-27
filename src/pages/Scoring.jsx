@@ -233,14 +233,27 @@ export function SharedScorecard({
             </div>;
           }
           const color = rs > 0 ? mGrn : rs < 0 ? K.red : K.t3;
-          // null = no data (one or both teams missing scores on this hole) — render
-          // blank, NOT "TIED". A tie requires actual scores from both teams that
-          // happen to be equal; missing data is a different state and the older
-          // code conflated them. The collapsed-card cumulative `runningStatus[h]`
-          // is also null here, so accumulation correctly skips this hole and
-          // resumes on the next hole that has data — but the visible cell needs
-          // to clearly say "we don't know yet" rather than "tied".
+          // null running status branches:
+          //   - If the hole has score activity (anyone in the foursome has a
+          //     score recorded for this hole), show a ⚠️ marker so the scorer
+          //     notices the missing data. Two scenarios produce this state:
+          //       1. Scorer forgot to enter one player's score on this hole —
+          //          actionable, fix it now.
+          //       2. One golfer is playing a make-up round at a different time;
+          //          the other 3 are scoring live. The make-up player isn't
+          //          "absent" (no teammate-doubling), they're just on a delayed
+          //          schedule. The marker stays visible until the make-up
+          //          scores are entered, signalling "match status is pending."
+          //   - If the hole has no activity at all, render blank — that's just
+          //     a future hole nobody has played yet.
           if (rs === null) {
+            const checkPids = [...(team1Pids || []), ...(team2Pids || [])].filter(Boolean);
+            const holeHasActivity = checkPids.some(pid => getScore(pid, i) > 0);
+            if (holeHasActivity) {
+              return <div key={i}
+                title="Match status pending — scores incomplete on this hole"
+                style={{ flex: 1, height: 28, textAlign: "center", lineHeight: "28px", fontSize: variant === "allMatches" ? 11 : 12, opacity: 0.55, ...colBorderR }}>⚠️</div>;
+            }
             return <div key={i} style={{ flex: 1, height: 28, ...colBorderR }} />;
           }
           return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: variant === "allMatches" ? 12 : 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>
@@ -1995,7 +2008,33 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, color, fontWeight: 800, lineHeight: "24px", ...colBorderR }}>{clinchScoreText}</div>;
               }
               if (matchClinchHole !== null && i > matchClinchHole) return <div key={i} style={{ flex: 1, height: 24, ...colBorderR }} />;
-              if (st === null) return <div key={i} style={{ flex: 1, height: 24, ...colBorderR }} />;
+              // null status: distinguish "untouched future hole" from "this hole
+              // has data but cumulative status is unresolvable due to a missing
+              // earlier-hole score." The `holeStatuses` builder above breaks the
+              // cumulative loop on the first incomplete hole, so once any hole
+              // has a gap, every subsequent cell here is null even if those holes
+              // have full data themselves. We surface ⚠️ on:
+              //   - The hole(s) that triggered the gap (incomplete entries —
+              //     scorer forgot, or make-up player not yet scored)
+              //   - Any later hole that has data but can't accumulate due to the
+              //     gap (signals "fix the earlier hole, this one's waiting")
+              // Both cases share the same user remediation: enter the missing
+              // score, and the strip immediately fills in.
+              if (st === null) {
+                const checkPids = [...t1Players, ...t2Players].filter(Boolean);
+                // Use getS (absent-aware) so an absent player whose teammate
+                // has a score doesn't trip the activity check unnecessarily.
+                // The null running-status entry already tells us the hole is
+                // unresolvable; the activity check distinguishes "pending data"
+                // from "untouched future hole."
+                const holeHasActivity = checkPids.some(pid => getS(pid, i) > 0);
+                if (holeHasActivity) {
+                  return <div key={i}
+                    title="Match status pending — scores incomplete on this hole"
+                    style={{ flex: 1, height: 24, textAlign: "center", lineHeight: "24px", fontSize: 12, opacity: 0.55, ...colBorderR }}>⚠️</div>;
+                }
+                return <div key={i} style={{ flex: 1, height: 24, ...colBorderR }} />;
+              }
               const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
               return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "24px", ...colBorderR }}>{st > 0 ? <><span style={{ fontSize: 14 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 14 }}>▼</span>{Math.abs(st)}</> : <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: .5 }}>TIED</span>}</div>;
             })}
