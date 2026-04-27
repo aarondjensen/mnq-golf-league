@@ -3562,7 +3562,7 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
       <SubLabel>Match Format</SubLabel>
       <Radio items={[
         { id: "lowHighBonus", label: "Low/High Match + Bonus", desc: "Low HCP match, high HCP match, plus a bonus category" },
-        { id: "teamNetTotal", label: "Team Net Total", desc: "Combined team net vs combined team net — single match" },
+        { id: "teamNetTotal", label: "Team Net Match Play", desc: "Combined team net per hole — winner of each hole earns 1 up; match-play status (1UP, 3&2, TIED) decides points" },
       ]} value={format} onChange={v => setCfg({ ...cfg, scoringFormat: v })} />
 
       {/* Worked example so the format choice isn't abstract. Numbers pull from the
@@ -3582,10 +3582,14 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
           </div>
         ) : (
           <div style={{ fontSize: 12, color: K.t2, lineHeight: 1.7 }}>
-            <div>• Combined net score: your team 138, theirs 142</div>
-            <div>• Lower total wins the match <span style={{ color: K.t1, fontWeight: 700 }}>→ +{lc.matchWin ?? 3} pts</span></div>
+            <div>• Each hole: combined team net vs combined team net</div>
+            <div>• Lower team net wins the hole — track 1UP, 2UP, etc.</div>
+            <div>• Match ends 2&1 (your team) <span style={{ color: K.t1, fontWeight: 700 }}>→ +{lc.matchWin ?? 3} pts</span></div>
             <div style={{ marginTop: 4, paddingTop: 4, borderTop: `1px solid ${K.bdr}`, color: K.t1, fontWeight: 700 }}>
               Total: {(lc.matchWin ?? 3).toFixed(1)} pts this week
+            </div>
+            <div style={{ fontSize: 10, color: K.t3, marginTop: 6, fontStyle: "italic" }}>
+              Match-play TIED → both teams get {(lc.matchTie ?? 1.5).toFixed(1)} pts
             </div>
           </div>
         )}

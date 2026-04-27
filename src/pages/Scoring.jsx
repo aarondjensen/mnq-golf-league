@@ -4,7 +4,7 @@ import { K, FONTS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, Empt
   lastNamesOnly, formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE,
   buildSeedMap } from "../theme";
 import { LEAGUE_ID } from "../firebase";
-import { computeMatchResult } from "../lib/matchCalc";
+import { computeMatchResult, resultLetterFor } from "../lib/matchCalc";
 
 // ═══════════════════════════════════════════════════════════════
 //  ScoreCell — golf scorecard notation (circles, squares, dots)
@@ -1013,10 +1013,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             }
 
             const isFinalOrSigned = !!res;
-            const isTied = isFinalOrSigned ? (score1 === score2) : (thru > 0 && dispCum === 0);
+            const isTied = isFinalOrSigned ? (res.matchResultText === "TIED") : (thru > 0 && dispCum === 0);
             const matchIsTied = res?.matchResultText === "TIED";
-            const t1Leading = matchIsTied ? false : isFinalOrSigned ? (score1 > score2) : (dispCum > 0);
-            const t2Leading = matchIsTied ? false : isFinalOrSigned ? (score2 > score1) : (dispCum < 0);
+            // For finalized matches use the match-play winner (matchWinnerId via
+            // resultLetterFor); for in-progress matches fall back to running cum.
+            // Points compare is wrong here for the same reason it's wrong on
+            // Schedule — TIED match-play can produce asymmetric points.
+            const t1Leading = matchIsTied ? false : isFinalOrSigned ? (resultLetterFor(res, dispT1?.id) === "W") : (dispCum > 0);
+            const t2Leading = matchIsTied ? false : isFinalOrSigned ? (resultLetterFor(res, dispT2?.id) === "W") : (dispCum < 0);
 
             const isSigned = isFinalOrSigned && res && !res.attested;
             const signerIsRawT1 = isSigned && res.finalizedByTeamId === rawT1.id;

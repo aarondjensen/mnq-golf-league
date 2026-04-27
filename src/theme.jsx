@@ -1,6 +1,8 @@
 // ══════════════════════════════════════════════════════════════
 //  CONSTANTS & UTILITIES
 // ══════════════════════════════════════════════════════════════
+import { resultLetterFor } from "./lib/matchCalc";
+
 export const SEASON_WEEKS = 16;
 export const REGULAR_WEEKS = 14;
 export const TEAMS_COUNT = 10;
@@ -86,10 +88,19 @@ export function buildStandingsForSeed(teams, matchResults, schedule, standingsMe
     if (!rWeek || !rWeek.locked) return;
     if (pts[r.team1Id]) { pts[r.team1Id].points += (r.team1Points || 0); if (r.t1HolesWon !== undefined) pts[r.team1Id].hw += r.t1HolesWon; }
     if (pts[r.team2Id]) { pts[r.team2Id].points += (r.team2Points || 0); if (r.t2HolesWon !== undefined) pts[r.team2Id].hw += r.t2HolesWon; }
-    const d = (r.team1Points || 0) - (r.team2Points || 0);
-    if (d > 0) { if (pts[r.team1Id]) { pts[r.team1Id].w++; pts[r.team1Id].gp++; } if (pts[r.team2Id]) { pts[r.team2Id].l++; pts[r.team2Id].gp++; } }
-    else if (d < 0) { if (pts[r.team1Id]) { pts[r.team1Id].l++; pts[r.team1Id].gp++; } if (pts[r.team2Id]) { pts[r.team2Id].w++; pts[r.team2Id].gp++; } }
-    else { if (pts[r.team1Id]) { pts[r.team1Id].t++; pts[r.team1Id].gp++; } if (pts[r.team2Id]) { pts[r.team2Id].t++; pts[r.team2Id].gp++; } }
+    // W/L/T from match-play result (NOT points compare). See resultLetterFor.
+    const t1Letter = resultLetterFor(r, r.team1Id);
+    const t2Letter = resultLetterFor(r, r.team2Id);
+    if (pts[r.team1Id]) {
+      if (t1Letter === "W") { pts[r.team1Id].w++; pts[r.team1Id].gp++; }
+      else if (t1Letter === "L") { pts[r.team1Id].l++; pts[r.team1Id].gp++; }
+      else if (t1Letter === "T") { pts[r.team1Id].t++; pts[r.team1Id].gp++; }
+    }
+    if (pts[r.team2Id]) {
+      if (t2Letter === "W") { pts[r.team2Id].w++; pts[r.team2Id].gp++; }
+      else if (t2Letter === "L") { pts[r.team2Id].l++; pts[r.team2Id].gp++; }
+      else if (t2Letter === "T") { pts[r.team2Id].t++; pts[r.team2Id].gp++; }
+    }
   });
   const isRecord = standingsMethod === "record";
   const arr = Object.values(pts);

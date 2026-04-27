@@ -338,17 +338,72 @@ export function computeMatchResult({
         bw: scoringRules.totalNetBonusWin, bt: scoringRules.totalNetBonusTie, bl: scoringRules.totalNetBonusLoss,
       };
 
+  // ── Match-play hole-by-hole status ──────────────────────────────────────
+  // Walk all 9 holes; each hole has 1 (T1 won), -1 (T2 won), 0 (tied), or
+  // null (incomplete scores). matchResultText expresses the outcome in golf
+  // shorthand:
+  //   "5&4" — leader was up 5 with 4 to play (clinched on hole 14)
+  //   "2UP" — match went 9 holes, leader finished 2 up
+  //   "TIED" — match went 9 holes all-square (regular season only)
+  // Computed BEFORE points allocation so the "teamNetTotal" scoring format can
+  // award points based on the match-play winner (the format is now match-play:
+  // combined team net per hole decides each hole, total holes won decides the
+  // match). The "lowHighBonus" format ignores match-play and uses individual
+  // matchups + bonus instead.
+  let hw1 = 0, hw2 = 0;
+  const holeResults = [];
+  for (let h = 0; h < 9; h++) {
+    const r = holeResult({ h, ...ctx });
+    if (r === 1) hw1++;
+    else if (r === -1) hw2++;
+    holeResults.push(r);
+  }
+
+  // Running cumulative match status. Null hole results (incomplete scores)
+  // don't change the cumulative — they leave it where it was. Without this
+  // guard a null would make `cum` NaN and propagate through matchMargin.
+  const runningStatus = [];
+  let cum = 0;
+  holeResults.forEach(r => {
+    if (r !== null) cum += r;
+    runningStatus.push(cum);
+  });
+
+  // Find the hole the match was clinched on, if any. A match is mathematically
+  // over when a team's lead exceeds the holes remaining to play.
+  let matchEndHole = 8;
+  let matchMargin = Math.abs(runningStatus[8]);
+  for (let h = 0; h < 9; h++) {
+    const lead = Math.abs(runningStatus[h]);
+    const remaining = 8 - h;
+    if (lead > remaining) { matchEndHole = h; matchMargin = lead; break; }
+  }
+  const holesRemaining = 8 - matchEndHole;
+  const finalStatus = runningStatus[8];
+
+  let matchResultText;
+  if (finalStatus === 0) matchResultText = "TIED";
+  else if (holesRemaining > 0) matchResultText = `${matchMargin}&${holesRemaining}`;
+  else matchResultText = `${Math.abs(finalStatus)}UP`;
+
+  let winnerTeamId = finalStatus > 0 ? t1.id : finalStatus < 0 ? t2.id : null;
+
   // ── Points allocation ──────────────────────────────────────────────────
   // Two scoring formats:
-  //   "teamNetTotal" — single match line, lower team net wins.
+  //   "teamNetTotal" — Team Net Total Match Play. Single match line; the
+  //                    match-play winner (computed above from combined team
+  //                    net per hole) gets the win points. Match-play TIED
+  //                    means both teams get matchTie points — keeps the W/L/T
+  //                    record consistent with what's displayed everywhere.
   //   "lowHighBonus" (default) — low+high paired matches plus a bonus line.
-  //                              Three independent point lines per match.
+  //                              Three independent point lines per match;
+  //                              decoupled from match-play winner.
   let t1Pts = 0, t2Pts = 0;
   const scoringFormat = leagueConfig?.scoringFormat || "lowHighBonus";
 
   if (scoringFormat === "teamNetTotal") {
-    if (t1Net < t2Net) { t1Pts = sr.mw; t2Pts = sr.ml; }
-    else if (t1Net > t2Net) { t1Pts = sr.ml; t2Pts = sr.mw; }
+    if (finalStatus > 0) { t1Pts = sr.mw; t2Pts = sr.ml; }
+    else if (finalStatus < 0) { t1Pts = sr.ml; t2Pts = sr.mw; }
     else { t1Pts = sr.mt; t2Pts = sr.mt; }
   } else {
     // Pair players by handicap: lowest-hcp on each team play each other (the
@@ -375,48 +430,12 @@ export function computeMatchResult({
     else { t1Pts += sr.bt; t2Pts += sr.bt; }
   }
 
-  // ── Match-play hole-by-hole status ──────────────────────────────────────
-  // Walk the 9 holes; track who won each, who's UP after each. matchResultText
-  // expresses the outcome in golf shorthand:
-  //   "5&4" — leader was up 5 with 4 to play (clinched on hole 14)
-  //   "2UP" — match went 9 holes, leader finished 2 up
-  //   "TIED" — match went 9 holes all-square (regular season only)
-  let hw1 = 0, hw2 = 0;
-  const holeResults = [];
-  for (let h = 0; h < 9; h++) {
-    const r = holeResult({ h, ...ctx });
-    if (r === 1) hw1++;
-    else if (r === -1) hw2++;
-    holeResults.push(r);
-  }
-
-  const runningStatus = [];
-  let cum = 0;
-  holeResults.forEach(r => { cum += r; runningStatus.push(cum); });
-
-  // Find the hole the match was clinched on, if any. A match is mathematically
-  // over when a team's lead exceeds the holes remaining to play.
-  let matchEndHole = 8;
-  let matchMargin = Math.abs(runningStatus[8]);
-  for (let h = 0; h < 9; h++) {
-    const lead = Math.abs(runningStatus[h]);
-    const remaining = 8 - h;
-    if (lead > remaining) { matchEndHole = h; matchMargin = lead; break; }
-  }
-  const holesRemaining = 8 - matchEndHole;
-  const finalStatus = runningStatus[8];
-
-  let matchResultText;
-  if (finalStatus === 0) matchResultText = "TIED";
-  else if (holesRemaining > 0) matchResultText = `${matchMargin}&${holesRemaining}`;
-  else matchResultText = `${Math.abs(finalStatus)}UP`;
-
   // ── Playoff tiebreaker ──────────────────────────────────────────────────
   // Playoff matches can't end TIED; if they do, apply the configured rule
-  // and override both points + matchResultText.
+  // and override both points + matchResultText. winnerTeamId starts as the
+  // match-play winner (or null for TIED) and is overridden here for ties.
   let finalT1Pts = t1Pts;
   let finalT2Pts = t2Pts;
-  let winnerTeamId = finalStatus > 0 ? t1.id : finalStatus < 0 ? t2.id : null;
 
   if (isPlayoff && finalStatus === 0) {
     const { winner: tbWinner, label: tbLabel } = computePlayoffTiebreaker({
@@ -477,4 +496,34 @@ export function readScoreEffective({
 // `score - strokes` for net display, and we want exactly one source.
 export function getStrokesForHole({ pid, h, players, hcps }) {
   return getStrokes(pid, h, players, hcps);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  resultLetterFor — single source of truth for W/L/T from a match result
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Throughout the app the match status is shown as match-play (TIED, 1UP, 3&2,
+// etc.). Records (W-L-T) and winner indicators must agree with that — they
+// can NOT be derived from points comparison, because:
+//   - lowHighBonus mode awards 3 independent point lines; a match-play TIED
+//     can produce unequal team points if low+high splits differ from bonus.
+//   - teamNetTotal mode now awards points from match-play, but legacy data
+//     saved before that change still carries asymmetric points on TIED rows.
+// Use matchResultText for the TIED check (regular season ties), then
+// matchWinnerId for W/L assignment. Returns "W" | "L" | "T" | "" (no match).
+export function resultLetterFor(matchResult, teamId) {
+  if (!matchResult || !teamId) return "";
+  // Regular-season tie — both teams get T.
+  if (matchResult.matchResultText === "TIED") return "T";
+  // Modern path: matchWinnerId is the canonical winner (set by computeMatchResult,
+  // overridden by playoff tiebreaker). Null winner with no TIED text shouldn't
+  // happen in practice, but if it does, fall through to points compare.
+  if (matchResult.matchWinnerId) {
+    return matchResult.matchWinnerId === teamId ? "W" : "L";
+  }
+  // Legacy fallback for any historical data missing matchWinnerId.
+  const isT1 = matchResult.team1Id === teamId;
+  const myPts = isT1 ? (matchResult.team1Points || 0) : (matchResult.team2Points || 0);
+  const oppPts = isT1 ? (matchResult.team2Points || 0) : (matchResult.team1Points || 0);
+  return myPts > oppPts ? "W" : myPts < oppPts ? "L" : "T";
 }

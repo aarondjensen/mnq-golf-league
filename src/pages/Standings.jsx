@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, CHEVRON_SIZE, calcCourseHandicap, calcNineHandicap, calcPlayerHcp, buildSeedMap } from "../theme";
 import { SharedScorecard } from "./Scoring";
-import { readScoreEffective, getStrokesForHole } from "../lib/matchCalc";
+import { readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/matchCalc";
 
 // Build standings from a set of match results.
 // Tiebreaker is always total holes won (the headToHead option was removed because it was
@@ -17,16 +17,27 @@ function buildStandings(teams, results, isRecord) {
       if (pts[r.team1Id]) pts[r.team1Id].hw += r.t1HolesWon;
       if (pts[r.team2Id]) pts[r.team2Id].hw += r.t2HolesWon;
     }
-    const d = (r.team1Points || 0) - (r.team2Points || 0);
-    if (d > 0) {
-      if (pts[r.team1Id]) { pts[r.team1Id].w++; pts[r.team1Id].gamesPlayed++; }
-      if (pts[r.team2Id]) { pts[r.team2Id].l++; pts[r.team2Id].gamesPlayed++; }
-    } else if (d < 0) {
-      if (pts[r.team1Id]) { pts[r.team1Id].l++; pts[r.team1Id].gamesPlayed++; }
-      if (pts[r.team2Id]) { pts[r.team2Id].w++; pts[r.team2Id].gamesPlayed++; }
-    } else {
-      if (pts[r.team1Id]) { pts[r.team1Id].t++; pts[r.team1Id].gamesPlayed++; }
-      if (pts[r.team2Id]) { pts[r.team2Id].t++; pts[r.team2Id].gamesPlayed++; }
+    // W-L-T tally must reflect the match-play result (the user-visible match
+    // status: TIED / 1UP / 3&2 / etc.), NOT a comparison of total points.
+    // In lowHighBonus and legacy teamNetTotal data, a TIED match-play row can
+    // carry asymmetric points (e.g. bonus split unevenly), and using the points
+    // delta would give one team a W and the other an L on a tied match.
+    // resultLetterFor encapsulates the canonical rule. Standings still sort
+    // by `points` in points mode, so unequal points still drive ranking — only
+    // the W-L-T column is corrected.
+    const t1Letter = resultLetterFor(r, r.team1Id);
+    const t2Letter = resultLetterFor(r, r.team2Id);
+    if (pts[r.team1Id]) {
+      if (t1Letter === "W") pts[r.team1Id].w++;
+      else if (t1Letter === "L") pts[r.team1Id].l++;
+      else if (t1Letter === "T") pts[r.team1Id].t++;
+      if (t1Letter) pts[r.team1Id].gamesPlayed++;
+    }
+    if (pts[r.team2Id]) {
+      if (t2Letter === "W") pts[r.team2Id].w++;
+      else if (t2Letter === "L") pts[r.team2Id].l++;
+      else if (t2Letter === "T") pts[r.team2Id].t++;
+      if (t2Letter) pts[r.team2Id].gamesPlayed++;
     }
   });
   const arr = Object.values(pts);
@@ -1257,7 +1268,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
         const opp = teams.find(t => t.id === oppId);
         const myPts = isTeam1 ? r.team1Points : r.team2Points;
         const oppPts = isTeam1 ? r.team2Points : r.team1Points;
-        const wResult = myPts > oppPts ? "W" : myPts < oppPts ? "L" : "T";
+        const wResult = resultLetterFor(r, teamId);
         const wk = schedule.find(s => s.week === r.week);
 
         const holesWon = (r.t1HolesWon !== undefined && r.t2HolesWon !== undefined)

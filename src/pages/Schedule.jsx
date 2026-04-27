@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect } from "react";
 import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, HERO_NUM_SIZE, CHEVRON_SIZE, buildSeedMap } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 import { SharedScorecard } from "./Scoring";
-import { computeMatchResult, readScoreEffective, getStrokesForHole } from "../lib/matchCalc";
+import { computeMatchResult, readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/matchCalc";
 
 export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen }) {
   const [showAll, setShowAll] = useState(false);
@@ -359,17 +359,18 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     return formatTeeTime(base, idx, interval);
   };
 
-  // Build records through a specific week (inclusive)
+  // Build records through a specific week (inclusive). W/L/T is always derived
+  // from the match-play result (matchResultText/matchWinnerId), NEVER from
+  // points comparison — see resultLetterFor's rationale.
   const getRecordThrough = useCallback((teamId, throughWeek) => {
     let w = 0, l = 0, t = 0;
     matchResults.forEach(r => {
       if (!r || r.week > throughWeek) return;
-      const d = (r.team1Points || 0) - (r.team2Points || 0);
-      if (r.team1Id === teamId) {
-        if (d > 0) w++; else if (d < 0) l++; else t++;
-      } else if (r.team2Id === teamId) {
-        if (d < 0) w++; else if (d > 0) l++; else t++;
-      }
+      if (r.team1Id !== teamId && r.team2Id !== teamId) return;
+      const letter = resultLetterFor(r, teamId);
+      if (letter === "W") w++;
+      else if (letter === "L") l++;
+      else if (letter === "T") t++;
     });
     return { w, l, t };
   }, [matchResults]);
@@ -502,10 +503,11 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     let wlLetter = "";
     let detailText = "";
     if (res) {
+      // W/L/T is the match-play result (NOT points compare — see resultLetterFor).
+      wlLetter = resultLetterFor(res, myTeam.id);
       const isT1 = myMatch.team1 === myTeam.id;
       const myPts = isT1 ? res.team1Points : res.team2Points;
       const oppPts = isT1 ? res.team2Points : res.team1Points;
-      wlLetter = myPts > oppPts ? "W" : myPts < oppPts ? "L" : "T";
       // Detail lines:
       //   "TIED"              -> no detail (plain T)
       //   "TIE (Hole N)"      -> "Hole N" (playoff tiebreaker, the T is already on top)
@@ -793,6 +795,11 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 const t2 = swapped ? rawT1 : rawT2;
                 const score1 = res ? (swapped ? res.team2Points : res.team1Points) : null;
                 const score2 = res ? (swapped ? res.team1Points : res.team2Points) : null;
+                // Winner is the match-play winner (matchWinnerId), NOT a points
+                // compare. A TIED match-play with asymmetric points (e.g. T1 lost
+                // bonus point) must NOT show a green arrow on either side.
+                const t1Won = res && resultLetterFor(res, t1?.id) === "W";
+                const t2Won = res && resultLetterFor(res, t2?.id) === "W";
 
                 // Match result color: TIED = gray, everything else = black
                 const resultColor = res && res.matchResultText === "TIED" ? K.t3 : K.t1;
@@ -807,13 +814,13 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                         </div>
                       )}
                       {/* Left team */}
-                      <div style={{ flex: 1, textAlign: "right", paddingRight: res && score1 > score2 ? 8 : 18, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-                        <div style={{ fontSize: NAME_SIZE, fontWeight: res && score1 > score2 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player1)}</div>
-                        <div style={{ fontSize: NAME_SIZE, fontWeight: res && score1 > score2 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player2)}</div>
+                      <div style={{ flex: 1, textAlign: "right", paddingRight: t1Won ? 8 : 18, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
+                        <div style={{ fontSize: NAME_SIZE, fontWeight: t1Won ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player1)}</div>
+                        <div style={{ fontSize: NAME_SIZE, fontWeight: t1Won ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player2)}</div>
                         <div style={{ fontSize: 12, color: K.t3, fontWeight: 600, marginTop: 2 }}>{fmtRecord(t1?.id, wk.week)}</div>
                       </div>
                       {/* Winner triangle left */}
-                      {res && score1 > score2 && (
+                      {t1Won && (
                         <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, marginRight: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>
                       )}
                       {/* Center — match result or tee time. Tiebreaker results like
@@ -840,13 +847,13 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                         )}
                       </div>
                       {/* Winner triangle right */}
-                      {res && score2 > score1 && (
+                      {t2Won && (
                         <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, marginLeft: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>
                       )}
                       {/* Right team */}
-                      <div style={{ flex: 1, textAlign: "left", paddingLeft: res && score2 > score1 ? 8 : 18, overflow: "hidden" }}>
-                        <div style={{ fontSize: NAME_SIZE, fontWeight: res && score2 > score1 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player1)}</div>
-                        <div style={{ fontSize: NAME_SIZE, fontWeight: res && score2 > score1 ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player2)}</div>
+                      <div style={{ flex: 1, textAlign: "left", paddingLeft: t2Won ? 8 : 18, overflow: "hidden" }}>
+                        <div style={{ fontSize: NAME_SIZE, fontWeight: t2Won ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player1)}</div>
+                        <div style={{ fontSize: NAME_SIZE, fontWeight: t2Won ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player2)}</div>
                         <div style={{ fontSize: 12, color: K.t3, fontWeight: 600, marginTop: 2 }}>{fmtRecord(t2?.id, wk.week)}</div>
                       </div>
                       {/* Seed badge — right team */}
