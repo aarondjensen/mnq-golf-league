@@ -38,6 +38,11 @@ export default function GolfLeagueApp() {
   // sporadically bail out with "prior round not fully scored" even when it was.
   const matchResultsRef = useRef([]);
   useEffect(() => { matchResultsRef.current = matchResults; }, [matchResults]);
+  // Ref mirror of holeScores — used by autoSeedIfReady's stale-bracket guard
+  // so we can detect "scores already entered for this week" without a re-render
+  // and without making the callback dep on the large holeScores map.
+  const holeScoresRef = useRef({});
+  useEffect(() => { holeScoresRef.current = holeScores; }, [holeScores]);
   const [leagueConfig, setLeagueConfig] = useState({ name: "Golf League 2026", year: 2026 });
   const [members, setMembers] = useState([]);
   const [membersLoaded, setMembersLoaded] = useState(false);
@@ -618,12 +623,17 @@ export default function GolfLeagueApp() {
     const currentSchedule = scheduleRef.current;
     const currentMatchResults = matchResultsRef.current;
 
-    const lockedWk = currentSchedule.find(s => s.week === justLockedWeek);
-    if (!lockedWk) return 0;
+    // justLockedWeek === 0 is a special signal meaning "config or seeds may
+    // have changed externally — re-run the auto-seeder against current state
+    // without treating any week as just-locked." Skips Phase 1's
+    // allRRLocked check and goes straight to the playoff re-seed walk.
+    const isConfigRefresh = justLockedWeek === 0;
+    const lockedWk = isConfigRefresh ? null : currentSchedule.find(s => s.week === justLockedWeek);
+    if (!isConfigRefresh && !lockedWk) return 0;
 
     // Projected schedule that reflects the just-locked week — belt and suspenders on top
     // of the ref read, in case the ref update hasn't flushed yet.
-    const projectedSchedule = currentSchedule.map(s =>
+    const projectedSchedule = isConfigRefresh ? currentSchedule : currentSchedule.map(s =>
       s.week === justLockedWeek ? { ...s, locked: true } : s
     );
 
@@ -733,10 +743,26 @@ export default function GolfLeagueApp() {
         : computeSeeds();
     }
 
-    // Walk each playoff week in order; if it's empty AND its dependencies are met, seed it.
+    // Walk each playoff week in order; if it's empty (or stale) AND its
+    // dependencies are met, (re)seed it. Locked weeks are never touched —
+    // their existing matchups own the recorded scores. Unlocked weeks with
+    // existing matchups but ZERO entered scores are eligible to re-seed,
+    // which is what auto-corrects a bracket after the commissioner edits
+    // playoff config (or earlier rounds finalize and shift seeds/winners)
+    // without requiring a manual Seed Week click.
     for (let pi = 0; pi < playoffWeeksList.length; pi++) {
       const pWk = playoffWeeksList[pi];
-      if (pWk.matches && pWk.matches.length > 0) continue; // already seeded, skip
+      if (pWk.locked === true) continue; // never touch locked weeks
+      // Allow re-seeding stale matches as long as no scores have been entered
+      // for this week yet. Once a single hole score exists, treat the week
+      // as "in progress" and leave it alone — the commissioner can resolve
+      // any drift via Schedule's Edit Scores flow.
+      const hasExistingMatches = pWk.matches && pWk.matches.length > 0;
+      if (hasExistingMatches) {
+        const hasAnyScoreOrResult = (currentMatchResults || []).some(r => r.week === pWk.week)
+          || Object.keys(holeScoresRef.current || {}).some(k => k.startsWith(`w${pWk.week}_`));
+        if (hasAnyScoreOrResult) continue; // scores in flight → leave it
+      }
 
       const roundDef = playoffRoundsCfg[pi];
 
@@ -939,10 +965,27 @@ export default function GolfLeagueApp() {
     setScoringRules(data);
   }, []);
   const saveLeagueConfig = useCallback(async (c) => {
+    const prev = leagueConfig;
     const data = { ...c, id: `${LEAGUE_ID}_config`, league_id: LEAGUE_ID };
     await db.upsert("league_config", data);
     setLeagueConfig(data);
-  }, []);
+    // If the commissioner just changed playoff bracket config, custom seed
+    // weeks, or the standings method (which affects seed order), re-run the
+    // auto-seeder so any unlocked seeded/playoff weeks pick up the new config
+    // immediately. Without this, edits in Admin → Setup → Playoff would only
+    // take effect on the next time a week was finalized. We pass week 0
+    // because there isn't a "just-locked" week to anchor to here — the
+    // function treats that as a no-op for the lock-driven Phase 1 trigger
+    // and still runs Phase 2's playoff walk against current state.
+    const playoffChanged = JSON.stringify(prev?.playoffRounds || []) !== JSON.stringify(data.playoffRounds || []);
+    const customSeedChanged = JSON.stringify(prev?.customSeedWeeks || null) !== JSON.stringify(data.customSeedWeeks || null);
+    const standingsMethodChanged = (prev?.standingsMethod || "") !== (data.standingsMethod || "");
+    if (playoffChanged || customSeedChanged || standingsMethodChanged) {
+      // Run on next tick so the just-saved config is reflected in leagueConfig
+      // closure on the autoSeedIfReady callback (which depends on leagueConfig).
+      setTimeout(() => { autoSeedIfReady(0); }, 0);
+    }
+  }, [leagueConfig, autoSeedIfReady]);
   const saveMember = useCallback(async (m) => await db.upsert("league_members", { ...m, league_id: LEAGUE_ID }), []);
   const deleteMember = useCallback(async (id) => await db.deleteDoc("league_members", id), []);
 
