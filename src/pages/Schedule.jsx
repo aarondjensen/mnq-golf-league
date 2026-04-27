@@ -231,52 +231,72 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   const commitEditedScores = async () => {
     if (!pendingEdits || !editingMatch) return;
     const { wk, m, res } = editingMatch;
-    const { calc, allPids, weekNum, t1, oldScores } = pendingEdits;
+    // Pull t2 alongside t1 — earlier version of this function omitted t2 from
+    // the destructure, which threw ReferenceError on the saveMatchResult call
+    // that needs both team IDs to build the result doc's id. The throw exited
+    // the async function before reaching `setSaving(false)`, leaving the
+    // confirmation button stuck on "Saving..." with no way out except
+    // refreshing the page.
+    const { calc, allPids, weekNum, t1, t2, oldScores } = pendingEdits;
     setSaving(true);
 
-    // Persist score changes
-    for (const pid of allPids) {
-      for (let h = 0; h < 9; h++) {
-        const newVal = editScores[`${pid}_${h}`] || 0;
-        const oldVal = oldScores[`w${weekNum}_p${pid}_h${h}`] || 0;
-        if (newVal !== oldVal) await saveScore(weekNum, pid, h, newVal);
+    // Wrap the persist sequence in try/finally so any future save error
+    // doesn't permanently lock the UI on "Saving..." — the user always gets
+    // their button back, even if a write fails. The actual error (Firestore
+    // rejection, network timeout, etc.) bubbles up to the toast/console
+    // surface — but the popup state recovers regardless.
+    try {
+      // Persist score changes
+      for (const pid of allPids) {
+        for (let h = 0; h < 9; h++) {
+          const newVal = editScores[`${pid}_${h}`] || 0;
+          const oldVal = oldScores[`w${weekNum}_p${pid}_h${h}`] || 0;
+          if (newVal !== oldVal) await saveScore(weekNum, pid, h, newVal);
+        }
+        const newAbsent = editAbsent[pid] ? 1 : 0;
+        const oldAbsent = oldScores[`w${weekNum}_p${pid}_habsent`] === 1 ? 1 : 0;
+        if (newAbsent !== oldAbsent) await saveScore(weekNum, pid, "absent", newAbsent);
       }
-      const newAbsent = editAbsent[pid] ? 1 : 0;
-      const oldAbsent = oldScores[`w${weekNum}_p${pid}_habsent`] === 1 ? 1 : 0;
-      if (newAbsent !== oldAbsent) await saveScore(weekNum, pid, "absent", newAbsent);
+
+      // Persist the recomputed match_result. We pass the pre-computed `calc`
+      // straight through so this writes EXACTLY what the user just confirmed
+      // — no chance of recomputing with stale state and surprising them.
+      await saveMatchResult({
+        ...calc,
+        id: `${LEAGUE_ID}_w${weekNum}_${t1.id}_${t2.id}`,
+        week: weekNum,
+        finalizedByTeamId: res?.finalizedByTeamId || null,
+        signedByPlayerId: res?.signedByPlayerId || leagueUser?.playerId || null,
+        // Preserve attestation state when a commissioner edits scores on an already-
+        // finalized match. The original code reset attestedBy to undefined, which meant
+        // any force-attest history was silently wiped and "N of M attested" badges
+        // would go stale on the very next edit.
+        attested: res?.attested || false,
+        attestedBy: res?.attestedBy || [],
+      });
+
+      // Update local cache so the UI reflects the change without waiting for
+      // the realtime subscription to round-trip.
+      const updatedScores = { ...(matchScores[weekNum] || {}) };
+      allPids.forEach(pid => {
+        for (let h = 0; h < 9; h++) updatedScores[`w${weekNum}_p${pid}_h${h}`] = editScores[`${pid}_${h}`] || 0;
+        const absentKey = `w${weekNum}_p${pid}_habsent`;
+        if (editAbsent[pid]) updatedScores[absentKey] = 1;
+        else delete updatedScores[absentKey];
+      });
+      setMatchScores(prev => ({ ...prev, [weekNum]: updatedScores }));
+
+      // Success path: drop both popup states and we're done.
+      setPendingEdits(null);
+      setEditingMatch(null);
+    } catch (err) {
+      // Surface the failure rather than silently leaving the UI stuck.
+      // Toast surface here is the parent container; logging gives detail
+      // for debugging via console.
+      console.error("Save edited scores failed:", err);
+    } finally {
+      setSaving(false);
     }
-
-    // Persist the recomputed match_result. We pass the pre-computed `calc`
-    // straight through so this writes EXACTLY what the user just confirmed
-    // — no chance of recomputing with stale state and surprising them.
-    await saveMatchResult({
-      ...calc,
-      id: `${LEAGUE_ID}_w${weekNum}_${t1.id}_${t2.id}`,
-      week: weekNum,
-      finalizedByTeamId: res?.finalizedByTeamId || null,
-      signedByPlayerId: res?.signedByPlayerId || leagueUser?.playerId || null,
-      // Preserve attestation state when a commissioner edits scores on an already-
-      // finalized match. The original code reset attestedBy to undefined, which meant
-      // any force-attest history was silently wiped and "N of M attested" badges
-      // would go stale on the very next edit.
-      attested: res?.attested || false,
-      attestedBy: res?.attestedBy || [],
-    });
-
-    // Update local cache so the UI reflects the change without waiting for
-    // the realtime subscription to round-trip.
-    const updatedScores = { ...(matchScores[weekNum] || {}) };
-    allPids.forEach(pid => {
-      for (let h = 0; h < 9; h++) updatedScores[`w${weekNum}_p${pid}_h${h}`] = editScores[`${pid}_${h}`] || 0;
-      const absentKey = `w${weekNum}_p${pid}_habsent`;
-      if (editAbsent[pid]) updatedScores[absentKey] = 1;
-      else delete updatedScores[absentKey];
-    });
-    setMatchScores(prev => ({ ...prev, [weekNum]: updatedScores }));
-
-    setSaving(false);
-    setPendingEdits(null);
-    setEditingMatch(null);
   };
 
   const displayNames = useMemo(() => {
