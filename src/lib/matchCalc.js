@@ -67,11 +67,16 @@ function getPlayerHcpIndex(pid, players) {
   return p ? Math.round(p.handicapIndex || 0) : 0;
 }
 
-// 9-hole net handicap. The full handicap index is for 18 holes; for a 9-hole
-// match we round half. We round normally (not always-up, not always-down) to
-// avoid systematic bias either direction.
+// 9-hole net handicap. The stored player.handicapIndex IS already a 9-hole
+// handicap — recalcHandicaps in App.jsx computes it from 9-hole gross scores
+// and front-9 par (par 36), so the result is the 9-hole index directly.
+// We round to integer for the strokes-map distribution. Earlier this halved
+// the value assuming an 18-hole index; that gave roughly half the expected
+// strokes (e.g. handicap 11 → 6 strokes instead of 11), which made the
+// Standings/Schedule mini-scorecards' stroke dots disagree with the live
+// scoring view (which never halved).
 function getNineHoleHcp(pid, players) {
-  return Math.round(getPlayerHcpIndex(pid, players) / 2);
+  return getPlayerHcpIndex(pid, players);
 }
 
 // Per-hole strokes a player receives. Cached strokes-map per hcp would be

@@ -645,9 +645,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     return getRawScore(pid, h);
   };
   const getNineHcp = (pid) => {
-    if (isBothAbsent(pid)) return getHcp(pid);
-    const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
-    const p = playerMap[effectivePid];
+    // Always use the player's own handicap. The previous swap-when-absent
+    // logic had the live view show absent rows with the teammate's stroke
+    // pattern, which disagreed with matchCalc, Standings, and Schedule.
+    // Score gets substituted from the teammate via getS; strokes stay
+    // attached to the absent player themselves.
+    const p = playerMap[pid];
     return p ? Math.round(p.handicapIndex || 0) : 0;
   };
   const getStrokes = (pid, h) => getStrokesMap(getNineHcp(pid))[h] || 0;
@@ -900,36 +903,16 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       return parts.length > 1 ? parts[parts.length - 1] : parts[0];
     };
     const amGetHcp = (pid) => {
-      const absent = holeScores[`w${week}_p${pid}_habsent`] === 1;
-      if (absent) {
-        // Find teammate
-        const allPidsForMatch = matches.flatMap(m => {
-          const mt1 = teams.find(t => t.id === m.team1);
-          const mt2 = teams.find(t => t.id === m.team2);
-          return [mt1?.player1, mt1?.player2, mt2?.player1, mt2?.player2].filter(Boolean);
-        });
-        // Find which team this player is on
-        for (const m of matches) {
-          const mt1 = teams.find(t => t.id === m.team1);
-          const mt2 = teams.find(t => t.id === m.team2);
-          const t1p = [mt1?.player1, mt1?.player2].filter(Boolean);
-          const t2p = [mt2?.player1, mt2?.player2].filter(Boolean);
-          if (t1p.includes(pid)) {
-            const tm = t1p.find(p => p !== pid);
-            if (tm && holeScores[`w${week}_p${tm}_habsent`] !== 1) {
-              const p = playerMap[tm]; return p ? Math.round(p.handicapIndex || 0) : 0;
-            }
-            break;
-          }
-          if (t2p.includes(pid)) {
-            const tm = t2p.find(p => p !== pid);
-            if (tm && holeScores[`w${week}_p${tm}_habsent`] !== 1) {
-              const p = playerMap[tm]; return p ? Math.round(p.handicapIndex || 0) : 0;
-            }
-            break;
-          }
-        }
-      }
+      // Always use the player's OWN handicap, even when absent. The score
+      // gets substituted from the teammate (see amGetEffectiveScore below),
+      // but strokes are an attribute of the absent player themselves — the
+      // team gets the absent player's stroke benefit on the doubled score.
+      // This matches matchCalc.js's getStrokes (which always uses the
+      // player's own handicap) and Standings/Schedule's mini-scorecards
+      // (which use getStrokesForHole). Earlier this function returned the
+      // teammate's handicap when absent, which made absent rows display
+      // the present teammate's stroke dots and made the All Matches team
+      // net diverge from the saved match_result.
       const p = playerMap[pid];
       return p ? Math.round(p.handicapIndex || 0) : 0;
     };

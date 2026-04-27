@@ -20,7 +20,10 @@ export function calcCourseHandicap(index, slope, rating, par) {
   if (!slope || !rating) return Math.round(index);
   return Math.round((index * slope / 113) + (rating - par));
 }
-export function calcNineHandicap(ch) { return Math.round(ch / 2); }
+// Stored handicaps are already 9-hole indexes (computed against the
+// front-9 par via calcPlayerHcp), so this is a no-op pass-through. Kept
+// only because external imports still reference it.
+export function calcNineHandicap(ch) { return Math.round(ch); }
 export function getTeeTime(idx) {
   const d = new Date(2026, 0, 1, 16, 28);
   d.setMinutes(d.getMinutes() + idx * TEE_INTERVAL);
