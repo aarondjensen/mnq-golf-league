@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, HERO_NUM_SIZE, CHEVRON_SIZE, buildSeedMap } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 import { SharedScorecard } from "./Scoring";
@@ -64,6 +64,62 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       setMatchScores(prev => ({ ...prev, [weekNum]: scores }));
     }
   }, [expandedMatchKey, matchScores, fetchWeekScores]);
+
+  // ── Auto-heal drifted match_result docs ───────────────────────────────
+  // Saved match_result is a snapshot at sign time. If scores were edited
+  // afterwards (or were signed under earlier matchCalc logic that's since
+  // been corrected), the saved fields drift away from what computeMatchResult
+  // produces from current scores. The expanded scorecard always recomputes
+  // live, so the user sees inconsistent values between the summary row
+  // (saved) and the inline scorecard (live). This effect detects drift on
+  // any week whose scores are loaded and silently re-saves a corrected
+  // match_result. Standings has the same logic with bulk-loaded season
+  // scores; here it triggers per-week as users expand.
+  const healedRef = useRef(new Set());
+  useEffect(() => {
+    if (!course || !scoringRules || !leagueConfig || !saveMatchResult) return;
+    matchResults.forEach(r => {
+      if (!r || !r.id || healedRef.current.has(r.id)) return;
+      const wkScores = matchScores[r.week];
+      if (!wkScores) return;
+      const wk = schedule.find(s => s.week === r.week);
+      if (!wk || wk.rainedOut) return;
+      const side = wk.side || getWeekSide(r.week);
+      const pars = side === 'front' ? course.frontPars : course.backPars;
+      const hcps = side === 'front' ? course.frontHcps : course.backHcps;
+      if (!pars || !hcps) return;
+      try {
+        const calc = computeMatchResult({
+          match: { team1: r.team1Id, team2: r.team2Id },
+          week: r.week,
+          isPlayoff: wk.isPlayoff === true,
+          teams, players,
+          holeScores: wkScores,
+          pars, hcps,
+          scoringRules, leagueConfig,
+          seedMap,
+        });
+        const drifted = (
+          calc.matchResultText !== r.matchResultText ||
+          calc.t1HolesWon !== r.t1HolesWon ||
+          calc.t2HolesWon !== r.t2HolesWon ||
+          calc.team1Points !== r.team1Points ||
+          calc.team2Points !== r.team2Points ||
+          calc.matchWinnerId !== r.matchWinnerId ||
+          calc.t1Total !== r.t1Total ||
+          calc.t2Total !== r.t2Total
+        );
+        if (drifted) {
+          healedRef.current.add(r.id);
+          // Preserve workflow fields (id, signedByPlayerId, attestedBy,
+          // attested, finalizedByTeamId, week) from the existing doc.
+          saveMatchResult({ ...r, ...calc });
+        }
+      } catch (e) {
+        // Silent — auto-heal is opportunistic.
+      }
+    });
+  }, [matchResults, matchScores, course, scoringRules, leagueConfig, saveMatchResult, schedule, teams, players, seedMap]);
 
   // ── Commissioner score editing ──
   // Stripped the bounding-rect anchor calculation that the previous fix used —

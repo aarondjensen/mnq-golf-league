@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, CHEVRON_SIZE, calcCourseHandicap, calcNineHandicap, calcPlayerHcp, buildSeedMap } from "../theme";
 import { SharedScorecard } from "./Scoring";
-import { readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/matchCalc";
+import { readScoreEffective, getStrokesForHole, resultLetterFor, computeMatchResult } from "../lib/matchCalc";
 
 // Build standings from a set of match results.
 // Tiebreaker is always total holes won (the headToHead option was removed because it was
@@ -1152,7 +1152,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
 // ════════════════════════════════════════════════════════════
 //  MAIN STANDINGS VIEW
 // ════════════════════════════════════════════════════════════
-export default function StandingsView({ teams, players, matchResults, leagueConfig, schedule, fetchSeasonScores, course, fetchWeekScores, scoringRules, fetchAllScores }) {
+export default function StandingsView({ teams, players, matchResults, leagueConfig, schedule, fetchSeasonScores, course, fetchWeekScores, scoringRules, fetchAllScores, saveMatchResult }) {
   const isRecord = leagueConfig?.standingsMethod === "record";
   const [expanded, setExpanded] = useState(null);
   const [expandedResult, setExpandedResult] = useState(null);
@@ -1224,6 +1224,105 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
       setWeekScores(prev => ({ ...prev, [week]: scores }));
     }
   }, [expandedResult, weekScores, fetchWeekScores]);
+
+  // ── Pre-load all season scores on mount, bucketed by week ──────────────
+  // Without this, weekScores only has data for weeks the user has expanded.
+  // We need scores for every week to detect/heal drift in saved match_result
+  // docs (see auto-heal effect below). One Firestore query for the whole
+  // season is cheaper than 16 per-week queries.
+  useEffect(() => {
+    if (!fetchSeasonScores) return;
+    let alive = true;
+    fetchSeasonScores().then(allScores => {
+      if (!alive) return;
+      const byWeek = {};
+      Object.entries(allScores).forEach(([key, val]) => {
+        const m = key.match(/^w(\d+)_/);
+        if (!m) return;
+        const w = parseInt(m[1]);
+        if (!byWeek[w]) byWeek[w] = {};
+        byWeek[w][key] = val;
+      });
+      // Existing weekScores entries (loaded via toggleResultExpand) win — they
+      // may be more recent than the bulk fetch.
+      setWeekScores(prev => {
+        const merged = { ...byWeek };
+        Object.keys(prev).forEach(w => { merged[w] = prev[w]; });
+        return merged;
+      });
+    }).catch(() => { /* silent */ });
+    return () => { alive = false; };
+  }, [fetchSeasonScores]);
+
+  // ── Auto-heal: silently recompute and re-save any drifted match_result ──
+  // The saved match_result document is a snapshot at sign time. If scores
+  // were edited after signing without going through Schedule's "Edit Scores
+  // → Save & Re-sign" flow (or were signed under earlier matchCalc logic
+  // that's since been corrected), the saved fields drift away from what a
+  // fresh computeMatchResult would produce. The expanded scorecard always
+  // recomputes live, so the user sees inconsistent values between the
+  // summary row (saved) and the scorecard (live).
+  //
+  // This effect detects that drift and writes a corrected version back, so
+  // every consumer (this view's summary row, Schedule's records, theme.jsx's
+  // standings aggregation) eventually converges. Writes are gated by a
+  // session-scoped Set so each match heals at most once per mount, which
+  // prevents subscription-update loops even though the diff check would
+  // already make it idempotent.
+  const healedRef = useRef(new Set());
+  useEffect(() => {
+    if (!course || !scoringRules || !leagueConfig || !saveMatchResult) return;
+    matchResults.forEach(r => {
+      if (!r || !r.id || healedRef.current.has(r.id)) return;
+      const wkScores = weekScores[r.week];
+      if (!wkScores) return;
+      const wk = schedule.find(s => s.week === r.week);
+      if (!wk || wk.rainedOut) return;
+      const side = wk.side || getWeekSide(r.week);
+      const pars = side === 'front' ? course.frontPars : course.backPars;
+      const hcps = side === 'front' ? course.frontHcps : course.backHcps;
+      if (!pars || !hcps) return;
+      try {
+        const calc = computeMatchResult({
+          match: { team1: r.team1Id, team2: r.team2Id },
+          week: r.week,
+          isPlayoff: wk.isPlayoff === true,
+          teams, players,
+          holeScores: wkScores,
+          pars, hcps,
+          scoringRules, leagueConfig,
+          seedMap,
+        });
+        const drifted = (
+          calc.matchResultText !== r.matchResultText ||
+          calc.t1HolesWon !== r.t1HolesWon ||
+          calc.t2HolesWon !== r.t2HolesWon ||
+          calc.team1Points !== r.team1Points ||
+          calc.team2Points !== r.team2Points ||
+          calc.matchWinnerId !== r.matchWinnerId ||
+          calc.t1Total !== r.t1Total ||
+          calc.t2Total !== r.t2Total
+        );
+        if (drifted) {
+          healedRef.current.add(r.id);
+          // Preserve workflow fields (id, signedByPlayerId, attestedBy,
+          // attested, finalizedByTeamId, week) from the existing doc; the
+          // calc only overrides the computed-from-scores fields.
+          saveMatchResult({ ...r, ...calc });
+        }
+      } catch (e) {
+        // Silent — auto-heal is opportunistic, not required.
+      }
+    });
+  }, [matchResults, weekScores, course, scoringRules, leagueConfig, saveMatchResult, schedule, teams, players, seedMap]);
+
+  // seedMap is needed by computeMatchResult for playoff tiebreakers; for
+  // regular-season matches it's a no-op. Built from saved matchResults so
+  // there's no circular dependency on auto-heal output.
+  const seedMap = useMemo(
+    () => buildSeedMap(teams, matchResults, schedule, leagueConfig),
+    [teams, matchResults, schedule, leagueConfig]
+  );
 
   const lockedWeeks = useMemo(() => {
     const set = new Set();
