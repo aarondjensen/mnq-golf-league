@@ -437,6 +437,34 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
           return finalMatch?.t1Won ? finalMatch.team1 : finalMatch?.t2Won ? finalMatch.team2 : null;
         })();
 
+        // 3rd place: any matchup in the last round AFTER index 0 is treated as
+        // a parallel consolation match (Loser M1 vs Loser M2 in a 4-round
+        // bracket = 3rd place game). The winner of that match is awarded 3rd.
+        // Returns { teamId, matchupIdx } so we can render a podium card aligned
+        // with the matching consolation card. matchupIdx === null means no
+        // 3rd-place match is configured for this bracket — caller skips render.
+        const thirdPlace = (() => {
+          const lastRound = bracketData[bracketData.length - 1];
+          if (!lastRound) return null;
+          // Find the first non-advancement card in the last round. The
+          // advancement card is index 0 (championship); anything beyond is
+          // a parallel/consolation match.
+          for (let mi = 1; mi < lastRound.matchups.length; mi++) {
+            const m = lastRound.matchups[mi];
+            if (m) {
+              const winner = m.t1Won ? m.team1 : m.t2Won ? m.team2 : null;
+              return { teamId: winner, matchupIdx: mi };
+            }
+          }
+          // Even if matchups array hasn't been seeded yet, render a placeholder
+          // 3rd place card if config has a second slot — so the bracket setup
+          // shows the user where the 3rd place match will land.
+          if (lastRound.config && lastRound.config.length > 1) {
+            return { teamId: null, matchupIdx: 1 };
+          }
+          return null;
+        })();
+
         const COL_WIDTH = 132;         // column width — snug but fits the longest team names
         const CARD_HEIGHT = 52;        // approx height of a 2-team BracketCard after padding trim
         const BASE_GAP = 16;           // gap between matchups — breathable, not cramped
@@ -656,34 +684,85 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                 );
               })}
 
-              {/* Champion column — a trophy card centered against the final round's
-                  single match (same topPad means they line up horizontally). */}
+              {/* Trophy column — 1st place (Championship) and optional 3rd
+                  place (consolation match in last round). Each card sits at
+                  the same Y as its corresponding match in the last round so
+                  the trophies line up horizontally with their source matches.
+                  Border weight matches BracketCard (1px) so the cards visually
+                  read as the same family — earlier this was 2px, which made
+                  the trophy look heavier than the matches it sits next to. */}
               {(() => {
                 const lastIdx = bracketData.length - 1;
-                const lastTopPad = geom[lastIdx]?.topPad || 0;
+                const lastRound = bracketData[lastIdx];
+                const lastG = geom[lastIdx] || { topPad: 0, gap: BASE_GAP };
+                const lastMatchCount = lastRound
+                  ? Math.max(lastRound.matchups.length, lastRound.config.length, 1)
+                  : 1;
+                // Replicate the same cardY formula used inside the bracket
+                // column for the last round. mi=0 is advancement (championship),
+                // mi>=1 are consolation cards anchored to Round 1 of the
+                // bracket — so a Round 4 3rd-place match aligns with the last
+                // matchup of Round 1 visually.
+                const lastAdvCount = Math.max(1, Math.ceil((lastIdx > 0 ? bracketData[lastIdx - 1] : { matchups: [], config: [] }).matchups.length / 2) || 1);
+                const trophyCardY = (mi) => {
+                  if (lastIdx <= 1) return mi * (CARD_HEIGHT + lastG.gap);
+                  if (mi < lastAdvCount) return lastG.topPad + mi * (CARD_HEIGHT + lastG.gap);
+                  const anchorRoundIdx = bracketData.length > 1 ? 1 : lastIdx - 1;
+                  const anchorG = geom[anchorRoundIdx];
+                  const anchorRound = bracketData[anchorRoundIdx];
+                  const anchorMatchCount = Math.max(
+                    anchorRound?.matchups.length || 0,
+                    anchorRound?.config.length || 0,
+                    1
+                  );
+                  const consolationIdx = mi - lastAdvCount;
+                  const anchorCardIdx = Math.max(0, anchorMatchCount - 1 - consolationIdx);
+                  if (!anchorG) return lastG.topPad + mi * (CARD_HEIGHT + lastG.gap);
+                  return anchorG.topPad + anchorCardIdx * (CARD_HEIGHT + anchorG.gap);
+                };
+
+                const championY = trophyCardY(0);
+                const thirdPlaceY = thirdPlace ? trophyCardY(thirdPlace.matchupIdx) : null;
+                const trophyHeight = Math.max(
+                  championY + CARD_HEIGHT,
+                  thirdPlaceY != null ? thirdPlaceY + CARD_HEIGHT : 0
+                );
+
+                // Shared box style for both 1st and 3rd cards — same dimensions
+                // and border weight as a regular BracketCard so the column reads
+                // as a uniform set, with color and emoji distinguishing the rank.
+                const podiumBox = (filled, color, emoji, label, teamId) => (
+                  <div style={{
+                    width: "100%", height: CARD_HEIGHT, boxSizing: "border-box",
+                    background: filled ? color + "15" : K.card,
+                    border: `1px solid ${filled ? color + "60" : K.bdr}`,
+                    borderRadius: 6, padding: "4px 6px",
+                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                  }}>
+                    <div style={{ fontSize: 16, lineHeight: 1, flexShrink: 0 }}>{emoji}</div>
+                    {filled ? (
+                      <div style={{ minWidth: 0, textAlign: "left" }}>
+                        <div style={{ fontSize: 11, fontWeight: 800, color, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.15 }}>{gn(teamId)}</div>
+                        <div style={{ fontSize: 8, color: K.t3, marginTop: 1, letterSpacing: 1, fontWeight: 600 }}>#{getSeed(teamId)} SEED · {label}</div>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 9, color: K.t3, letterSpacing: 1, fontWeight: 600 }}>{label}</div>
+                    )}
+                  </div>
+                );
+
                 return (
                   <div style={{ width: COL_WIDTH, flexShrink: 0, display: "flex", flexDirection: "column" }}>
                     <div style={{ height: 32 + 10 /* match header + its margin */ }} />
-                    <div style={{ paddingTop: lastTopPad, display: "flex", justifyContent: "flex-start" }}>
-                      <div style={{
-                        width: "100%",
-                        height: CARD_HEIGHT,
-                        boxSizing: "border-box",
-                        background: champCard ? K.gold + "15" : K.card,
-                        border: `2px solid ${champCard ? K.gold + "50" : K.bdr}`,
-                        borderRadius: 6, padding: "4px 6px", textAlign: "center",
-                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                      }}>
-                        <div style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>🏆</div>
-                        {champCard ? (
-                          <div style={{ minWidth: 0, textAlign: "left" }}>
-                            <div style={{ fontSize: 11, fontWeight: 800, color: K.gold, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.15 }}>{gn(champCard)}</div>
-                            <div style={{ fontSize: 8, color: K.t3, marginTop: 1, letterSpacing: 1, fontWeight: 600 }}>#{getSeed(champCard)} SEED</div>
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: 9, color: K.t3, letterSpacing: 1, fontWeight: 600 }}>TBD</div>
-                        )}
+                    <div style={{ position: "relative", height: trophyHeight }}>
+                      <div style={{ position: "absolute", top: championY, left: 0, right: 0 }}>
+                        {podiumBox(!!champCard, K.gold, "🏆", "CHAMPION", champCard)}
                       </div>
+                      {thirdPlace && thirdPlaceY != null && (
+                        <div style={{ position: "absolute", top: thirdPlaceY, left: 0, right: 0 }}>
+                          {podiumBox(!!thirdPlace.teamId, K.t2, "🥉", "3RD PLACE", thirdPlace.teamId)}
+                        </div>
+                      )}
                     </div>
                   </div>
                 );
