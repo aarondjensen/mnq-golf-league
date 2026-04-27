@@ -857,15 +857,40 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
     // Kick off the initial load.
     fullFetch(true);
 
-    // LIVE LEADERBOARD — while the final round is a playoffWeek (i.e. it's
-    // scheduled and has matches), poll its scores every 20s. The final round
-    // is the only one where it's useful to see the leaderboard updating in
-    // real time — earlier rounds' positions don't change the tournament outcome.
-    //
-    // Polling is kept short (20s) because round play is typically under 2 hours
-    // and users checking the standings tab expect to see recent scores reflected.
-    // The full-history fetch doesn't re-poll since historical rounds don't change.
-    const isFinalRoundLive = !!finalRoundWeek && playoffWeeks.some(wk => wk.week === finalRoundWeek);
+    // LIVE LEADERBOARD — poll every 20s only while the final round is
+    // actually being played, not just because it's on the schedule. The
+    // tournament runs during playoffs, which can be weeks away at season
+    // start; the original condition (final round merely exists in the
+    // schedule) lit the LIVE badge from week 1. Now we also require:
+    //   - the final round itself is unlocked (not yet finalized), and
+    //   - any prior playoff round has been finalized (so we know we've
+    //     reached the final round, not still in earlier rounds), and
+    //   - today is at or past the final round's scheduled date (so the
+    //     badge doesn't burn 20s polling cycles before play actually starts).
+    // All three must hold; without prior rounds (single-round tournament)
+    // the prior-rounds check is vacuously satisfied.
+    const isFinalRoundLive = (() => {
+      if (!finalRoundWeek) return false;
+      const finalWk = schedule.find(wk => wk.week === finalRoundWeek);
+      if (!finalWk || finalWk.locked === true) return false;
+      if (!playoffWeeks.some(wk => wk.week === finalRoundWeek)) return false;
+      const earlierPlayoffWeeks = schedule.filter(wk =>
+        wk.isPlayoff === true && !wk.rainedOut && wk.week < finalRoundWeek
+      );
+      const priorRoundsDone = earlierPlayoffWeeks.length === 0
+        || earlierPlayoffWeeks.every(wk => wk.locked === true);
+      if (!priorRoundsDone) return false;
+      // Date guard: only "live" once the scheduled date has arrived. Stored
+      // dates are ISO strings (e.g. "2026-08-04"); compare on day boundary
+      // in local time so an early-evening start counts the whole match day
+      // as live.
+      if (finalWk.date) {
+        const today = new Date();
+        const todayStr = today.toISOString().slice(0, 10);
+        if (todayStr < finalWk.date) return false;
+      }
+      return true;
+    })();
     let pollId = null;
     if (isFinalRoundLive) {
       pollId = setInterval(() => { finalRoundOnlyFetch(); }, 20_000);
@@ -1025,9 +1050,27 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
   const leaderName = leaderboard[0]?.roundsPlayed > 0 ? leaderboard[0].name.split(" ").pop() : null;
 
   // Show a LIVE badge when the final round is active — visible signal that the
-  // leaderboard is auto-refreshing every 20 seconds. Only shown when the final
-  // round is in the playoffWeeks list (i.e. it has matches seeded).
-  const isFinalRoundLive = !!finalRoundWeek && playoffWeeks.some(wk => wk.week === finalRoundWeek);
+  // leaderboard is auto-refreshing every 20 seconds. Conditions match the
+  // polling effect above: final round seeded but not locked, all prior rounds
+  // locked, and today's date has reached the final round's scheduled date.
+  // See the polling effect for the full rationale.
+  const isFinalRoundLive = (() => {
+    if (!finalRoundWeek) return false;
+    const finalWk = schedule.find(wk => wk.week === finalRoundWeek);
+    if (!finalWk || finalWk.locked === true) return false;
+    if (!playoffWeeks.some(wk => wk.week === finalRoundWeek)) return false;
+    const earlierPlayoffWeeks = schedule.filter(wk =>
+      wk.isPlayoff === true && !wk.rainedOut && wk.week < finalRoundWeek
+    );
+    const priorRoundsDone = earlierPlayoffWeeks.length === 0
+      || earlierPlayoffWeeks.every(wk => wk.locked === true);
+    if (!priorRoundsDone) return false;
+    if (finalWk.date) {
+      const todayStr = new Date().toISOString().slice(0, 10);
+      if (todayStr < finalWk.date) return false;
+    }
+    return true;
+  })();
 
   return (
     <div style={{ padding: "0 2px" }}>
