@@ -178,11 +178,7 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
                           borderRadius: 4, padding: "2px 0", textAlign: "center",
                         }}>{sideLabel}</div>
                         <div style={{ flex: 1, textAlign: "right", fontSize: 11, color: K.t3, fontWeight: 600 }}>
-                          {dropped ? (
-                            <span style={{ fontStyle: "italic" }}>dropped</span>
-                          ) : (
-                            <span>{recencyIdx} of {recentN}{isBest ? " · best" : ""}</span>
-                          )}
+                          {dropped && <span style={{ fontStyle: "italic" }}>dropped</span>}
                         </div>
                       </div>
                     );
@@ -209,20 +205,9 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
                       {/* Divider — only renders when there are dropped rounds to show */}
                       {dropped.length > 0 && (
                         <div style={{
-                          position: "relative", margin: "10px 4px 8px",
+                          margin: "10px 4px 8px",
                           borderTop: `1px dashed ${K.bdr}`,
-                        }}>
-                          <div style={{
-                            position: "absolute", top: -8, left: "50%",
-                            transform: "translateX(-50%)",
-                            background: K.inp, padding: "0 8px",
-                            fontSize: 9, fontWeight: 700, color: K.t3,
-                            letterSpacing: .8, textTransform: "uppercase",
-                            whiteSpace: "nowrap",
-                          }}>
-                            Dropped from calc
-                          </div>
-                        </div>
+                        }} />
                       )}
 
                       {dropped.map((s) => (
