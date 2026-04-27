@@ -18,6 +18,18 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   // make-up round). Persisted to Firestore on save via saveScore(week, pid,
   // "absent", 0|1). Default treats "no entry yet" as not absent.
   const [editAbsent, setEditAbsent] = useState({}); // { pid: boolean }
+  // Pending-edit confirmation state. When the commissioner taps "Save & Re-sign",
+  // we don't immediately persist. We compute the new match_result, diff it
+  // against the existing one, and (if anything changed) show a confirmation
+  // popup listing the changes. This catches the "I just wanted to fix one
+  // typo, why did the standings flip?" surprise — the commissioner sees
+  // exactly what's about to change before committing.
+  // Shape: { calc, diff, changedScores, changedAbsents } where:
+  //   calc          = the recomputed match_result fields (ready to persist)
+  //   diff          = { result?, t1Points?, t2Points?, ... } human-readable changes
+  //   changedScores = [{ playerName, hole, oldVal, newVal }] for the score diff list
+  //   changedAbsents = [{ playerName, oldAbsent, newAbsent }]
+  const [pendingEdits, setPendingEdits] = useState(null);
   const [saving, setSaving] = useState(false);
 
   // Notify parent when edit popup is open
@@ -77,9 +89,15 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     setEditingMatch({ wk, m, res });
   };
 
-  const saveEditedScores = async () => {
+  // First click of "Save & Re-sign": don't persist yet. Compute the recalculation
+  // locally, diff it against the existing match_result + score state, and stash
+  // the result in `pendingEdits` to drive the confirmation popup. The actual
+  // persist happens in commitEditedScores after the commissioner confirms.
+  // This split exists because finalized weeks are durable historical records;
+  // surprising the commissioner with "your tap rewrote 3 weeks of standings"
+  // would be alarming. The diff popup makes the consequences visible first.
+  const prepareEditedScores = () => {
     if (!editingMatch || !saveScore || !saveMatchResult) return;
-    setSaving(true);
     const { wk, m, res } = editingMatch;
     const weekNum = wk.week;
     const side = wk.side || getWeekSide(weekNum);
@@ -91,21 +109,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const t2Pids = [t2?.player1, t2?.player2].filter(Boolean);
     const allPids = [...t1Pids, ...t2Pids];
 
-    // Save each changed score
     const oldScores = matchScores[weekNum] || {};
-    for (const pid of allPids) {
-      for (let h = 0; h < 9; h++) {
-        const newVal = editScores[`${pid}_${h}`] || 0;
-        const oldVal = oldScores[`w${weekNum}_p${pid}_h${h}`] || 0;
-        if (newVal !== oldVal) await saveScore(weekNum, pid, h, newVal);
-      }
-      // Also persist any absent-flag changes. saveScore's "absent" sentinel
-      // hole writes the `_habsent` doc instead of a per-hole score. Only fire
-      // when the value actually changed to avoid spurious writes.
-      const newAbsent = editAbsent[pid] ? 1 : 0;
-      const oldAbsent = oldScores[`w${weekNum}_p${pid}_habsent`] === 1 ? 1 : 0;
-      if (newAbsent !== oldAbsent) await saveScore(weekNum, pid, "absent", newAbsent);
-    }
 
     // Build the holeScores object that matchCalc expects, by overlaying our
     // edited per-hole values AND absent flags on top of the existing Firestore
@@ -117,8 +121,6 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       for (let h = 0; h < 9; h++) {
         holeScoresForCalc[`w${weekNum}_p${pid}_h${h}`] = editScores[`${pid}_${h}`] || 0;
       }
-      // Mirror the new absent state into the calc input. Setting to undefined
-      // when not absent lets readScoreEffective's `=== 1` check fail correctly.
       if (editAbsent[pid]) {
         holeScoresForCalc[`w${weekNum}_p${pid}_habsent`] = 1;
       } else {
@@ -143,6 +145,110 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       seedMap,
     });
 
+    // ── Diff: what changed at the match-result level ────────────────────────
+    // res may be null (legacy edge case) — treat that as "all fields new."
+    const diff = {};
+    if (res) {
+      if (calc.matchResultText !== res.matchResultText) {
+        diff.result = { from: res.matchResultText || "—", to: calc.matchResultText };
+      }
+      if (calc.team1Points !== res.team1Points) {
+        diff.t1Points = { from: res.team1Points ?? 0, to: calc.team1Points };
+      }
+      if (calc.team2Points !== res.team2Points) {
+        diff.t2Points = { from: res.team2Points ?? 0, to: calc.team2Points };
+      }
+      if (calc.matchWinnerId !== res.matchWinnerId) {
+        const fromTeam = teams.find(t => t.id === res.matchWinnerId);
+        const toTeam = teams.find(t => t.id === calc.matchWinnerId);
+        diff.winner = {
+          from: fromTeam ? lastNamesOnly(fromTeam.name) : "Tie",
+          to: toTeam ? lastNamesOnly(toTeam.name) : "Tie",
+        };
+      }
+    } else {
+      diff.result = { from: "—", to: calc.matchResultText };
+    }
+
+    // ── Diff: per-hole score changes ────────────────────────────────────────
+    const changedScores = [];
+    const playerName = (pid) => {
+      const p = players.find(pl => pl.id === pid);
+      return p ? p.name.split(' ').pop() : "?";
+    };
+    for (const pid of allPids) {
+      for (let h = 0; h < 9; h++) {
+        const newVal = editScores[`${pid}_${h}`] || 0;
+        const oldVal = oldScores[`w${weekNum}_p${pid}_h${h}`] || 0;
+        if (newVal !== oldVal) {
+          changedScores.push({
+            playerName: playerName(pid),
+            hole: side === 'front' ? h + 1 : h + 10,
+            oldVal,
+            newVal,
+          });
+        }
+      }
+    }
+
+    // ── Diff: absent-flag changes ───────────────────────────────────────────
+    const changedAbsents = [];
+    for (const pid of allPids) {
+      const newAbsent = !!editAbsent[pid];
+      const oldAbsent = oldScores[`w${weekNum}_p${pid}_habsent`] === 1;
+      if (newAbsent !== oldAbsent) {
+        changedAbsents.push({
+          playerName: playerName(pid),
+          newAbsent,
+        });
+      }
+    }
+
+    // No changes at all? Just close the popup. Nothing to confirm, nothing
+    // to save. Avoids a confusing "confirm no changes?" modal.
+    if (!changedScores.length && !changedAbsents.length && Object.keys(diff).length === 0) {
+      setEditingMatch(null);
+      return;
+    }
+
+    // Stash everything the commit step needs. We keep allPids/etc separate
+    // from `calc` so commitEditedScores doesn't need to recompute anything —
+    // it just persists exactly what the user confirmed.
+    setPendingEdits({
+      calc,
+      diff,
+      changedScores,
+      changedAbsents,
+      // Persist context for the commit step
+      allPids,
+      weekNum,
+      t1, t2,
+      oldScores,
+    });
+  };
+
+  // Second step: actually persist after the user confirms in the diff popup.
+  const commitEditedScores = async () => {
+    if (!pendingEdits || !editingMatch) return;
+    const { wk, m, res } = editingMatch;
+    const { calc, allPids, weekNum, t1, oldScores } = pendingEdits;
+    setSaving(true);
+
+    // Persist score changes
+    for (const pid of allPids) {
+      for (let h = 0; h < 9; h++) {
+        const newVal = editScores[`${pid}_${h}`] || 0;
+        const oldVal = oldScores[`w${weekNum}_p${pid}_h${h}`] || 0;
+        if (newVal !== oldVal) await saveScore(weekNum, pid, h, newVal);
+      }
+      const newAbsent = editAbsent[pid] ? 1 : 0;
+      const oldAbsent = oldScores[`w${weekNum}_p${pid}_habsent`] === 1 ? 1 : 0;
+      if (newAbsent !== oldAbsent) await saveScore(weekNum, pid, "absent", newAbsent);
+    }
+
+    // Persist the recomputed match_result. We pass the pre-computed `calc`
+    // straight through so this writes EXACTLY what the user just confirmed
+    // — no chance of recomputing with stale state and surprising them.
     await saveMatchResult({
       ...calc,
       id: `${LEAGUE_ID}_w${weekNum}_${t1.id}_${t2.id}`,
@@ -157,9 +263,8 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       attestedBy: res?.attestedBy || [],
     });
 
-    // Update local cache — keep both per-hole scores and absent flags in sync
-    // with what we just persisted, so the UI reflects the change without
-    // waiting for the realtime subscription to round-trip.
+    // Update local cache so the UI reflects the change without waiting for
+    // the realtime subscription to round-trip.
     const updatedScores = { ...(matchScores[weekNum] || {}) };
     allPids.forEach(pid => {
       for (let h = 0; h < 9; h++) updatedScores[`w${weekNum}_p${pid}_h${h}`] = editScores[`${pid}_${h}`] || 0;
@@ -168,7 +273,9 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       else delete updatedScores[absentKey];
     });
     setMatchScores(prev => ({ ...prev, [weekNum]: updatedScores }));
+
     setSaving(false);
+    setPendingEdits(null);
     setEditingMatch(null);
   };
 
@@ -957,11 +1064,169 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
               })}
               {/* Save / Cancel */}
               <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                <button onClick={saveEditedScores} disabled={!allFilled || saving} style={{ flex: 1, padding: 10, borderRadius: 8, background: allFilled && !saving ? K.warn : K.inp, border: allFilled && !saving ? "none" : `1px solid ${K.bdr}`, color: allFilled && !saving ? K.bg : K.t3, fontSize: 13, fontWeight: 700, cursor: allFilled && !saving ? "pointer" : "default" }}>
+                <button onClick={prepareEditedScores} disabled={!allFilled || saving} style={{ flex: 1, padding: 10, borderRadius: 8, background: allFilled && !saving ? K.warn : K.inp, border: allFilled && !saving ? "none" : `1px solid ${K.bdr}`, color: allFilled && !saving ? K.bg : K.t3, fontSize: 13, fontWeight: 700, cursor: allFilled && !saving ? "pointer" : "default" }}>
                   {saving ? "Saving..." : "Save & Re-sign"}
                 </button>
                 <button onClick={() => setEditingMatch(null)} style={{ padding: "10px 16px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
                   Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </>);
+      })()}
+
+      {/* ── Edit confirmation popup ──
+          Renders OVER the edit popup when pendingEdits is set. Shows:
+            - Match-result diff (W/L/T flip, points, winner)
+            - Per-hole score changes
+            - Absent-flag changes
+          Confirm → commitEditedScores persists the changes. Cancel → drops
+          pendingEdits and returns to the edit popup so the commissioner can
+          adjust further. The popup uses the same fixed-viewport positioning
+          as the edit popup so it's always visible. */}
+      {pendingEdits && (() => {
+        const { diff, changedScores, changedAbsents } = pendingEdits;
+        const hasResultChange = Object.keys(diff).length > 0;
+        return (<>
+          <div onClick={() => setPendingEdits(null)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.75)", zIndex: 600 }} />
+          <div data-popup style={{
+            position: "fixed", top: 20, left: 0, right: 0, bottom: 20,
+            zIndex: 650,
+            display: "flex", justifyContent: "center", alignItems: "flex-start",
+            padding: "0 10px",
+            pointerEvents: "none",
+          }}>
+            <div onClick={e => e.stopPropagation()} data-popup-scroll style={{
+              background: K.bg, border: `1px solid ${K.warn}`, borderRadius: 14,
+              padding: "16px 14px", width: "100%", maxWidth: 460,
+              maxHeight: "100%", overflowY: "auto", overscrollBehavior: "contain",
+              pointerEvents: "auto",
+              boxShadow: `0 12px 40px ${K.warn}40`,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                <div style={{ fontSize: 14, fontWeight: 800, color: K.warn, letterSpacing: .3 }}>
+                  Confirm Score Edit
+                </div>
+                <button onClick={() => setPendingEdits(null)} style={{ background: "none", border: "none", color: K.t3, fontSize: 18, cursor: "pointer", padding: "0 4px" }}>✕</button>
+              </div>
+
+              {/* Lead-in summary */}
+              <div style={{ fontSize: 12, color: K.t2, marginBottom: 14, lineHeight: 1.5 }}>
+                {hasResultChange
+                  ? "Saving these changes will update the match result. Standings and schedule will reflect the new outcome."
+                  : "Score values will be updated. Match result is unchanged."}
+              </div>
+
+              {/* Match result diff */}
+              {hasResultChange && (
+                <div style={{ background: K.warn + "12", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "10px 12px", marginBottom: 12 }}>
+                  <div style={{ fontSize: 9, fontWeight: 800, color: K.warn, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>Match result</div>
+                  {diff.result && (
+                    <div style={{ fontSize: 12, color: K.t1, marginBottom: 4 }}>
+                      <span style={{ color: K.t3 }}>Result: </span>
+                      <span style={{ textDecoration: "line-through", color: K.t3 }}>{diff.result.from}</span>
+                      <span style={{ margin: "0 6px", color: K.t3 }}>→</span>
+                      <span style={{ fontWeight: 700 }}>{diff.result.to}</span>
+                    </div>
+                  )}
+                  {diff.winner && (
+                    <div style={{ fontSize: 12, color: K.t1, marginBottom: 4 }}>
+                      <span style={{ color: K.t3 }}>Winner: </span>
+                      <span style={{ textDecoration: "line-through", color: K.t3 }}>{diff.winner.from}</span>
+                      <span style={{ margin: "0 6px", color: K.t3 }}>→</span>
+                      <span style={{ fontWeight: 700 }}>{diff.winner.to}</span>
+                    </div>
+                  )}
+                  {diff.t1Points && (
+                    <div style={{ fontSize: 12, color: K.t1, marginBottom: 4 }}>
+                      <span style={{ color: K.t3 }}>{lastNamesOnly(teams.find(t => t.id === pendingEdits.t1.id)?.name || "Team 1")} points: </span>
+                      <span style={{ textDecoration: "line-through", color: K.t3 }}>{diff.t1Points.from}</span>
+                      <span style={{ margin: "0 6px", color: K.t3 }}>→</span>
+                      <span style={{ fontWeight: 700 }}>{diff.t1Points.to}</span>
+                    </div>
+                  )}
+                  {diff.t2Points && (
+                    <div style={{ fontSize: 12, color: K.t1 }}>
+                      <span style={{ color: K.t3 }}>{lastNamesOnly(teams.find(t => t.id === pendingEdits.t2.id)?.name || "Team 2")} points: </span>
+                      <span style={{ textDecoration: "line-through", color: K.t3 }}>{diff.t2Points.from}</span>
+                      <span style={{ margin: "0 6px", color: K.t3 }}>→</span>
+                      <span style={{ fontWeight: 700 }}>{diff.t2Points.to}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Score changes */}
+              {changedScores.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 9, fontWeight: 800, color: K.t3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
+                    Score changes ({changedScores.length})
+                  </div>
+                  <div style={{ background: K.inp, borderRadius: 8, padding: "8px 10px", fontSize: 11, color: K.t2, lineHeight: 1.7 }}>
+                    {changedScores.map((c, i) => (
+                      <div key={i}>
+                        <span style={{ color: K.t1, fontWeight: 700 }}>{c.playerName}</span>
+                        <span style={{ color: K.t3 }}> · Hole {c.hole}: </span>
+                        <span style={{ textDecoration: "line-through", color: K.t3 }}>{c.oldVal || "—"}</span>
+                        <span style={{ margin: "0 6px", color: K.t3 }}>→</span>
+                        <span style={{ fontWeight: 700, color: K.t1 }}>{c.newVal}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Absent flag changes */}
+              {changedAbsents.length > 0 && (
+                <div style={{ marginBottom: 12 }}>
+                  <div style={{ fontSize: 9, fontWeight: 800, color: K.t3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
+                    Attendance changes
+                  </div>
+                  <div style={{ background: K.inp, borderRadius: 8, padding: "8px 10px", fontSize: 11, color: K.t2, lineHeight: 1.7 }}>
+                    {changedAbsents.map((c, i) => (
+                      <div key={i}>
+                        <span style={{ color: K.t1, fontWeight: 700 }}>{c.playerName}</span>
+                        <span style={{ color: K.t3 }}> marked </span>
+                        <span style={{ fontWeight: 700, color: c.newAbsent ? K.red : K.grn }}>
+                          {c.newAbsent ? "Absent" : "Present"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Confirm / Cancel */}
+              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
+                <button
+                  onClick={commitEditedScores}
+                  disabled={saving}
+                  style={{
+                    flex: 1, padding: "12px",
+                    borderRadius: 8,
+                    background: saving ? K.inp : K.warn,
+                    border: "none",
+                    color: saving ? K.t3 : K.bg,
+                    fontSize: 13, fontWeight: 800, letterSpacing: .3,
+                    cursor: saving ? "default" : "pointer",
+                  }}
+                >
+                  {saving ? "Saving..." : "Confirm & Save"}
+                </button>
+                <button
+                  onClick={() => setPendingEdits(null)}
+                  disabled={saving}
+                  style={{
+                    padding: "12px 18px",
+                    borderRadius: 8,
+                    background: K.inp, border: `1px solid ${K.bdr}`,
+                    color: K.t2,
+                    fontSize: 13, fontWeight: 700,
+                    cursor: saving ? "default" : "pointer",
+                  }}
+                >
+                  Back
                 </button>
               </div>
             </div>
