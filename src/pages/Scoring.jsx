@@ -570,6 +570,22 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     return isPlayerAbsent(pid) && tm && isPlayerAbsent(tm);
   };
   const toggleAbsent = (pid) => {
+    // Same lockdown as guardedSaveScore. Toggling absent on a finalized match
+    // would change the team-net calculation but wouldn't rewrite the
+    // match_result, creating the same drift. Force this through Schedule →
+    // Edit Scores too, which handles absent flags as part of its diff/commit.
+    if (scoresLocked) {
+      const msg = isComm
+        ? (isWeekLocked
+            ? "Week is locked — use Schedule → Edit Scores to change attendance"
+            : "Match attested — use Schedule → Edit Scores to change attendance")
+        : (isWeekLocked
+            ? "Week is locked — attendance cannot be changed"
+            : "Scorecard attested — only commissioner can edit");
+      setToast(msg);
+      setTimeout(() => setToast(null), 3500);
+      return;
+    }
     const nowAbsent = !absentPlayers[pid];
     setAbsentPlayers(prev => {
       const next = { ...prev };
@@ -669,7 +685,22 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const iHaveAttested = attestedBy.includes(leagueUser.playerId);
   const isInThisMatch = allMatchPids.includes(leagueUser.playerId) || isComm;
   const needsAttestation = isAlreadyFinalized && !isFullyAttested && isInThisMatch && !isTheSigner && !iHaveAttested && !isPlayerAbsent(leagueUser.playerId);
-  const scoresLocked = (isWeekLocked && !isComm) || (isFullyAttested && !isComm);
+  // Score-entry lockdown rules:
+  //   - Week locked (Finalize Week tapped) → no Live Scoring writes for ANYONE,
+  //     including the commissioner. Locked weeks are historical records.
+  //     Retroactive edits go through Schedule → Edit Scores, which has the
+  //     prepare/commit recalc flow that keeps match_result in sync with
+  //     hole_scores. Allowing commish writes here would let them update
+  //     hole_scores without re-running the match-result calculation, which
+  //     creates drift (the "L showing for a tie match" bug).
+  //   - Match fully attested → same lockdown for the same reason. Once a
+  //     match is officially complete, post-hoc score changes need to flow
+  //     through the channel that knows to recompute the result.
+  //   - Player not in this match (rare in normal use; commish viewing
+  //     someone else's card) → also locked.
+  // Was: `(isWeekLocked && !isComm) || (isFullyAttested && !isComm)` — letting
+  // commish bypass the lock here was the source of drift. Now uniform.
+  const scoresLocked = isWeekLocked || isFullyAttested;
 
   // Tee time early-entry warning
   const teeTimeWarningDismissed = useRef(false);
@@ -697,8 +728,19 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   const guardedSaveScore = (w, pid, h, val) => {
     if (scoresLocked) {
-      setToast(isWeekLocked ? "Week is locked — scores cannot be changed" : "Scorecard attested — only commissioner can edit");
-      setTimeout(() => setToast(null), 2500);
+      // Different copy for commissioner vs regular user: regular users hit
+      // the lockdown for ordinary reasons (their match is done), but commish
+      // hits it because they need to use the recalc-aware edit path instead.
+      // Pointing them at Schedule → Edit Scores keeps drift impossible.
+      const msg = isComm
+        ? (isWeekLocked
+            ? "Week is locked — use Schedule → Edit Scores to change finalized scores"
+            : "Match attested — use Schedule → Edit Scores to change finalized scores")
+        : (isWeekLocked
+            ? "Week is locked — scores cannot be changed"
+            : "Scorecard attested — only commissioner can edit");
+      setToast(msg);
+      setTimeout(() => setToast(null), 3500);
       return;
     }
     // Check if before tee time (prompt every attempt until confirmed)
