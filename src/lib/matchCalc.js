@@ -107,9 +107,21 @@ function teammateOf(pid, t1Pids, t2Pids) {
 function readScore({ pid, h, week, holeScores, t1Pids, t2Pids, pars, hcps, players }) {
   const isAbsent = (p) => holeScores[`w${week}_p${p}_habsent`] === 1;
   const raw = (p) => holeScores[`w${week}_p${p}_h${h}`] || 0;
-  if (isAbsent(pid)) {
+  // Drift guard: if a player has any scores recorded, trust the data over a
+  // stale habsent flag. Player is only "effectively absent" when the flag is
+  // set AND they have zero scores. This prevents stale absent flags (e.g. a
+  // player initially marked absent who later had scores entered without the
+  // flag being cleared) from causing teammate-doubling or net-bogey imputation.
+  const hasAnyScore = (p) => {
+    for (let i = 0; i < 9; i++) {
+      if ((holeScores[`w${week}_p${p}_h${i}`] || 0) > 0) return true;
+    }
+    return false;
+  };
+  const effectivelyAbsent = (p) => isAbsent(p) && !hasAnyScore(p);
+  if (effectivelyAbsent(pid)) {
     const tm = teammateOf(pid, t1Pids, t2Pids);
-    if (!tm || isAbsent(tm)) {
+    if (!tm || effectivelyAbsent(tm)) {
       // Both absent — impute net bogey
       const strokesOnHole = buildStrokesMap(getNineHoleHcp(pid, players), hcps)[h] || 0;
       return (pars[h] || 4) + 1 + strokesOnHole;

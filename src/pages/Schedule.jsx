@@ -79,10 +79,21 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const initial = {};
     const initialAbsent = {};
     allPids.forEach(pid => {
+      // Drift guard: if a player has any scores recorded, treat them as
+      // present in the popup even if their habsent flag is still set. This
+      // surfaces the actual data state to the commissioner so a no-change
+      // Save & Re-sign will detect the drift and fix it. Without this, a
+      // player whose flag was never cleared after scores were entered would
+      // appear absent in the editor, the recalc would still double the
+      // teammate's score, and the result wouldn't change.
+      let hasAnyScore = false;
       for (let h = 0; h < 9; h++) {
-        initial[`${pid}_${h}`] = wkScores[`w${wk.week}_p${pid}_h${h}`] || 0;
+        const score = wkScores[`w${wk.week}_p${pid}_h${h}`] || 0;
+        initial[`${pid}_${h}`] = score;
+        if (score > 0) hasAnyScore = true;
       }
-      initialAbsent[pid] = wkScores[`w${wk.week}_p${pid}_habsent`] === 1;
+      const flagSet = wkScores[`w${wk.week}_p${pid}_habsent`] === 1;
+      initialAbsent[pid] = flagSet && !hasAnyScore;
     });
     setEditScores(initial);
     setEditAbsent(initialAbsent);
