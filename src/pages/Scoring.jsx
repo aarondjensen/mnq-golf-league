@@ -325,7 +325,7 @@ function computeMatchStatus(t1Pids, t2Pids, getScore, getStrokes, pars) {
 // ═══════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
-export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, openAllMatches, onAllMatchesOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData, autoSeedIfReady }) {
+export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, commMode, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, openAllMatches, onAllMatchesOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData, autoSeedIfReady }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
   // 3-way view toggle: "myMatch" (default scoring view), "allMatches" (week overview), "lowNet" (leaderboard)
@@ -1327,8 +1327,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
         {isComm && (
           <div style={{ marginTop: 12 }}>
-            {/* Rain Out button — before week is finalized */}
-            {!isWeekLocked && !allMatchesAttested && (
+            {/* Rain Out button — only visible when commish toggle is on */}
+            {commMode && !isWeekLocked && !allMatchesAttested && (
               <button onClick={() => {
                 const isRoundRobin = !weekSch.isPlayoff && !weekSch.seeded && !weekSch.makeupFor;
                 const lastRRWeekNum = Math.max(0, ...schedule.filter(s =>

@@ -149,15 +149,26 @@ function playerTotals({ pid, week, holeScores, t1Pids, t2Pids, pars, hcps, playe
 // Per-hole match outcome. 1 = team1 wins this hole net, -1 = team2, 0 = tied.
 // Aggregated across both teammates' scores using absent-aware reader.
 function holeResult({ h, week, holeScores, t1Pids, t2Pids, pars, hcps, players }) {
-  let n1 = 0, n2 = 0;
+  // Skip holes that aren't fully scored on both sides. Without this guard, an
+  // unplayed hole could be "won" purely from stroke-allocation math (whichever
+  // side has more strokes-on-hole nets a more negative score and would appear
+  // to win a hole nobody played). Returning null lets callers (computeMatchResult,
+  // Scoring's MatchRow) treat the hole as "no result yet" rather than counting
+  // it for either side. readScore-substituted absent scores ARE considered
+  // present (the substitution is intentional), so an absent player whose
+  // teammate scored doesn't trigger the null path.
+  let n1 = 0, n2 = 0, ok1 = true, ok2 = true;
   t1Pids.forEach(pid => {
-    n1 += readScore({ pid, h, week, holeScores, t1Pids, t2Pids, pars, hcps, players })
-        - getStrokes(pid, h, players, hcps);
+    const s = readScore({ pid, h, week, holeScores, t1Pids, t2Pids, pars, hcps, players });
+    if (s <= 0) ok1 = false;
+    else n1 += s - getStrokes(pid, h, players, hcps);
   });
   t2Pids.forEach(pid => {
-    n2 += readScore({ pid, h, week, holeScores, t1Pids, t2Pids, pars, hcps, players })
-        - getStrokes(pid, h, players, hcps);
+    const s = readScore({ pid, h, week, holeScores, t1Pids, t2Pids, pars, hcps, players });
+    if (s <= 0) ok2 = false;
+    else n2 += s - getStrokes(pid, h, players, hcps);
   });
+  if (!ok1 || !ok2) return null;
   if (n1 < n2) return 1;
   if (n2 < n1) return -1;
   return 0;
