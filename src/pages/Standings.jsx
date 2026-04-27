@@ -437,6 +437,16 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
           return finalMatch?.t1Won ? finalMatch.team1 : finalMatch?.t2Won ? finalMatch.team2 : null;
         })();
 
+        // 2nd place — loser of the championship match. Only resolves once the
+        // championship has a result; otherwise we render a "TBD" placeholder
+        // tied to the same matchup so the box is always present in layout.
+        const secondPlace = (() => {
+          const lastRound = bracketData[bracketData.length - 1];
+          const finalMatch = lastRound?.matchups[0];
+          if (!finalMatch || !finalMatch.hasResult) return null;
+          return finalMatch.t1Won ? finalMatch.team2 : finalMatch.t2Won ? finalMatch.team1 : null;
+        })();
+
         // 3rd place: any matchup in the last round AFTER index 0 is treated as
         // a parallel consolation match (Loser M1 vs Loser M2 in a 4-round
         // bracket = 3rd place game). The winner of that match is awarded 3rd.
@@ -446,9 +456,6 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
         const thirdPlace = (() => {
           const lastRound = bracketData[bracketData.length - 1];
           if (!lastRound) return null;
-          // Find the first non-advancement card in the last round. The
-          // advancement card is index 0 (championship); anything beyond is
-          // a parallel/consolation match.
           for (let mi = 1; mi < lastRound.matchups.length; mi++) {
             const m = lastRound.matchups[mi];
             if (m) {
@@ -456,11 +463,21 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
               return { teamId: winner, matchupIdx: mi };
             }
           }
-          // Even if matchups array hasn't been seeded yet, render a placeholder
-          // 3rd place card if config has a second slot — so the bracket setup
-          // shows the user where the 3rd place match will land.
           if (lastRound.config && lastRound.config.length > 1) {
             return { teamId: null, matchupIdx: 1 };
+          }
+          return null;
+        })();
+
+        // 4th place — loser of the 3rd place game (parallels secondPlace).
+        const fourthPlace = (() => {
+          const lastRound = bracketData[bracketData.length - 1];
+          if (!lastRound) return null;
+          for (let mi = 1; mi < lastRound.matchups.length; mi++) {
+            const m = lastRound.matchups[mi];
+            if (m && m.hasResult) {
+              return m.t1Won ? m.team2 : m.t2Won ? m.team1 : null;
+            }
           }
           return null;
         })();
@@ -684,25 +701,21 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                 );
               })}
 
-              {/* Trophy column — 1st place (Championship) and optional 3rd
-                  place (consolation match in last round). Each card sits at
-                  the same Y as its corresponding match in the last round so
-                  the trophies line up horizontally with their source matches.
-                  Border weight matches BracketCard (1px) so the cards visually
-                  read as the same family — earlier this was 2px, which made
-                  the trophy look heavier than the matches it sits next to. */}
+              {/* Trophy column — 4 single-row podium boxes:
+                    1st (CHAMPION)        ← centered next to championship match
+                    2nd (RUNNER-UP)       ← directly below 1st, fixed gap
+                    3rd (3RD PLACE)       ← centered next to 3rd-place match
+                    4th (4TH PLACE)       ← directly below 3rd, fixed gap
+
+                  Each pair (1st+2nd, 3rd+4th) forms a "podium block" exactly
+                  CARD_HEIGHT tall, so it occupies the same vertical space as
+                  the source 2-team match card next to it — same top/bottom
+                  edges, no overhang, perfect symmetry. The fixed gap between
+                  1st-and-2nd is the same as 3rd-and-4th by design. */}
               {(() => {
                 const lastIdx = bracketData.length - 1;
                 const lastRound = bracketData[lastIdx];
                 const lastG = geom[lastIdx] || { topPad: 0, gap: BASE_GAP };
-                const lastMatchCount = lastRound
-                  ? Math.max(lastRound.matchups.length, lastRound.config.length, 1)
-                  : 1;
-                // Replicate the same cardY formula used inside the bracket
-                // column for the last round. mi=0 is advancement (championship),
-                // mi>=1 are consolation cards anchored to Round 1 of the
-                // bracket — so a Round 4 3rd-place match aligns with the last
-                // matchup of Round 1 visually.
                 const lastAdvCount = Math.max(1, Math.ceil((lastIdx > 0 ? bracketData[lastIdx - 1] : { matchups: [], config: [] }).matchups.length / 2) || 1);
                 const trophyCardY = (mi) => {
                   if (lastIdx <= 1) return mi * (CARD_HEIGHT + lastG.gap);
@@ -721,78 +734,94 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                   return anchorG.topPad + anchorCardIdx * (CARD_HEIGHT + anchorG.gap);
                 };
 
+                // Single-row podium box dimensions. ROW_HEIGHT × 2 + ROW_GAP =
+                // CARD_HEIGHT keeps the stacked pair exactly the height of the
+                // source match card. 24 + 4 + 24 = 52 = CARD_HEIGHT. Don't
+                // change without updating CARD_HEIGHT in the same direction —
+                // the equality is what makes the symmetry work.
+                const ROW_HEIGHT = 24;
+                const ROW_GAP = 4;
+
                 const championY = trophyCardY(0);
-                const thirdPlaceY = thirdPlace ? trophyCardY(thirdPlace.matchupIdx) : null;
-                const trophyHeight = Math.max(
-                  championY + CARD_HEIGHT,
-                  thirdPlaceY != null ? thirdPlaceY + CARD_HEIGHT : 0
+                const thirdMatchY = thirdPlace ? trophyCardY(thirdPlace.matchupIdx) : null;
+
+                // Position calc: 1st sits at championY; 2nd directly below it.
+                // 3rd sits at thirdMatchY; 4th directly below it.
+                const firstY = championY;
+                const secondY = championY + ROW_HEIGHT + ROW_GAP;
+                const thirdY = thirdMatchY;
+                const fourthY = thirdMatchY != null ? thirdMatchY + ROW_HEIGHT + ROW_GAP : null;
+
+                const totalHeight = Math.max(
+                  secondY + ROW_HEIGHT,
+                  fourthY != null ? fourthY + ROW_HEIGHT : 0
                 );
 
-                // Shared box style for both 1st and 3rd cards. STRUCTURE
-                // matches BracketCard exactly: two rows of `6px 7px` padding
-                // separated by a `1px` divider, same `borderRadius: 6` and
-                // `1px solid` border. Without this two-row layout the card
-                // renders at a different height than the match cards next to
-                // it — even with `height: CARD_HEIGHT` set, content centering
-                // shifts the visual mass and the borders no longer line up.
-                // Top row: emoji + label (e.g. "🏆  CHAMPION"). Bottom row:
-                // team name + seed once known, "TBD" placeholder while pending.
-                const podiumBox = (filled, color, emoji, label, teamId) => (
+                // Single-row box: leading emoji/badge, position label, seed
+                // badge + team name. Same border weight (1px) and radius (6)
+                // as BracketCard so the cards visually belong to the same
+                // family. `accent` colors the border + bg tint + label; team
+                // name stays in K.t1 for readability across all positions.
+                const podiumRow = (filled, accent, emoji, label, teamId) => (
                   <div style={{
-                    background: filled ? color + "15" : K.card,
-                    border: `1px solid ${filled ? color + "60" : K.bdr}`,
-                    borderRadius: 6, overflow: "hidden",
+                    height: ROW_HEIGHT, boxSizing: "border-box",
+                    background: filled ? accent + "15" : K.card,
+                    border: `1px solid ${filled ? accent + "60" : K.bdr}`,
+                    borderRadius: 6,
+                    padding: "0 8px",
+                    display: "flex", alignItems: "center", gap: 6,
+                    overflow: "hidden",
                   }}>
-                    {/* Row 1 — emoji + role label */}
-                    <div style={{
-                      display: "flex", alignItems: "center", gap: 6,
-                      padding: "6px 7px",
-                      fontSize: 11, fontWeight: 700,
-                      color: filled ? color : K.t3,
-                      letterSpacing: .5,
-                      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
-                    }}>
-                      <span style={{ fontSize: 13, lineHeight: 1, flexShrink: 0 }}>{emoji}</span>
-                      <span>{label}</span>
-                    </div>
-                    <div style={{ height: 1, background: K.bdr + "40" }} />
-                    {/* Row 2 — team name (or TBD) + seed badge */}
-                    <div style={{
-                      display: "flex", alignItems: "center", gap: 5,
-                      padding: "6px 7px",
-                      whiteSpace: "nowrap", overflow: "hidden",
-                    }}>
-                      {filled ? (
-                        <>
-                          <div style={{
-                            width: 16, height: 16, borderRadius: 4, flexShrink: 0,
-                            background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`,
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            fontSize: 8, fontWeight: 800, color: K.logoBright,
-                          }}>{getSeed(teamId)}</div>
-                          <div style={{
-                            flex: 1, minWidth: 0, fontSize: 11, fontWeight: 700, color: K.t1,
-                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                          }}>{gn(teamId)}</div>
-                        </>
-                      ) : (
-                        <div style={{ fontSize: 11, color: K.t3, fontWeight: 600 }}>TBD</div>
-                      )}
-                    </div>
+                    <span style={{ fontSize: 12, lineHeight: 1, flexShrink: 0 }}>{emoji}</span>
+                    <span style={{
+                      fontSize: 9, fontWeight: 800, color: filled ? accent : K.t3,
+                      letterSpacing: .8, flexShrink: 0, textTransform: "uppercase",
+                    }}>{label}</span>
+                    {filled ? (
+                      <>
+                        <div style={{
+                          width: 14, height: 14, borderRadius: 3, flexShrink: 0,
+                          background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`,
+                          display: "flex", alignItems: "center", justifyContent: "center",
+                          fontSize: 7, fontWeight: 800, color: K.logoBright,
+                          marginLeft: "auto",
+                        }}>{getSeed(teamId)}</div>
+                        <span style={{
+                          fontSize: 11, fontWeight: 700, color: K.t1,
+                          overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          minWidth: 0, flexShrink: 1,
+                        }}>{gn(teamId)}</span>
+                      </>
+                    ) : (
+                      <span style={{
+                        fontSize: 10, color: K.t3, fontWeight: 600,
+                        marginLeft: "auto", letterSpacing: .5,
+                      }}>TBD</span>
+                    )}
                   </div>
                 );
 
                 return (
                   <div style={{ width: COL_WIDTH, flexShrink: 0, display: "flex", flexDirection: "column" }}>
                     <div style={{ height: 32 + 10 /* match header + its margin */ }} />
-                    <div style={{ position: "relative", height: trophyHeight }}>
-                      <div style={{ position: "absolute", top: championY, left: 0, right: 0 }}>
-                        {podiumBox(!!champCard, K.gold, "🏆", "CHAMPION", champCard)}
+                    <div style={{ position: "relative", height: totalHeight }}>
+                      <div style={{ position: "absolute", top: firstY, left: 0, right: 0 }}>
+                        {podiumRow(!!champCard, K.gold, "🏆", "Champion", champCard)}
                       </div>
-                      {thirdPlace && thirdPlaceY != null && (
-                        <div style={{ position: "absolute", top: thirdPlaceY, left: 0, right: 0 }}>
-                          {podiumBox(!!thirdPlace.teamId, K.t2, "🥉", "3RD PLACE", thirdPlace.teamId)}
-                        </div>
+                      <div style={{ position: "absolute", top: secondY, left: 0, right: 0 }}>
+                        {podiumRow(!!secondPlace, K.t2, "🥈", "2nd", secondPlace)}
+                      </div>
+                      {thirdPlace && thirdY != null && (
+                        <>
+                          <div style={{ position: "absolute", top: thirdY, left: 0, right: 0 }}>
+                            {podiumRow(!!thirdPlace.teamId, K.t2, "🥉", "3rd", thirdPlace.teamId)}
+                          </div>
+                          {fourthY != null && (
+                            <div style={{ position: "absolute", top: fourthY, left: 0, right: 0 }}>
+                              {podiumRow(!!fourthPlace, K.t2, "4️⃣", "4th", fourthPlace)}
+                            </div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
