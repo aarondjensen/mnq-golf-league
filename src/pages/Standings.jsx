@@ -728,26 +728,57 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                   thirdPlaceY != null ? thirdPlaceY + CARD_HEIGHT : 0
                 );
 
-                // Shared box style for both 1st and 3rd cards — same dimensions
-                // and border weight as a regular BracketCard so the column reads
-                // as a uniform set, with color and emoji distinguishing the rank.
+                // Shared box style for both 1st and 3rd cards. STRUCTURE
+                // matches BracketCard exactly: two rows of `6px 7px` padding
+                // separated by a `1px` divider, same `borderRadius: 6` and
+                // `1px solid` border. Without this two-row layout the card
+                // renders at a different height than the match cards next to
+                // it — even with `height: CARD_HEIGHT` set, content centering
+                // shifts the visual mass and the borders no longer line up.
+                // Top row: emoji + label (e.g. "🏆  CHAMPION"). Bottom row:
+                // team name + seed once known, "TBD" placeholder while pending.
                 const podiumBox = (filled, color, emoji, label, teamId) => (
                   <div style={{
-                    width: "100%", height: CARD_HEIGHT, boxSizing: "border-box",
                     background: filled ? color + "15" : K.card,
                     border: `1px solid ${filled ? color + "60" : K.bdr}`,
-                    borderRadius: 6, padding: "4px 6px",
-                    display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                    borderRadius: 6, overflow: "hidden",
                   }}>
-                    <div style={{ fontSize: 16, lineHeight: 1, flexShrink: 0 }}>{emoji}</div>
-                    {filled ? (
-                      <div style={{ minWidth: 0, textAlign: "left" }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, color, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", lineHeight: 1.15 }}>{gn(teamId)}</div>
-                        <div style={{ fontSize: 8, color: K.t3, marginTop: 1, letterSpacing: 1, fontWeight: 600 }}>#{getSeed(teamId)} SEED · {label}</div>
-                      </div>
-                    ) : (
-                      <div style={{ fontSize: 9, color: K.t3, letterSpacing: 1, fontWeight: 600 }}>{label}</div>
-                    )}
+                    {/* Row 1 — emoji + role label */}
+                    <div style={{
+                      display: "flex", alignItems: "center", gap: 6,
+                      padding: "6px 7px",
+                      fontSize: 11, fontWeight: 700,
+                      color: filled ? color : K.t3,
+                      letterSpacing: .5,
+                      whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                    }}>
+                      <span style={{ fontSize: 13, lineHeight: 1, flexShrink: 0 }}>{emoji}</span>
+                      <span>{label}</span>
+                    </div>
+                    <div style={{ height: 1, background: K.bdr + "40" }} />
+                    {/* Row 2 — team name (or TBD) + seed badge */}
+                    <div style={{
+                      display: "flex", alignItems: "center", gap: 5,
+                      padding: "6px 7px",
+                      whiteSpace: "nowrap", overflow: "hidden",
+                    }}>
+                      {filled ? (
+                        <>
+                          <div style={{
+                            width: 16, height: 16, borderRadius: 4, flexShrink: 0,
+                            background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`,
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 8, fontWeight: 800, color: K.logoBright,
+                          }}>{getSeed(teamId)}</div>
+                          <div style={{
+                            flex: 1, minWidth: 0, fontSize: 11, fontWeight: 700, color: K.t1,
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          }}>{gn(teamId)}</div>
+                        </>
+                      ) : (
+                        <div style={{ fontSize: 11, color: K.t3, fontWeight: 600 }}>TBD</div>
+                      )}
+                    </div>
                   </div>
                 );
 
