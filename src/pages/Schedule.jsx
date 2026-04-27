@@ -861,67 +861,129 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 const resultColor = res && res.matchResultText === "TIED" ? K.t3 : K.t1;
 
                 return (
-                  <div key={mi} style={{ background: K.card, borderRadius: 8, border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}`, overflow: "hidden" }}>
-                    <button onClick={() => res ? toggleMatchExpand(wk.week, mi) : null} style={{ width: "100%", padding: "8px 10px", display: "flex", alignItems: "center", background: "transparent", border: "none", cursor: res ? "pointer" : "default", textAlign: "left" }}>
-                      {/* Seed badge — left team */}
-                      {showSeeds && (
-                        <div style={{ width: 20, height: 20, flexShrink: 0, borderRadius: 5, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: K.logoBright, marginRight: 4 }}>
-                          {seedMap[t1?.id] || "?"}
+                  <div key={mi} style={{
+                    background: K.card,
+                    borderRadius: 10,
+                    border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}60`,
+                    overflow: "hidden",
+                    boxShadow: isMyMatch ? `0 2px 8px ${K.act}18` : "0 1px 3px rgba(0,0,0,.12), 0 1px 2px rgba(0,0,0,.08)",
+                  }}>
+                    <button onClick={() => res ? toggleMatchExpand(wk.week, mi) : null} style={{
+                      width: "100%", padding: 0, background: "transparent", border: "none",
+                      cursor: res ? "pointer" : "default", textAlign: "left", display: "block",
+                    }}>
+                      {/* Three-column layout matching Live Scoring's All Matches view:
+                          [TEAM 1 panel · stacked names + record · seed]
+                          [centered strip · tee time / result / chevron · gray bg]
+                          [TEAM 2 panel · seed + stacked names + record]
+                          Winning team gets a green tint + 3px accent border on its outer
+                          edge; losing team is dimmed once the match is final. Names are
+                          always stacked on two lines for a consistent rhythm. */}
+                      <div style={{ display: "flex", alignItems: "stretch", minHeight: 60 }}>
+                        {/* TEAM 1 — left half */}
+                        <div style={{
+                          flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8,
+                          padding: "10px 12px",
+                          background: t1Won ? K.matchGrn + "18" : "transparent",
+                          borderLeft: t1Won ? `3px solid ${K.matchGrn}` : "3px solid transparent",
+                          opacity: t2Won ? 0.6 : 1,
+                        }}>
+                          {showSeeds && (
+                            <div style={{
+                              width: 20, height: 20, flexShrink: 0, borderRadius: 5,
+                              background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`,
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              fontSize: 10, fontWeight: 800, color: K.logoBright,
+                            }}>{seedMap[t1?.id] || "?"}</div>
+                          )}
+                          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+                            <div style={{ fontSize: NAME_SIZE, fontWeight: 700, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2 }}>
+                              {dn(t1?.player1)}
+                            </div>
+                            <div style={{ fontSize: NAME_SIZE, fontWeight: 700, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2 }}>
+                              {dn(t1?.player2)}
+                            </div>
+                            <div style={{ fontSize: 11, color: K.t3, fontWeight: 600, marginTop: 1, lineHeight: 1 }}>
+                              {fmtRecord(t1?.id, wk.week)}
+                            </div>
+                          </div>
                         </div>
-                      )}
-                      {/* Left team */}
-                      <div style={{ flex: 1, textAlign: "right", paddingRight: t1Won ? 8 : 18, overflow: "hidden", display: "flex", flexDirection: "column", alignItems: "flex-end" }}>
-                        <div style={{ fontSize: NAME_SIZE, fontWeight: t1Won ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player1)}</div>
-                        <div style={{ fontSize: NAME_SIZE, fontWeight: t1Won ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t1?.player2)}</div>
-                        <div style={{ fontSize: 12, color: K.t3, fontWeight: 600, marginTop: 2 }}>{fmtRecord(t1?.id, wk.week)}</div>
-                      </div>
-                      {/* Winner triangle left */}
-                      {t1Won && (
-                        <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, marginRight: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>
-                      )}
-                      {/* Center — match result or tee time. Tiebreaker results like
-                          "TIE (Hole 5)" display as stacked lines: big TIE on top, small
-                          hole label below. Width kept generous so long labels don't
-                          crowd against the team names on either side. */}
-                      <div style={{ textAlign: "center", minWidth: 82, flexShrink: 0, padding: "0 4px" }}>
-                        {res ? (() => {
-                          const raw = res.matchResultText || `${score1}–${score2}`;
-                          const tbMatch = raw.match(/^TIE\s*\(([^)]+)\)\s*$/i);
-                          if (tbMatch) {
+
+                        {/* Center strip — tee time / match result / chevron.
+                            Tiebreaker results like "TIE (Hole 5)" split into two lines:
+                            big TIE on top, small label below. Width is generous so long
+                            results don't crowd against team names. */}
+                        <div style={{
+                          flexShrink: 0, minWidth: 80,
+                          background: K.inp,
+                          display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column",
+                          padding: "6px 6px",
+                          borderLeft: `1px solid ${K.bdr}40`, borderRight: `1px solid ${K.bdr}40`,
+                          gap: 2,
+                        }}>
+                          {res ? (() => {
+                            const raw = res.matchResultText || `${score1}–${score2}`;
+                            const tbMatch = raw.match(/^TIE\s*\(([^)]+)\)\s*$/i);
+                            if (tbMatch) {
+                              return (
+                                <>
+                                  <div style={{ fontSize: 17, fontWeight: 800, color: resultColor, letterSpacing: .3, lineHeight: 1 }}>TIE</div>
+                                  <div style={{ fontSize: 9, fontWeight: 700, color: K.t3, letterSpacing: .5, textTransform: "uppercase", lineHeight: 1.1, marginTop: 1, whiteSpace: "nowrap" }}>
+                                    {tbMatch[1]}
+                                  </div>
+                                </>
+                              );
+                            }
                             return (
-                              <>
-                                <div style={{ fontSize: HERO_NUM_SIZE, fontWeight: 800, color: resultColor, letterSpacing: .5, lineHeight: 1 }}>TIE</div>
-                                <div style={{ fontSize: 10, fontWeight: 700, color: K.t3, letterSpacing: .5, textTransform: "uppercase", marginTop: 2, lineHeight: 1.1 }}>{tbMatch[1]}</div>
-                              </>
+                              <div style={{
+                                fontSize: raw.length > 5 ? 14 : raw.length > 3 ? 15 : 17,
+                                fontWeight: 800, color: resultColor, letterSpacing: .3,
+                                whiteSpace: "nowrap", textAlign: "center", lineHeight: 1.05,
+                              }}>{raw}</div>
                             );
-                          }
-                          return (
-                            <div style={{ fontSize: HERO_NUM_SIZE, fontWeight: 800, color: resultColor, letterSpacing: .5 }}>{raw}</div>
-                          );
-                        })() : (
-                          <div style={{ fontSize: 18, fontWeight: 800, color: K.act, letterSpacing: .3 }}>{fmtTeeTime(origIdx)}</div>
-                        )}
-                      </div>
-                      {/* Winner triangle right */}
-                      {t2Won && (
-                        <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, marginLeft: 2, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>
-                      )}
-                      {/* Right team */}
-                      <div style={{ flex: 1, textAlign: "left", paddingLeft: t2Won ? 8 : 18, overflow: "hidden" }}>
-                        <div style={{ fontSize: NAME_SIZE, fontWeight: t2Won ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player1)}</div>
-                        <div style={{ fontSize: NAME_SIZE, fontWeight: t2Won ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{dn(t2?.player2)}</div>
-                        <div style={{ fontSize: 12, color: K.t3, fontWeight: 600, marginTop: 2 }}>{fmtRecord(t2?.id, wk.week)}</div>
-                      </div>
-                      {/* Seed badge — right team */}
-                      {showSeeds && (
-                        <div style={{ width: 20, height: 20, flexShrink: 0, borderRadius: 5, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: K.logoBright, marginLeft: 4 }}>
-                          {seedMap[t2?.id] || "?"}
+                          })() : (
+                            <div style={{
+                              fontSize: 15, fontWeight: 800, color: K.act, letterSpacing: .3,
+                              whiteSpace: "nowrap", textAlign: "center", lineHeight: 1.05,
+                            }}>{fmtTeeTime(origIdx)}</div>
+                          )}
+                          {res && (
+                            <div style={{ fontSize: 11, color: K.t3, lineHeight: 1, marginTop: 2 }}>
+                              {isMatchExp ? "▴" : "▾"}
+                            </div>
+                          )}
                         </div>
-                      )}
-                      {/* Expand chevron — only for finalized matches */}
-                      {res && (
-                        <div style={{ flexShrink: 0, marginLeft: 4, color: K.t3, fontSize: 10, transform: isMatchExp ? "rotate(180deg)" : "none", transition: "transform .2s" }}>▾</div>
-                      )}
+
+                        {/* TEAM 2 — right half (mirrored: seed on the right) */}
+                        <div style={{
+                          flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8,
+                          padding: "10px 12px",
+                          background: t2Won ? K.matchGrn + "18" : "transparent",
+                          borderRight: t2Won ? `3px solid ${K.matchGrn}` : "3px solid transparent",
+                          justifyContent: "flex-end",
+                          opacity: t1Won ? 0.6 : 1,
+                        }}>
+                          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-end" }}>
+                            <div style={{ fontSize: NAME_SIZE, fontWeight: 700, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, textAlign: "right", maxWidth: "100%" }}>
+                              {dn(t2?.player1)}
+                            </div>
+                            <div style={{ fontSize: NAME_SIZE, fontWeight: 700, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, textAlign: "right", maxWidth: "100%" }}>
+                              {dn(t2?.player2)}
+                            </div>
+                            <div style={{ fontSize: 11, color: K.t3, fontWeight: 600, marginTop: 1, lineHeight: 1, textAlign: "right" }}>
+                              {fmtRecord(t2?.id, wk.week)}
+                            </div>
+                          </div>
+                          {showSeeds && (
+                            <div style={{
+                              width: 20, height: 20, flexShrink: 0, borderRadius: 5,
+                              background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`,
+                              display: "flex", alignItems: "center", justifyContent: "center",
+                              fontSize: 10, fontWeight: 800, color: K.logoBright,
+                            }}>{seedMap[t2?.id] || "?"}</div>
+                          )}
+                        </div>
+                      </div>
                     </button>
                     {/* Expanded match scorecard */}
                     {isMatchExp && (
