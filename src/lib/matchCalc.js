@@ -232,7 +232,9 @@ function holeResult({ h, week, holeScores, t1Pids, t2Pids, pars, hcps, players }
 // is "t1 wins" so we never return null. Returns { winner, label } where
 // winner is "t1" or "t2" and label is a short human-readable explanation
 // (used in matchResultText: "TIE (Hole 3)", "TIE (Low net)", etc).
-function computePlayoffTiebreaker({
+// Exported so callers (e.g. Scoring.jsx's preview screen) can resolve the same
+// tiebreaker rules as the persisted result, without copy-pasting the logic.
+export function computePlayoffTiebreaker({
   t1Pids, t2Pids, t1Id, t2Id,
   hr, // pre-computed holeResults array
   t1Net, t2Net, t1Gross, t2Gross,

@@ -18,6 +18,10 @@ const _db = getFirestore(_app);
 export const _auth = getAuth(_app);
 export const _googleProvider = new GoogleAuthProvider();
 
+// Firestore writeBatch hard limit is 500 ops per commit. We chunk to 500 so
+// each batch is a single atomic transaction (not 500 parallel network calls).
+const BATCH_LIMIT = 500;
+
 export const db = {
   _q: (col, filters = []) => {
     const ref = collection(_db, col);
@@ -43,6 +47,31 @@ export const db = {
       return data;
     } catch (e) { console.error("db.set error:", col, e); return null; }
   },
+  // Atomic bulk upsert. Splits into 500-op batches; each batch commits as a
+  // transaction (all-or-nothing within the chunk). Replaces the prior
+  // Promise.all(batch.map(upsert)) pattern in importHistoricalScores, which
+  // fired N parallel writes and could leave partial data on mid-batch failure.
+  batchUpsert: async (col, items) => {
+    if (!items || !items.length) return 0;
+    const valid = items.filter(d => {
+      if (!d.id) { console.error("db.batchUpsert: missing id", col, d); return false; }
+      return true;
+    });
+    let written = 0;
+    for (let i = 0; i < valid.length; i += BATCH_LIMIT) {
+      const slice = valid.slice(i, i + BATCH_LIMIT);
+      const batch = writeBatch(_db);
+      slice.forEach(d => batch.set(doc(_db, col, String(d.id)), d, { merge: true }));
+      try {
+        await batch.commit();
+        written += slice.length;
+      } catch (e) {
+        console.error("db.batchUpsert error:", col, e);
+        throw e;
+      }
+    }
+    return written;
+  },
   deleteDoc: async (col, id) => {
     try { await deleteDoc(doc(_db, col, String(id))); return true; }
     catch (e) { console.error("db.deleteDoc error:", col, e); return null; }
@@ -51,9 +80,9 @@ export const db = {
     try {
       const snap = await getDocs(db._q(col, filters));
       if (snap.empty) return true;
-      for (let i = 0; i < snap.docs.length; i += 490) {
+      for (let i = 0; i < snap.docs.length; i += BATCH_LIMIT) {
         const batch = writeBatch(_db);
-        snap.docs.slice(i, i + 490).forEach(d => batch.delete(d.ref));
+        snap.docs.slice(i, i + BATCH_LIMIT).forEach(d => batch.delete(d.ref));
         await batch.commit();
       }
       return true;

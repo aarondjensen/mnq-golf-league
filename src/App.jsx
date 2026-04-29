@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
-import { K, I, DEFAULT_SCORING, applyTheme, getCSS, lastNamesOnly, calcPlayerHcp, buildStandingsForSeed, pairNonBracketTeams, collectPriorMatchups } from "./theme";
+import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, buildStandingsForSeed, pairNonBracketTeams, collectPriorMatchups } from "./theme";
+import { parseScheduleDate } from "./lib/scheduleDate";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
 import ErrorBoundary from "./ErrorBoundary";
 
@@ -64,7 +65,6 @@ export default function GolfLeagueApp() {
   useEffect(() => {
     const onHashChange = () => setTabState(getTabFromHash());
     window.addEventListener("hashchange", onHashChange);
-    // Set initial hash if none
     if (!window.location.hash) window.location.hash = "standings";
     return () => window.removeEventListener("hashchange", onHashChange);
   }, []);
@@ -78,6 +78,20 @@ export default function GolfLeagueApp() {
   const [darkMode, setDarkMode] = useState(() => {
     try { return localStorage.getItem("mnq_theme") === "dark"; } catch { return false; }
   });
+
+  // App-level toast — surfaced from anywhere via the appToast helper. Replaces
+  // the prior console.log-only feedback for things like recalcHandicaps from
+  // the implicit finalize-week path. Pages that need to push a toast receive
+  // appToast as a prop.
+  const [appToastMsg, setAppToastState] = useState(null);
+  const appToastTimer = useRef(null);
+  const appToast = useCallback((msg, kind = "info", durationMs = 2400) => {
+    if (!msg) return;
+    if (appToastTimer.current) clearTimeout(appToastTimer.current);
+    setAppToastState({ msg, kind });
+    appToastTimer.current = setTimeout(() => setAppToastState(null), durationMs);
+  }, []);
+  useEffect(() => () => { if (appToastTimer.current) clearTimeout(appToastTimer.current); }, []);
 
   // Pull-to-refresh
   const [pullY, setPullY] = useState(0);
@@ -93,9 +107,9 @@ export default function GolfLeagueApp() {
   const popupOpenRef = useRef(false);
   useEffect(() => { popupOpenRef.current = popupOpen || showPlayerPicker; }, [popupOpen, showPlayerPicker]);
 
-  // Fix #5: Inject dynamic CSS via useEffect instead of inline <style> in JSX.
-  // This runs once on mount and only re-runs when darkMode changes (theme toggle),
-  // instead of React diffing ~2KB of CSS text on every single re-render.
+  // Inject dynamic CSS via useEffect instead of inline <style> in JSX. This runs
+  // once on mount and only re-runs when darkMode changes (theme toggle), instead
+  // of React diffing ~2KB of CSS text on every single re-render.
   useEffect(() => {
     let styleEl = document.getElementById("mnq-dynamic-css");
     if (!styleEl) {
@@ -121,14 +135,8 @@ export default function GolfLeagueApp() {
     pullingRef.current = false;
   }, []);
 
-  // Re-fetch the three collections that don't have live subscriptions (course, scoring
-  // rules, config). Used on mount and by pull-to-refresh so users can manually pick up
-  // changes without a full page reload.
-  //
-  // IMPORTANT: this must be declared BEFORE any useEffect that references it in its
-  // dependency array. React evaluates dep arrays during render, and referencing a const
-  // before its declaration hits the temporal dead zone (produces a minified
-  // "Cannot access 'X' before initialization" crash in prod).
+  // Re-fetch the three collections that don't have live subscriptions (course,
+  // scoring rules, config). Used on mount and by pull-to-refresh.
   const refetchOneTimeReads = useCallback(() => {
     db.get("league_course", LF).then(docs => { if (docs.length) setCourseData(docs[0]); });
     db.get("league_scoring", LF).then(docs => { if (docs.length) setScoringRules(docs[0]); });
@@ -140,22 +148,10 @@ export default function GolfLeagueApp() {
   // freshly-fetched index.html. Vite rebuilds produce new hashes for every deploy, so
   // any mismatch means a new version exists on the server and the running client is
   // stale.
-  //
-  // This exists because a pull-to-refresh naturally re-fetches DATA (Firestore docs)
-  // but NOT CODE — the JS bundle and CSS are cached by the browser and keyed by URL.
-  // Without this check, style/code changes never reach the running app until the user
-  // manually does a hard reload (or force-quits a PWA, which is how Aaron discovered
-  // the issue — he had to restart the whole app after a badge-color change shipped).
   const hasNewBundle = useCallback(async () => {
-    // Timeout guard — on slow or hung networks, an unrestrained fetch can sit
-    // indefinitely, which leaves refreshing=true and the pull indicator on
-    // screen forever. AbortController kills it after 4 seconds.
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 4000);
     try {
-      // Cache-bust both at the URL level and via the Cache-Control header. A service
-      // worker sitting in front could still intercept — if that ever becomes a problem,
-      // we'd need explicit bypass logic here — but this covers the plain-browser case.
       const html = await fetch(`/index.html?t=${Date.now()}`, {
         cache: 'no-store',
         signal: controller.signal,
@@ -166,7 +162,6 @@ export default function GolfLeagueApp() {
       while ((m = scriptRe.exec(html)) !== null) freshAssets.push(m[1]);
       const linkRe = /<link[^>]+rel="stylesheet"[^>]+href="([^"]+)"/g;
       while ((m = linkRe.exec(html)) !== null) freshAssets.push(m[1]);
-      // Alternate order — some builds emit href= before rel=
       const linkRe2 = /<link[^>]+href="([^"]+)"[^>]+rel="stylesheet"/g;
       while ((m = linkRe2.exec(html)) !== null) freshAssets.push(m[1]);
       const toPath = (u) => { try { return new URL(u, location.href).pathname; } catch { return u; } };
@@ -176,8 +171,6 @@ export default function GolfLeagueApp() {
       ]);
       return freshAssets.some(a => !currentAssets.has(toPath(a)));
     } catch (e) {
-      // Network blip, timeout, or weird HTML — don't fail pull-to-refresh over it.
-      // Just skip the update check and proceed with the normal data refresh.
       console.warn('[update-check] failed:', e.name || e);
       return false;
     } finally {
@@ -210,7 +203,6 @@ export default function GolfLeagueApp() {
       return null;
     };
     const handleStart = (e) => {
-      // Disable pull-to-refresh when any popup is open
       if (popupOpenRef.current) {
         touchStartY.current = 0;
         return;
@@ -218,20 +210,17 @@ export default function GolfLeagueApp() {
       activeScrollEl = findScrollEl(e.target);
       insidePopup = activeScrollEl === null;
       popupScrollEl = insidePopup ? findPopupScroll(e.target) : null;
-      // Always record start Y — we check scrollTop dynamically in handleMove
       touchStartY.current = e.touches[0].clientY;
       pullingRef.current = false;
     };
     const handleMove = (e) => {
       if (!touchStartY.current) return;
-      // Cancel if popup opened mid-gesture
       if (popupOpenRef.current) {
         if (pullingRef.current) { pullingRef.current = false; pullYRef.current = 0; setPullY(0); }
         touchStartY.current = 0;
         return;
       }
 
-      // Determine if the relevant scroll container is at the top right now
       let atTop;
       if (insidePopup) {
         atTop = popupScrollEl ? popupScrollEl.scrollTop <= 1 : true;
@@ -244,7 +233,6 @@ export default function GolfLeagueApp() {
 
       if (pullingRef.current) {
         if (diff <= 0 || !atTop) {
-          // User reversed or scroll container moved away from top — cancel pull
           pullingRef.current = false;
           pullYRef.current = 0;
           setPullY(0);
@@ -256,20 +244,16 @@ export default function GolfLeagueApp() {
           setPullY(val);
         }
       } else if (atTop && diff > 10) {
-        // At top and pulling down — engage pull, reset origin for clean delta
         touchStartY.current = currentY;
         pullingRef.current = true;
         e.preventDefault();
         pullYRef.current = 0;
         setPullY(0);
       } else if (!atTop) {
-        // Scrolling through content — keep resetting origin
         touchStartY.current = currentY;
       }
-      // If atTop but diff <= 10, do nothing — wait for more movement
     };
     const handleEnd = () => {
-      // If popup is open, just reset everything cleanly
       if (popupOpenRef.current) {
         pullingRef.current = false;
         pullYRef.current = 0;
@@ -287,19 +271,6 @@ export default function GolfLeagueApp() {
       if (pullYRef.current >= PULL_THRESHOLD) {
         setPullY(PULL_THRESHOLD); pullYRef.current = PULL_THRESHOLD;
         setRefreshing(true);
-        // Two-part refresh: first check whether a new deploy exists and hard-reload
-        // if so (code/style changes won't land via a soft refetch). If no new build,
-        // fall back to re-fetching non-subscribed docs so users can manually pick up
-        // data changes without losing in-flight admin edits, active tab, etc.
-        //
-        // DEFENSE IN DEPTH: every path to clearing `refreshing` must be guaranteed.
-        //  - try/finally ensures setRefreshing(false) fires even if the refresh
-        //    logic throws unexpectedly
-        //  - hard safety timeout force-clears after 8s as a last resort against
-        //    any hang we didn't anticipate (hasNewBundle itself has a 4s fetch
-        //    timeout, so this 8s ceiling should never normally fire)
-        // Without these guards, a single hung fetch would leave the pull indicator
-        // stuck on screen indefinitely.
         const hardSafety = setTimeout(() => {
           console.warn('[pull-to-refresh] hard safety timeout — forcing reset');
           setRefreshing(false);
@@ -311,9 +282,6 @@ export default function GolfLeagueApp() {
           try {
             const needsUpdate = await hasNewBundle();
             if (needsUpdate) {
-              // Full reload picks up the new JS/CSS. Any in-memory state is lost, which
-              // is the right trade — the user pulled to refresh knowing something should
-              // change, and a stale bundle can't render the change any other way.
               clearTimeout(hardSafety);
               window.location.reload();
               return;
@@ -343,15 +311,6 @@ export default function GolfLeagueApp() {
     };
   }, [refreshing, refetchOneTimeReads, hasNewBundle]);
 
-  // Safety: if the pull indicator is visible but the refresh cycle isn't
-  // running (refreshing=false), something interrupted the gesture without a
-  // clean touchend/touchcancel firing. Reset after 2s so the user isn't stuck
-  // staring at a frozen spinner.
-  //
-  // The refreshing=true case is handled separately by the hard safety inside
-  // handleEnd (8s ceiling), plus try/finally around the async callback, plus
-  // AbortController inside hasNewBundle (4s fetch ceiling). Together those
-  // guarantee `refreshing` can never outlive the refresh attempt.
   useEffect(() => {
     if (pullY > 0 && !refreshing) {
       const safety = setTimeout(resetPull, 2000);
@@ -359,15 +318,8 @@ export default function GolfLeagueApp() {
     }
   }, [pullY, refreshing, resetPull]);
 
-  // Tab-change cleanup: popupOpen is set by child pages (Scoring, Schedule)
-  // via useEffect — but those effects have no cleanup on unmount, so a popup
-  // that was open when the user navigated away leaves popupOpen=true, which
-  // disables pull-to-refresh on the new tab until the new page's own effect
-  // runs. Reset it here as defense in depth so pull-to-refresh is never
-  // accidentally disabled on a freshly-loaded tab.
   useEffect(() => { setPopupOpen(false); }, [tab]);
 
-  // Lock body scroll when ANY popup is open (prevents iOS rubber-banding)
   useEffect(() => {
     if (popupOpen || showPlayerPicker) {
       document.body.style.overflow = 'hidden';
@@ -397,7 +349,6 @@ export default function GolfLeagueApp() {
     if (!authUser) { setLeagueUser(null); setMembersLoaded(false); return; }
     const unsubs = [];
 
-    // These change frequently or need real-time updates
     unsubs.push(db.subscribe("league_members", LF, (docs) => {
       setMembers(docs);
       setMembersLoaded(true);
@@ -412,14 +363,11 @@ export default function GolfLeagueApp() {
     unsubs.push(db.subscribe("league_match_results", LF, (docs) => setMatchResults(docs)));
     unsubs.push(db.subscribe("league_ctp", LF, (docs) => setCtpData(docs)));
 
-    // These rarely change — one-time reads instead of persistent listeners
-    // (course, scoring rules, config). Re-read on save via their save handlers.
     refetchOneTimeReads();
 
     return () => unsubs.forEach(u => u && u());
   }, [authUser?.uid, refetchOneTimeReads]);
 
-  // Subscribe to hole scores for a specific week (real-time for live scoring)
   useEffect(() => {
     if (liveWeek === null || !authUser) return;
     const weekFilters = [...LF, { field: "season", op: "==", value: 2026 }, { field: "week", op: "==", value: liveWeek }];
@@ -442,34 +390,20 @@ export default function GolfLeagueApp() {
 
   // Auth actions
   const doGoogleSignIn = async () => { try { await signInWithPopup(_auth, _googleProvider); } catch (e) { console.error(e); throw e; } };
-  // Email sign-in-or-create. Modern Firebase no longer returns `auth/user-not-found`
-  // on sign-in attempts — for email-enumeration protection, every "email doesn't exist
-  // OR password is wrong" case now returns `auth/invalid-credential`. The old branch
-  // that tried to auto-create on `auth/user-not-found` never fired in practice, which
-  // was breaking first-time sign-ups.
-  //
-  // New approach: on `auth/invalid-credential`, attempt to create the account. If the
-  // email is actually registered and the password was just wrong, createUser returns
-  // `auth/email-already-in-use` — at which point we know it was a password error and
-  // can surface a clear message. This avoids depending on `fetchSignInMethodsForEmail`
-  // alone, which also returns empty when email-enumeration protection is on.
   const doEmailSignIn = async (email, pw) => {
     try {
       await signInWithEmailAndPassword(_auth, email, pw);
     } catch (e) {
-      // Treat both the legacy and modern "unknown account" codes the same way.
       if (e.code === "auth/user-not-found" || e.code === "auth/invalid-credential" || e.code === "auth/invalid-login-credentials") {
         try {
           const c = await createUserWithEmailAndPassword(_auth, email, pw);
           await updateProfile(c.user, { displayName: email.split("@")[0] });
         } catch (createErr) {
           if (createErr.code === "auth/email-already-in-use") {
-            // Account exists → the original sign-in failed because the password was wrong.
             const err = new Error("Wrong password");
             err.code = "auth/wrong-password";
             throw err;
           }
-          // Weak password / malformed email / network — pass through to the UI.
           throw createErr;
         }
       } else {
@@ -478,17 +412,6 @@ export default function GolfLeagueApp() {
     }
   };
   const doSignOut = async () => { await signOut(_auth); setLeagueUser(null); setTab("standings"); };
-  // Password reset — Firebase sends an email with a one-time reset link, and
-  // the reset happens on Firebase's hosted page (no custom UI needed here).
-  // We catch the common failure modes so the Auth screen can surface them; any
-  // other error propagates for the generic handler.
-  //
-  // Note on enumeration protection: with Firebase's email-enumeration
-  // protection enabled (on by default for new projects), this call succeeds
-  // even when the email doesn't exist — no email is sent, but the caller
-  // can't tell the difference. That's intentional Firebase behavior, and it's
-  // why we always show the user a success message regardless of whether an
-  // account actually got the email.
   const doPasswordReset = async (email) => {
     if (!email) { const e = new Error("Enter your email first"); e.code = "auth/missing-email"; throw e; }
     await sendPasswordResetEmail(_auth, email);
@@ -496,19 +419,15 @@ export default function GolfLeagueApp() {
 
   const CURRENT_SEASON = 2026;
 
-  // Cache for fetchAllScores. Declared here so saveScore / resetSeasonData can invalidate
-  // it before fetchAllScores reads it.
   const allScoresCacheRef = useRef(null);
 
-  // Data write helpers
   const saveScore = useCallback(async (week, playerId, hole, score) => {
     const id = `${LEAGUE_ID}_s${CURRENT_SEASON}_w${week}_p${playerId}_h${hole}`;
     setHoleScores(prev => ({ ...prev, [`w${week}_p${playerId}_h${hole}`]: score }));
-    allScoresCacheRef.current = null; // invalidate handicap-rollup cache
+    allScoresCacheRef.current = null;
     await db.upsert("league_hole_scores", { id, league_id: LEAGUE_ID, season: CURRENT_SEASON, week, player_id: playerId, hole, score, ts: Date.now() });
   }, []);
 
-  // Fetch scores for a specific week on-demand (non-realtime, one-time read)
   const fetchWeekScores = useCallback(async (weekNum) => {
     const docs = await db.get("league_hole_scores", [...LF, { field: "season", op: "==", value: CURRENT_SEASON }, { field: "week", op: "==", value: weekNum }]);
     const scores = {};
@@ -516,7 +435,6 @@ export default function GolfLeagueApp() {
     return scores;
   }, []);
 
-  // Fetch scores for current season (for stats/handicap calc)
   const fetchSeasonScores = useCallback(async () => {
     const docs = await db.get("league_hole_scores", [...LF, { field: "season", op: "==", value: CURRENT_SEASON }]);
     const scores = {};
@@ -524,10 +442,6 @@ export default function GolfLeagueApp() {
     return scores;
   }, []);
 
-  // Fetch ALL scores across all seasons (for handicap calc that carries over).
-  // Cached in-memory because this collection is huge (~11k+ docs for a 4-season league)
-  // and PlayersView re-fetches it on every tab mount. Cache is invalidated when a score
-  // is saved (see saveScore below) or when the user explicitly refreshes.
   const fetchAllScores = useCallback(async () => {
     if (allScoresCacheRef.current) return allScoresCacheRef.current;
     const docs = await db.get("league_hole_scores", LF);
@@ -569,14 +483,9 @@ export default function GolfLeagueApp() {
     await db.batchDelete("league_hole_scores", seasonFilter);
     await db.batchDelete("league_match_results", LF);
     await db.batchDelete("league_ctp", LF);
-    // Delete all schedule weeks for this league — fresh slate for next Generate.
-    // Clears rainouts, makeup flags, seeded/playoff flags, locked weeks, and match arrays.
     for (const wk of schedule) {
       if (wk.id) await db.deleteDoc("league_schedule", wk.id);
     }
-    // Also clear season-bound snapshots stored on leagueConfig so the next season doesn't
-    // inherit last season's seeded pairings. playoffRounds, lockSeedsEnabled, and scoringRules
-    // are setup-level and are preserved intentionally.
     const cleared = { ...leagueConfig };
     delete cleared.lockedSeeds;
     delete cleared.customSeedWeeks;
@@ -586,19 +495,11 @@ export default function GolfLeagueApp() {
     setHoleScores({});
     setMatchResults([]);
     setSchedule([]);
-    allScoresCacheRef.current = null; // invalidate handicap-rollup cache
+    allScoresCacheRef.current = null;
   }, [schedule, leagueConfig]);
 
-  // Hard-delete all data for a specific week of the current season.
-  // Called when a week is rained out — partial scores and signed match results
-  // from the aborted week are meaningless once it's replayed at the makeup week.
-  // Without this cleanup, bad handicap data, polluted stats, and double-counted
-  // standings would persist. The schedule doc itself is NOT deleted (caller
-  // marks it rainedOut:true and keeps it as a historical placeholder).
   const clearWeekData = useCallback(async (weekNum) => {
     const weekFilter = [...LF, { field: "season", op: "==", value: CURRENT_SEASON }, { field: "week", op: "==", value: weekNum }];
-    // league_match_results isn't season-scoped in the filter because it's already
-    // scoped by week id in practice — but safer to filter both collections the same way.
     const mrFilter = [...LF, { field: "week", op: "==", value: weekNum }];
     const ctpFilter = [...LF, { field: "week", op: "==", value: weekNum }];
     await db.batchDelete("league_hole_scores", weekFilter);
@@ -607,63 +508,28 @@ export default function GolfLeagueApp() {
   }, []);
 
   // Auto-seed empty seeded (non-playoff) weeks once the round-robin block completes,
-  // AND auto-seed playoff rounds as they become resolvable:
-  //   - First playoff round: seeded the moment the last seeded regular-season week locks
-  //   - Subsequent playoff rounds: seeded as their prior playoff round locks (since they
-  //     depend on winners/losers from the prior round)
-  // Called right after a week is finalized (locked).
-  // Idempotent: skips weeks that already have matches. Safe to call unconditionally
-  // after every week-lock.
-  // Returns: { seeded: <count of seeded regular-season weeks populated>, playoff: <count of playoff rounds populated> }
+  // AND auto-seed playoff rounds as they become resolvable. See lib/scheduleAutoSeed
+  // refactor in the audit notes — this lives here for now.
   const autoSeedIfReady = useCallback(async (justLockedWeek) => {
-    // Read from refs so we see the just-saved state, not closure-captured state that may
-    // be one render behind. This matters because this function is typically called
-    // immediately after await saveWeekSchedule() / saveMatchResult(), before Firestore
-    // has sent back an onSnapshot update to refresh the React state.
     const currentSchedule = scheduleRef.current;
     const currentMatchResults = matchResultsRef.current;
 
-    // justLockedWeek === 0 is a special signal meaning "config or seeds may
-    // have changed externally — re-run the auto-seeder against current state
-    // without treating any week as just-locked." Skips Phase 1's
-    // allRRLocked check and goes straight to the playoff re-seed walk.
     const isConfigRefresh = justLockedWeek === 0;
     const lockedWk = isConfigRefresh ? null : currentSchedule.find(s => s.week === justLockedWeek);
     if (!isConfigRefresh && !lockedWk) return 0;
 
-    // Projected schedule that reflects the just-locked week — belt and suspenders on top
-    // of the ref read, in case the ref update hasn't flushed yet.
     const projectedSchedule = isConfigRefresh ? currentSchedule : currentSchedule.map(s =>
       s.week === justLockedWeek ? { ...s, locked: true } : s
     );
 
-    // ── Shared: build seeds (same logic regardless of which block we're seeding) ──
     const lockSeedsEnabled = leagueConfig?.lockSeedsEnabled === true;
     const existingLocked = leagueConfig?.lockedSeeds;
     let seeds;
-    const needsFreshSeedsSnapshot = !(existingLocked && existingLocked.length === teams.length);
 
     const computeSeeds = () => buildStandingsForSeed(
       teams, currentMatchResults, projectedSchedule, leagueConfig?.standingsMethod
     ).map(s => s.teamId);
 
-    // ── Phase 1: Seed / re-seed regular-season seeded weeks ──
-    // Fires whenever a week locks AND the round-robin is complete. Walks every
-    // UNLOCKED seeded regular-season week and (re)builds its matchups from
-    // current standings, so upcoming seeded weeks always reflect the latest
-    // results. Locked weeks are never touched — their scores are already
-    // recorded against their existing matchups.
-    //
-    // Previously this only ran on the final RR lock, freezing the seeded
-    // matchups at the end-of-RR snapshot. Now it re-runs after every lock,
-    // giving the dynamic week-to-week update the admin expects.
-    //
-    // With `lockSeedsEnabled=true`, seeds are frozen at the first pass (snapshot
-    // saved to leagueConfig.lockedSeeds) and subsequent re-seeds reuse that
-    // snapshot — matchups still rotate week-to-week via the customSeedWeeks
-    // template, but the seed identities don't move. With `lockSeedsEnabled=false`
-    // (default), seeds recompute from fresh standings on every pass — full
-    // dynamic behavior.
     let seededCount = 0;
     const rrWeeks = currentSchedule.filter(s => !s.isPlayoff && !s.seeded && !s.rainedOut);
     const allRRLocked = rrWeeks.length > 0 && rrWeeks.every(s =>
@@ -671,13 +537,9 @@ export default function GolfLeagueApp() {
     );
 
     if (allRRLocked) {
-      // Seed source: locked snapshot when both (a) the admin wants frozen
-      // seeds and (b) a valid snapshot exists. Otherwise recompute fresh.
       const useLocked = lockSeedsEnabled && existingLocked && existingLocked.length === teams.length;
       seeds = useLocked ? existingLocked : computeSeeds();
 
-      // First entry into seeded play with lockSeedsEnabled → capture the
-      // snapshot so subsequent passes stay consistent with it.
       if (!useLocked && lockSeedsEnabled) {
         await db.upsert("league_config", { ...leagueConfig, id: leagueConfig?.id || `${LEAGUE_ID}_config`, league_id: LEAGUE_ID, lockedSeeds: seeds });
       }
@@ -690,8 +552,6 @@ export default function GolfLeagueApp() {
 
         for (let si = 0; si < seededRegWeeks.length; si++) {
           const wk = seededRegWeeks[si];
-          // Never overwrite a locked week — its scores and match results are
-          // tied to the existing matchups.
           if (wk.locked === true) continue;
           const weekPairs = (customWeeks && customWeeks[si]) || null;
           const matches = [];
@@ -702,7 +562,6 @@ export default function GolfLeagueApp() {
               if (t1 && t2) matches.push({ team1: t1, team2: t2 });
             }
           } else {
-            // Fallback: top vs bottom
             for (let i = 0; i < pairCount; i++) {
               matches.push({ team1: seeds[i], team2: seeds[n - 1 - i] });
             }
@@ -715,13 +574,6 @@ export default function GolfLeagueApp() {
       }
     }
 
-    // ── Phase 2: Auto-seed the next playoff round if it's now resolvable ──
-    // Trigger 1: last seeded regular-season week just locked → seed playoff round 1
-    // Trigger 2: a playoff round just locked → seed the NEXT playoff round
-    //
-    // Seeds snapshot strategy: for playoff auto-seeding, we use either the locked snapshot
-    // OR the seeds that were computed when RR ended. If we haven't computed yet (e.g., the
-    // just-locked week is a seeded regular-season week, not the RR finale), compute now.
     let playoffCount = 0;
 
     const playoffWeeksList = currentSchedule.filter(s => s.isPlayoff === true).sort((a, b) => a.week - b.week);
@@ -729,47 +581,29 @@ export default function GolfLeagueApp() {
       return { seeded: seededCount, playoff: 0 };
     }
 
-    // Determine which playoff round(s) are now ready to auto-seed.
-    // We populate the FIRST empty playoff round whose dependencies are satisfied.
     const playoffRoundsCfg = leagueConfig?.playoffRounds || [];
     if (playoffRoundsCfg.length === 0) {
       return { seeded: seededCount, playoff: 0 };
     }
 
-    // Compute seeds for playoff resolution if we don't already have them
     if (!seeds) {
       seeds = existingLocked && existingLocked.length === teams.length
         ? existingLocked
         : computeSeeds();
     }
 
-    // Walk each playoff week in order; if it's empty (or stale) AND its
-    // dependencies are met, (re)seed it. Locked weeks are never touched —
-    // their existing matchups own the recorded scores. Unlocked weeks with
-    // existing matchups but ZERO entered scores are eligible to re-seed,
-    // which is what auto-corrects a bracket after the commissioner edits
-    // playoff config (or earlier rounds finalize and shift seeds/winners)
-    // without requiring a manual Seed Week click.
     for (let pi = 0; pi < playoffWeeksList.length; pi++) {
       const pWk = playoffWeeksList[pi];
-      if (pWk.locked === true) continue; // never touch locked weeks
-      // Allow re-seeding stale matches as long as no scores have been entered
-      // for this week yet. Once a single hole score exists, treat the week
-      // as "in progress" and leave it alone — the commissioner can resolve
-      // any drift via Schedule's Edit Scores flow.
+      if (pWk.locked === true) continue;
       const hasExistingMatches = pWk.matches && pWk.matches.length > 0;
       if (hasExistingMatches) {
         const hasAnyScoreOrResult = (currentMatchResults || []).some(r => r.week === pWk.week)
           || Object.keys(holeScoresRef.current || {}).some(k => k.startsWith(`w${pWk.week}_`));
-        if (hasAnyScoreOrResult) continue; // scores in flight → leave it
+        if (hasAnyScoreOrResult) continue;
       }
 
       const roundDef = playoffRoundsCfg[pi];
 
-      // Round 1 has no prior-round dependencies — always resolvable once seeds are known.
-      // If the commish hasn't configured playoff round 1 matchups, fall back to top-vs-bottom
-      // pairings so playoffs still auto-start when the regular season ends. Later rounds can't
-      // use this fallback because they depend on winners/losers of prior rounds.
       if (pi === 0 && (!roundDef || !roundDef.matchups || !roundDef.matchups.length)) {
         const n = seeds.length;
         const pairCount = Math.floor(n / 2);
@@ -778,8 +612,6 @@ export default function GolfLeagueApp() {
         for (let i = 0; i < pairCount; i++) {
           matches.push({ team1: seeds[i], team2: seeds[n - 1 - i] });
         }
-        // This fallback usually covers all teams (n/2 pairs), but if n is odd the middle
-        // seed sits out. pairNonBracketTeams will return no extra pairs in the even case.
         const priorMatchups = collectPriorMatchups(currentSchedule, pWk.week);
         const { pairs: consolationPairs } = pairNonBracketTeams(teams, matches, priorMatchups);
         matches.push(...consolationPairs);
@@ -788,41 +620,31 @@ export default function GolfLeagueApp() {
         continue;
       }
 
-      if (!roundDef || !roundDef.matchups || !roundDef.matchups.length) break; // no config → can't seed this or later rounds
+      if (!roundDef || !roundDef.matchups || !roundDef.matchups.length) break;
 
-      // Round 2+ needs the prior playoff round to be locked AND have all match results.
-      // IMPORTANT: only consider BRACKET matches from the prior round when building the
-      // winners/losers lists — consolation matches now share the same week.matches array
-      // but must not feed into bracket progression (otherwise a consolation participant
-      // could be picked as "lowestLoser" and promoted into the next bracket round).
       let prevWinners = [];
       let prevLosers = [];
       if (pi > 0) {
         const prevPWk = playoffWeeksList[pi - 1];
-        if (!prevPWk.locked && prevPWk.week !== justLockedWeek) break; // prior round not finalized → stop
-        if (!prevPWk.matches || prevPWk.matches.length === 0) break; // prior round not seeded
+        if (!prevPWk.locked && prevPWk.week !== justLockedWeek) break;
+        if (!prevPWk.matches || prevPWk.matches.length === 0) break;
         const prevResults = (currentMatchResults || []).filter(r => r.week === prevPWk.week);
-        if (prevResults.length < prevPWk.matches.length) break; // prior round not fully scored
-        // Slice to only the bracket portion — bracket matches were pushed first when the
-        // week was seeded, consolation appended after. The count comes from the PRIOR
-        // round's config, not this round's.
+        if (prevResults.length < prevPWk.matches.length) break;
         const prevRoundDef = playoffRoundsCfg[pi - 1];
         const prevBracketCount = (prevRoundDef?.matchups || []).length;
         const prevBracketMatches = prevBracketCount > 0
           ? prevPWk.matches.slice(0, prevBracketCount)
-          : prevPWk.matches; // no config for prev round (round-1 fallback) → treat all as bracket
+          : prevPWk.matches;
         prevBracketMatches.forEach((m) => {
           const r = prevResults.find(pr => pr.team1Id === m.team1 && pr.team2Id === m.team2);
           if (r) {
             const d = (r.team1Points || 0) - (r.team2Points || 0);
-            // Tie goes to higher seed (team1 is always higher seed in match storage)
             prevWinners.push(d >= 0 ? r.team1Id : r.team2Id);
             prevLosers.push(d >= 0 ? r.team2Id : r.team1Id);
           }
         });
       }
 
-      // Resolve matchup slots the same way the manual Seed button does.
       const resolveSlot = (mu, side) => {
         const type = mu[side + "type"];
         const val = mu[side];
@@ -862,12 +684,6 @@ export default function GolfLeagueApp() {
         const t1 = resolveSlot(mu, "s1");
         const t2 = resolveSlot(mu, "s2");
         if (!t1 || !t2) continue;
-        // SAFETY: a team can never play two matches in the same week. If the
-        // bracket configuration resolves the same team into two slots (most
-        // commonly when a config uses both "seed N" and "winner of M" that
-        // happens to be the same team), we skip the duplicate instead of
-        // writing a broken bracket. This produces an under-sized bracket
-        // which the admin will notice and can fix in the bracket config.
         if (usedTeamIds.has(t1) || usedTeamIds.has(t2) || t1 === t2) {
           hasDuplicate = true;
           console.warn(
@@ -882,37 +698,31 @@ export default function GolfLeagueApp() {
         bracketMatches.push({ team1: t1, team2: t2 });
       }
 
-      // If the config is broken (duplicate team references), still try to seed
-      // what we can and let the admin see the incomplete bracket rather than
-      // writing a week where one team plays itself or plays twice.
       if (bracketMatches.length !== roundDef.matchups.length && !hasDuplicate) break;
 
-      // Add consolation matchups so teams not in the bracket still have tee times.
-      // Picks pairings that minimize repeat meetings based on full-season history.
       const priorMatchups = collectPriorMatchups(currentSchedule, pWk.week);
       const { pairs: consolationPairs } = pairNonBracketTeams(teams, bracketMatches, priorMatchups);
       const matches = [...bracketMatches, ...consolationPairs];
 
       await db.upsert("league_schedule", { ...pWk, matches, league_id: LEAGUE_ID });
       playoffCount++;
-      // Continue loop — the round we just auto-seeded can't trigger the NEXT round
-      // (that would need this round's matches to be played and locked), so the next
-      // iteration will break at the "prior round not finalized" check. That's fine —
-      // autoSeedIfReady will fire again when this round eventually locks.
     }
 
     return { seeded: seededCount, playoff: playoffCount };
   }, [teams, leagueConfig]);
 
   // Import historical scores from a [name, season, week, hole, score] array.
-  // See importHistoricalData.js for the source format. (A stale import2025Data.js
-  // used a 4-element format and is no longer referenced.)
+  // See importHistoricalData.js for the source format.
+  //
+  // Atomic via db.batchUpsert (writeBatch under the hood, 500-op chunks). Prior
+  // implementation fired Promise.all of N parallel upserts, which could leave
+  // partial data on mid-batch failure. Cache invalidation now also fires on
+  // success — without it, downstream Players/Standings views would show stale
+  // handicap rollups until the next saveScore.
   const importHistoricalScores = useCallback(async (data) => {
-    // Build name -> id map (case-insensitive, trimmed)
     const nameMap = {};
     players.forEach(p => { nameMap[p.name.trim().toLowerCase()] = p.id; });
-    
-    // Build all docs first — data is [name, season, week, hole, score]
+
     const docs = [];
     let skipped = 0;
     for (const row of data) {
@@ -922,19 +732,18 @@ export default function GolfLeagueApp() {
       const id = `${LEAGUE_ID}_s${season}_w${week}_p${playerId}_h${hole}`;
       docs.push({ id, league_id: LEAGUE_ID, season, week, player_id: playerId, hole, score, ts: Date.now() });
     }
-    
-    // Write in parallel batches of 490
-    for (let i = 0; i < docs.length; i += 490) {
-      const batch = docs.slice(i, i + 490);
-      await Promise.all(batch.map(d => db.upsert("league_hole_scores", d)));
-    }
-    
-    return { imported: docs.length, skipped };
+
+    const imported = await db.batchUpsert("league_hole_scores", docs);
+    // Invalidate the handicap-rollup cache so the next Players-tab visit
+    // computes from the freshly-imported data.
+    allScoresCacheRef.current = null;
+
+    return { imported, skipped };
   }, [players]);
 
-  // Recalculate all player handicaps from historical scores and update their profiles.
-  // Triggered when commissioner locks a week. Uses calcPlayerHcp with proportional scaling:
-  // admin configures "best N of recent M"; players with fewer than M rounds use a scaled count.
+  // Recalculate all player handicaps from historical scores. Called by Admin
+  // on demand AND implicitly on finalize-week. Returns the count updated, and
+  // also surfaces a toast so the implicit finalize-week path isn't silent.
   const recalcHandicaps = useCallback(async () => {
     const allScores = await fetchAllScores();
     const par = courseData ? (courseData.frontPars || []).reduce((a, b) => a + b, 0) : 36;
@@ -949,11 +758,12 @@ export default function GolfLeagueApp() {
         updated++;
       }
     }
-    console.log(`Handicaps recalculated: ${updated} players updated`);
+    if (updated > 0) {
+      appToast(`${updated} handicap${updated === 1 ? "" : "s"} updated`, "info", 2200);
+    }
     return updated;
-  }, [players, courseData, scoringRules, fetchAllScores, savePlayer]);
+  }, [players, courseData, scoringRules, fetchAllScores, savePlayer, appToast]);
 
-  // Save handlers for rarely-changing data: write + refresh local state
   const saveCourseData = useCallback(async (c) => {
     const data = { ...c, id: `${LEAGUE_ID}_course`, league_id: LEAGUE_ID };
     await db.upsert("league_course", data);
@@ -969,20 +779,10 @@ export default function GolfLeagueApp() {
     const data = { ...c, id: `${LEAGUE_ID}_config`, league_id: LEAGUE_ID };
     await db.upsert("league_config", data);
     setLeagueConfig(data);
-    // If the commissioner just changed playoff bracket config, custom seed
-    // weeks, or the standings method (which affects seed order), re-run the
-    // auto-seeder so any unlocked seeded/playoff weeks pick up the new config
-    // immediately. Without this, edits in Admin → Setup → Playoff would only
-    // take effect on the next time a week was finalized. We pass week 0
-    // because there isn't a "just-locked" week to anchor to here — the
-    // function treats that as a no-op for the lock-driven Phase 1 trigger
-    // and still runs Phase 2's playoff walk against current state.
     const playoffChanged = JSON.stringify(prev?.playoffRounds || []) !== JSON.stringify(data.playoffRounds || []);
     const customSeedChanged = JSON.stringify(prev?.customSeedWeeks || null) !== JSON.stringify(data.customSeedWeeks || null);
     const standingsMethodChanged = (prev?.standingsMethod || "") !== (data.standingsMethod || "");
     if (playoffChanged || customSeedChanged || standingsMethodChanged) {
-      // Run on next tick so the just-saved config is reflected in leagueConfig
-      // closure on the autoSeedIfReady callback (which depends on leagueConfig).
       setTimeout(() => { autoSeedIfReady(0); }, 0);
     }
   }, [leagueConfig, autoSeedIfReady]);
@@ -992,10 +792,6 @@ export default function GolfLeagueApp() {
   const isComm = leagueUser?.isCommissioner === true;
   const activePlayers = useMemo(() => players.filter(p => p.status !== "inactive"), [players]);
 
-  // Show Live Scoring button only on match days between 4-8pm ET
-  // Minute-granularity clock tick — forces time-gated UI (like the Live Scoring
-  // button) to re-evaluate every minute without requiring a user action or
-  // full page reload. Cheap: one setState per minute, only when mounted.
   const [minuteTick, setMinuteTick] = useState(0);
   useEffect(() => {
     const id = setInterval(() => setMinuteTick(t => t + 1), 60_000);
@@ -1003,27 +799,26 @@ export default function GolfLeagueApp() {
   }, []);
 
   // Live Scoring button appears from 30 minutes before the FIRST tee time of the
-  // day through 4 hours after — enough window to cover pre-round setup and a full
-  // 9-hole round with finalization. Anchored to league Eastern Time so travel
-  // doesn't break the schedule.
+  // day through 4 hours after — enough window to cover pre-round setup and a
+  // full 9-hole round with finalization. Anchored to league Eastern Time.
+  //
+  // Uses parseScheduleDate (not raw new Date()) so the date format is the single
+  // source of truth and stays in sync with the rest of the app.
   const showLiveBtn = useMemo(() => {
     if (!schedule.length) return false;
     const now = new Date();
     const et = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
     const year = leagueConfig?.year || new Date().getFullYear();
     const todayStr = et.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    // Find a scheduled week whose date string matches today's.
     const todayWk = schedule.find(wk => {
       if (wk.rainedOut || !wk.matches || wk.matches.length === 0) return false;
       if (!wk.date) return false;
-      const wkDate = new Date(`${wk.date}, ${year}`);
-      if (isNaN(wkDate.getTime())) return false;
+      const wkDate = parseScheduleDate(wk.date, year);
+      if (!wkDate) return false;
       return wkDate.toLocaleDateString("en-US", { month: "short", day: "numeric" }) === todayStr;
     });
     if (!todayWk) return false;
 
-    // Parse league's first tee time (e.g. "4:28 PM") into minutes-since-midnight.
-    // Conversions: "12 AM" -> 0, "12 PM" -> 12, "1 PM" -> 13.
     const startTime = leagueConfig?.startTime || "4:28 PM";
     const [timePart, ampm] = startTime.split(' ');
     const [h, m] = timePart.split(':').map(Number);
@@ -1032,25 +827,19 @@ export default function GolfLeagueApp() {
     else if (ampm === 'AM' && h === 12) hour24 = 0;
     const firstTeeMins = hour24 * 60 + (m || 0);
 
-    // Current ET time in minutes-since-midnight
     const nowMins = et.getHours() * 60 + et.getMinutes();
 
-    // Window: 30 min before first tee through 4 hours after.
-    // minuteTick is in the dep array below so this evaluates again each minute.
     return nowMins >= firstTeeMins - 30 && nowMins <= firstTeeMins + 240;
   }, [schedule, leagueConfig, minuteTick]);
 
-  // Clear impersonation when commish mode is turned off
   useEffect(() => { if (!commMode) setImpersonating(null); }, [commMode]);
 
-  // When commissioner impersonates a player in commish mode, effectiveUser overrides leagueUser
   const effectiveUser = commMode && impersonating
     ? { ...leagueUser, playerId: impersonating.playerId, name: impersonating.name }
     : leagueUser;
 
   if (authLoading) return <LoadingScreen />;
   if (!authUser) return <AuthScreen onGoogle={doGoogleSignIn} onEmail={doEmailSignIn} onPasswordReset={doPasswordReset} />;
-  // Show loading (not AuthScreen flash) while members collection finishes loading for the signed-in user
   if (!membersLoaded) return <LoadingScreen />;
   if (!leagueUser || !leagueUser.playerId) return <JoinScreen authUser={authUser} members={members} players={activePlayers} saveMember={saveMember} doSignOut={doSignOut} leagueConfig={leagueConfig} />;
 
@@ -1068,7 +857,6 @@ export default function GolfLeagueApp() {
     { id: "signout", label: "Sign Out", icon: "key" },
   ];
 
-  // Check if there's a week ready to finalize (commish only)
   const weekToFinalize = isComm ? (() => {
     for (const wk of schedule) {
       if (wk.rainedOut || wk.locked) continue;
@@ -1081,7 +869,8 @@ export default function GolfLeagueApp() {
     return null;
   })() : null;
 
-  // Find upcoming match info for banner
+  // Find upcoming match info for banner. Tee time computation uses the same
+  // base time + interval as the Schedule's tee time formatter.
   const myTeam = teams.find(t => t.player1 === leagueUser.playerId || t.player2 === leagueUser.playerId);
   const upcomingBanner = (() => {
     if (!myTeam || !schedule.length) return null;
@@ -1101,7 +890,6 @@ export default function GolfLeagueApp() {
       let mins = (ampm === 'PM' && h !== 12 ? h + 12 : h) * 60 + m + matchIdx * interval;
       const hr = Math.floor(mins / 60) % 12 || 12;
       const mn = mins % 60;
-      const ap = Math.floor(mins / 60) >= 12 ? 'PM' : 'AM';
       const teeTime = `${hr}:${String(mn).padStart(2, '0')}`;
       const oppP1 = opp ? activePlayers.find(p => p.id === opp.player1) : null;
       const oppP2 = opp ? activePlayers.find(p => p.id === opp.player2) : null;
@@ -1114,7 +902,6 @@ export default function GolfLeagueApp() {
 
   const bannerGrn = K.matchGrn;
 
-  // Suspense fallback for lazy-loaded tabs
   const TabFallback = <div style={{ textAlign: "center", padding: 40, color: K.t3, fontSize: 13 }} className="pu">Loading...</div>;
 
   return (
@@ -1144,8 +931,6 @@ export default function GolfLeagueApp() {
           </div>
         </div>
       )}
-      {/* Fix #1: Removed <link href={FONTS}> — now in index.html <head> with preconnect */}
-      {/* Fix #5: Removed <style>{getCSS(K)}</style> — now injected via useEffect above */}
 
       {/* Header */}
       <div className="app-header">
@@ -1173,7 +958,7 @@ export default function GolfLeagueApp() {
             )}
           </div>
           <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
-          {/* Right: Live Scoring button — only on match days 4-8pm ET */}
+          {/* Right: Live Scoring button — only on match days during the play window */}
           <div style={{ position: "absolute", right: 14, display: "flex", alignItems: "center" }}>
             {showLiveBtn && (
             <button onClick={() => setTab("scoring")} style={{
@@ -1205,25 +990,19 @@ export default function GolfLeagueApp() {
         </button>
       )}
 
-      {/* Upcoming match banner */}
-
       <div className="app-body" ref={appBodyRef}>
         <div style={{ maxWidth: 900, width: "100%", margin: "0 auto" }}>
           {upcomingBanner && tab !== "scoring" && (() => {
             return (
               <div style={{ background: K.card, border: `1.5px solid ${bannerGrn}`, borderRadius: 10, margin: "6px 14px", padding: "10px 16px", display: "flex", alignItems: "center" }}>
-                {/* Left: Tee time + Front/Back */}
                 <div style={{ width: 80, flexShrink: 0, textAlign: "left", lineHeight: 1.3, padding: "6px 0" }}>
                   <div style={{ fontSize: 17, fontWeight: 800, color: K.act, letterSpacing: .5 }}>{upcomingBanner.teeTime}</div>
-                  {/* UX fix: was hardcoded #3b82f6, now uses K.logoBright for theme consistency */}
                   <div style={{ fontSize: 12, fontWeight: 700, color: K.logoBright, letterSpacing: .5, textTransform: "uppercase" }}>{upcomingBanner.side === 'front' ? 'FRONT 9' : 'BACK 9'}</div>
                 </div>
-                {/* Center: Date + Week */}
                 <div style={{ flex: 1, textAlign: "center", lineHeight: 1.3 }}>
                   <div style={{ fontSize: 12, color: K.t2, fontWeight: 500 }}>{upcomingBanner.date || ""}</div>
                   <div style={{ fontSize: 14, color: K.t1, fontWeight: 700 }}>Week {upcomingBanner.week}</div>
                 </div>
-                {/* Right: Opponent player names */}
                 <div style={{ width: 80, flexShrink: 0, textAlign: "right", lineHeight: 1.3 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{upcomingBanner.oppName1}</div>
                   <div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{upcomingBanner.oppName2}</div>
@@ -1232,10 +1011,6 @@ export default function GolfLeagueApp() {
             );
           })()}
           <div className="main-content fi" key={tab}>
-          {/* Wrap lazy-loaded tabs in ErrorBoundary + Suspense. The `key={tab}` on
-              the parent div remounts this subtree on tab change, which also resets
-              the error boundary — so a crashed page self-heals when the user
-              navigates away and comes back. */}
           <ErrorBoundary>
           <Suspense fallback={TabFallback}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} fetchAllScores={fetchAllScores} saveMatchResult={saveMatchResult} />}
@@ -1252,12 +1027,26 @@ export default function GolfLeagueApp() {
         </div>
       </div>
 
-      {/* More popup menu */}
+      {/* App-level toast */}
+      {appToastMsg && (
+        <>
+          <style>{`@keyframes appToastDown { 0% { transform: translateX(-50%) translateY(-20px); opacity: 0; } 100% { transform: translateX(-50%) translateY(0); opacity: 1; } }`}</style>
+          <div style={{
+            position: "fixed", top: 30, left: "50%", transform: "translateX(-50%)",
+            background: appToastMsg.kind === "error" ? K.red : K.act, color: K.bg,
+            padding: "12px 36px", borderRadius: 12,
+            fontSize: 13, fontWeight: 700, zIndex: 1100,
+            whiteSpace: "nowrap", maxWidth: "90vw", textAlign: "center",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+            animation: "appToastDown 0.3s ease",
+          }}>{appToastMsg.msg}</div>
+        </>
+      )}
+
       {showMore && (
         <div onClick={() => setShowMore(false)} style={{ position: "fixed", inset: 0, zIndex: 150 }} />
       )}
 
-      {/* Player picker popup (commissioner) */}
       {showPlayerPicker && (
         <>
           <div onClick={() => setShowPlayerPicker(false)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 400 }} />
@@ -1299,7 +1088,6 @@ export default function GolfLeagueApp() {
         </>
       )}
 
-      {/* Commish mode — login as banner, attached to bottom nav */}
       {commMode && (
         <button onClick={() => setShowPlayerPicker(true)} style={{ width: "100%", maxWidth: 900, margin: "0 auto", background: K.act, padding: "8px 14px", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, flexShrink: 0, cursor: "pointer", border: "none", zIndex: 200 }}>
           <span style={{ fontSize: 12, color: K.bg, fontWeight: 800, letterSpacing: .5 }}>
@@ -1312,7 +1100,6 @@ export default function GolfLeagueApp() {
         </button>
       )}
 
-      {/* Bottom Nav */}
       <div className="bottom-nav" style={{ margin: "0 auto" }}>
         {tabs.map(t => {
           const active = tab === t.id;
@@ -1330,13 +1117,12 @@ export default function GolfLeagueApp() {
           </button>
           {showMore && (
             <div style={{ position: "fixed", bottom: `calc(56px + env(safe-area-inset-bottom, 0px))`, right: 14, background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 12, padding: "6px 0", zIndex: 300, minWidth: 180, boxShadow: "0 -4px 20px rgba(0,0,0,.4)" }}>
-              {moreItems.map((item, idx) => {
+              {moreItems.map((item) => {
                 const active = tab === item.id;
                 const isSignOut = item.id === "signout";
                 return (
                   <div key={item.id}>
                     {isSignOut && (<>
-                      {/* Dark mode toggle */}
                       <div style={{ borderTop: `1px solid ${K.bdr}`, margin: "4px 0" }} />
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px" }}>
                         <span style={{ fontSize: 14, fontWeight: 400, color: K.t1 }}>Dark Mode</span>

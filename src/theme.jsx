@@ -16,32 +16,9 @@ export const DEFAULT_SCORING = {
   hcpRecentCount: 8, hcpBestCount: 6, hcpMethod: "gross9",
 };
 
-export function calcCourseHandicap(index, slope, rating, par) {
-  if (!slope || !rating) return Math.round(index);
-  return Math.round((index * slope / 113) + (rating - par));
-}
-// Stored handicaps are already 9-hole indexes (computed against the
-// front-9 par via calcPlayerHcp), so this is a no-op pass-through. Kept
-// only because external imports still reference it.
-export function calcNineHandicap(ch) { return Math.round(ch); }
-export function getTeeTime(idx) {
-  const d = new Date(2026, 0, 1, 16, 28);
-  d.setMinutes(d.getMinutes() + idx * TEE_INTERVAL);
-  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-}
 export function getWeekSide(weekNum) { return weekNum % 2 === 1 ? 'front' : 'back'; }
-export function calcDifferential(gross, rating, slope) { return (113 / slope) * (gross - rating); }
-export function calcLeagueHandicap(grossScores, par, recentCount, bestCount) {
-  if (!grossScores.length) return null;
-  const recent = grossScores.slice(-recentCount);
-  if (!recent.length) return null;
-  const sorted = [...recent].sort((a, b) => a - b);
-  const best = sorted.slice(0, Math.min(bestCount, sorted.length));
-  const avg = best.reduce((a, b) => a + b, 0) / best.length;
-  return Math.round(avg - par);
-}
 
-// ── Handicap calc with proportional scaling for players with few rounds ──
+// ── Player handicap calc with proportional scaling for short histories ──
 // Admin sets "best N of recent M" (e.g. best 6 of 8 → ratio 0.75).
 // For a player with fewer than M rounds, scale the "best" count proportionally:
 // e.g. with 4 rounds → best round(4 * 0.75) = best 3 of 4.
@@ -215,9 +192,6 @@ export function pairNonBracketTeams(allTeams, bracketMatches, priorMatchups) {
         best = { cost: total, pairs: [[first, j], ...sub.pairs] };
       }
     }
-    // best is guaranteed non-null because caller only passes even-count masks
-    // (solve always removes two indices at a time; starting masks passed below
-    // always have even population count).
     dp.set(mask, best);
     return best;
   };
@@ -265,12 +239,20 @@ export function collectPriorMatchups(schedule, currentWeek) {
 // ══════════════════════════════════════════════════════════════
 //  THEME
 // ══════════════════════════════════════════════════════════════
+//
+// `K.hcpBlue` exists because the codebase had `#3b82f6` hardcoded in 18+
+// places (scorecard stroke dots, HCP pills, "Sign Scorecard" button, attest
+// button, etc.). That bright pure blue clashed with the brand navy
+// `K.logoBright` (#10387d) used elsewhere for the same conceptual thing.
+// The token unifies them under one theme-aware color so dark/light mode and
+// any future rebrand only need to touch this file.
 export const getTheme = (mode = "dark") => {
   if (mode === "light") return {
     bg: "#f0f2f5", card: "#ffffff", cardHi: "#f8f9fa", inp: "#e9ecef",
     bdr: "#d1d5db", acc: "#475569", accDim: "#64748b",
     act: "#deab12", actHov: "#c99b0f",
     grn: "#059669", grnDim: "#047857", red: "#dc2626", teal: "#0d9488", logoBlue: "#153453", logoBright: "#10387d",
+    hcpBlue: "#10387d",
     warn: "#d97706", t1: "#111827", t2: "#4b5563", t3: "#9ca3af",
     gold: "#d97706", silver: "#6b7280", bronze: "#b45309",
     matchGrn: "#157a34",
@@ -280,6 +262,11 @@ export const getTheme = (mode = "dark") => {
     bdr: "#1e3a5f", acc: "#c8cfd8", accDim: "#8b95a3",
     act: "#deab12", actHov: "#c99b0f",
     grn: "#34d399", grnDim: "#059669", red: "#ef4444", teal: "#2dd4bf", logoBlue: "#153453", logoBright: "#10387d",
+    // In dark mode, navy disappears against the dark bg, so the HCP token keeps a
+    // brighter blue for legibility. The hardcoded #3b82f6 from prior code was
+    // visually correct in dark mode — only wrong in light mode where it clashed
+    // with the navy K.logoBright. Splitting them by mode resolves both cases.
+    hcpBlue: "#3b82f6",
     warn: "#fbbf24", t1: "#f1f5f9", t2: "#94a3b8", t3: "#475569",
     gold: "#fbbf24", silver: "#94a3b8", bronze: "#d97706",
     matchGrn: "#1a8c3f",
@@ -329,9 +316,6 @@ export const getCSS = (k) => `
 
 export const FONTS = "https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700;800&display=swap";
 
-// NOTE: Removed stale `export const CSS = getCSS(K)` — it captured the theme at module-load
-// time and never updated on dark/light toggle. Use getCSS(K) directly where needed.
-
 // ── SVG Icons (Lucide-style, stroke-based) ──
 export const I = {
   trophy: (s = 18, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>,
@@ -349,85 +333,12 @@ export const I = {
   ellipsis: (s = 18, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1" fill={c}/><circle cx="5" cy="12" r="1" fill={c}/><circle cx="19" cy="12" r="1" fill={c}/></svg>,
 };
 
-// ══════════════════════════════════════════════════════════════
-//  SHARED SCORE CELL COMPONENTS (Fix #4 — extracted from 3 files)
-// ══════════════════════════════════════════════════════════════
-
-// Full ScoreCell with stroke dots — used in Scoring.jsx live scorecard
-export function ScoreCell({ score, par, strokes, size = 13, color: colorOverride }) {
-  if (!score || score <= 0) return <span style={{ color: K.t3 + "30", fontSize: size }}>·</span>;
-  const diff = score - par;
-  const s = size;
-  const sh = s + 8;
-  const bc = colorOverride || K.t2;
-  const textColor = colorOverride || undefined;
-  const dotH = 10;
-
-  let border = null;
-  if (diff <= -2) {
-    border = (
-      <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ width: sh - 6, height: sh - 6, borderRadius: "50%", border: `1px solid ${bc}` }} />
-      </div>
-    );
-  } else if (diff === -1) {
-    border = <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}` }} />;
-  } else if (diff === 1) {
-    border = <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}` }} />;
-  } else if (diff >= 2) {
-    border = (
-      <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ width: sh - 6, height: sh - 6, borderRadius: 2, border: `1px solid ${bc}` }} />
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", height: dotH + sh, justifyContent: "flex-end" }}>
-      <div style={{ height: dotH, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-        {strokes > 0 && <span style={{ color: colorOverride || "#3b82f6", fontSize: 10, fontWeight: 900, letterSpacing: 1, lineHeight: 1 }}>{"•".repeat(strokes)}</span>}
-      </div>
-      <div style={{ position: "relative", width: sh, height: sh, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        {border}
-        <span style={{ position: "relative", zIndex: 1, fontSize: s, fontWeight: 700, lineHeight: 1, transform: "translateY(0.5px)", ...(textColor ? { color: textColor } : {}) }}>{score}</span>
-      </div>
-    </div>
-  );
-}
-
-// Compact MiniScoreCell — used in Standings.jsx and Schedule.jsx scorecard expansions
-export function MiniScoreCell({ score, par, strokes, size = 11 }) {
-  if (!score || score <= 0) return <span style={{ color: K.t3 + "30", fontSize: size }}>·</span>;
-  const diff = score - par;
-  const sh = size + 6;
-  const bc = K.t2;
-  let border = null;
-  if (diff <= -2) {
-    border = (
-      <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ width: sh - 5, height: sh - 5, borderRadius: "50%", border: `1px solid ${bc}` }} />
-      </div>
-    );
-  } else if (diff === -1) {
-    border = <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}` }} />;
-  } else if (diff === 1) {
-    border = <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: 2, border: `1.5px solid ${bc}` }} />;
-  } else if (diff >= 2) {
-    border = (
-      <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: 2, border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <div style={{ width: sh - 5, height: sh - 5, borderRadius: 1, border: `1px solid ${bc}` }} />
-      </div>
-    );
-  }
-  return (
-    <div style={{ position: "relative", width: sh, height: sh, display: "flex", alignItems: "center", justifyContent: "center" }}>
-      {border}
-      <span style={{ position: "relative", zIndex: 1, fontSize: size, fontWeight: 700, lineHeight: 1 }}>{score}</span>
-    </div>
-  );
-}
-
 // ── Shared UI components ──
+//
+// NOTE: The canonical ScoreCell lives in pages/Scoring.jsx — the prior duplicate
+// here (and the unused MiniScoreCell) were removed during the audit cleanup.
+// Import ScoreCell from "./pages/Scoring" if you ever need it outside of the
+// SharedScorecard renderer.
 export const Pill = ({ children, color = K.acc, style, ...rest }) => (
   <span style={{ fontSize: 11, fontWeight: 600, color, background: color + "14", padding: "2px 8px", borderRadius: 4, letterSpacing: 1.0, textTransform: "uppercase", ...style }} {...rest}>{children}</span>
 );

@@ -1,11 +1,14 @@
 import { useState } from "react";
 import { LEAGUE_ID } from "../firebase";
-import { K, FONTS, Pill } from "../theme";
+import { K } from "../theme";
+
+// NOTE: Font is loaded once via index.html's <link> + preconnect — the prior
+// per-screen <link href={FONTS}> injections here were redundant duplicates and
+// have been removed.
 
 export function LoadingScreen() {
   return (
     <div style={{ minHeight: "100vh", background: K.bg, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
-      <link href={FONTS} rel="stylesheet" />
       <div style={{ fontSize: 52 }}><img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ width: 220, objectFit: "contain" }} /></div>
       <div className="pu" style={{ fontFamily: "'League Spartan', sans-serif", color: K.t3, fontSize: 13 }}>Loading...</div>
     </div>
@@ -65,9 +68,12 @@ export function AuthScreen({ onGoogle, onEmail, onPasswordReset }) {
     setBusy(false);
   };
 
+  // Press Enter to submit Email/Password sign-in. Avoids inline-onKeyDown
+  // duplication across two inputs.
+  const onEmailKey = (e) => { if (e.key === "Enter") handleEmail(); };
+
   return (
     <div style={{ minHeight: "100vh", background: K.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'League Spartan', sans-serif" }}>
-      <link href={FONTS} rel="stylesheet" />
       <div style={{ width: 340, textAlign: "center" }} className="fi">
         <img src="/MnQ_logo_transparent_bg.png" alt="Maize-N-Que Golf" style={{ width: 280, objectFit: "contain", marginBottom: 8 }} />
         <div style={{ color: K.t3, fontSize: 12, marginBottom: 32 }}>
@@ -86,8 +92,8 @@ export function AuthScreen({ onGoogle, onEmail, onPasswordReset }) {
         </>)}
 
         {mode === "email" && (<>
-          <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" type="email" autoComplete="email" style={{ width: "100%", padding: "13px 16px", borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 15, marginBottom: 8, textAlign: "center" }} />
-          <input value={pw} onChange={e => setPw(e.target.value)} placeholder="Password" type="password" autoComplete="current-password" onKeyDown={e => e.key === "Enter" && handleEmail()} style={{ width: "100%", padding: "13px 16px", borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 15, marginBottom: 12, textAlign: "center" }} />
+          <input value={email} onChange={e => setEmail(e.target.value)} placeholder="Email" type="email" autoComplete="email" onKeyDown={onEmailKey} style={{ width: "100%", padding: "13px 16px", borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 15, marginBottom: 8, textAlign: "center" }} />
+          <input value={pw} onChange={e => setPw(e.target.value)} placeholder="Password" type="password" autoComplete="current-password" onKeyDown={onEmailKey} style={{ width: "100%", padding: "13px 16px", borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 15, marginBottom: 12, textAlign: "center" }} />
           <button onClick={handleEmail} disabled={busy} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer", marginBottom: 10, opacity: busy ? .6 : 1 }}>Sign In / Create Account</button>
           {/* Forgot password — jumps to reset mode, keeping the typed email so the
               user doesn't have to retype it. Plain text link is intentionally
@@ -163,7 +169,6 @@ export function JoinScreen({ authUser, members, players, saveMember, doSignOut, 
 
   return (
     <div style={{ minHeight: "100vh", background: K.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'League Spartan', sans-serif" }}>
-      <link href={FONTS} rel="stylesheet" />
       <div style={{ width: 340, textAlign: "center" }} className="fi">
         <img src="/MnQ_logo_transparent_bg.png" alt="Maize-N-Que Golf" style={{ width: 240, objectFit: "contain", marginBottom: 8 }} />
         <div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 24, color: K.acc, letterSpacing: 1, marginBottom: 4 }}>{title}</div>

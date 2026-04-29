@@ -1,7 +1,8 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, CHEVRON_SIZE, calcCourseHandicap, calcNineHandicap, calcPlayerHcp, buildSeedMap } from "../theme";
+import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, CHEVRON_SIZE, calcPlayerHcp, buildSeedMap } from "../theme";
 import { SharedScorecard } from "./Scoring";
 import { readScoreEffective, getStrokesForHole, resultLetterFor, computeMatchResult } from "../lib/matchCalc";
+import { isScheduleDateAtOrPast } from "../lib/scheduleDate";
 
 // Build standings from a set of match results.
 // Tiebreaker is always total holes won (the headToHead option was removed because it was
@@ -673,30 +674,6 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                       );
                     })()}
                     {/* Legacy stack removed — see the absolutely-positioned block above */}
-                    {false && (
-                    <div style={{ display: "flex", flexDirection: "column", paddingTop: topPad }}>
-                      {Array.from({ length: matchCount }, (_, mi) => {
-                        const mu = round.matchups[mi];
-                        const configMu = round.config[mi];
-                        const isLast = mi === matchCount - 1;
-
-                        let nextCardDeltaY = 0;
-                        if (ri < bracketData.length - 1) {
-                          const currCenterY = topPad + mi * (CARD_HEIGHT + gap) + CARD_HEIGHT / 2;
-                          const nextG = geom[ri + 1];
-                          const nextTargetIdx = Math.floor(mi / 2);
-                          const nextCenterY = nextG.topPad + nextTargetIdx * (CARD_HEIGHT + nextG.gap) + CARD_HEIGHT / 2;
-                          nextCardDeltaY = nextCenterY - currCenterY;
-                        }
-
-                        return (
-                          <div key={mi} style={{ marginBottom: isLast ? 0 : gap, position: "relative" }}>
-                            <BracketCard mu={mu} configMu={configMu} />
-                          </div>
-                        );
-                      })}
-                    </div>
-                    )}
                   </div>
                 );
               })}
@@ -1019,14 +996,17 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
       const priorRoundsDone = earlierPlayoffWeeks.length === 0
         || earlierPlayoffWeeks.every(wk => wk.locked === true);
       if (!priorRoundsDone) return false;
-      // Date guard: only "live" once the scheduled date has arrived. Stored
-      // dates are ISO strings (e.g. "2026-08-04"); compare on day boundary
-      // in local time so an early-evening start counts the whole match day
-      // as live.
+      // Date guard: only "live" once the scheduled date has arrived.
+      //
+      // PRIOR BUG: comment claimed dates were ISO ("2026-08-04") and compared
+      // todayStr.toISOString() < finalWk.date — but dates throughout the app
+      // are stored as short readable strings ("Apr 21"). ASCII-wise digit < letter
+      // is always true, so this guard always returned false and live polling
+      // never engaged. The LIVE badge never appeared. Fixed by using the
+      // canonical parser via isScheduleDateAtOrPast.
       if (finalWk.date) {
-        const today = new Date();
-        const todayStr = today.toISOString().slice(0, 10);
-        if (todayStr < finalWk.date) return false;
+        const year = leagueConfig?.year || new Date().getFullYear();
+        if (!isScheduleDateAtOrPast(finalWk.date, year)) return false;
       }
       return true;
     })();
@@ -1039,7 +1019,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
       cancelled = true;
       if (pollId) clearInterval(pollId);
     };
-  }, [playoffWeeks, finalRoundWeek, fetchWeekScores, fetchAllScores]);
+  }, [playoffWeeks, finalRoundWeek, fetchWeekScores, fetchAllScores, leagueConfig]);
 
   // Build leaderboard: each player's net total across playoff rounds.
   // KEY DIFFERENCE from prior implementation: handicap is NOT a single value per player.
@@ -1205,8 +1185,9 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
       || earlierPlayoffWeeks.every(wk => wk.locked === true);
     if (!priorRoundsDone) return false;
     if (finalWk.date) {
-      const todayStr = new Date().toISOString().slice(0, 10);
-      if (todayStr < finalWk.date) return false;
+      // Same fix as the polling guard above — was comparing ISO to "Apr 21".
+      const year = leagueConfig?.year || new Date().getFullYear();
+      if (!isScheduleDateAtOrPast(finalWk.date, year)) return false;
     }
     return true;
   })();
@@ -1762,7 +1743,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                       <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.l}</div>
                       <div style={{ ...wltDash, fontSize: NAME_SIZE, fontWeight: 800 }}>-</div>
                       <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.t}</div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: "#3b82f6", minWidth: 26, textAlign: "right", marginLeft: 6 }}>{s.hw}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: K.hcpBlue, minWidth: 26, textAlign: "right", marginLeft: 6 }}>{s.hw}</div>
                     </>) : (<>
                       <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.w}</div>
                       <div style={{ ...wltDash, fontSize: 11, color: K.t3 }}>-</div>
@@ -1819,7 +1800,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                                 </>
                               )}
                             </div>
-                            <div style={{ width: 28, flexShrink: 0, textAlign: "right", color: "#3b82f6", fontWeight: 700 }}>{r.holesWon}</div>
+                            <div style={{ width: 28, flexShrink: 0, textAlign: "right", color: K.hcpBlue, fontWeight: 700 }}>{r.holesWon}</div>
                           </button>
                           {isResExp && (
                             <div style={{ padding: "2px 4px 10px" }}>

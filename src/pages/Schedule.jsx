@@ -1,8 +1,10 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, HERO_NUM_SIZE, CHEVRON_SIZE, buildSeedMap } from "../theme";
+import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE, buildSeedMap } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 import { SharedScorecard } from "./Scoring";
 import { computeMatchResult, readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/matchCalc";
+import { parseScheduleDate } from "../lib/scheduleDate";
+import { parseTiebreakerResult } from "../TeamMatchupCard";
 
 export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen }) {
   const [showAll, setShowAll] = useState(false);
@@ -495,21 +497,13 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       const teeMin = totalMins % 60;
       const teeTimeStr = fmtTeeTime(origIdx);
 
-      let startDate;
-      if (wk.date) {
-        const [mon, day] = wk.date.split('/').map(Number);
-        if (mon && day) startDate = new Date(year, mon - 1, day, teeHr, teeMin);
-      }
-      if (!startDate) {
-        const months = { 'Jan':0,'Feb':1,'Mar':2,'Apr':3,'May':4,'Jun':5,'Jul':6,'Aug':7,'Sep':8,'Oct':9,'Nov':10,'Dec':11 };
-        const parts = (wk.date || "").split(' ');
-        if (parts.length === 2) {
-          const m = months[parts[0]];
-          const d = parseInt(parts[1]);
-          if (m !== undefined && d) startDate = new Date(year, m, d, teeHr, teeMin);
-        }
-      }
-      if (!startDate) return;
+      // Use the canonical parser instead of duplicating month-name + slash
+      // handling here. Prior code had a dead `wk.date.split('/')` branch that
+      // never matched (dates are stored as "Apr 21") and only fell through to
+      // the working branch.
+      const dayStart = parseScheduleDate(wk.date, year);
+      if (!dayStart) return;
+      const startDate = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate(), teeHr, teeMin);
 
       const endDate = new Date(startDate.getTime() + 3 * 60 * 60 * 1000);
       events.push(
@@ -572,12 +566,8 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       if (raw === "TIED") {
         detailText = "";
       } else {
-        const tbMatch = raw.match(/^TIE\s*\(([^)]+)\)\s*$/i);
-        if (tbMatch) {
-          detailText = tbMatch[1];
-        } else {
-          detailText = raw;
-        }
+        const tb = parseTiebreakerResult(raw);
+        detailText = tb.isTiebreaker ? tb.label : raw;
       }
     }
 
@@ -618,7 +608,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
               <span style={{ fontSize: 14, fontWeight: 700 }}>{teeTimeShort}</span>
             )}
           </div>
-          <div style={{ width: 38, fontSize: 11, fontWeight: 600, color: "#3b82f6", flexShrink: 0 }}>
+          <div style={{ width: 38, fontSize: 11, fontWeight: 600, color: K.hcpBlue, flexShrink: 0 }}>
             {isRainedOut ? "" : side === 'front' ? 'Front' : 'Back'}
           </div>
           <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
@@ -926,13 +916,13 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                         }}>
                           {res ? (() => {
                             const raw = res.matchResultText || `${score1}–${score2}`;
-                            const tbMatch = raw.match(/^TIE\s*\(([^)]+)\)\s*$/i);
-                            if (tbMatch) {
+                            const tb = parseTiebreakerResult(raw);
+                            if (tb.isTiebreaker) {
                               return (
                                 <>
                                   <div style={{ fontSize: 17, fontWeight: 800, color: resultColor, letterSpacing: .3, lineHeight: 1 }}>TIE</div>
                                   <div style={{ fontSize: 9, fontWeight: 700, color: K.t3, letterSpacing: .5, textTransform: "uppercase", lineHeight: 1.1, marginTop: 1, whiteSpace: "nowrap" }}>
-                                    {tbMatch[1]}
+                                    {tb.label}
                                   </div>
                                 </>
                               );
