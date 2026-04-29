@@ -1219,14 +1219,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                        "SIGNED [○] · ATTESTED [○] [○] [○]" with all blank
                        outlined circles. Layout placeholder so the next state
                        transition doesn't shift other cards.
-                    2. Signed-but-not-fully-attested: progress bar appears,
-                       signer badge filled w/ initials, attester badges
-                       outlined+initials (unconfirmed) or filled+initials
-                       (confirmed).
-                    3. Fully attested: no progress bar, all badges filled
-                       w/ initials.
-                    All states render the same DOM shape so card heights
-                    remain identical on All Matches. */}
+                    2. Signed-but-not-fully-attested: signer badge filled w/
+                       initials, attester badges outlined+initials (unconfirmed)
+                       or filled+initials (confirmed).
+                    3. Fully attested: all badges filled w/ initials.
+                    The badge fill states alone convey progress — no separate
+                    progress bar needed. Card heights remain identical because
+                    the row DOM doesn't change shape across states. */}
                 {(() => {
                   const signer = playerMap[res?.signedByPlayerId];
                   // Build the attester list. When signed, we use resNonSigners
@@ -1246,15 +1245,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   // Skip render only if no players in match (degenerate case).
                   if (!isSigned && attesterList.length === 0) return null;
 
-                  // Progress bar slot is always 2px tall — actual fill bar
-                  // when in-progress signed, transparent spacer otherwise.
-                  // Equal height across all states keeps card vertical metrics
-                  // identical, which is the whole point of always-rendering.
-                  const showProgressBar = isSigned && !res?.attested;
-                  const progressPct = showProgressBar && resNonSigners.length > 0
-                    ? (resAttestedCount / resNonSigners.length) * 100
-                    : 0;
-
                   const initialsOf = (pid) => {
                     const p = playerMap[pid];
                     if (!p) return "";
@@ -1272,39 +1262,28 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   );
 
                   return (
-                    <div style={{ borderTop: `1px solid ${K.bdr}30` }}>
-                      <div style={{ height: 2, background: showProgressBar ? K.bdr + "30" : "transparent", position: "relative" }}>
-                        {showProgressBar && (
-                          <div style={{
-                            position: "absolute", top: 0, left: 0, bottom: 0,
-                            width: `${progressPct}%`,
-                            background: K.t2,
-                            transition: "width .2s",
-                          }} />
-                        )}
+                    <div style={{
+                      borderTop: `1px solid ${K.bdr}30`,
+                      display: "flex", alignItems: "center", justifyContent: "space-between",
+                      padding: "5px 10px", gap: 8,
+                      fontSize: 10, color: K.t3, lineHeight: 1.3,
+                    }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9 }}>Signed</span>
+                        <Badge pid={signer?.id} filled={!!signer} />
                       </div>
-                      <div style={{
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        padding: "5px 10px", gap: 8,
-                        fontSize: 10, color: K.t3, lineHeight: 1.3,
-                      }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9 }}>Signed</span>
-                          <Badge pid={signer?.id} filled={!!signer} />
+                      {attesterList.length > 0 && (
+                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                          <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9, marginRight: 2 }}>Attested</span>
+                          {attesterList.map((pid, i) => (
+                            <Badge
+                              key={`att-${pid || i}`}
+                              pid={isSigned ? pid : null}
+                              filled={isSigned && resAttestedBy.includes(pid)}
+                            />
+                          ))}
                         </div>
-                        {attesterList.length > 0 && (
-                          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                            <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9, marginRight: 2 }}>Attested</span>
-                            {attesterList.map((pid, i) => (
-                              <Badge
-                                key={`att-${pid || i}`}
-                                pid={isSigned ? pid : null}
-                                filled={isSigned && resAttestedBy.includes(pid)}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
+                      )}
                     </div>
                   );
                 })()}
