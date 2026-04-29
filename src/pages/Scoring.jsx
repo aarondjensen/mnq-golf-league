@@ -1120,12 +1120,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     </div>
 
                     {/* Center strip — tee time/status/result on top, chevron below.
-                        Winner triangle sits inline with the result text on the
-                        side facing the winning team: ◀ on the left when T1
-                        won (points toward T1's panel), ▶ on the right when T2
-                        won (points toward T2's panel). Triangle only renders
-                        for signed/finalized matches; in-progress leading state
-                        already has the green tint + accent border. */}
+                        Result text is ALWAYS centered in the strip — winner
+                        triangle floats absolutely next to it (left for T1,
+                        right for T2) so its presence doesn't shift the result
+                        off-center. Position-relative wrapper provides the
+                        anchor; triangle's `left: 100% / right: 100%` plus a
+                        small margin keeps it tight against the text without
+                        being part of the centering calculation. */}
                     <div style={{
                       flexShrink: 0, minWidth: 90,
                       background: K.inp,
@@ -1134,26 +1135,28 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       borderLeft: `1px solid ${K.bdr}40`, borderRight: `1px solid ${K.bdr}40`,
                       gap: 2,
                     }}>
-                      <div style={{
-                        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                      }}>
+                      <div style={{ position: "relative", display: "inline-block" }}>
+                        <div style={{
+                          fontSize: centerText.length > 5 ? 14 : centerText.length > 3 ? 15 : 17, fontWeight: 800,
+                          color: centerColor, letterSpacing: .3,
+                          whiteSpace: "nowrap", textAlign: "center", lineHeight: 1.05,
+                        }}>{centerText}</div>
                         {t1Leading && isFinalOrSigned && (
                           <div style={{
-                            flexShrink: 0,
+                            position: "absolute", right: "100%", top: "50%",
+                            transform: "translateY(-50%)",
+                            marginRight: 6,
                             width: 0, height: 0,
                             borderTop: "6px solid transparent",
                             borderBottom: "6px solid transparent",
                             borderRight: `8px solid ${K.matchGrn}`,
                           }} />
                         )}
-                        <div style={{
-                          fontSize: centerText.length > 5 ? 14 : centerText.length > 3 ? 15 : 17, fontWeight: 800,
-                          color: centerColor, letterSpacing: .3,
-                          whiteSpace: "nowrap", textAlign: "center", lineHeight: 1.05,
-                        }}>{centerText}</div>
                         {t2Leading && isFinalOrSigned && (
                           <div style={{
-                            flexShrink: 0,
+                            position: "absolute", left: "100%", top: "50%",
+                            transform: "translateY(-50%)",
+                            marginLeft: 6,
                             width: 0, height: 0,
                             borderTop: "6px solid transparent",
                             borderBottom: "6px solid transparent",
