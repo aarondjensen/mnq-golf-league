@@ -252,7 +252,11 @@ export const getTheme = (mode = "dark") => {
     bdr: "#d1d5db", acc: "#475569", accDim: "#64748b",
     act: "#deab12", actHov: "#c99b0f",
     grn: "#059669", grnDim: "#047857", red: "#dc2626", teal: "#0d9488", logoBlue: "#153453", logoBright: "#10387d",
-    hcpBlue: "#10387d",
+    // Brighter blue for handicaps and stroke dots — reads cleanly against
+    // light-mode card backgrounds. Distinct from K.logoBright (navy) which is
+    // used for branding (logo text, headers, badges). Matches the dark-mode
+    // value so scorecard markings look the same in both themes.
+    hcpBlue: "#3b82f6",
     warn: "#d97706", t1: "#111827", t2: "#4b5563", t3: "#9ca3af",
     gold: "#d97706", silver: "#6b7280", bronze: "#b45309",
     matchGrn: "#157a34",
