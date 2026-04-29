@@ -1119,61 +1119,63 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       </div>
                     </div>
 
-                    {/* Center strip — result vertically centered in the row,
-                        chevron tucked at the bottom-center via absolute
-                        positioning so it doesn't push the result off-center.
-                        Winner triangle floats absolutely next to the result
-                        text (left for T1, right for T2) so its presence also
-                        doesn't shift centering. The FINAL / Thru-N status
-                        labels that used to sit below the result have moved to
-                        the sign/attest row at the bottom of the card —
-                        keeping the row's main composition focused on just
-                        the result number. */}
+                    {/* Center strip — result truly vertically centered in
+                        the row. Chevron sits at the bottom; an invisible
+                        top spacer of the chevron's same height balances the
+                        layout so the result lands at the row's exact center.
+                        Without this, the chevron's height pushed the result
+                        slightly above center even with flex centering on the
+                        outer container.
+                        Winner triangle is absolutely positioned next to the
+                        result text so its presence doesn't shift centering. */}
                     <div style={{
                       flexShrink: 0, minWidth: 90,
                       background: K.inp,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      padding: "6px 6px",
+                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                      padding: "0 6px",
                       borderLeft: `1px solid ${K.bdr}40`, borderRight: `1px solid ${K.bdr}40`,
-                      position: "relative",
                     }}>
-                      <div style={{ position: "relative", display: "inline-block" }}>
-                        <div style={{
-                          fontSize: centerText.length > 5 ? 14 : centerText.length > 3 ? 15 : 17, fontWeight: 800,
-                          color: centerColor, letterSpacing: .3,
-                          whiteSpace: "nowrap", textAlign: "center", lineHeight: 1.05,
-                        }}>{centerText}</div>
-                        {t1Leading && isFinalOrSigned && (
-                          <div style={{
-                            position: "absolute", right: "100%", top: "50%",
-                            transform: "translateY(-50%)",
-                            marginRight: 6,
-                            width: 0, height: 0,
-                            borderTop: "6px solid transparent",
-                            borderBottom: "6px solid transparent",
-                            borderRight: `8px solid ${K.matchGrn}`,
-                          }} />
-                        )}
-                        {t2Leading && isFinalOrSigned && (
-                          <div style={{
-                            position: "absolute", left: "100%", top: "50%",
-                            transform: "translateY(-50%)",
-                            marginLeft: 6,
-                            width: 0, height: 0,
-                            borderTop: "6px solid transparent",
-                            borderBottom: "6px solid transparent",
-                            borderLeft: `8px solid ${K.matchGrn}`,
-                          }} />
-                        )}
-                      </div>
-                      {/* Chevron — absolutely positioned at bottom center.
-                          Out of normal flow so it doesn't affect the result's
-                          vertical centering in the strip. */}
+                      {/* Top spacer — same height as bottom chevron row,
+                          keeps the result vertically centered. */}
+                      <div style={{ height: 14, flexShrink: 0 }} />
                       <div style={{
-                        position: "absolute", left: 0, right: 0, bottom: 2,
-                        textAlign: "center",
+                        flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
+                      }}>
+                        <div style={{ position: "relative", display: "inline-block" }}>
+                          <div style={{
+                            fontSize: centerText.length > 5 ? 14 : centerText.length > 3 ? 15 : 17, fontWeight: 800,
+                            color: centerColor, letterSpacing: .3,
+                            whiteSpace: "nowrap", textAlign: "center", lineHeight: 1.05,
+                          }}>{centerText}</div>
+                          {t1Leading && isFinalOrSigned && (
+                            <div style={{
+                              position: "absolute", right: "100%", top: "50%",
+                              transform: "translateY(-50%)",
+                              marginRight: 6,
+                              width: 0, height: 0,
+                              borderTop: "6px solid transparent",
+                              borderBottom: "6px solid transparent",
+                              borderRight: `8px solid ${K.matchGrn}`,
+                            }} />
+                          )}
+                          {t2Leading && isFinalOrSigned && (
+                            <div style={{
+                              position: "absolute", left: "100%", top: "50%",
+                              transform: "translateY(-50%)",
+                              marginLeft: 6,
+                              width: 0, height: 0,
+                              borderTop: "6px solid transparent",
+                              borderBottom: "6px solid transparent",
+                              borderLeft: `8px solid ${K.matchGrn}`,
+                            }} />
+                          )}
+                        </div>
+                      </div>
+                      {/* Chevron row — fixed 14px tall, balances the top spacer */}
+                      <div style={{
+                        height: 14, flexShrink: 0,
+                        display: "flex", alignItems: "center", justifyContent: "center",
                         fontSize: 11, color: K.t3, lineHeight: 1,
-                        pointerEvents: "none",
                       }}>{isExp ? "▴" : "▾"}</div>
                     </div>
 
@@ -1269,22 +1271,27 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       display: "flex", alignItems: "center", justifyContent: "space-between",
                       padding: "5px 10px", gap: 8,
                       fontSize: 10, color: K.t3, lineHeight: 1.3,
+                      position: "relative",
                     }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9 }}>Signed</span>
                         <Badge pid={signer?.id} filled={!!signer} />
                       </div>
-                      {/* Centered status indicator — FINAL when attested,
-                          "Thru N" when in progress with at least one full hole
-                          scored, otherwise blank. Lives in the attestation row
-                          now (was previously below the result in the center
-                          strip), so the result column stays clean and
-                          vertically centered. */}
+                      {/* Status indicator — FINAL when attested, "Thru N" when
+                          in progress with at least one full hole scored.
+                          Absolutely positioned at horizontal center of the row
+                          so it lines up directly under the match result in the
+                          center strip above, regardless of how wide the
+                          SIGNED / ATTESTED groups happen to be. Out of normal
+                          flow, so it doesn't push the badge groups around. */}
                       {progressLabel && (
                         <div style={{
+                          position: "absolute", left: "50%", top: "50%",
+                          transform: "translate(-50%, -50%)",
                           fontSize: 9, fontWeight: 700, color: progressColor,
                           textTransform: "uppercase", letterSpacing: .8,
                           whiteSpace: "nowrap",
+                          pointerEvents: "none",
                         }}>{progressLabel}</div>
                       )}
                       {attesterList.length > 0 && (
