@@ -1,8 +1,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { LEAGUE_ID, db } from "../firebase";
-import { K, FONTS, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
-  getTeeTime, getWeekSide, calcCourseHandicap, calcNineHandicap, calcLeagueHandicap,
-  formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, lastNamesOnly,
+import { K, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
+  getWeekSide, formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, lastNamesOnly,
   buildStandingsForSeed as sharedBuildStandingsForSeed, buildSeedMap,
   pairNonBracketTeams, collectPriorMatchups } from "../theme";
 
@@ -190,7 +189,7 @@ export default function AdminView(props) {
         {
           id: "members", label: "Accounts", icon: "key",
           desc: `${members.length} signed in`,
-          badge: unlinkedMembers.length > 0 ? { count: unlinkedMembers.length, color: "#3b82f6" } : null,
+          badge: unlinkedMembers.length > 0 ? { count: unlinkedMembers.length, color: K.hcpBlue } : null,
         },
       ],
     },
@@ -214,7 +213,7 @@ export default function AdminView(props) {
   if (sec === "members") return <AdminMembers members={members} saveMember={saveMember} deleteMember={deleteMember} players={players} onBack={() => setSec(null)} />;
   if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} resetSeasonData={props.resetSeasonData} importHistoricalScores={props.importHistoricalScores} recalcHandicaps={props.recalcHandicaps} matchResults={matchResults} saveMatchResult={saveMatchResult} schedule={schedule} teams={teams} scoringRules={scoringRules} saveScoringRules={saveScoringRules} onBack={() => setSec(null)} />;
 
-  const levelColor = (level) => level === "action" ? K.act : level === "warn" ? K.warn : "#3b82f6";
+  const levelColor = (level) => level === "action" ? K.act : level === "warn" ? K.warn : K.hcpBlue;
 
   return (
     <div>
@@ -2503,7 +2502,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                   isRainedOut ? K.warn :
                   isFinalized ? K.grn :
                   allMatchesAttested ? K.act :
-                  isCurrent ? "#3b82f6" :
+                  isCurrent ? K.hcpBlue :
                   K.bdr;
 
                 return (
@@ -3825,7 +3824,7 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
                 </div>
                 <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
                   {isUnlinked && (
-                    <Pill color="#3b82f6" style={{ fontSize: 8 }}>UNLINKED</Pill>
+                    <Pill color={K.hcpBlue} style={{ fontSize: 8 }}>UNLINKED</Pill>
                   )}
                   {effectiveComm && (
                     <Pill color={K.warn} style={{ fontSize: 8 }}>COMM</Pill>
