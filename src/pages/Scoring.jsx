@@ -1230,12 +1230,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
                     return (
                       <div style={{ borderTop: `1px solid ${K.bdr}30` }}>
-                        {/* Thin progress bar — blue fill showing attestation progress */}
+                        {/* Thin progress bar — gray fill matching badge color */}
                         <div style={{ height: 2, background: K.bdr + "30", position: "relative" }}>
                           <div style={{
                             position: "absolute", top: 0, left: 0, bottom: 0,
                             width: `${donePct}%`,
-                            background: "#3b82f6",
+                            background: K.t2,
                             transition: "width .2s",
                           }} />
                         </div>
@@ -1247,8 +1247,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                                 <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9 }}>Signed</span>
                                 <div style={{
                                   width: 18, height: 18, borderRadius: "50%",
-                                  background: K.grn,
-                                  border: `1.5px solid ${K.grn}`,
+                                  background: K.t2,
+                                  border: `1.5px solid ${K.t2}`,
                                   color: "white",
                                   display: "flex", alignItems: "center", justifyContent: "center",
                                   fontSize: 8, fontWeight: 800, letterSpacing: -.2,
@@ -1258,23 +1258,23 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                           })() : <div />}
                           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                             <span style={{ fontSize: 9, fontWeight: 600, color: K.t3, letterSpacing: .3, marginRight: 2, textTransform: "uppercase" }}>
-                              {resAttestedCount === totalNeeded ? "Attested" : "Pending"}
+                              Attested
                             </span>
                             {resNonSigners.map(pid => {
                               const p = playerMap[pid];
                               if (!p) return null;
                               const initials = p.name.split(' ').map(n => n[0]).join('').toUpperCase();
                               const hasAttested = resAttestedBy.includes(pid);
-                              // Confirmed attester: solid green (matches signer
-                              // weight). Still-pending: outlined blue. Both
+                              // Confirmed attester: filled gray (matches signer
+                              // weight). Still-pending: outlined gray. Both
                               // states render so you always see one badge per
                               // non-signer regardless of progress.
                               return (
                                 <div key={pid} style={{
                                   width: 18, height: 18, borderRadius: "50%",
-                                  background: hasAttested ? K.grn : "transparent",
-                                  border: `1.5px solid ${hasAttested ? K.grn : "#3b82f6"}`,
-                                  color: hasAttested ? "white" : "#3b82f6",
+                                  background: hasAttested ? K.t2 : "transparent",
+                                  border: `1.5px solid ${K.t2}`,
+                                  color: hasAttested ? "white" : K.t2,
                                   display: "flex", alignItems: "center", justifyContent: "center",
                                   fontSize: 8, fontWeight: 800, letterSpacing: -.2,
                                 }}>{initials}</div>
@@ -1287,60 +1287,54 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   }
 
                   // Post-attestation: persistent attribution line.
-                  // Uses the same initials-badge format as the pre-attestation
-                  // row for visual consistency. Signer gets a SOLID green
-                  // badge (most prominent); attesters get OUTLINED green
-                  // badges (a step below the signer in hierarchy, but clearly
-                  // distinct from the blue "pending" outlined badges from
-                  // before they confirmed). All three states (signer, attester,
-                  // pending) now read as the same primitive: a circle with
-                  // initials, color-coded by state.
+                  // Same shape as pre-attestation: signer badge + Attested
+                  // label + one badge per non-signer. By the time this branch
+                  // runs every non-signer has confirmed, so all attester
+                  // badges render filled. Pre-attestation and post-attestation
+                  // share the same primitive (filled = confirmed, outlined =
+                  // pending) so there's no visual jump when the last attester
+                  // confirms — only the badge fill flips, the layout doesn't.
                   if (res.attested && signer) {
                     const signerInitials = signer.name.split(' ').map(n => n[0]).join('').toUpperCase();
-                    const attesters = resNonSigners
-                      .filter(pid => resAttestedBy.includes(pid))
-                      .map(pid => playerMap[pid])
-                      .filter(Boolean);
                     return (
                       <div style={{
                         borderTop: `1px solid ${K.bdr}30`,
                         padding: "5px 10px",
-                        display: "flex", alignItems: "center", gap: 8,
+                        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
                         fontSize: 10, color: K.t3, lineHeight: 1.3,
-                        flexWrap: "wrap",
                       }}>
-                        {/* Signer: solid green badge */}
+                        {/* Signer: filled gray badge */}
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                          <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9, color: K.t2 }}>Signed</span>
+                          <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9 }}>Signed</span>
                           <div style={{
                             width: 18, height: 18, borderRadius: "50%",
-                            background: K.grn,
-                            border: `1.5px solid ${K.grn}`,
+                            background: K.t2,
+                            border: `1.5px solid ${K.t2}`,
                             color: "white",
                             display: "flex", alignItems: "center", justifyContent: "center",
                             fontSize: 8, fontWeight: 800, letterSpacing: -.2,
                           }}>{signerInitials}</div>
                         </div>
-                        {attesters.length > 0 && (
-                          <>
-                            <span style={{ color: K.bdr }}>·</span>
-                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                              <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9, color: K.t2 }}>Attested</span>
-                              {attesters.map(p => {
-                                const ai = p.name.split(' ').map(n => n[0]).join('').toUpperCase();
-                                return (
-                                  <div key={p.id} style={{
-                                    width: 18, height: 18, borderRadius: "50%",
-                                    background: "transparent",
-                                    border: `1.5px solid ${K.grn}`,
-                                    color: K.grn,
-                                    display: "flex", alignItems: "center", justifyContent: "center",
-                                    fontSize: 8, fontWeight: 800, letterSpacing: -.2,
-                                  }}>{ai}</div>
-                                );
-                              })}
-                            </div>
-                          </>
+                        {resNonSigners.length > 0 && (
+                          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                            <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9, marginRight: 2 }}>Attested</span>
+                            {resNonSigners.map(pid => {
+                              const p = playerMap[pid];
+                              if (!p) return null;
+                              const initials = p.name.split(' ').map(n => n[0]).join('').toUpperCase();
+                              const hasAttested = resAttestedBy.includes(pid);
+                              return (
+                                <div key={pid} style={{
+                                  width: 18, height: 18, borderRadius: "50%",
+                                  background: hasAttested ? K.t2 : "transparent",
+                                  border: `1.5px solid ${K.t2}`,
+                                  color: hasAttested ? "white" : K.t2,
+                                  display: "flex", alignItems: "center", justifyContent: "center",
+                                  fontSize: 8, fontWeight: 800, letterSpacing: -.2,
+                                }}>{initials}</div>
+                              );
+                            })}
+                          </div>
                         )}
                       </div>
                     );
