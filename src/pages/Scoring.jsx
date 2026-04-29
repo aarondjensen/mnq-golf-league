@@ -1119,21 +1119,23 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       </div>
                     </div>
 
-                    {/* Center strip — tee time/status/result on top, chevron below.
-                        Result text is ALWAYS centered in the strip — winner
-                        triangle floats absolutely next to it (left for T1,
-                        right for T2) so its presence doesn't shift the result
-                        off-center. Position-relative wrapper provides the
-                        anchor; triangle's `left: 100% / right: 100%` plus a
-                        small margin keeps it tight against the text without
-                        being part of the centering calculation. */}
+                    {/* Center strip — result vertically centered in the row,
+                        chevron tucked at the bottom-center via absolute
+                        positioning so it doesn't push the result off-center.
+                        Winner triangle floats absolutely next to the result
+                        text (left for T1, right for T2) so its presence also
+                        doesn't shift centering. The FINAL / Thru-N status
+                        labels that used to sit below the result have moved to
+                        the sign/attest row at the bottom of the card —
+                        keeping the row's main composition focused on just
+                        the result number. */}
                     <div style={{
                       flexShrink: 0, minWidth: 90,
                       background: K.inp,
-                      display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column",
+                      display: "flex", alignItems: "center", justifyContent: "center",
                       padding: "6px 6px",
                       borderLeft: `1px solid ${K.bdr}40`, borderRight: `1px solid ${K.bdr}40`,
-                      gap: 2,
+                      position: "relative",
                     }}>
                       <div style={{ position: "relative", display: "inline-block" }}>
                         <div style={{
@@ -1164,14 +1166,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                           }} />
                         )}
                       </div>
-                      {progressLabel && (
-                        <div style={{ fontSize: 9, fontWeight: 700, color: progressColor, textTransform: "uppercase", letterSpacing: .8, whiteSpace: "nowrap" }}>
-                          {progressLabel}
-                        </div>
-                      )}
+                      {/* Chevron — absolutely positioned at bottom center.
+                          Out of normal flow so it doesn't affect the result's
+                          vertical centering in the strip. */}
                       <div style={{
+                        position: "absolute", left: 0, right: 0, bottom: 2,
+                        textAlign: "center",
                         fontSize: 11, color: K.t3, lineHeight: 1,
-                        marginTop: 2,
+                        pointerEvents: "none",
                       }}>{isExp ? "▴" : "▾"}</div>
                     </div>
 
@@ -1272,6 +1274,19 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                         <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9 }}>Signed</span>
                         <Badge pid={signer?.id} filled={!!signer} />
                       </div>
+                      {/* Centered status indicator — FINAL when attested,
+                          "Thru N" when in progress with at least one full hole
+                          scored, otherwise blank. Lives in the attestation row
+                          now (was previously below the result in the center
+                          strip), so the result column stays clean and
+                          vertically centered. */}
+                      {progressLabel && (
+                        <div style={{
+                          fontSize: 9, fontWeight: 700, color: progressColor,
+                          textTransform: "uppercase", letterSpacing: .8,
+                          whiteSpace: "nowrap",
+                        }}>{progressLabel}</div>
+                      )}
                       {attesterList.length > 0 && (
                         <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                           <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9, marginRight: 2 }}>Attested</span>
