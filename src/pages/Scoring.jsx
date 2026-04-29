@@ -1101,23 +1101,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       borderLeft: t1Leading ? `3px solid ${K.matchGrn}` : "3px solid transparent",
                       opacity: t2Leading && isFinalOrSigned ? 0.6 : 1,
                     }}>
-                      {/* Winner triangle — solid green pointing RIGHT, sits on
-                          the OUTER (left) edge of the T1 panel so it points
-                          inward toward the team name. Earlier this lived on
-                          the inner edge (next to the center strip), which made
-                          it look like it was indicating the score, not the
-                          winning team. Only on signed/finalized matches; the
-                          in-progress "leading" state already gets the green
-                          tint + accent border. */}
-                      {t1Leading && isFinalOrSigned && (
-                        <div style={{
-                          flexShrink: 0,
-                          width: 0, height: 0,
-                          borderTop: "7px solid transparent",
-                          borderBottom: "7px solid transparent",
-                          borderLeft: `9px solid ${K.matchGrn}`,
-                        }} />
-                      )}
                       {showSeeds && (
                         <div style={{
                           width: 20, height: 20, borderRadius: 5, flexShrink: 0,
@@ -1137,10 +1120,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     </div>
 
                     {/* Center strip — tee time/status/result on top, chevron below.
-                        Larger font on the main line. Chevron is static (no rotation) so
-                        the card doesn't flip when expanded. */}
+                        Winner triangle sits inline with the result text on the
+                        side facing the winning team: ◀ on the left when T1
+                        won (points toward T1's panel), ▶ on the right when T2
+                        won (points toward T2's panel). Triangle only renders
+                        for signed/finalized matches; in-progress leading state
+                        already has the green tint + accent border. */}
                     <div style={{
-                      flexShrink: 0, minWidth: 76,
+                      flexShrink: 0, minWidth: 90,
                       background: K.inp,
                       display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column",
                       padding: "6px 6px",
@@ -1148,10 +1135,32 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       gap: 2,
                     }}>
                       <div style={{
-                        fontSize: centerText.length > 5 ? 14 : centerText.length > 3 ? 15 : 17, fontWeight: 800,
-                        color: centerColor, letterSpacing: .3,
-                        whiteSpace: "nowrap", textAlign: "center", lineHeight: 1.05,
-                      }}>{centerText}</div>
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                      }}>
+                        {t1Leading && isFinalOrSigned && (
+                          <div style={{
+                            flexShrink: 0,
+                            width: 0, height: 0,
+                            borderTop: "6px solid transparent",
+                            borderBottom: "6px solid transparent",
+                            borderRight: `8px solid ${K.matchGrn}`,
+                          }} />
+                        )}
+                        <div style={{
+                          fontSize: centerText.length > 5 ? 14 : centerText.length > 3 ? 15 : 17, fontWeight: 800,
+                          color: centerColor, letterSpacing: .3,
+                          whiteSpace: "nowrap", textAlign: "center", lineHeight: 1.05,
+                        }}>{centerText}</div>
+                        {t2Leading && isFinalOrSigned && (
+                          <div style={{
+                            flexShrink: 0,
+                            width: 0, height: 0,
+                            borderTop: "6px solid transparent",
+                            borderBottom: "6px solid transparent",
+                            borderLeft: `8px solid ${K.matchGrn}`,
+                          }} />
+                        )}
+                      </div>
                       {progressLabel && (
                         <div style={{ fontSize: 9, fontWeight: 700, color: progressColor, textTransform: "uppercase", letterSpacing: .8, whiteSpace: "nowrap" }}>
                           {progressLabel}
@@ -1188,18 +1197,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                           fontSize: 10, fontWeight: 800,
                         }}>{seedMap[dispT2?.id] || "?"}</div>
                       )}
-                      {/* Winner triangle — mirror of T1: pointing LEFT, sits on
-                          the OUTER (right) edge so it points inward toward
-                          the team name. */}
-                      {t2Leading && isFinalOrSigned && (
-                        <div style={{
-                          flexShrink: 0,
-                          width: 0, height: 0,
-                          borderTop: "7px solid transparent",
-                          borderBottom: "7px solid transparent",
-                          borderRight: `9px solid ${K.matchGrn}`,
-                        }} />
-                      )}
                     </div>
                   </div>
                 </button>
@@ -1225,20 +1222,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   // present players, regardless of how many have confirmed.
                   if (isSigned) {
                     const totalNeeded = resNonSigners.length;
-                    const donePct = totalNeeded > 0 ? (resAttestedCount / totalNeeded) * 100 : 0;
                     if (totalNeeded === 0) return null; // solo/no-attesters edge case
 
                     return (
                       <div style={{ borderTop: `1px solid ${K.bdr}30` }}>
-                        {/* Thin progress bar — gray fill matching badge color */}
-                        <div style={{ height: 2, background: K.bdr + "30", position: "relative" }}>
-                          <div style={{
-                            position: "absolute", top: 0, left: 0, bottom: 0,
-                            width: `${donePct}%`,
-                            background: K.t2,
-                            transition: "width .2s",
-                          }} />
-                        </div>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 10px", gap: 8 }}>
                           {signer ? (() => {
                             const signerInitials = signer.name.split(' ').map(n => n[0]).join('').toUpperCase();
