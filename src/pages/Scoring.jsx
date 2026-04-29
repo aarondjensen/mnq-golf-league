@@ -1924,9 +1924,16 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
     // Workflow metadata — not derivable from scores, so it stays caller-side.
     // autoAttest fires when no other present player can attest (e.g. solo
-    // match, or all teammates marked absent).
+    // match, or all teammates marked absent). When that happens we ALSO
+    // populate attestedBy with all non-signer pids so the UI's two attestation
+    // signals (the FINAL label and the per-player attest dots) stay
+    // internally consistent. Prior code set attestedBy:[] alongside
+    // attested:true, which made the All Matches center strip show "FINAL"
+    // while the attest row showed 0/3 — the two states disagreed.
+    // (Mirrors handleAttestAllWeek's behavior — same invariant.)
     const presentNonSigners = allP.filter(pid => pid !== leagueUser.playerId && !isPlayerAbsent(pid));
     const autoAttest = presentNonSigners.length === 0;
+    const allNonSigners = allP.filter(pid => pid !== leagueUser.playerId);
 
     await saveMatchResult({
       ...calc,
@@ -1934,7 +1941,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       week,
       finalizedByTeamId: myTeam?.id || null,
       signedByPlayerId: leagueUser.playerId || null,
-      attestedBy: [],
+      attestedBy: autoAttest ? allNonSigners : [],
       attested: autoAttest,
     });
   };
