@@ -1083,7 +1083,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div key={mi} style={{
                 background: K.card,
                 borderRadius: 10,
-                border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}60`,
+                border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}`,
                 overflow: "hidden",
                 boxShadow: isMyMatch ? `0 2px 8px ${K.act}18` : "0 1px 3px rgba(0,0,0,.12), 0 1px 2px rgba(0,0,0,.08)",
               }}>
