@@ -1213,124 +1213,100 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                        to FINAL. Previously this information disappeared once attestation
                        completed, leaving no visible trace of who did what.
                     Nothing renders when the match hasn't been signed yet. */}
-                {res && (() => {
+                {/* Attestation row — ALWAYS rendered so every card has the
+                    same structure and height. Three states share one layout:
+                    1. Match has no signer yet (pending/in-progress): show
+                       "SIGNED [○] · ATTESTED [○] [○] [○]" with all blank
+                       outlined circles. Layout placeholder so the next state
+                       transition doesn't shift other cards.
+                    2. Signed-but-not-fully-attested: progress bar appears,
+                       signer badge filled w/ initials, attester badges
+                       outlined+initials (unconfirmed) or filled+initials
+                       (confirmed).
+                    3. Fully attested: no progress bar, all badges filled
+                       w/ initials.
+                    All states render the same DOM shape so card heights
+                    remain identical on All Matches. */}
+                {(() => {
                   const signer = playerMap[res?.signedByPlayerId];
-                  const signerLast = signer ? signer.name.split(' ').pop() : null;
+                  // Build the attester list. When signed, we use resNonSigners
+                  // (filters absents). When unsigned, fall back to all present
+                  // players minus one slot reserved for the eventual signer —
+                  // exact identity of who will sign vs attest is unknown until
+                  // someone signs, so for the placeholder state we just show
+                  // (N-1) blank attester slots after a blank signer slot.
+                  const attesterList = isSigned
+                    ? resNonSigners
+                    : (() => {
+                        const allPids = [...mT1Pids, ...mT2Pids].filter(pid =>
+                          holeScores[`w${week}_p${pid}_habsent`] !== 1
+                        );
+                        return allPids.slice(0, Math.max(0, allPids.length - 1));
+                      })();
+                  // Skip render only if no players in match (degenerate case).
+                  if (!isSigned && attesterList.length === 0) return null;
 
-                  // Pre-attestation: show progress bar + ALL attesters
-                  // (confirmed + pending). Earlier this filtered to pending
-                  // only, which made signed-but-partially-attested matches
-                  // look like they had fewer players than they did. Now the
-                  // total badge count is always: 1 signer + N non-signing
-                  // present players, regardless of how many have confirmed.
-                  if (isSigned) {
-                    const totalNeeded = resNonSigners.length;
-                    if (totalNeeded === 0) return null; // solo/no-attesters edge case
+                  // Progress bar slot is always 2px tall — actual fill bar
+                  // when in-progress signed, transparent spacer otherwise.
+                  // Equal height across all states keeps card vertical metrics
+                  // identical, which is the whole point of always-rendering.
+                  const showProgressBar = isSigned && !res?.attested;
+                  const progressPct = showProgressBar && resNonSigners.length > 0
+                    ? (resAttestedCount / resNonSigners.length) * 100
+                    : 0;
 
-                    return (
-                      <div style={{ borderTop: `1px solid ${K.bdr}30` }}>
-                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 10px", gap: 8 }}>
-                          {signer ? (() => {
-                            const signerInitials = signer.name.split(' ').map(n => n[0]).join('').toUpperCase();
-                            return (
-                              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: K.t3 }}>
-                                <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9 }}>Signed</span>
-                                <div style={{
-                                  width: 18, height: 18, borderRadius: "50%",
-                                  background: K.t2,
-                                  border: `1.5px solid ${K.t2}`,
-                                  color: "white",
-                                  display: "flex", alignItems: "center", justifyContent: "center",
-                                  fontSize: 8, fontWeight: 800, letterSpacing: -.2,
-                                }}>{signerInitials}</div>
-                              </div>
-                            );
-                          })() : <div />}
-                          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                            <span style={{ fontSize: 9, fontWeight: 600, color: K.t3, letterSpacing: .3, marginRight: 2, textTransform: "uppercase" }}>
-                              Attested
-                            </span>
-                            {resNonSigners.map(pid => {
-                              const p = playerMap[pid];
-                              if (!p) return null;
-                              const initials = p.name.split(' ').map(n => n[0]).join('').toUpperCase();
-                              const hasAttested = resAttestedBy.includes(pid);
-                              // Confirmed attester: filled gray (matches signer
-                              // weight). Still-pending: outlined gray. Both
-                              // states render so you always see one badge per
-                              // non-signer regardless of progress.
-                              return (
-                                <div key={pid} style={{
-                                  width: 18, height: 18, borderRadius: "50%",
-                                  background: hasAttested ? K.t2 : "transparent",
-                                  border: `1.5px solid ${K.t2}`,
-                                  color: hasAttested ? "white" : K.t2,
-                                  display: "flex", alignItems: "center", justifyContent: "center",
-                                  fontSize: 8, fontWeight: 800, letterSpacing: -.2,
-                                }}>{initials}</div>
-                              );
-                            })}
-                          </div>
-                        </div>
+                  const initialsOf = (pid) => {
+                    const p = playerMap[pid];
+                    if (!p) return "";
+                    return p.name.split(' ').map(n => n[0]).join('').toUpperCase();
+                  };
+                  const Badge = ({ pid, filled }) => (
+                    <div style={{
+                      width: 18, height: 18, borderRadius: "50%",
+                      background: filled ? K.t2 : "transparent",
+                      border: `1.5px solid ${K.t2}`,
+                      color: filled ? "white" : K.t2,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 8, fontWeight: 800, letterSpacing: -.2,
+                    }}>{pid ? initialsOf(pid) : ""}</div>
+                  );
+
+                  return (
+                    <div style={{ borderTop: `1px solid ${K.bdr}30` }}>
+                      <div style={{ height: 2, background: showProgressBar ? K.bdr + "30" : "transparent", position: "relative" }}>
+                        {showProgressBar && (
+                          <div style={{
+                            position: "absolute", top: 0, left: 0, bottom: 0,
+                            width: `${progressPct}%`,
+                            background: K.t2,
+                            transition: "width .2s",
+                          }} />
+                        )}
                       </div>
-                    );
-                  }
-
-                  // Post-attestation: persistent attribution line.
-                  // Same shape as pre-attestation: signer badge + Attested
-                  // label + one badge per non-signer. By the time this branch
-                  // runs every non-signer has confirmed, so all attester
-                  // badges render filled. Pre-attestation and post-attestation
-                  // share the same primitive (filled = confirmed, outlined =
-                  // pending) so there's no visual jump when the last attester
-                  // confirms — only the badge fill flips, the layout doesn't.
-                  if (res.attested && signer) {
-                    const signerInitials = signer.name.split(' ').map(n => n[0]).join('').toUpperCase();
-                    return (
                       <div style={{
-                        borderTop: `1px solid ${K.bdr}30`,
-                        padding: "5px 10px",
-                        display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        padding: "5px 10px", gap: 8,
                         fontSize: 10, color: K.t3, lineHeight: 1.3,
                       }}>
-                        {/* Signer: filled gray badge */}
                         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                           <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9 }}>Signed</span>
-                          <div style={{
-                            width: 18, height: 18, borderRadius: "50%",
-                            background: K.t2,
-                            border: `1.5px solid ${K.t2}`,
-                            color: "white",
-                            display: "flex", alignItems: "center", justifyContent: "center",
-                            fontSize: 8, fontWeight: 800, letterSpacing: -.2,
-                          }}>{signerInitials}</div>
+                          <Badge pid={signer?.id} filled={!!signer} />
                         </div>
-                        {resNonSigners.length > 0 && (
+                        {attesterList.length > 0 && (
                           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                             <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9, marginRight: 2 }}>Attested</span>
-                            {resNonSigners.map(pid => {
-                              const p = playerMap[pid];
-                              if (!p) return null;
-                              const initials = p.name.split(' ').map(n => n[0]).join('').toUpperCase();
-                              const hasAttested = resAttestedBy.includes(pid);
-                              return (
-                                <div key={pid} style={{
-                                  width: 18, height: 18, borderRadius: "50%",
-                                  background: hasAttested ? K.t2 : "transparent",
-                                  border: `1.5px solid ${K.t2}`,
-                                  color: hasAttested ? "white" : K.t2,
-                                  display: "flex", alignItems: "center", justifyContent: "center",
-                                  fontSize: 8, fontWeight: 800, letterSpacing: -.2,
-                                }}>{initials}</div>
-                              );
-                            })}
+                            {attesterList.map((pid, i) => (
+                              <Badge
+                                key={`att-${pid || i}`}
+                                pid={isSigned ? pid : null}
+                                filled={isSigned && resAttestedBy.includes(pid)}
+                              />
+                            ))}
                           </div>
                         )}
                       </div>
-                    );
-                  }
-
-                  return null;
+                    </div>
+                  );
                 })()}
 
                 {/* Expanded scorecard — uses SharedScorecard */}
