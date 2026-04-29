@@ -1054,8 +1054,29 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               else { centerText = "AS"; centerColor = K.t3; }
               progressLabel = "Thru " + thru;
             } else {
-              centerText = formatTeeTime(mi);
-              centerColor = K.act;
+              // No complete hole has been scored yet on the match. Two
+              // sub-cases:
+              //   (a) Some players HAVE entered scores but the match-play
+              //       status can't be computed because at least one player
+              //       hasn't yet — typically a make-up scenario where one
+              //       team teed off and the other is playing later. Show
+              //       PENDING (gold like a tee time, but labeled). This is
+              //       distinct from a not-yet-started match.
+              //   (b) Nobody has entered any scores. Show the scheduled
+              //       tee time as before.
+              const anyScoreEntered = [...mT1Pids, ...mT2Pids].some(pid => {
+                for (let h = 0; h < 9; h++) {
+                  if ((holeScores[`w${week}_p${pid}_h${h}`] || 0) > 0) return true;
+                }
+                return false;
+              });
+              if (anyScoreEntered) {
+                centerText = "PENDING";
+                centerColor = K.act;
+              } else {
+                centerText = formatTeeTime(mi);
+                centerColor = K.act;
+              }
             }
 
             return (
@@ -1096,6 +1117,23 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                           {dn(dispT1?.player2)}
                         </div>
                       </div>
+                      {/* Winner triangle — solid green pointing RIGHT (toward
+                          center strip). Only shown on signed/finalized matches
+                          where T1 won; the in-progress "leading" state already
+                          gets the green tint + accent border, so adding a
+                          triangle there too would be over-signaling. The
+                          triangle reuses the same K.matchGrn used for the
+                          accent border so the win indicators read as one
+                          coherent visual system. */}
+                      {t1Leading && isFinalOrSigned && (
+                        <div style={{
+                          flexShrink: 0,
+                          width: 0, height: 0,
+                          borderTop: "7px solid transparent",
+                          borderBottom: "7px solid transparent",
+                          borderLeft: `9px solid ${K.matchGrn}`,
+                        }} />
+                      )}
                     </div>
 
                     {/* Center strip — tee time/status/result on top, chevron below.
@@ -1134,6 +1172,18 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       justifyContent: "flex-end",
                       opacity: t1Leading && isFinalOrSigned ? 0.6 : 1,
                     }}>
+                      {/* Winner triangle — mirror of T1: pointing LEFT toward
+                          center strip. Same K.matchGrn fill, same dimensions.
+                          Only on signed/finalized matches where T2 won. */}
+                      {t2Leading && isFinalOrSigned && (
+                        <div style={{
+                          flexShrink: 0,
+                          width: 0, height: 0,
+                          borderTop: "7px solid transparent",
+                          borderBottom: "7px solid transparent",
+                          borderRight: `9px solid ${K.matchGrn}`,
+                        }} />
+                      )}
                       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-end" }}>
                         <div style={{ fontSize: 14, fontWeight: 700, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, textAlign: "right", maxWidth: "100%" }}>
                           {dn(dispT2?.player1)}
@@ -1186,12 +1236,22 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                           }} />
                         </div>
                         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "5px 10px", gap: 8 }}>
-                          {signerLast ? (
-                            <div style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, color: K.t3 }}>
-                              <span style={{ fontSize: 9 }}>✓</span>
-                              <span style={{ fontWeight: 600 }}>Signed by {signerLast}</span>
-                            </div>
-                          ) : <div />}
+                          {signer ? (() => {
+                            const signerInitials = signer.name.split(' ').map(n => n[0]).join('').toUpperCase();
+                            return (
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 10, color: K.t3 }}>
+                                <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9 }}>Signed</span>
+                                <div style={{
+                                  width: 18, height: 18, borderRadius: "50%",
+                                  background: K.grn,
+                                  border: `1.5px solid ${K.grn}`,
+                                  color: "white",
+                                  display: "flex", alignItems: "center", justifyContent: "center",
+                                  fontSize: 8, fontWeight: 800, letterSpacing: -.2,
+                                }}>{signerInitials}</div>
+                              </div>
+                            );
+                          })() : <div />}
                           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
                             <span style={{ fontSize: 9, fontWeight: 600, color: K.t3, letterSpacing: .3, marginRight: 2 }}>
                               Pending
@@ -1217,33 +1277,59 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   }
 
                   // Post-attestation: persistent attribution line.
-                  // Only renders when the match is actually attested AND someone signed —
-                  // skips when res.attested is true but no signer recorded (e.g. very old
-                  // legacy data). Attesters list is filtered to players who were actually
-                  // required to attest (non-signers, present), so absent teammates don't
-                  // show up as attesters even if their ID happened to appear in attestedBy.
-                  if (res.attested && signerLast) {
-                    const attesterNames = resNonSigners
+                  // Uses the same initials-badge format as the pre-attestation
+                  // row for visual consistency. Signer gets a SOLID green
+                  // badge (most prominent); attesters get OUTLINED green
+                  // badges (a step below the signer in hierarchy, but clearly
+                  // distinct from the blue "pending" outlined badges from
+                  // before they confirmed). All three states (signer, attester,
+                  // pending) now read as the same primitive: a circle with
+                  // initials, color-coded by state.
+                  if (res.attested && signer) {
+                    const signerInitials = signer.name.split(' ').map(n => n[0]).join('').toUpperCase();
+                    const attesters = resNonSigners
                       .filter(pid => resAttestedBy.includes(pid))
-                      .map(pid => {
-                        const p = playerMap[pid];
-                        return p ? p.name.split(' ').pop() : null;
-                      })
+                      .map(pid => playerMap[pid])
                       .filter(Boolean);
                     return (
                       <div style={{
                         borderTop: `1px solid ${K.bdr}30`,
                         padding: "5px 10px",
-                        display: "flex", alignItems: "center", gap: 6,
+                        display: "flex", alignItems: "center", gap: 8,
                         fontSize: 10, color: K.t3, lineHeight: 1.3,
                         flexWrap: "wrap",
                       }}>
-                        <span style={{ fontSize: 9, color: K.grn }}>✓</span>
-                        <span><span style={{ fontWeight: 600, color: K.t2 }}>Signed</span> by {signerLast}</span>
-                        {attesterNames.length > 0 && (
+                        {/* Signer: solid green badge */}
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9, color: K.t2 }}>Signed</span>
+                          <div style={{
+                            width: 18, height: 18, borderRadius: "50%",
+                            background: K.grn,
+                            border: `1.5px solid ${K.grn}`,
+                            color: "white",
+                            display: "flex", alignItems: "center", justifyContent: "center",
+                            fontSize: 8, fontWeight: 800, letterSpacing: -.2,
+                          }}>{signerInitials}</div>
+                        </div>
+                        {attesters.length > 0 && (
                           <>
                             <span style={{ color: K.bdr }}>·</span>
-                            <span><span style={{ fontWeight: 600, color: K.t2 }}>Attested</span> by {attesterNames.join(", ")}</span>
+                            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                              <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9, color: K.t2 }}>Attested</span>
+                              {attesters.map(p => {
+                                const ai = p.name.split(' ').map(n => n[0]).join('').toUpperCase();
+                                return (
+                                  <div key={p.id} style={{
+                                    width: 18, height: 18, borderRadius: "50%",
+                                    background: "transparent",
+                                    border: `1.5px solid ${K.grn}`,
+                                    color: K.grn,
+                                    display: "flex", alignItems: "center", justifyContent: "center",
+                                    fontSize: 8, fontWeight: 800, letterSpacing: -.2,
+                                  }}>{ai}</div>
+                                );
+                              })}
+                            </div>
                           </>
                         )}
                       </div>
