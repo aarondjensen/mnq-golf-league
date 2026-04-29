@@ -1101,6 +1101,23 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       borderLeft: t1Leading ? `3px solid ${K.matchGrn}` : "3px solid transparent",
                       opacity: t2Leading && isFinalOrSigned ? 0.6 : 1,
                     }}>
+                      {/* Winner triangle — solid green pointing RIGHT, sits on
+                          the OUTER (left) edge of the T1 panel so it points
+                          inward toward the team name. Earlier this lived on
+                          the inner edge (next to the center strip), which made
+                          it look like it was indicating the score, not the
+                          winning team. Only on signed/finalized matches; the
+                          in-progress "leading" state already gets the green
+                          tint + accent border. */}
+                      {t1Leading && isFinalOrSigned && (
+                        <div style={{
+                          flexShrink: 0,
+                          width: 0, height: 0,
+                          borderTop: "7px solid transparent",
+                          borderBottom: "7px solid transparent",
+                          borderLeft: `9px solid ${K.matchGrn}`,
+                        }} />
+                      )}
                       {showSeeds && (
                         <div style={{
                           width: 20, height: 20, borderRadius: 5, flexShrink: 0,
@@ -1117,23 +1134,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                           {dn(dispT1?.player2)}
                         </div>
                       </div>
-                      {/* Winner triangle — solid green pointing RIGHT (toward
-                          center strip). Only shown on signed/finalized matches
-                          where T1 won; the in-progress "leading" state already
-                          gets the green tint + accent border, so adding a
-                          triangle there too would be over-signaling. The
-                          triangle reuses the same K.matchGrn used for the
-                          accent border so the win indicators read as one
-                          coherent visual system. */}
-                      {t1Leading && isFinalOrSigned && (
-                        <div style={{
-                          flexShrink: 0,
-                          width: 0, height: 0,
-                          borderTop: "7px solid transparent",
-                          borderBottom: "7px solid transparent",
-                          borderLeft: `9px solid ${K.matchGrn}`,
-                        }} />
-                      )}
                     </div>
 
                     {/* Center strip — tee time/status/result on top, chevron below.
@@ -1172,18 +1172,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       justifyContent: "flex-end",
                       opacity: t1Leading && isFinalOrSigned ? 0.6 : 1,
                     }}>
-                      {/* Winner triangle — mirror of T1: pointing LEFT toward
-                          center strip. Same K.matchGrn fill, same dimensions.
-                          Only on signed/finalized matches where T2 won. */}
-                      {t2Leading && isFinalOrSigned && (
-                        <div style={{
-                          flexShrink: 0,
-                          width: 0, height: 0,
-                          borderTop: "7px solid transparent",
-                          borderBottom: "7px solid transparent",
-                          borderRight: `9px solid ${K.matchGrn}`,
-                        }} />
-                      )}
                       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-end" }}>
                         <div style={{ fontSize: 14, fontWeight: 700, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, textAlign: "right", maxWidth: "100%" }}>
                           {dn(dispT2?.player1)}
@@ -1199,6 +1187,18 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                           display: "flex", alignItems: "center", justifyContent: "center",
                           fontSize: 10, fontWeight: 800,
                         }}>{seedMap[dispT2?.id] || "?"}</div>
+                      )}
+                      {/* Winner triangle — mirror of T1: pointing LEFT, sits on
+                          the OUTER (right) edge so it points inward toward
+                          the team name. */}
+                      {t2Leading && isFinalOrSigned && (
+                        <div style={{
+                          flexShrink: 0,
+                          width: 0, height: 0,
+                          borderTop: "7px solid transparent",
+                          borderBottom: "7px solid transparent",
+                          borderRight: `9px solid ${K.matchGrn}`,
+                        }} />
                       )}
                     </div>
                   </div>
@@ -1217,12 +1217,16 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   const signer = playerMap[res?.signedByPlayerId];
                   const signerLast = signer ? signer.name.split(' ').pop() : null;
 
-                  // Pre-attestation: show progress bar + pending initials
+                  // Pre-attestation: show progress bar + ALL attesters
+                  // (confirmed + pending). Earlier this filtered to pending
+                  // only, which made signed-but-partially-attested matches
+                  // look like they had fewer players than they did. Now the
+                  // total badge count is always: 1 signer + N non-signing
+                  // present players, regardless of how many have confirmed.
                   if (isSigned) {
-                    const pending = resNonSigners.filter(pid => !resAttestedBy.includes(pid));
-                    if (!pending.length) return null;
                     const totalNeeded = resNonSigners.length;
                     const donePct = totalNeeded > 0 ? (resAttestedCount / totalNeeded) * 100 : 0;
+                    if (totalNeeded === 0) return null; // solo/no-attesters edge case
 
                     return (
                       <div style={{ borderTop: `1px solid ${K.bdr}30` }}>
@@ -1253,18 +1257,24 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                             );
                           })() : <div />}
                           <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                            <span style={{ fontSize: 9, fontWeight: 600, color: K.t3, letterSpacing: .3, marginRight: 2 }}>
-                              Pending
+                            <span style={{ fontSize: 9, fontWeight: 600, color: K.t3, letterSpacing: .3, marginRight: 2, textTransform: "uppercase" }}>
+                              {resAttestedCount === totalNeeded ? "Attested" : "Pending"}
                             </span>
-                            {pending.map(pid => {
+                            {resNonSigners.map(pid => {
                               const p = playerMap[pid];
-                              const initials = p ? p.name.split(' ').map(n => n[0]).join('').toUpperCase() : '?';
+                              if (!p) return null;
+                              const initials = p.name.split(' ').map(n => n[0]).join('').toUpperCase();
+                              const hasAttested = resAttestedBy.includes(pid);
+                              // Confirmed attester: solid green (matches signer
+                              // weight). Still-pending: outlined blue. Both
+                              // states render so you always see one badge per
+                              // non-signer regardless of progress.
                               return (
                                 <div key={pid} style={{
                                   width: 18, height: 18, borderRadius: "50%",
-                                  background: "transparent",
-                                  border: `1.5px solid #3b82f6`,
-                                  color: "#3b82f6",
+                                  background: hasAttested ? K.grn : "transparent",
+                                  border: `1.5px solid ${hasAttested ? K.grn : "#3b82f6"}`,
+                                  color: hasAttested ? "white" : "#3b82f6",
                                   display: "flex", alignItems: "center", justifyContent: "center",
                                   fontSize: 8, fontWeight: 800, letterSpacing: -.2,
                                 }}>{initials}</div>
@@ -1536,8 +1546,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 Rain Out Week {week}
               </button>
             )}
-            {/* Attest All Signed — force-attest pending match results for this week */}
-            {!isWeekLocked && weekSignedUnattestedCount > 0 && (
+            {/* Attest All Signed — force-attest pending match results for this week.
+                Only visible when the commish toggle is on (matches Rain Out gate). */}
+            {commMode && !isWeekLocked && weekSignedUnattestedCount > 0 && (
               <button onClick={handleAttestAllWeek} style={{ width: "100%", padding: 12, borderRadius: 10, marginBottom: 8, cursor: "pointer", background: "#3b82f615", border: `1.5px solid #3b82f650`, color: "#3b82f6", fontSize: 13, fontWeight: 700 }}>
                 Attest All Signed ({weekSignedUnattestedCount})
               </button>
