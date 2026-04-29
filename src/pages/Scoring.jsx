@@ -1090,8 +1090,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 <button onClick={() => setExpandedMatch(isExp ? null : mi)} style={{ width: "100%", padding: 0, cursor: "pointer", textAlign: "left", background: "transparent", border: "none", display: "block" }}>
                   {/* Standings-style single-row card: [seed · team]  VS/status  [team · seed].
                       Green tint + accent bar on the leading/winning team's half. Team names
-                      stack on two lines so both players show in full. */}
-                  <div style={{ display: "flex", alignItems: "stretch", minHeight: 60 }}>
+                      stack on two lines so both players show in full.
+                      Outer container is `position: relative` so the expand
+                      chevron can be absolutely positioned at the bottom-center
+                      of the whole card without occupying flex space — letting
+                      every panel use the same simple flex centering and stay
+                      vertically aligned with each other. */}
+                  <div style={{ display: "flex", alignItems: "stretch", minHeight: 60, position: "relative" }}>
                     {/* TEAM 1 — left half. Teammate names always stacked on two lines so
                         the row has a consistent height + rhythm regardless of name length. */}
                     <div style={{
@@ -1119,64 +1124,50 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       </div>
                     </div>
 
-                    {/* Center strip — result truly vertically centered in
-                        the row. Chevron sits at the bottom; an invisible
-                        top spacer of the chevron's same height balances the
-                        layout so the result lands at the row's exact center.
-                        Without this, the chevron's height pushed the result
-                        slightly above center even with flex centering on the
-                        outer container.
-                        Winner triangle is absolutely positioned next to the
-                        result text so its presence doesn't shift centering. */}
+                    {/* Center strip — same flex shape as the team panels:
+                        single-layer alignItems: center, no extra rows, no
+                        spacers. This guarantees the result lands at the same
+                        vertical center as the team names on either side.
+                        The chevron is rendered separately, absolutely
+                        positioned at the bottom of the outer row container,
+                        so it doesn't reserve space in this strip's flex
+                        layout and doesn't push the result off-center. */}
                     <div style={{
                       flexShrink: 0, minWidth: 90,
                       background: K.inp,
-                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-                      padding: "0 6px",
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      padding: "10px 6px",
                       borderLeft: `1px solid ${K.bdr}40`, borderRight: `1px solid ${K.bdr}40`,
                     }}>
-                      {/* Top spacer — same height as bottom chevron row,
-                          keeps the result vertically centered. */}
-                      <div style={{ height: 14, flexShrink: 0 }} />
-                      <div style={{
-                        flex: 1, display: "flex", alignItems: "center", justifyContent: "center",
-                      }}>
-                        <div style={{ position: "relative", display: "inline-block" }}>
+                      <div style={{ position: "relative", display: "inline-block" }}>
+                        <div style={{
+                          fontSize: centerText.length > 5 ? 14 : centerText.length > 3 ? 15 : 17, fontWeight: 800,
+                          color: centerColor, letterSpacing: .3,
+                          whiteSpace: "nowrap", textAlign: "center", lineHeight: 1.05,
+                        }}>{centerText}</div>
+                        {t1Leading && isFinalOrSigned && (
                           <div style={{
-                            fontSize: centerText.length > 5 ? 14 : centerText.length > 3 ? 15 : 17, fontWeight: 800,
-                            color: centerColor, letterSpacing: .3,
-                            whiteSpace: "nowrap", textAlign: "center", lineHeight: 1.05,
-                          }}>{centerText}</div>
-                          {t1Leading && isFinalOrSigned && (
-                            <div style={{
-                              position: "absolute", right: "100%", top: "50%",
-                              transform: "translateY(-50%)",
-                              marginRight: 6,
-                              width: 0, height: 0,
-                              borderTop: "6px solid transparent",
-                              borderBottom: "6px solid transparent",
-                              borderRight: `8px solid ${K.matchGrn}`,
-                            }} />
-                          )}
-                          {t2Leading && isFinalOrSigned && (
-                            <div style={{
-                              position: "absolute", left: "100%", top: "50%",
-                              transform: "translateY(-50%)",
-                              marginLeft: 6,
-                              width: 0, height: 0,
-                              borderTop: "6px solid transparent",
-                              borderBottom: "6px solid transparent",
-                              borderLeft: `8px solid ${K.matchGrn}`,
-                            }} />
-                          )}
-                        </div>
+                            position: "absolute", right: "100%", top: "50%",
+                            transform: "translateY(-50%)",
+                            marginRight: 6,
+                            width: 0, height: 0,
+                            borderTop: "6px solid transparent",
+                            borderBottom: "6px solid transparent",
+                            borderRight: `8px solid ${K.matchGrn}`,
+                          }} />
+                        )}
+                        {t2Leading && isFinalOrSigned && (
+                          <div style={{
+                            position: "absolute", left: "100%", top: "50%",
+                            transform: "translateY(-50%)",
+                            marginLeft: 6,
+                            width: 0, height: 0,
+                            borderTop: "6px solid transparent",
+                            borderBottom: "6px solid transparent",
+                            borderLeft: `8px solid ${K.matchGrn}`,
+                          }} />
+                        )}
                       </div>
-                      {/* Chevron row — fixed 14px tall, balances the top spacer */}
-                      <div style={{
-                        height: 14, flexShrink: 0,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 11, color: K.t3, lineHeight: 1,
-                      }}>{isExp ? "▴" : "▾"}</div>
                     </div>
 
                     {/* TEAM 2 — right half (mirrored: seed on the right). Stacked names too. */}
@@ -1205,6 +1196,17 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                         }}>{seedMap[dispT2?.id] || "?"}</div>
                       )}
                     </div>
+                    {/* Expand chevron — absolutely positioned at bottom-center
+                        of the whole row so it doesn't reserve flex space in
+                        any panel. This keeps team names and the match result
+                        sharing the exact same vertical center; the chevron
+                        sits in the lower portion of the row's natural padding. */}
+                    <div style={{
+                      position: "absolute", left: 0, right: 0, bottom: 1,
+                      textAlign: "center",
+                      fontSize: 11, color: K.t3, lineHeight: 1,
+                      pointerEvents: "none",
+                    }}>{isExp ? "▴" : "▾"}</div>
                   </div>
                 </button>
 
