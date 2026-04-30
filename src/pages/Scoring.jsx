@@ -1101,6 +1101,23 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               }
             }
 
+            // When the match is "PENDING" (some scores entered, others not),
+            // highlight any player whose 9-hole card is incomplete in the same
+            // gold so it's obvious *who* the match is waiting on. Players
+            // with all 9 holes entered render in the normal text color even
+            // while the match is pending. Outside the PENDING state — match
+            // is final/signed/in-progress, or hasn't started — every name
+            // renders normally.
+            const isPending = centerText === "PENDING";
+            const isCardIncomplete = (pid) => {
+              if (!pid) return false;
+              for (let h = 0; h < 9; h++) {
+                if ((holeScores[`w${week}_p${pid}_h${h}`] || 0) <= 0) return true;
+              }
+              return false;
+            };
+            const nameColor = (pid) => (isPending && isCardIncomplete(pid)) ? K.act : K.t1;
+
             return (
               <div key={mi} style={{
                 background: K.card,
@@ -1137,10 +1154,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                         }}>{seedMap[dispT1?.id] || "?"}</div>
                       )}
                       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: nameColor(dispT1?.player1), whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2 }}>
                           {dn(dispT1?.player1)}
                         </div>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2 }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: nameColor(dispT1?.player2), whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2 }}>
                           {dn(dispT1?.player2)}
                         </div>
                       </div>
@@ -1202,10 +1219,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       opacity: t1Leading && isFinalOrSigned ? 0.6 : 1,
                     }}>
                       <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-end" }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, textAlign: "right", maxWidth: "100%" }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: nameColor(dispT2?.player1), whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, textAlign: "right", maxWidth: "100%" }}>
                           {dn(dispT2?.player1)}
                         </div>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, textAlign: "right", maxWidth: "100%" }}>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: nameColor(dispT2?.player2), whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, textAlign: "right", maxWidth: "100%" }}>
                           {dn(dispT2?.player2)}
                         </div>
                       </div>
