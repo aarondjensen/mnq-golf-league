@@ -1303,12 +1303,21 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     if (!p) return "";
                     return p.name.split(' ').map(n => n[0]).join('').toUpperCase();
                   };
+                  // Badge style:
+                  //   filled  → solid K.t2 background, white initials   (signed/attested = "done")
+                  //   unfilled → solid card background, K.t2 initials   (pending = inverse)
+                  // Border is K.t2 in both states so the badges are the
+                  // same diameter and align perfectly. Using K.card (not
+                  // transparent) on the unfilled state guarantees the
+                  // card background, not whatever happens to be behind it,
+                  // shows through — important on green-tinted winning
+                  // halves where transparent would pick up the green.
                   const Badge = ({ pid, filled }) => (
                     <div style={{
                       width: 18, height: 18, borderRadius: "50%",
-                      background: filled ? K.t2 : "transparent",
+                      background: filled ? K.t2 : K.card,
                       border: `1.5px solid ${K.t2}`,
-                      color: filled ? "white" : K.t2,
+                      color: filled ? "#fff" : K.t2,
                       display: "flex", alignItems: "center", justifyContent: "center",
                       fontSize: 8, fontWeight: 800, letterSpacing: -.2,
                     }}>{pid ? initialsOf(pid) : ""}</div>
