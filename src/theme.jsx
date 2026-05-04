@@ -22,12 +22,25 @@ export function getWeekSide(weekNum) { return weekNum % 2 === 1 ? 'front' : 'bac
 // Admin sets "best N of recent M" (e.g. best 6 of 8 → ratio 0.75).
 // For a player with fewer than M rounds, scale the "best" count proportionally:
 // e.g. with 4 rounds → best round(4 * 0.75) = best 3 of 4.
+//
+// EXCEPTION: a player with exactly 2 rounds uses best 1 of 2 instead of the
+// proportional best 2 of 2. With only two rounds, "averaging both" gives a
+// soft handicap that overweights any unusually high round; using just the
+// best one is more representative of demonstrated skill while the player's
+// history is still sparse. Once they reach 3+ rounds the standard
+// proportional scaling resumes (best 2 of 3, then best 3 of 4, etc.).
+//
 // Accepts either an array of round objects { gross } or raw gross numbers.
 export function calcPlayerHcp(rounds, recentN, bestN, par) {
   if (!rounds || !rounds.length) return null;
   const ratio = bestN / recentN;
   const actualRecent = rounds.slice(-recentN);
-  const scaledBest = Math.max(1, Math.round(ratio * actualRecent.length));
+  let scaledBest;
+  if (actualRecent.length === 2) {
+    scaledBest = 1;
+  } else {
+    scaledBest = Math.max(1, Math.round(ratio * actualRecent.length));
+  }
   const grosses = actualRecent.map(r => typeof r === 'number' ? r : r.gross);
   const sorted = [...grosses].sort((a, b) => a - b);
   const best = sorted.slice(0, scaledBest);

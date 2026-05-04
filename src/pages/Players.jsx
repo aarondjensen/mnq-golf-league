@@ -43,9 +43,17 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
       const droppedStart = Math.max(0, allRounds.length - recentN - 2);
       const droppedEnd = Math.max(0, allRounds.length - recentN);
       const droppedRounds = allRounds.slice(droppedStart, droppedEnd);
-      // Mirror calcPlayerHcp's proportional scaling for transparency in the expanded view
+      // Mirror calcPlayerHcp's proportional scaling for transparency in the
+      // expanded view. Includes the same 2-rounds → best-1 special case so
+      // the footer "BEST X OF Y" line matches what the stored handicap was
+      // actually computed from.
       const ratio = bestN / recentN;
-      const scaledBest = recentRounds.length > 0 ? Math.max(1, Math.round(ratio * recentRounds.length)) : 0;
+      let scaledBest;
+      if (recentRounds.length === 2) {
+        scaledBest = 1;
+      } else {
+        scaledBest = recentRounds.length > 0 ? Math.max(1, Math.round(ratio * recentRounds.length)) : 0;
+      }
       const sorted = [...recentRounds].sort((a, b) => a.gross - b.gross);
       const best = sorted.slice(0, scaledBest);
 
