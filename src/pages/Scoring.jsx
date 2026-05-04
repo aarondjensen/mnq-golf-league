@@ -437,32 +437,16 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     matchResults.some(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true)
   );
 
-  // ── Finalize-week banner ──
-  // When every match in the week is attested but the week isn't locked, the
-  // commissioner needs to do a final pass (assign Closest-to-the-Pin winners,
-  // then lock the week). The legacy entry point lives at the bottom of the
-  // All Matches view, but commissioners frequently miss it because they
-  // don't switch tabs after attestation completes. This banner surfaces the
-  // action at the top of EVERY scoring view (My Match, All Matches, Low Net)
-  // so the next step is always one tap away.
-  //
-  // openFinalize replicates the existing button's logic — pre-populate CTP
-  // selections from any prior week-CTP records, then open the popup. The
-  // popup itself (line ~1355) is unchanged; it owns the actual lock + recalc.
-  const openFinalize = () => {
-    const par3Holes = pars.map((p, i) => p === 3 ? (side === 'front' ? i + 1 : i + 10) : null).filter(Boolean);
-    const existing = {};
-    par3Holes.forEach(h => {
-      const c = ctpData.find(cd => cd.week === week && cd.holeNum === h);
-      if (c) existing[h] = { playerId: c.playerId || "", distance: c.distance || "" };
-    });
-    setCtpSelections(existing);
-    setShowCtpPopup(true);
-  };
-
-  // Three banner states for the commish (all hidden when week is already locked):
-  //   1. Ready → maize tappable button: "Finalize Week N" (all matches attested)
+  // Two banner states for the commish (all hidden when week is already locked):
+  //   1. Ready → handled at app level (gold strip above tab nav). This file
+  //      no longer renders a Ready banner; the app-level banner is the single
+  //      finalize entry point.
   //   2. Waiting → muted info strip: "Waiting on N match(es) · X of Y attested"
+  //                (when some but not all matches are done). Key UX need: the
+  //                banner disappearing without explanation when a match goes
+  //                unattested confuses commissioners who think the feature is
+  //                broken. This strip gives them a visible breadcrumb while
+  //                they wait.
   //                (when some but not all matches are done). Key UX need: the
   //                banner disappearing without explanation when a match goes
   //                unattested confuses commissioners who think the feature is
@@ -475,26 +459,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const matchCount = matches.length;
   const hasSomeProgress = attestedCount > 0 && attestedCount < matchCount;
 
-  const showFinalizeBanner = isComm && allMatchesAttested && !isWeekLocked && !!saveWeekSchedule;
   const showWaitingBanner = isComm && !allMatchesAttested && hasSomeProgress && !isWeekLocked;
 
-  const FinalizeBanner = showFinalizeBanner ? (
-    <button
-      onClick={openFinalize}
-      style={{
-        width: "100%", padding: "10px 14px", borderRadius: 10,
-        marginBottom: 8, cursor: "pointer",
-        background: K.act, border: "none", color: K.bg,
-        fontSize: 13, fontWeight: 800, letterSpacing: .3,
-        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-        boxShadow: `0 2px 8px ${K.act}40`,
-      }}
-    >
-      <span style={{ fontSize: 11, fontWeight: 700, opacity: .85, letterSpacing: 1, textTransform: "uppercase" }}>Ready</span>
-      <span>Finalize Week {week}</span>
-      <span style={{ fontSize: 16, fontWeight: 800, opacity: .85 }}>›</span>
-    </button>
-  ) : showWaitingBanner ? (
+  // The "ready to finalize" CTA is now exclusively the app-level gold strip
+  // above the tab navigation in App.jsx. This file used to render a 3rd-tier
+  // ready banner inside each Scoring sub-view (My Match / All Matches / Low
+  // Net) plus a 4th "Finalize Week N" button at the bottom of the All Matches
+  // list — three duplicate tap targets driving the same action. Both removed.
+  // We keep the WAITING info strip below because it's status, not a CTA.
+  const FinalizeBanner = showWaitingBanner ? (
     <div style={{
       width: "100%", padding: "8px 14px", borderRadius: 10,
       marginBottom: 8,
@@ -1569,22 +1542,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 Attest All Signed ({weekSignedUnattestedCount})
               </button>
             )}
-            {allMatchesAttested && !isWeekLocked && saveWeekSchedule && (
-              <button onClick={() => {
-                // Identify par 3 holes for CTP selection
-                const par3Holes = pars.map((p, i) => p === 3 ? (side === 'front' ? i + 1 : i + 10) : null).filter(Boolean);
-                // Pre-fill with existing CTP data for this week
-                const existing = {};
-                par3Holes.forEach(h => {
-                  const c = ctpData.find(cd => cd.week === week && cd.holeNum === h);
-                  if (c) existing[h] = { playerId: c.playerId || "", distance: c.distance || "" };
-                });
-                setCtpSelections(existing);
-                setShowCtpPopup(true);
-              }} style={{ width: "100%", padding: 14, borderRadius: 12, cursor: "pointer", background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: 800 }}>
-                Finalize Week {week}
-              </button>
-            )}
+            {/* Bottom-of-list "Finalize Week N" button removed — the app-level
+                gold banner above the tab navigation is the single entry point
+                for finalization. Was previously a third redundant CTA along
+                with the in-Scoring banner and the app-level banner. */}
           </div>
         )}
 
