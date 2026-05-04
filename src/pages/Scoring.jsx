@@ -326,7 +326,7 @@ function computeMatchStatus(t1Pids, t2Pids, getScore, getStrokes, pars) {
 // ═══════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
-export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, commMode, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, openAllMatches, onAllMatchesOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData, autoSeedIfReady }) {
+export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, commMode, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, openAllMatches, onAllMatchesOpened, openFinalize, onFinalizeOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData, autoSeedIfReady }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
   // 3-way view toggle: "myMatch" (default scoring view), "allMatches" (week overview), "lowNet" (leaderboard)
@@ -416,6 +416,28 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const hcps = course ? (side === 'front' ? course.frontHcps : course.backHcps) : [1,3,5,7,9,11,13,15,17];
   const myTeam = teams.find(t => t.player1 === leagueUser.playerId || t.player2 === leagueUser.playerId);
   const myMatch = myTeam ? matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id) : null;
+
+  // App-level "Finalize Week N" banner click → directly open the CTP /
+  // finalize popup. Pre-fills CTP selections from any prior week-CTP
+  // records so the commish sees what was previously chosen, then fires
+  // the cleanup callback so a second tap on the banner re-opens it.
+  useEffect(() => {
+    if (!openFinalize) return;
+    const par3Holes = pars.map((p, i) => p === 3 ? (side === 'front' ? i + 1 : i + 10) : null).filter(Boolean);
+    const existing = {};
+    par3Holes.forEach(h => {
+      const c = ctpData.find(cd => cd.week === week && cd.holeNum === h);
+      if (c) existing[h] = { playerId: c.playerId || "", distance: c.distance || "" };
+    });
+    setCtpSelections(existing);
+    setShowCtpPopup(true);
+    if (onFinalizeOpened) onFinalizeOpened();
+    // Intentionally only re-runs on openFinalize — pars/side/ctpData/week
+    // change frequently and we don't want this firing on every Firestore
+    // tick. By the time a banner click sets openFinalize, those values
+    // are stable for the targeted week.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openFinalize]);
 
   // ── Memoized strokes calculator ──
   const getStrokesMap = useMemo(() => buildStrokesCache(hcps), [hcps]);

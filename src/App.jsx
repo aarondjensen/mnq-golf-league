@@ -74,6 +74,11 @@ export default function GolfLeagueApp() {
   const [commMode, setCommMode] = useState(false);
   const [showPlayerPicker, setShowPlayerPicker] = useState(false);
   const [openAllMatches, setOpenAllMatches] = useState(false);
+  // openFinalize → Scoring opens the CTP-selection / finalize popup directly.
+  // The app-level "Week N ready to finalize" banner sets this. Mirrors the
+  // openAllMatches pattern: set true here, Scoring's effect picks it up,
+  // Scoring fires onFinalizeOpened to clear the flag.
+  const [openFinalize, setOpenFinalize] = useState(false);
   const [forceWeek, setForceWeek] = useState(null);
   const [darkMode, setDarkMode] = useState(() => {
     try { return localStorage.getItem("mnq_theme") === "dark"; } catch { return false; }
@@ -977,16 +982,23 @@ export default function GolfLeagueApp() {
 
       {/* Finalize week banner — commish only */}
       {weekToFinalize && (
-        <button onClick={() => { setForceWeek(weekToFinalize); setOpenAllMatches(true); setTab("scoring"); }} style={{
-          display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+        <button onClick={() => {
+          setForceWeek(weekToFinalize);
+          setOpenAllMatches(true);   // routes the scoring view to the right week's All Matches
+          setOpenFinalize(true);     // and opens the finalize CTP popup directly
+          setTab("scoring");
+        }} style={{
+          display: "flex", alignItems: "center", justifyContent: "center", gap: 10,
           width: "100%", maxWidth: 900, margin: "0 auto",
-          padding: "8px 14px", background: K.warn + "18", border: "none",
-          borderBottom: `1px solid ${K.warn}40`, cursor: "pointer", flexShrink: 0,
+          padding: "12px 16px", background: K.act, border: "none",
+          cursor: "pointer", flexShrink: 0,
+          boxShadow: `0 2px 8px ${K.act}40`,
         }}>
-          <span style={{ fontSize: 12, fontWeight: 700, color: K.warn }}>
-            Week {weekToFinalize} ready to finalize
+          <span style={{ fontSize: 11, fontWeight: 700, color: K.bg, opacity: .7, letterSpacing: 1, textTransform: "uppercase" }}>Ready</span>
+          <span style={{ fontSize: 14, fontWeight: 800, color: K.bg, letterSpacing: .3, textTransform: "uppercase" }}>
+            Finalize Week {weekToFinalize}
           </span>
-          <span style={{ fontSize: 11, color: K.warn, opacity: .7 }}>→</span>
+          <span style={{ fontSize: 16, fontWeight: 800, color: K.bg, opacity: .85 }}>›</span>
         </button>
       )}
 
@@ -1014,7 +1026,7 @@ export default function GolfLeagueApp() {
           <ErrorBoundary>
           <Suspense fallback={TabFallback}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} fetchAllScores={fetchAllScores} saveMatchResult={saveMatchResult} />}
-          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} deleteMatchResult={deleteMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} commMode={commMode} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} recalcHandicaps={recalcHandicaps} clearWeekData={clearWeekData} autoSeedIfReady={autoSeedIfReady} />}
+          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} deleteMatchResult={deleteMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} commMode={commMode} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} openFinalize={openFinalize} onFinalizeOpened={() => setOpenFinalize(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} recalcHandicaps={recalcHandicaps} clearWeekData={clearWeekData} autoSeedIfReady={autoSeedIfReady} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} isComm={isComm} saveScore={saveScore} saveMatchResult={saveMatchResult} setPopupOpen={setPopupOpen} />}
           {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} />}
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
