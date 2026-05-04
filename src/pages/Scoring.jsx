@@ -1273,13 +1273,21 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     the row DOM doesn't change shape across states. */}
                 {(() => {
                   const signer = playerMap[res?.signedByPlayerId];
+                  // The discriminator is "do we have a signer?" — NOT `isSigned`.
+                  // `isSigned` (defined above as `isFinalOrSigned && !res.attested`)
+                  // flips to false the moment the LAST attester records, which
+                  // would otherwise blank out every attester badge even though
+                  // their pids are correctly stored in `attestedBy`. Using
+                  // `signer` here keeps the row populated through the
+                  // signed-pending → fully-attested transition.
+                  const hasSigner = !!signer;
                   // Build the attester list. When signed, we use resNonSigners
                   // (filters absents). When unsigned, fall back to all present
                   // players minus one slot reserved for the eventual signer —
                   // exact identity of who will sign vs attest is unknown until
                   // someone signs, so for the placeholder state we just show
                   // (N-1) blank attester slots after a blank signer slot.
-                  const attesterList = isSigned
+                  const attesterList = hasSigner
                     ? resNonSigners
                     : (() => {
                         const allPids = [...mT1Pids, ...mT2Pids].filter(pid =>
@@ -1288,7 +1296,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                         return allPids.slice(0, Math.max(0, allPids.length - 1));
                       })();
                   // Skip render only if no players in match (degenerate case).
-                  if (!isSigned && attesterList.length === 0) return null;
+                  if (!hasSigner && attesterList.length === 0) return null;
 
                   const initialsOf = (pid) => {
                     const p = playerMap[pid];
@@ -1341,8 +1349,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                           {attesterList.map((pid, i) => (
                             <Badge
                               key={`att-${pid || i}`}
-                              pid={isSigned ? pid : null}
-                              filled={isSigned && resAttestedBy.includes(pid)}
+                              pid={hasSigner ? pid : null}
+                              filled={hasSigner && resAttestedBy.includes(pid)}
                             />
                           ))}
                         </div>
