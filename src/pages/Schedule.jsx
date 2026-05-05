@@ -652,7 +652,32 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 }
               }
               return "Seeded — TBD";
-            })() : oppName}
+            })() : (() => {
+              // Playoff weeks WITH matchups already filled in — show the
+              // opponent name plus a round badge so the row reads as a
+              // playoff match, not a regular round-robin opponent. Without
+              // the badge, an auto-seeded playoff round 1 looks
+              // indistinguishable from any week 4 matchup in the schedule.
+              //
+              // We deliberately do NOT distinguish bracket vs non-bracket
+              // matches here. Different league formats handle this
+              // differently: a 4-team play-in has seeds 7-10 in the
+              // "bracket" while seeds 1-6 play side matches, none of
+              // which are losers' brackets. Calling them "consolation"
+              // would be misleading. The Standings → Playoffs view is
+              // the authoritative place to see bracket structure.
+              if (isPlayoff && myMatch) {
+                const pRound = schedule.filter(s => s.isPlayoff === true && s.week <= wk.week).length;
+                const roundName = (leagueConfig?.playoffRounds || [])[pRound - 1]?.name || `R${pRound}`;
+                return (
+                  <span style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+                    <span style={{ fontSize: 9, fontWeight: 800, color: K.warn, background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 3, padding: "0 4px", lineHeight: "16px", flexShrink: 0, textTransform: "uppercase", letterSpacing: .3 }}>{roundName}</span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{oppName}</span>
+                  </span>
+                );
+              }
+              return oppName;
+            })()}
           </div>
           {isComplete && res && (
             <div style={{ flexShrink: 0, color: K.t3, fontSize: 9 }}>{expandedMatchKey === `${wk.week}_0` ? "▾" : "›"}</div>
