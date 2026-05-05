@@ -1700,6 +1700,26 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
       {/* Regular standings */}
       {view === "standings" && (
         <div className="standings-grid" style={{ gap: LIST_GAP }}>
+          {/* Slim column header — matches the row layout below.
+              Widths: Pos 40 · Team flex · W-L-T 82 · final col 26/30.
+              Padding mirrors the row's "10px 14px" so columns align. The
+              final column label ("HW" or "PTS") tracks the active sort,
+              same as the row's rightmost cell. */}
+          <div style={{
+            display: "flex", alignItems: "center", width: "100%",
+            padding: "4px 14px", marginBottom: -2,
+            fontSize: 9, fontWeight: 700, color: K.t3,
+            letterSpacing: 1, textTransform: "uppercase",
+          }}>
+            <div style={{ width: 40, flexShrink: 0 }}>Pos</div>
+            <div style={{ flex: 1, textAlign: "left" }}>Team</div>
+            <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
+              <div style={{ width: 82, textAlign: "center" }}>W-L-T</div>
+              <div style={{ minWidth: isRecord ? 26 : 30, textAlign: "right", marginLeft: 6 }}>
+                {isRecord ? "HW" : "Pts"}
+              </div>
+            </div>
+          </div>
           {standings.map((s, i) => {
             const team = gt(s.teamId); if (!team) return null;
             const mc = i === 0 ? K.gold : i === 1 ? K.silver : i === 2 ? K.bronze : K.logoBright;
