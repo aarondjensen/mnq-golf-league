@@ -1719,7 +1719,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
             <div style={{ flex: 1, textAlign: "center" }}>Team</div>
             <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
               <div style={{ width: 82, textAlign: "center" }}>W-L-T</div>
-              <div style={{ minWidth: isRecord ? 64 : 30, textAlign: "right", marginLeft: 6, whiteSpace: "nowrap" }}>
+              <div style={{ minWidth: isRecord ? 64 : 30, textAlign: "center", marginLeft: 6, whiteSpace: "nowrap" }}>
                 {isRecord ? "Holes Won" : "Pts"}
               </div>
             </div>
@@ -1796,14 +1796,14 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                       <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.l}</div>
                       <div style={{ ...wltDash, fontSize: NAME_SIZE, fontWeight: 800 }}>-</div>
                       <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.t}</div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: K.hcpBlue, minWidth: 64, textAlign: "right", marginLeft: 6 }}>{s.hw}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: K.hcpBlue, minWidth: 64, textAlign: "center", marginLeft: 6 }}>{s.hw}</div>
                     </>) : (<>
                       <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.w}</div>
                       <div style={{ ...wltDash, fontSize: 11, color: K.t3 }}>-</div>
                       <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.l}</div>
                       <div style={{ ...wltDash, fontSize: 11, color: K.t3 }}>-</div>
                       <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.t}</div>
-                      <div style={{ fontSize: HERO_NUM_SIZE, fontWeight: HERO_NUM_WEIGHT, color: K.t1, fontFamily: "'League Spartan', sans-serif", minWidth: 30, textAlign: "right", marginLeft: 6 }}>{s.points}</div>
+                      <div style={{ fontSize: HERO_NUM_SIZE, fontWeight: HERO_NUM_WEIGHT, color: K.t1, fontFamily: "'League Spartan', sans-serif", minWidth: 30, textAlign: "center", marginLeft: 6 }}>{s.points}</div>
                     </>)}
                   </div>
                   <div style={{ width: 20, flexShrink: 0, textAlign: "right", color: K.t3, fontSize: CHEVRON_SIZE, marginLeft: 6 }}>{isExp ? "▾" : "›"}</div>
