@@ -1701,22 +1701,22 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
       {view === "standings" && (
         <div className="standings-grid" style={{ gap: LIST_GAP }}>
           {/* Slim column header — matches the row layout below.
-              Widths: Pos 40 · Team flex · W-L-T 82 · final col 26/30.
-              Padding mirrors the row's "10px 14px" so columns align. The
-              final column label ("HW" or "PTS") tracks the active sort,
-              same as the row's rightmost cell. */}
+              Widths: Pos 52 · Team flex · W-L-T 82 · final col 64 (Holes
+              Won) or 30 (Pts). Padding mirrors the row's "10px 14px" so
+              columns align. The final column label tracks the active
+              sort, same as the row's rightmost cell. */}
           <div style={{
             display: "flex", alignItems: "center", width: "100%",
             padding: "4px 14px", marginBottom: -2,
             fontSize: 9, fontWeight: 700, color: K.t3,
             letterSpacing: 1, textTransform: "uppercase",
           }}>
-            <div style={{ width: 40, flexShrink: 0 }}>Pos</div>
+            <div style={{ width: 52, flexShrink: 0 }}>Pos</div>
             <div style={{ flex: 1, textAlign: "left" }}>Team</div>
             <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
               <div style={{ width: 82, textAlign: "center" }}>W-L-T</div>
-              <div style={{ minWidth: isRecord ? 26 : 30, textAlign: "right", marginLeft: 6 }}>
-                {isRecord ? "HW" : "Pts"}
+              <div style={{ minWidth: isRecord ? 64 : 30, textAlign: "right", marginLeft: 6, whiteSpace: "nowrap" }}>
+                {isRecord ? "Holes Won" : "Pts"}
               </div>
             </div>
           </div>
@@ -1738,7 +1738,10 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                   borderBottom: isExp ? "none" : `1px solid ${i === 0 ? K.act + '30' : K.bdr}`,
                   padding: "10px 14px", cursor: "pointer",
                 }}>
-                  <div style={{ width: 40, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
+                  {/* Pos column — was 40px, widened to 52px to give the
+                      change indicator (▲/▼ N) a comfortable gap from the
+                      rank badge instead of crowding it. */}
+                  <div style={{ width: 52, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
                     <div style={{
                       width: RANK_BADGE_SIZE, height: RANK_BADGE_SIZE, borderRadius: RANK_BADGE_RADIUS,
                       background: i < 3 ? mc + "20" : K.logoBright + "20",
@@ -1747,15 +1750,35 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                       border: i < 3 ? `1.5px solid ${mc}40` : `1.5px solid ${K.logoBright}30`,
                     }}>{curPos}</div>
                     {posChange !== null && posChange !== 0 ? (
-                      <div style={{ fontSize: 10, fontWeight: 700, color: posChange > 0 ? K.matchGrn : K.red, display: "flex", alignItems: "baseline", gap: 1, marginLeft: 3, minWidth: 16, lineHeight: 1 }}>
+                      <div style={{ fontSize: 10, fontWeight: 700, color: posChange > 0 ? K.matchGrn : K.red, display: "flex", alignItems: "baseline", gap: 1, marginLeft: 8, minWidth: 16, lineHeight: 1 }}>
                         <span style={{ fontSize: 7, lineHeight: 1 }}>{posChange > 0 ? "▲" : "▼"}</span>
                         <span style={{ lineHeight: 1 }}>{Math.abs(posChange)}</span>
                       </div>
                     ) : (
-                      <div style={{ minWidth: 16, marginLeft: 3 }} />
+                      <div style={{ minWidth: 16, marginLeft: 8 }} />
                     )}
                   </div>
-                  <div style={{ flex: 1, fontSize: NAME_SIZE, fontWeight: NAME_WEIGHT, letterSpacing: .5, textAlign: "left" }}>{lastNamesOnly(team.name)}</div>
+                  {/* Team column — players stacked on two rows. Last names
+                      only, derived from each player's full name (split on
+                      whitespace, take the trailing token). Falls back to
+                      `lastNamesOnly(team.name)` on a single line if the
+                      team's player IDs don't resolve. */}
+                  <div style={{ flex: 1, textAlign: "left", lineHeight: 1.2, minWidth: 0 }}>
+                    {(() => {
+                      const p1 = players.find(pl => pl.id === team.player1);
+                      const p2 = players.find(pl => pl.id === team.player2);
+                      const lastOf = (p) => p ? p.name.split(/\s+/).slice(-1)[0] : null;
+                      const l1 = lastOf(p1);
+                      const l2 = lastOf(p2);
+                      if (l1 && l2) return (
+                        <>
+                          <div style={{ fontSize: NAME_SIZE, fontWeight: NAME_WEIGHT, letterSpacing: .5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l1}</div>
+                          <div style={{ fontSize: NAME_SIZE, fontWeight: NAME_WEIGHT, letterSpacing: .5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{l2}</div>
+                        </>
+                      );
+                      return <div style={{ fontSize: NAME_SIZE, fontWeight: NAME_WEIGHT, letterSpacing: .5 }}>{lastNamesOnly(team.name)}</div>;
+                    })()}
+                  </div>
                   <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 0 }}>
                     {isRecord ? (<>
                       <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.w}</div>
@@ -1763,7 +1786,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                       <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.l}</div>
                       <div style={{ ...wltDash, fontSize: NAME_SIZE, fontWeight: 800 }}>-</div>
                       <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.t}</div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: K.hcpBlue, minWidth: 26, textAlign: "right", marginLeft: 6 }}>{s.hw}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: K.hcpBlue, minWidth: 64, textAlign: "right", marginLeft: 6 }}>{s.hw}</div>
                     </>) : (<>
                       <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.w}</div>
                       <div style={{ ...wltDash, fontSize: 11, color: K.t3 }}>-</div>
