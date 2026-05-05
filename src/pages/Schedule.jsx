@@ -477,41 +477,64 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const year = leagueConfig?.year || new Date().getFullYear();
     const pad = (n) => String(n).padStart(2, '0');
     const fmtDt = (d) => `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+    // Stable UID per (league, season, team, week). Re-importing this .ics
+    // updates the existing event in the calendar app instead of creating a
+    // duplicate, so users can re-add after schedule changes (rain-outs, new
+    // matchups filled in for previously-TBD weeks) without piling up dupes.
+    // We deliberately do NOT include opponent or tee time in the UID — those
+    // are mutable details. Stability comes from week + team only.
+    const seasonKey = leagueConfig?.year || year;
+    const uidFor = (week) => `mnq-${LEAGUE_ID}-s${seasonKey}-t${myTeam.id}-w${week}@mnqgolf`;
 
     const events = [];
     schedule.forEach(wk => {
       if (wk.rainedOut) return;
+      // Skip a week only if the user has already PLAYED their match (a
+      // saved match_result exists for them). TBD weeks where matchups
+      // aren't filled yet — playoff rounds, seeded weeks before auto-seed
+      // — should still go on the calendar so the player blocks the time.
       const myMatch = wk.matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id);
-      if (!myMatch) return;
-      const res = matchResults.find(r => r.week === wk.week && r.team1Id === myMatch.team1 && r.team2Id === myMatch.team2);
+      const res = myMatch && matchResults.find(r => r.week === wk.week && r.team1Id === myMatch.team1 && r.team2Id === myMatch.team2);
       if (res) return;
 
-      const origIdx = wk.matches.indexOf(myMatch);
-      const oppId = myMatch.team1 === myTeam.id ? myMatch.team2 : myMatch.team1;
-      const oppTeam = teams.find(t => t.id === oppId);
-      const side = wk.side || getWeekSide(wk.week);
-      const sideLabel = side === 'front' ? 'Front 9' : 'Back 9';
+      const dayStart = parseScheduleDate(wk.date, year);
+      if (!dayStart) return;
 
+      const isTBD = !myMatch;
+      // Tee minutes:
+      //   - matchup known → user's actual tee slot based on match index.
+      //   - TBD → use the league's first tee time. The exact time can shift
+      //     by a few minutes once matchups are assigned; the description
+      //     note flags this for the user.
+      const origIdx = myMatch ? wk.matches.indexOf(myMatch) : 0;
       const totalMins = (ampm === 'PM' && bh !== 12 ? bh + 12 : bh) * 60 + bm + origIdx * interval;
       const teeHr = Math.floor(totalMins / 60);
       const teeMin = totalMins % 60;
       const teeTimeStr = fmtTeeTime(origIdx);
 
-      // Use the canonical parser instead of duplicating month-name + slash
-      // handling here. Prior code had a dead `wk.date.split('/')` branch that
-      // never matched (dates are stored as "Apr 21") and only fell through to
-      // the working branch.
-      const dayStart = parseScheduleDate(wk.date, year);
-      if (!dayStart) return;
       const startDate = new Date(dayStart.getFullYear(), dayStart.getMonth(), dayStart.getDate(), teeHr, teeMin);
-
       const endDate = new Date(startDate.getTime() + 3 * 60 * 60 * 1000);
+
+      const oppId = myMatch ? (myMatch.team1 === myTeam.id ? myMatch.team2 : myMatch.team1) : null;
+      const oppTeam = oppId ? teams.find(t => t.id === oppId) : null;
+      const side = wk.side || getWeekSide(wk.week);
+      const sideLabel = side === 'front' ? 'Front 9' : 'Back 9';
+      const isPlayoff = wk.isPlayoff === true;
+
+      const summary = isTBD
+        ? `MnQ Golf - Week ${wk.week}${isPlayoff ? ' (Playoff TBD)' : ' (TBD)'}`
+        : `MnQ Golf - Week ${wk.week} vs ${lastNamesOnly(oppTeam?.name || 'TBD')}`;
+      const description = isTBD
+        ? `${sideLabel} | Tee time TBD (block starts ${teeTimeStr}). Matchups will be set in-app — re-add to calendar to refresh.`
+        : `${sideLabel} | Tee Time: ${teeTimeStr}\\nVs: ${oppTeam?.name || 'TBD'}`;
+
       events.push(
         `BEGIN:VEVENT\r\n` +
+        `UID:${uidFor(wk.week)}\r\n` +
         `DTSTART:${fmtDt(startDate)}\r\n` +
         `DTEND:${fmtDt(endDate)}\r\n` +
-        `SUMMARY:MnQ Golf - Week ${wk.week} vs ${lastNamesOnly(oppTeam?.name || 'TBD')}\r\n` +
-        `DESCRIPTION:${sideLabel} | Tee Time: ${teeTimeStr}\\nVs: ${oppTeam?.name || 'TBD'}\r\n` +
+        `SUMMARY:${summary}\r\n` +
+        `DESCRIPTION:${description}\r\n` +
         `END:VEVENT\r\n`
       );
     });
@@ -529,14 +552,26 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
   // ── My Schedule compact row ──
   const renderMyWeek = (wk, isDone) => {
-    const isSeeded = wk.seeded === true && (!wk.matches || wk.matches.length === 0);
     const isPlayoff = wk.isPlayoff === true;
+    const isComplete = isWeekComplete(wk);
+    // "Treat as TBD" — covers two cases that should both show no opponent
+    // and a placeholder time on My Schedule:
+    //   1. Seeded regular-season weeks before matchups have been generated.
+    //   2. Playoff weeks before they've been played, EVEN IF auto-seeding
+    //      has already filled in matchups (which it does for Round 1 the
+    //      moment round-robin completes). Per the Standings → Playoffs
+    //      view, that's where users should look for live bracket state;
+    //      this Schedule view stays clean and just says "playoff: TBD"
+    //      until results are actually in.
+    // Once a playoff week is locked/complete the `isComplete` branch above
+    // takes precedence and the row renders the result normally.
+    const isSeeded = (wk.seeded === true && (!wk.matches || wk.matches.length === 0))
+                  || (isPlayoff && !isComplete);
     const myMatch = !isSeeded ? wk.matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id) : null;
     const origIdx = myMatch ? wk.matches.indexOf(myMatch) : 0;
     const side = wk.side || getWeekSide(wk.week);
     const isRainedOut = wk.rainedOut === true;
     const res = myMatch ? matchResults.find(r => r.week === wk.week && r.team1Id === myMatch.team1 && r.team2Id === myMatch.team2) : null;
-    const isComplete = isWeekComplete(wk);
 
     let oppName = "TBD";
     if (myMatch) {
@@ -652,32 +687,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 }
               }
               return "Seeded — TBD";
-            })() : (() => {
-              // Playoff weeks WITH matchups already filled in — show the
-              // opponent name plus a round badge so the row reads as a
-              // playoff match, not a regular round-robin opponent. Without
-              // the badge, an auto-seeded playoff round 1 looks
-              // indistinguishable from any week 4 matchup in the schedule.
-              //
-              // We deliberately do NOT distinguish bracket vs non-bracket
-              // matches here. Different league formats handle this
-              // differently: a 4-team play-in has seeds 7-10 in the
-              // "bracket" while seeds 1-6 play side matches, none of
-              // which are losers' brackets. Calling them "consolation"
-              // would be misleading. The Standings → Playoffs view is
-              // the authoritative place to see bracket structure.
-              if (isPlayoff && myMatch) {
-                const pRound = schedule.filter(s => s.isPlayoff === true && s.week <= wk.week).length;
-                const roundName = (leagueConfig?.playoffRounds || [])[pRound - 1]?.name || `R${pRound}`;
-                return (
-                  <span style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
-                    <span style={{ fontSize: 9, fontWeight: 800, color: K.warn, background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 3, padding: "0 4px", lineHeight: "16px", flexShrink: 0, textTransform: "uppercase", letterSpacing: .3 }}>{roundName}</span>
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>{oppName}</span>
-                  </span>
-                );
-              }
-              return oppName;
-            })()}
+            })() : oppName}
           </div>
           {isComplete && res && (
             <div style={{ flexShrink: 0, color: K.t3, fontSize: 9 }}>{expandedMatchKey === `${wk.week}_0` ? "▾" : "›"}</div>
@@ -779,7 +789,13 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const isPlayoff = wk.isPlayoff === true;
     const weekComplete = isWeekComplete(wk);
     const isRainedOut = wk.rainedOut === true;
-    const isSeeded = wk.seeded === true && (!wk.matches || wk.matches.length === 0);
+    // See renderMyWeek: playoff weeks are hidden behind "TBD — see Standings →
+    // Playoffs" until they're actually played, regardless of whether
+    // auto-seeding has filled in matchups already. Keeps the schedule view
+    // honest about what's been played and avoids spoiling bracket pairings
+    // here when the dedicated bracket view is one tab away.
+    const isSeeded = (wk.seeded === true && (!wk.matches || wk.matches.length === 0))
+                  || (isPlayoff && !weekComplete);
     // Show seed badges on seeded (non-RR) and playoff weeks. RR weeks don't get seeds
     // because every team plays every other team equally, so seeds aren't meaningful.
     const showSeeds = (wk.seeded === true) || (wk.isPlayoff === true);
