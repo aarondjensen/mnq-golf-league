@@ -1701,24 +1701,33 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
       {view === "standings" && (
         <div className="standings-grid" style={{ gap: LIST_GAP }}>
           {/* Slim column header — matches the row layout below.
-              Widths: Pos 52 · Team flex · W-L-T 82 · final col 64 (Holes
-              Won) or 30 (Pts). Padding mirrors the row's "10px 14px" so
-              columns align. The final column label tracks the active
-              sort, same as the row's rightmost cell. */}
+              Widths: Pos 36 · Change 30 · Team flex · W-L-T 82 · final col
+              64 (Holes Won) or 30 (Pts) · Spacer 26 (mirrors the row's
+              chevron column so columns center visually with their data).
+              Padding mirrors the row's "10px 14px" so columns align. The
+              Change column stays unlabeled — the ▲/▼ indicator below is
+              self-evident, and a header label there would crowd the rank
+              badge. */}
           <div style={{
             display: "flex", alignItems: "center", width: "100%",
             padding: "4px 14px", marginBottom: -2,
             fontSize: 9, fontWeight: 700, color: K.t3,
             letterSpacing: 1, textTransform: "uppercase",
           }}>
-            <div style={{ width: 52, flexShrink: 0 }}>Pos</div>
-            <div style={{ flex: 1, textAlign: "left" }}>Team</div>
+            <div style={{ width: 36, flexShrink: 0, textAlign: "center" }}>Pos</div>
+            <div style={{ width: 30, flexShrink: 0 }} />
+            <div style={{ flex: 1, textAlign: "center" }}>Team</div>
             <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
               <div style={{ width: 82, textAlign: "center" }}>W-L-T</div>
               <div style={{ minWidth: isRecord ? 64 : 30, textAlign: "right", marginLeft: 6, whiteSpace: "nowrap" }}>
                 {isRecord ? "Holes Won" : "Pts"}
               </div>
             </div>
+            {/* Spacer matching row's chevron column (width 20 + marginLeft 6
+                = 26). Without this the header's right edge sits 26px to the
+                left of the row's right edge, which makes W-L-T look
+                right-aligned vs the row data below. */}
+            <div style={{ width: 20, flexShrink: 0, marginLeft: 6 }} />
           </div>
           {standings.map((s, i) => {
             const team = gt(s.teamId); if (!team) return null;
@@ -1738,10 +1747,8 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                   borderBottom: isExp ? "none" : `1px solid ${i === 0 ? K.act + '30' : K.bdr}`,
                   padding: "10px 14px", cursor: "pointer",
                 }}>
-                  {/* Pos column — was 40px, widened to 52px to give the
-                      change indicator (▲/▼ N) a comfortable gap from the
-                      rank badge instead of crowding it. */}
-                  <div style={{ width: 52, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
+                  {/* Pos column — just the rank badge. */}
+                  <div style={{ width: 36, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
                     <div style={{
                       width: RANK_BADGE_SIZE, height: RANK_BADGE_SIZE, borderRadius: RANK_BADGE_RADIUS,
                       background: i < 3 ? mc + "20" : K.logoBright + "20",
@@ -1749,13 +1756,16 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                       fontSize: RANK_BADGE_FONT, fontWeight: 800, color: mc,
                       border: i < 3 ? `1.5px solid ${mc}40` : `1.5px solid ${K.logoBright}30`,
                     }}>{curPos}</div>
-                    {posChange !== null && posChange !== 0 ? (
-                      <div style={{ fontSize: 10, fontWeight: 700, color: posChange > 0 ? K.matchGrn : K.red, display: "flex", alignItems: "baseline", gap: 1, marginLeft: 8, minWidth: 16, lineHeight: 1 }}>
+                  </div>
+                  {/* Change column — week-over-week position movement.
+                      Reserves the same width whether or not there's a value
+                      so team names line up cleanly across all rows. */}
+                  <div style={{ width: 30, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
+                    {posChange !== null && posChange !== 0 && (
+                      <div style={{ fontSize: 10, fontWeight: 700, color: posChange > 0 ? K.matchGrn : K.red, display: "flex", alignItems: "baseline", gap: 1, lineHeight: 1 }}>
                         <span style={{ fontSize: 7, lineHeight: 1 }}>{posChange > 0 ? "▲" : "▼"}</span>
                         <span style={{ lineHeight: 1 }}>{Math.abs(posChange)}</span>
                       </div>
-                    ) : (
-                      <div style={{ minWidth: 16, marginLeft: 8 }} />
                     )}
                   </div>
                   {/* Team column — players stacked on two rows. Last names
