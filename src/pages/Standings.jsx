@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, CHEVRON_SIZE, calcPlayerHcp, buildSeedMap } from "../theme";
+import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, calcPlayerHcp, buildSeedMap } from "../theme";
 import { SharedScorecard } from "./Scoring";
 import { readScoreEffective, getStrokesForHole, resultLetterFor, computeMatchResult } from "../lib/matchCalc";
 import { isScheduleDateAtOrPast } from "../lib/scheduleDate";
@@ -1640,8 +1640,11 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   const gt = (id) => teams.find(t => t.id === id);
   if (!teams.length) return <EmptyState icon="trophy" title="No teams yet" subtitle="Commissioner needs to set up teams." />;
 
-  const wltCol = { width: 22, textAlign: "center", fontFamily: "'League Spartan', sans-serif" };
-  const wltDash = { width: 8, textAlign: "center", color: K.t3 };
+  // W-L-T cell widths — sized for 1–2 digit values. Was 22/8 originally
+  // which left 16px of slack across the trio; trimmed so the Team column
+  // gets that space for longer last names.
+  const wltCol = { width: 18, textAlign: "center", fontFamily: "'League Spartan', sans-serif" };
+  const wltDash = { width: 6, textAlign: "center", color: K.t3 };
 
   // ── Toggle pills — always visible regardless of season phase ──
   // Season: current standings (always meaningful).
@@ -1701,33 +1704,27 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
       {view === "standings" && (
         <div className="standings-grid" style={{ gap: LIST_GAP }}>
           {/* Slim column header — matches the row layout below.
-              Widths: Pos 36 · Change 30 · Team flex · W-L-T 82 · final col
-              64 (Holes Won) or 30 (Pts) · Spacer 26 (mirrors the row's
-              chevron column so columns center visually with their data).
-              Padding mirrors the row's "10px 14px" so columns align. The
-              Change column stays unlabeled — the ▲/▼ indicator below is
-              self-evident, and a header label there would crowd the rank
-              badge. */}
+              Widths: Pos 36 · Change 22 · Team flex · W-L-T 66 · final col
+              40 (Holes Won, label wraps onto two lines) or 30 (Pts).
+              Padding mirrors the row's "10px 10px" (tightened from 14 to
+              maximize Team width on small screens). The Change column
+              stays unlabeled — the ▲/▼ indicator below is self-evident,
+              and a header label there would crowd the rank badge. */}
           <div style={{
             display: "flex", alignItems: "center", width: "100%",
-            padding: "4px 14px", marginBottom: -2,
+            padding: "4px 10px", marginBottom: -2,
             fontSize: 9, fontWeight: 700, color: K.t3,
             letterSpacing: 1, textTransform: "uppercase",
           }}>
             <div style={{ width: 36, flexShrink: 0, textAlign: "center" }}>Pos</div>
-            <div style={{ width: 30, flexShrink: 0 }} />
+            <div style={{ width: 22, flexShrink: 0 }} />
             <div style={{ flex: 1, textAlign: "center" }}>Team</div>
             <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
-              <div style={{ width: 82, textAlign: "center" }}>W-L-T</div>
-              <div style={{ minWidth: isRecord ? 64 : 30, textAlign: "center", marginLeft: 6, whiteSpace: "nowrap" }}>
-                {isRecord ? "Holes Won" : "Pts"}
+              <div style={{ width: 66, textAlign: "center" }}>W-L-T</div>
+              <div style={{ minWidth: isRecord ? 40 : 30, textAlign: "center", marginLeft: 6, lineHeight: 1.1 }}>
+                {isRecord ? <>Holes<br />Won</> : "Pts"}
               </div>
             </div>
-            {/* Spacer matching row's chevron column (width 20 + marginLeft 6
-                = 26). Without this the header's right edge sits 26px to the
-                left of the row's right edge, which makes W-L-T look
-                right-aligned vs the row data below. */}
-            <div style={{ width: 20, flexShrink: 0, marginLeft: 6 }} />
           </div>
           {standings.map((s, i) => {
             const team = gt(s.teamId); if (!team) return null;
@@ -1745,7 +1742,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                   background: K.card, borderRadius: isExp ? `${CARD_RADIUS}px ${CARD_RADIUS}px 0 0` : CARD_RADIUS,
                   border: `1px solid ${i === 0 ? K.act + '30' : K.bdr}`,
                   borderBottom: isExp ? "none" : `1px solid ${i === 0 ? K.act + '30' : K.bdr}`,
-                  padding: "10px 14px", cursor: "pointer",
+                  padding: "10px 10px", cursor: "pointer",
                 }}>
                   {/* Pos column — just the rank badge. */}
                   <div style={{ width: 36, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
@@ -1760,7 +1757,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                   {/* Change column — week-over-week position movement.
                       Reserves the same width whether or not there's a value
                       so team names line up cleanly across all rows. */}
-                  <div style={{ width: 30, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
+                  <div style={{ width: 22, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
                     {posChange !== null && posChange !== 0 && (
                       <div style={{ fontSize: 10, fontWeight: 700, color: posChange > 0 ? K.matchGrn : K.red, display: "flex", alignItems: "baseline", gap: 1, lineHeight: 1 }}>
                         <span style={{ fontSize: 7, lineHeight: 1 }}>{posChange > 0 ? "▲" : "▼"}</span>
@@ -1796,7 +1793,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                       <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.l}</div>
                       <div style={{ ...wltDash, fontSize: NAME_SIZE, fontWeight: 800 }}>-</div>
                       <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.t}</div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: K.hcpBlue, minWidth: 64, textAlign: "center", marginLeft: 6 }}>{s.hw}</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: K.hcpBlue, minWidth: 40, textAlign: "center", marginLeft: 6 }}>{s.hw}</div>
                     </>) : (<>
                       <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.w}</div>
                       <div style={{ ...wltDash, fontSize: 11, color: K.t3 }}>-</div>
@@ -1806,7 +1803,9 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                       <div style={{ fontSize: HERO_NUM_SIZE, fontWeight: HERO_NUM_WEIGHT, color: K.t1, fontFamily: "'League Spartan', sans-serif", minWidth: 30, textAlign: "center", marginLeft: 6 }}>{s.points}</div>
                     </>)}
                   </div>
-                  <div style={{ width: 20, flexShrink: 0, textAlign: "right", color: K.t3, fontSize: CHEVRON_SIZE, marginLeft: 6 }}>{isExp ? "▾" : "›"}</div>
+                  {/* Chevron column removed — the entire row is a button so
+                      tappability is implicit, and the 26px it occupied is
+                      better given to the Team column on small screens. */}
                 </button>
 
                 {isExp && (
