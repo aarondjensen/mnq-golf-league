@@ -5,6 +5,7 @@ import { K, I, BackBtn, Card, EmptyState,
   buildSeedMap } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 import { computeMatchResult, resultLetterFor, readScoreEffective, readStrokesEffectiveExt, computePlayoffTiebreaker } from "../lib/matchCalc";
+import { parseScheduleDate } from "../lib/scheduleDate";
 import { parseTiebreakerResult } from "../TeamMatchupCard";
 
 // ═══════════════════════════════════════════════════════════════
@@ -743,12 +744,24 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     return (ampm === 'PM' && h !== 12 ? h + 12 : h) * 60 + m + matchIdx * interval;
   };
 
+  // Returns true ONLY when the live wall clock is before the match's
+  // scheduled start (date + tee time). Prior implementation compared only
+  // hour:minute of the current day to hour:minute of the tee time — so the
+  // day after the match (or any other day where now-of-day < tee-of-day),
+  // it would falsely report "before tee time" and fire the early-entry
+  // prompt. Now we anchor the tee time to wk.date and compare full Date
+  // objects.
   const isBeforeTeeTime = () => {
     const teeMinutes = getMatchTeeTimeMinutes();
     if (teeMinutes === null) return false;
-    const now = new Date();
-    const nowMinutes = now.getHours() * 60 + now.getMinutes();
-    return nowMinutes < teeMinutes;
+    const year = leagueConfig?.year || new Date().getFullYear();
+    const matchDay = parseScheduleDate(weekSch?.date, year);
+    if (!matchDay) return false;
+    const teeAt = new Date(
+      matchDay.getFullYear(), matchDay.getMonth(), matchDay.getDate(),
+      Math.floor(teeMinutes / 60), teeMinutes % 60
+    );
+    return new Date() < teeAt;
   };
 
   const guardedSaveScore = (w, pid, h, val) => {
@@ -768,8 +781,18 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       setTimeout(() => setToast(null), 3500);
       return;
     }
-    // Check if before tee time (prompt every attempt until confirmed)
-    if (!teeTimeWarningDismissed.current && isBeforeTeeTime()) {
+    // Compute existing score once — used by both the early-tee-time guard
+    // (which should only fire for first-time entries) and the
+    // complete-card edit guard below.
+    const existingScore = getS(pid, h);
+    // Check if before tee time. Two preconditions:
+    //   1. The wall clock is genuinely before the match's date+time (not
+    //      just before the tee time-of-day).
+    //   2. There's no existing score on this hole yet — i.e. this is a
+    //      first-time entry. Editing an already-saved score is never
+    //      "early scoring" by definition; the points were already entered
+    //      during/after the round.
+    if (!teeTimeWarningDismissed.current && existingScore <= 0 && isBeforeTeeTime()) {
       setConfirmModal({
         title: "Early Score Entry",
         message: "You are trying to enter scores before your scheduled tee time. Continue?",
@@ -790,8 +813,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     //   • cardComplete: every hole has a non-zero score for this player
     //   • valueChanging: existing score differs from the new value
     // First-time entry (existing 0 → first score) and idempotent re-taps
-    // never trigger.
-    const existingScore = getS(pid, h);
+    // never trigger. (existingScore was computed earlier for the
+    // tee-time guard.)
     const cardComplete = (() => {
       for (let i = 0; i < 9; i++) if (getS(pid, i) <= 0) return false;
       return true;
