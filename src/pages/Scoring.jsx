@@ -823,9 +823,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     if (cardComplete && valueChanging) {
       const player = playerMap[pid];
       const playerName = player?.name || "this player";
+      // Convert internal hole index (0..8) to display hole number based on
+      // which side this week is on. Front 9 → holes 1–9, Back 9 → holes
+      // 10–18. Same convention used everywhere else hole numbers are
+      // displayed (live scorecard header, par-3 CTP detection, etc.).
+      const displayHole = side === 'front' ? h + 1 : h + 10;
       setConfirmModal({
         title: "Edit completed round?",
-        message: `${playerName} has finished their round. Are you sure you want to change their hole ${h + 1} score?`,
+        message: `${playerName} has finished their round. Are you sure you want to change their hole ${displayHole} score?`,
         onConfirm: () => {
           setConfirmModal(null);
           saveScore(w, pid, h, val);
