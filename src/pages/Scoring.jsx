@@ -729,8 +729,18 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   // Tee time early-entry warning
   const teeTimeWarningDismissed = useRef(false);
+  // Per-player dismissal of the "edit complete card" warning. Once a player
+  // has all 9 holes entered, any change to one of their scores triggers a
+  // confirm prompt — easy to brush a finger across a complete row while
+  // editing a teammate on a busy makeup day. Once the user confirms editing
+  // for that player in this session, we don't ask again until the match
+  // changes. Reset on matchKey change so a fresh match starts clean.
+  const completeCardEditConfirmed = useRef(new Set());
   // Reset when match changes
-  useEffect(() => { teeTimeWarningDismissed.current = false; }, [matchKey]);
+  useEffect(() => {
+    teeTimeWarningDismissed.current = false;
+    completeCardEditConfirmed.current = new Set();
+  }, [matchKey]);
 
   const getMatchTeeTimeMinutes = () => {
     if (!matchToScore || !matches.length) return null;
@@ -774,6 +784,37 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         title: "Early Score Entry",
         message: "You are trying to enter scores before your scheduled tee time. Continue?",
         onConfirm: () => { teeTimeWarningDismissed.current = true; setConfirmModal(null); saveScore(w, pid, h, val); },
+      });
+      return;
+    }
+    // Edit-protection on a complete card. If the player whose hole is being
+    // tapped already has all 9 holes scored, AND the new value actually
+    // changes something (skip idempotent re-tap of the same value, and skip
+    // the rare 0→0 no-op), AND the user hasn't already confirmed editing
+    // this player in this session — prompt before writing.
+    //
+    // The trigger condition is intentionally specific:
+    //   • cardComplete: every hole has a non-zero score for this player
+    //   • valueChanging: existing score differs from the new value
+    // First-time entry (existing 0 → first score) and idempotent re-taps
+    // never trigger. The prompt is one tap per player per match session.
+    const existingScore = getS(pid, h);
+    const cardComplete = (() => {
+      for (let i = 0; i < 9; i++) if (getS(pid, i) <= 0) return false;
+      return true;
+    })();
+    const valueChanging = existingScore !== val;
+    if (cardComplete && valueChanging && !completeCardEditConfirmed.current.has(pid)) {
+      const player = playerMap[pid];
+      const playerName = player?.name || "this player";
+      setConfirmModal({
+        title: "Change a completed scorecard?",
+        message: `${playerName} has all 9 holes entered. Are you sure you want to change hole ${h + 1} from ${existingScore} to ${val || "—"}?`,
+        onConfirm: () => {
+          completeCardEditConfirmed.current.add(pid);
+          setConfirmModal(null);
+          saveScore(w, pid, h, val);
+        },
       });
       return;
     }
