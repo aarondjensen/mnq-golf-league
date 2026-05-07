@@ -4,6 +4,7 @@ import { LEAGUE_ID } from "../firebase";
 import { SharedScorecard } from "./Scoring";
 import { computeMatchResult, readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/matchCalc";
 import { parseScheduleDate } from "../lib/scheduleDate";
+import { autoHealMatchResults } from "../lib/autoHealMatchResults";
 import { parseTiebreakerResult } from "../TeamMatchupCard";
 
 export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen }) {
@@ -33,6 +34,23 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   //   changedAbsents = [{ playerName, oldAbsent, newAbsent }]
   const [pendingEdits, setPendingEdits] = useState(null);
   const [saving, setSaving] = useState(false);
+
+  // Inline toast for save feedback. The reasons we need this:
+  //   1. Save & Re-sign with no actual changes used to silently close the edit
+  //      popup, leaving the commissioner unsure whether the save worked.
+  //   2. saveMatchResult relies on db.upsert which CATCHES errors and returns
+  //      null. Without surfacing that null, a Firestore write failure looked
+  //      identical to success — the popup just closed. Edits would silently
+  //      vanish on retry from a different browser session.
+  // Shape: { msg, kind }  where kind is "info" | "error". Auto-clears after
+  // 3s. Rendered as a fixed banner near the top of the page (zIndex above
+  // both edit popups so it's visible during retry flows).
+  const [toast, setToast] = useState(null);
+  useEffect(() => {
+    if (!toast) return;
+    const t = setTimeout(() => setToast(null), 3000);
+    return () => clearTimeout(t);
+  }, [toast]);
 
   // Notify parent when edit popup is open
   useEffect(() => {
@@ -68,58 +86,25 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   }, [expandedMatchKey, matchScores, fetchWeekScores]);
 
   // ── Auto-heal drifted match_result docs ───────────────────────────────
-  // Saved match_result is a snapshot at sign time. If scores were edited
-  // afterwards (or were signed under earlier matchCalc logic that's since
-  // been corrected), the saved fields drift away from what computeMatchResult
-  // produces from current scores. The expanded scorecard always recomputes
-  // live, so the user sees inconsistent values between the summary row
-  // (saved) and the inline scorecard (live). This effect detects drift on
-  // any week whose scores are loaded and silently re-saves a corrected
-  // match_result. Standings has the same logic with bulk-loaded season
-  // scores; here it triggers per-week as users expand.
+  // Delegates to lib/autoHealMatchResults — same logic Standings uses, see
+  // the lib file for the full rationale. Per-mount Set: even if Standings
+  // tries to heal the same match in parallel, duplicate writes are
+  // idempotent (same data), and the redundancy gives resilience against a
+  // silent saveMatchResult failure in either view.
   const healedRef = useRef(new Set());
   useEffect(() => {
-    if (!course || !scoringRules || !leagueConfig || !saveMatchResult) return;
-    matchResults.forEach(r => {
-      if (!r || !r.id || healedRef.current.has(r.id)) return;
-      const wkScores = matchScores[r.week];
-      if (!wkScores) return;
-      const wk = schedule.find(s => s.week === r.week);
-      if (!wk || wk.rainedOut) return;
-      const side = wk.side || getWeekSide(r.week);
-      const pars = side === 'front' ? course.frontPars : course.backPars;
-      const hcps = side === 'front' ? course.frontHcps : course.backHcps;
-      if (!pars || !hcps) return;
-      try {
-        const calc = computeMatchResult({
-          match: { team1: r.team1Id, team2: r.team2Id },
-          week: r.week,
-          isPlayoff: wk.isPlayoff === true,
-          teams, players,
-          holeScores: wkScores,
-          pars, hcps,
-          scoringRules, leagueConfig,
-          seedMap,
-        });
-        const drifted = (
-          calc.matchResultText !== r.matchResultText ||
-          calc.t1HolesWon !== r.t1HolesWon ||
-          calc.t2HolesWon !== r.t2HolesWon ||
-          calc.team1Points !== r.team1Points ||
-          calc.team2Points !== r.team2Points ||
-          calc.matchWinnerId !== r.matchWinnerId ||
-          calc.t1Total !== r.t1Total ||
-          calc.t2Total !== r.t2Total
-        );
-        if (drifted) {
-          healedRef.current.add(r.id);
-          // Preserve workflow fields (id, signedByPlayerId, attestedBy,
-          // attested, finalizedByTeamId, week) from the existing doc.
-          saveMatchResult({ ...r, ...calc });
-        }
-      } catch (e) {
-        // Silent — auto-heal is opportunistic.
-      }
+    autoHealMatchResults({
+      matchResults,
+      scoresByWeek: matchScores,
+      schedule,
+      teams,
+      players,
+      course,
+      scoringRules,
+      leagueConfig,
+      seedMap,
+      healedIds: healedRef.current,
+      saveMatchResult,
     });
   }, [matchResults, matchScores, course, scoringRules, leagueConfig, saveMatchResult, schedule, teams, players, seedMap]);
 
@@ -273,10 +258,19 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       }
     }
 
-    // No changes at all? Just close the popup. Nothing to confirm, nothing
-    // to save. Avoids a confusing "confirm no changes?" modal.
+    // No changes at all? Surface a toast and close — the prior silent
+    // close left commissioners staring at a dismissed popup unsure whether
+    // anything happened. The toast confirms "we got your tap; nothing to do."
+    //
+    // Note this branch only fires when (a) every score input matches the
+    // already-saved value, (b) every absent flag is unchanged, AND (c) the
+    // freshly-computed match_result matches the one already on disk. If the
+    // saved match_result has drifted from the scores, the calc-vs-res diff
+    // populates and we fall through to the confirmation popup — letting the
+    // commissioner force a re-sign even with no fresh edits.
     if (!changedScores.length && !changedAbsents.length && Object.keys(diff).length === 0) {
       setEditingMatch(null);
+      setToast({ msg: "No changes to save — match is already up to date", kind: "info" });
       return;
     }
 
@@ -330,7 +324,15 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       // Persist the recomputed match_result. We pass the pre-computed `calc`
       // straight through so this writes EXACTLY what the user just confirmed
       // — no chance of recomputing with stale state and surprising them.
-      await saveMatchResult({
+      //
+      // Capture the return value: db.upsert resolves to the data object on
+      // success and to `null` when Firestore rejects the write (network drop,
+      // permission denied, document-too-large, etc.). Without this check, a
+      // failed write looked identical to a successful one — popup closed,
+      // standings appeared correct in the local cache for ~1 second, and
+      // then the realtime subscription delivered the unchanged old data.
+      // Treat null as a hard failure and let the catch block surface it.
+      const saveResult = await saveMatchResult({
         ...calc,
         id: `${LEAGUE_ID}_w${weekNum}_${t1.id}_${t2.id}`,
         week: weekNum,
@@ -343,6 +345,9 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         attested: res?.attested || false,
         attestedBy: res?.attestedBy || [],
       });
+      if (!saveResult) {
+        throw new Error("Match result write failed — Firestore rejected the upsert (db.upsert returned null). Check the console for the underlying error.");
+      }
 
       // Update local cache so the UI reflects the change without waiting for
       // the realtime subscription to round-trip.
@@ -359,10 +364,15 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       setPendingEdits(null);
       setEditingMatch(null);
     } catch (err) {
-      // Surface the failure rather than silently leaving the UI stuck.
-      // Toast surface here is the parent container; logging gives detail
-      // for debugging via console.
+      // Surface the failure with a toast — and CRITICALLY, leave both popups
+      // open so the user can hit Confirm & Save again to retry without
+      // re-entering all their score edits. The prior behavior was to log
+      // silently and let the popup-close-on-success path NOT fire, which
+      // worked but gave zero user-visible feedback. Now the toast tells
+      // them why the popup didn't close, and they can choose to retry or
+      // back out manually.
       console.error("Save edited scores failed:", err);
+      setToast({ msg: "Save failed — please check your connection and try again", kind: "error" });
     } finally {
       setSaving(false);
     }
@@ -1039,6 +1049,26 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
   return (
     <div>
+      {/* Save-feedback toast. Lives above all popups (zIndex 1100) so error
+          messages remain visible while the pendingEdits popup stays open
+          for retry. Style mirrors App.jsx's appToast for visual consistency
+          across the app — same animation, same palette, same positioning.
+          Once we consolidate to a single global appToast (audit issue #17),
+          this local copy goes away and we'd just call the prop instead. */}
+      {toast && (
+        <>
+          <style>{`@keyframes schedToastDown { 0% { transform: translateX(-50%) translateY(-20px); opacity: 0; } 100% { transform: translateX(-50%) translateY(0); opacity: 1; } }`}</style>
+          <div style={{
+            position: "fixed", top: 30, left: "50%", transform: "translateX(-50%)",
+            background: toast.kind === "error" ? K.red : K.act, color: K.bg,
+            padding: "12px 24px", borderRadius: 12,
+            fontSize: 13, fontWeight: 700, zIndex: 1100,
+            maxWidth: "min(90vw, 480px)", textAlign: "center", lineHeight: 1.4,
+            boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+            animation: "schedToastDown 0.3s ease",
+          }}>{toast.msg}</div>
+        </>
+      )}
 
       {/* Filter bar — single row */}
       <div style={{ display: "flex", gap: 5, marginBottom: 14, alignItems: "center" }}>
