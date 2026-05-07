@@ -506,36 +506,26 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     </div>
   ) : null;
 
-  if (!course?.name) return <EmptyState icon="flag" title="Course not configured" subtitle="Commissioner needs to set up the course." />;
-  if (!matches.length) return <EmptyState icon="calendar" title="No matches this week" subtitle="Commissioner needs to set the schedule." />;
-
-  // ── Onboarding fallback ──
-  // A brand-new user can land here with no match of their own to score — either
-  // because they're not linked to a player yet (commissioner hasn't assigned
-  // them from the Accounts admin page), or their player isn't on a team yet,
-  // or their team happens to have a bye this week. Without this guard, the
-  // default "myMatch" view falls through to code below that assumes `t1`/`t2`
-  // are non-null and crashes.
+  // ── Early returns moved BELOW all hooks (see end of hook block, ~line 920).
   //
-  // Fix: if the user has no `myMatch` and hasn't opened a specific match via
-  // the All Matches view, route them to All Matches so they can see what's
-  // happening. If they ALSO don't have a linked player at all, show a clear
-  // empty state pointing them at the commissioner.
-  if (!activeMatch && !myMatch) {
-    // No linked player at all → explain what's going on.
-    if (!leagueUser.playerId) {
-      return <EmptyState icon="user" title="Account not linked" subtitle="Your commissioner needs to link your account to a player profile before you can score. In the meantime, you can view other matches from the Schedule tab." />;
-    }
-    // Linked to a player but no match this week (not on a team, bye, etc.)
-    // → auto-switch to All Matches view so they can browse everyone else's games.
-    // Using a render-triggered side effect here is intentional and safe because
-    // the state change forces a re-render that takes the `showAllMatches`
-    // branch above; no infinite loop (guard condition changes on re-render).
-    if (view !== "allMatches") {
-      setView("allMatches");
-      return null;
-    }
-  }
+  // Previously the four guards above (no course / no matches / no playerId /
+  // auto-switch to All Matches) lived RIGHT HERE, before ~12 hook calls
+  // (useRef, useEffect, useCallback, useMemo) further down. That violated the
+  // Rules of Hooks: when any of those guards fired, the hook calls below were
+  // skipped, and the next render — which might NOT take the early-return
+  // branch — would call hooks in a different order. React's reconciler would
+  // throw "Rendered more hooks than during the previous render" and crash the
+  // page. The crash is rare in practice because course/matches usually arrive
+  // in a stable order, but cold-start races and the auto-switch-to-allMatches
+  // path could trip it.
+  //
+  // Fix: keep the guards' placement of "before any rendering work happens"
+  // intact, but move them to AFTER the last hook so every render path goes
+  // through the same hook sequence. The intermediate derivations between here
+  // and the early-returns block (matchToScore, t1, t2, t1Players, t2Players,
+  // allP, getS, etc.) were already null-safe — they all guard with
+  // `(t1 && t2)`, `(allP.length > 0 && ...)`, optional chaining, or default
+  // fallbacks — so no body changes were needed; only the placement.
 
   const matchToScore = activeMatch || myMatch;
   const t1 = matchToScore ? teams.find(t => t.id === matchToScore.team1) : null;
@@ -917,6 +907,39 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const weekSignedUnattestedCount = useMemo(() => {
     return matchResults.filter(r => r.week === week && !r.attested).length;
   }, [matchResults, week]);
+
+  // ═════════════════════════════════════════════════════════════════════
+  // EARLY RETURNS — relocated from above the hooks block (see explanatory
+  // comment near `const matchToScore = ...`). Every hook above runs on
+  // every render, regardless of which return below fires; the React Rules
+  // of Hooks are now respected. Order of the returns is intentional:
+  //   1. Course not configured → page can't render anything useful.
+  //   2. No matches scheduled this week → page has nothing to score.
+  //   3. User has no linked player → empty state pointing at commish.
+  //   4. User linked but no match this week → silently switch to All
+  //      Matches view (returning null lets the next render pick it up).
+  // ═════════════════════════════════════════════════════════════════════
+  if (!course?.name) return <EmptyState icon="flag" title="Course not configured" subtitle="Commissioner needs to set up the course." />;
+  if (!matches.length) return <EmptyState icon="calendar" title="No matches this week" subtitle="Commissioner needs to set the schedule." />;
+
+  // Onboarding fallback — a brand-new user can land here with no match of
+  // their own to score (not linked to a player yet, not on a team, or
+  // bye week). Without these guards, the render path below assumes `t1`
+  // and `t2` are non-null and crashes when reading `.player1` etc.
+  if (!activeMatch && !myMatch) {
+    if (!leagueUser.playerId) {
+      return <EmptyState icon="user" title="Account not linked" subtitle="Your commissioner needs to link your account to a player profile before you can score. In the meantime, you can view other matches from the Schedule tab." />;
+    }
+    // Linked but no match this week → auto-switch to All Matches.
+    // Calling setView during render is safe here: it triggers a re-render
+    // where `view === "allMatches"` and this branch no longer fires, so
+    // there's no infinite loop. Hooks above still run on this render too,
+    // so React's hook-order invariant is preserved.
+    if (view !== "allMatches") {
+      setView("allMatches");
+      return null;
+    }
+  }
 
   const handleAttestAllWeek = () => {
     const pending = matchResults.filter(r => r.week === week && !r.attested);
