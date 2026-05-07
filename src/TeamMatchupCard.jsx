@@ -1,4 +1,4 @@
-import { K } from "./theme";
+import { K, NAME_SIZE } from "./theme";
 
 // ══════════════════════════════════════════════════════════════════
 //  TeamMatchupCard — shared visual identity for matchup cards
@@ -113,12 +113,12 @@ export function TeamMatchupCard({
           alignItems: align,
         }}>
           <div style={{
-            fontSize: 14, fontWeight: 700, color: K.t1,
+            fontSize: NAME_SIZE, fontWeight: 700, color: K.t1,
             whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
             lineHeight: 1.2, textAlign, maxWidth: "100%",
           }}>{team?.name1Line1 || "—"}</div>
           <div style={{
-            fontSize: 14, fontWeight: 700, color: K.t1,
+            fontSize: NAME_SIZE, fontWeight: 700, color: K.t1,
             whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
             lineHeight: 1.2, textAlign, maxWidth: "100%",
           }}>{team?.name1Line2 || ""}</div>

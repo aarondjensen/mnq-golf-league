@@ -5,7 +5,7 @@ import { SharedScorecard } from "../components/SharedScorecard";
 import { computeMatchResult, readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/matchCalc";
 import { parseScheduleDate } from "../lib/scheduleDate";
 import { autoHealMatchResults } from "../lib/autoHealMatchResults";
-import { parseTiebreakerResult } from "../TeamMatchupCard";
+import { parseTiebreakerResult, TeamMatchupCard, ResultCenter } from "../TeamMatchupCard";
 
 export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen }) {
   const [showAll, setShowAll] = useState(false);
@@ -901,141 +901,78 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 const t1Won = res && resultLetterFor(res, t1?.id) === "W";
                 const t2Won = res && resultLetterFor(res, t2?.id) === "W";
 
-                // Match result color: TIED = gray, everything else = black
-                const resultColor = res && res.matchResultText === "TIED" ? K.t3 : K.t1;
+                // ── Map Schedule's per-match data → TeamMatchupCard props ──
+                //
+                // Naming gotcha: we pass `isConsolation: true` because Schedule's
+                // historical badge style — soft K.logoBright muted-blue, not maize —
+                // matches what TeamMatchupCard happens to call its "consolation"
+                // variant. Semantically Schedule isn't always rendering a
+                // consolation bracket; this is a visual-token alias, not a
+                // semantic claim about the match. If the underlying badge
+                // palette is ever reorganized this prop name should be revisited.
+                //
+                // The team1/team2 we pass here is post-swap (isMyMatch puts the
+                // viewer's team on the left), so winnerSide "team1" / "team2"
+                // refers to left/right as the user sees them, not raw team1/team2
+                // ordering on the saved match object.
+                const team1Props = {
+                  id: t1?.id,
+                  name1Line1: dn(t1?.player1),
+                  name1Line2: dn(t1?.player2),
+                  record: fmtRecord(t1?.id, wk.week),
+                  seed: showSeeds ? (seedMap[t1?.id] || null) : null,
+                };
+                const team2Props = {
+                  id: t2?.id,
+                  name1Line1: dn(t2?.player1),
+                  name1Line2: dn(t2?.player2),
+                  record: fmtRecord(t2?.id, wk.week),
+                  seed: showSeeds ? (seedMap[t2?.id] || null) : null,
+                };
+
+                // Center strip: result + chevron when finalized, tee time otherwise.
+                // ResultCenter handles all three result formats (plain "3&2", plain
+                // "TIED", and tiebreaker "TIE (Hole N)" → split into stacked lines).
+                // The fallback `${score1}–${score2}` preserves prior behavior for
+                // legacy results saved without matchResultText (rare but possible
+                // for very old data from before that field existed).
+                const center = res ? (
+                  <ResultCenter
+                    resultText={res.matchResultText || `${score1}–${score2}`}
+                    isTie={res.matchResultText === "TIED"}
+                    isExpanded={isMatchExp}
+                  />
+                ) : (
+                  <div style={{
+                    fontSize: 15, fontWeight: 800, color: K.act, letterSpacing: .3,
+                    whiteSpace: "nowrap", textAlign: "center", lineHeight: 1.05,
+                  }}>{fmtTeeTime(origIdx)}</div>
+                );
+
+                // Expanded scorecard panel — passed through TeamMatchupCard's
+                // `expanded` slot so the card's outer chrome (border, radius,
+                // shadow) wraps the scorecard cleanly.
+                const expanded = isMatchExp ? (
+                  <div style={{ padding: "0 6px 8px", borderTop: `1px solid ${K.bdr}30` }}>
+                    {renderMatchScorecard(wk, m, res)}
+                  </div>
+                ) : null;
 
                 return (
-                  <div key={mi} style={{
-                    background: K.card,
-                    borderRadius: 10,
-                    border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}60`,
-                    overflow: "hidden",
-                    boxShadow: isMyMatch ? `0 2px 8px ${K.act}18` : "0 1px 3px rgba(0,0,0,.12), 0 1px 2px rgba(0,0,0,.08)",
-                  }}>
-                    <button onClick={() => res ? toggleMatchExpand(wk.week, mi) : null} style={{
-                      width: "100%", padding: 0, background: "transparent", border: "none",
-                      cursor: res ? "pointer" : "default", textAlign: "left", display: "block",
-                    }}>
-                      {/* Three-column layout matching Live Scoring's All Matches view:
-                          [TEAM 1 panel · stacked names + record · seed]
-                          [centered strip · tee time / result / chevron · gray bg]
-                          [TEAM 2 panel · seed + stacked names + record]
-                          Winning team gets a green tint + 3px accent border on its outer
-                          edge; losing team is dimmed once the match is final. Names are
-                          always stacked on two lines for a consistent rhythm. */}
-                      <div style={{ display: "flex", alignItems: "stretch", minHeight: 60 }}>
-                        {/* TEAM 1 — left half */}
-                        <div style={{
-                          flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8,
-                          padding: "10px 12px",
-                          background: t1Won ? K.matchGrn + "18" : "transparent",
-                          borderLeft: t1Won ? `3px solid ${K.matchGrn}` : "3px solid transparent",
-                          opacity: t2Won ? 0.6 : 1,
-                        }}>
-                          {showSeeds && (
-                            <div style={{
-                              width: 20, height: 20, flexShrink: 0, borderRadius: 5,
-                              background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`,
-                              display: "flex", alignItems: "center", justifyContent: "center",
-                              fontSize: 10, fontWeight: 800, color: K.logoBright,
-                            }}>{seedMap[t1?.id] || "?"}</div>
-                          )}
-                          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-                            <div style={{ fontSize: NAME_SIZE, fontWeight: 700, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2 }}>
-                              {dn(t1?.player1)}
-                            </div>
-                            <div style={{ fontSize: NAME_SIZE, fontWeight: 700, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2 }}>
-                              {dn(t1?.player2)}
-                            </div>
-                            <div style={{ fontSize: 11, color: K.t3, fontWeight: 600, marginTop: 1, lineHeight: 1 }}>
-                              {fmtRecord(t1?.id, wk.week)}
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Center strip — tee time / match result / chevron.
-                            Tiebreaker results like "TIE (Hole 5)" split into two lines:
-                            big TIE on top, small label below. Width is generous so long
-                            results don't crowd against team names. */}
-                        <div style={{
-                          flexShrink: 0, minWidth: 80,
-                          background: K.inp,
-                          display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column",
-                          padding: "6px 6px",
-                          borderLeft: `1px solid ${K.bdr}40`, borderRight: `1px solid ${K.bdr}40`,
-                          gap: 2,
-                        }}>
-                          {res ? (() => {
-                            const raw = res.matchResultText || `${score1}–${score2}`;
-                            const tb = parseTiebreakerResult(raw);
-                            if (tb.isTiebreaker) {
-                              return (
-                                <>
-                                  <div style={{ fontSize: 17, fontWeight: 800, color: resultColor, letterSpacing: .3, lineHeight: 1 }}>TIE</div>
-                                  <div style={{ fontSize: 9, fontWeight: 700, color: K.t3, letterSpacing: .5, textTransform: "uppercase", lineHeight: 1.1, marginTop: 1, whiteSpace: "nowrap" }}>
-                                    {tb.label}
-                                  </div>
-                                </>
-                              );
-                            }
-                            return (
-                              <div style={{
-                                fontSize: raw.length > 5 ? 14 : raw.length > 3 ? 15 : 17,
-                                fontWeight: 800, color: resultColor, letterSpacing: .3,
-                                whiteSpace: "nowrap", textAlign: "center", lineHeight: 1.05,
-                              }}>{raw}</div>
-                            );
-                          })() : (
-                            <div style={{
-                              fontSize: 15, fontWeight: 800, color: K.act, letterSpacing: .3,
-                              whiteSpace: "nowrap", textAlign: "center", lineHeight: 1.05,
-                            }}>{fmtTeeTime(origIdx)}</div>
-                          )}
-                          {res && (
-                            <div style={{ fontSize: 11, color: K.t3, lineHeight: 1, marginTop: 2 }}>
-                              {isMatchExp ? "▴" : "▾"}
-                            </div>
-                          )}
-                        </div>
-
-                        {/* TEAM 2 — right half (mirrored: seed on the right) */}
-                        <div style={{
-                          flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8,
-                          padding: "10px 12px",
-                          background: t2Won ? K.matchGrn + "18" : "transparent",
-                          borderRight: t2Won ? `3px solid ${K.matchGrn}` : "3px solid transparent",
-                          justifyContent: "flex-end",
-                          opacity: t1Won ? 0.6 : 1,
-                        }}>
-                          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-end" }}>
-                            <div style={{ fontSize: NAME_SIZE, fontWeight: 700, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, textAlign: "right", maxWidth: "100%" }}>
-                              {dn(t2?.player1)}
-                            </div>
-                            <div style={{ fontSize: NAME_SIZE, fontWeight: 700, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, textAlign: "right", maxWidth: "100%" }}>
-                              {dn(t2?.player2)}
-                            </div>
-                            <div style={{ fontSize: 11, color: K.t3, fontWeight: 600, marginTop: 1, lineHeight: 1, textAlign: "right" }}>
-                              {fmtRecord(t2?.id, wk.week)}
-                            </div>
-                          </div>
-                          {showSeeds && (
-                            <div style={{
-                              width: 20, height: 20, flexShrink: 0, borderRadius: 5,
-                              background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`,
-                              display: "flex", alignItems: "center", justifyContent: "center",
-                              fontSize: 10, fontWeight: 800, color: K.logoBright,
-                            }}>{seedMap[t2?.id] || "?"}</div>
-                          )}
-                        </div>
-                      </div>
-                    </button>
-                    {/* Expanded match scorecard */}
-                    {isMatchExp && (
-                      <div style={{ padding: "0 6px 8px", borderTop: `1px solid ${K.bdr}30` }}>
-                        {renderMatchScorecard(wk, m, res)}
-                      </div>
-                    )}
-                  </div>
+                  <TeamMatchupCard
+                    key={mi}
+                    team1={team1Props}
+                    team2={team2Props}
+                    winnerSide={t1Won ? "team1" : t2Won ? "team2" : null}
+                    isFinal={!!res}
+                    highlightSelf={!!isMyMatch}
+                    isConsolation={true}
+                    showRecords={true}
+                    centerWidth={80}
+                    onClick={res ? () => toggleMatchExpand(wk.week, mi) : undefined}
+                    center={center}
+                    expanded={expanded}
+                  />
                 );
               })}
             </div>
