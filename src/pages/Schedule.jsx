@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE, buildSeedMap } from "../theme";
 import { LEAGUE_ID } from "../firebase";
-import { SharedScorecard } from "./Scoring";
+import { SharedScorecard } from "../components/SharedScorecard";
 import { computeMatchResult, readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/matchCalc";
 import { parseScheduleDate } from "../lib/scheduleDate";
 import { autoHealMatchResults } from "../lib/autoHealMatchResults";
