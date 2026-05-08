@@ -69,19 +69,61 @@ export function formatTeeTime(baseTime, idx, interval = 8) {
 }
 
 // ── Shared utility: compute current standings array sorted for seeding ──
-// Only counts results from LOCKED weeks. Returns [{teamId, points, w, l, t, hw, gp}, ...]
-// sorted from 1st (index 0) to last. `standingsMethod`: "record" (win %) or default (points).
-// Used by both Admin (manual Seed Week button) and App (auto-seeding after RR finalizes).
-export function buildStandingsForSeed(teams, matchResults, schedule, standingsMethod) {
+//
+// The canonical standings calculator. Two callers, two slightly different needs:
+//
+//   1. Seeding (App.jsx auto-seed, Admin manual seed):
+//      Considers ONLY locked weeks. The whole point of locked-seeds is that
+//      partial mid-week scores can't drift the seed list. Pass `schedule`
+//      and use the default `lockedOnly: true` — the function self-filters.
+//
+//   2. Standings page display (Standings.jsx):
+//      Caller pre-filters its results array (e.g. to "everything", or "all
+//      LOCKED weeks except the latest one" for the prevStandings comparison).
+//      Pass `lockedOnly: false` and the function trusts the caller's filter.
+//      `schedule` is ignored in this mode.
+//
+// Output shape: [{ teamId, points, w, l, t, hw, gp }, ...] sorted from
+// 1st (index 0) to last. Field `gp` (games played) is needed by the record-
+// mode sort to compute win %; no consumer outside this file reads it directly.
+//
+// Tiebreaker chains
+// ─────────────────
+// `points` mode (default):
+//     1. higher total points
+//     2. more holes won (hw)
+//
+// `record` mode (`standingsMethod === "record"`):
+//     1. higher win % ((w + 0.5*t) / gp)
+//     2. more wins
+//     3. fewer losses
+//     4. more holes won (hw) ← previously this fallback existed only in
+//        Standings.jsx's local copy; consolidating brings it here so seeding
+//        and Standings agree on the same tiebreak chain. Without this final
+//        fallback, two teams perfectly tied on the first three criteria would
+//        be ordered by Object.values insertion order (effectively team id),
+//        which is arbitrary and tournament-incorrect.
+//
+// W/L/T comes from match-play result via `resultLetterFor`, NOT from a points
+// comparison. In lowHighBonus and legacy teamNetTotal data a TIED match-play
+// row can carry asymmetric points (e.g. bonus split unevenly), and using the
+// points delta would falsely give one team a W and the other an L on a tied
+// match. Standings still SORT by points in points mode, so unequal points
+// still drive ranking — only the W-L-T column is corrected.
+export function buildStandingsForSeed(teams, matchResults, schedule, standingsMethod, lockedOnly = true) {
   const pts = {};
   teams.forEach(t => { pts[t.id] = { teamId: t.id, points: 0, w: 0, l: 0, t: 0, hw: 0, gp: 0 }; });
   (matchResults || []).forEach(r => {
     if (!r) return;
-    const rWeek = schedule.find(s => s.week === r.week);
-    if (!rWeek || !rWeek.locked) return;
+    if (lockedOnly) {
+      // Self-filter: skip results whose week isn't locked yet. Required for
+      // seeding because mid-week partial scores must NOT influence seed
+      // ordering.
+      const rWeek = (schedule || []).find(s => s.week === r.week);
+      if (!rWeek || !rWeek.locked) return;
+    }
     if (pts[r.team1Id]) { pts[r.team1Id].points += (r.team1Points || 0); if (r.t1HolesWon !== undefined) pts[r.team1Id].hw += r.t1HolesWon; }
     if (pts[r.team2Id]) { pts[r.team2Id].points += (r.team2Points || 0); if (r.t2HolesWon !== undefined) pts[r.team2Id].hw += r.t2HolesWon; }
-    // W/L/T from match-play result (NOT points compare). See resultLetterFor.
     const t1Letter = resultLetterFor(r, r.team1Id);
     const t2Letter = resultLetterFor(r, r.team2Id);
     if (pts[r.team1Id]) {
@@ -103,7 +145,8 @@ export function buildStandingsForSeed(teams, matchResults, schedule, standingsMe
       const bPct = b.gp ? (b.w + b.t * 0.5) / b.gp : 0;
       if (bPct !== aPct) return bPct - aPct;
       if (b.w !== a.w) return b.w - a.w;
-      return a.l - b.l;
+      if (a.l !== b.l) return a.l - b.l;
+      return b.hw - a.hw;
     });
   } else {
     arr.sort((a, b) => b.points - a.points || b.hw - a.hw);

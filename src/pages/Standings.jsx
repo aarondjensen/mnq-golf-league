@@ -1,65 +1,20 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, calcPlayerHcp, buildSeedMap } from "../theme";
+import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, calcPlayerHcp, buildSeedMap, buildStandingsForSeed } from "../theme";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/matchCalc";
 import { isScheduleDateAtOrPast } from "../lib/scheduleDate";
 import { autoHealMatchResults } from "../lib/autoHealMatchResults";
+import { TeamMatchupCard } from "../TeamMatchupCard";
 
-// Build standings from a set of match results.
-// Tiebreaker is always total holes won (the headToHead option was removed because it was
-// never implemented — the dropdown existed in Admin but the sort logic did nothing with it).
-function buildStandings(teams, results, isRecord) {
-  const pts = {};
-  teams.forEach(t => { pts[t.id] = { teamId: t.id, points: 0, w: 0, l: 0, t: 0, gamesPlayed: 0, hw: 0 }; });
-  results.forEach(r => {
-    if (!r) return;
-    if (pts[r.team1Id]) pts[r.team1Id].points += (r.team1Points || 0);
-    if (pts[r.team2Id]) pts[r.team2Id].points += (r.team2Points || 0);
-    if (r.t1HolesWon !== undefined && r.t2HolesWon !== undefined) {
-      if (pts[r.team1Id]) pts[r.team1Id].hw += r.t1HolesWon;
-      if (pts[r.team2Id]) pts[r.team2Id].hw += r.t2HolesWon;
-    }
-    // W-L-T tally must reflect the match-play result (the user-visible match
-    // status: TIED / 1UP / 3&2 / etc.), NOT a comparison of total points.
-    // In lowHighBonus and legacy teamNetTotal data, a TIED match-play row can
-    // carry asymmetric points (e.g. bonus split unevenly), and using the points
-    // delta would give one team a W and the other an L on a tied match.
-    // resultLetterFor encapsulates the canonical rule. Standings still sort
-    // by `points` in points mode, so unequal points still drive ranking — only
-    // the W-L-T column is corrected.
-    const t1Letter = resultLetterFor(r, r.team1Id);
-    const t2Letter = resultLetterFor(r, r.team2Id);
-    if (pts[r.team1Id]) {
-      if (t1Letter === "W") pts[r.team1Id].w++;
-      else if (t1Letter === "L") pts[r.team1Id].l++;
-      else if (t1Letter === "T") pts[r.team1Id].t++;
-      if (t1Letter) pts[r.team1Id].gamesPlayed++;
-    }
-    if (pts[r.team2Id]) {
-      if (t2Letter === "W") pts[r.team2Id].w++;
-      else if (t2Letter === "L") pts[r.team2Id].l++;
-      else if (t2Letter === "T") pts[r.team2Id].t++;
-      if (t2Letter) pts[r.team2Id].gamesPlayed++;
-    }
-  });
-  const arr = Object.values(pts);
-  if (isRecord) {
-    arr.sort((a, b) => {
-      const aPct = a.gamesPlayed ? (a.w + a.t * 0.5) / a.gamesPlayed : 0;
-      const bPct = b.gamesPlayed ? (b.w + b.t * 0.5) / b.gamesPlayed : 0;
-      if (bPct !== aPct) return bPct - aPct;
-      if (b.w !== a.w) return b.w - a.w;
-      if (a.l !== b.l) return a.l - b.l;
-      return b.hw - a.hw;
-    });
-  } else {
-    arr.sort((a, b) => {
-      if (b.points !== a.points) return b.points - a.points;
-      return b.hw - a.hw;
-    });
-  }
-  return arr;
-}
+// Standings calculation lives in theme.jsx as buildStandingsForSeed — see
+// imports above. Standings.jsx used to have a local copy of nearly the same
+// logic with subtly different semantics (slightly different tiebreaker
+// chain, different field name for games-played). The audit found the two
+// copies were drifting. Consolidating to one canonical implementation
+// means a future tweak — say, changing the record-mode tiebreaker chain
+// or adding a points-mode head-to-head fallback — is a single-place edit
+// instead of "remember to update both". Local callers below pass
+// `lockedOnly: false` to retain the prior caller-pre-filters semantics.
 
 
 // ════════════════════════════════════════════════════════════
@@ -171,145 +126,89 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
     return "TBD";
   };
 
-  // Matchup card component
+  // ═════════════════════════════════════════════════════════════════
+  //  MatchupCard — thin wrapper around TeamMatchupCard
+  // ═════════════════════════════════════════════════════════════════
+  // Was a 140-line inline component with its own three-column layout. Now
+  // delegates to the shared TeamMatchupCard with `compact: true` so all
+  // three matchup-card sites (Schedule, Scoring, Standings) share one
+  // implementation. The wrapper still owns:
+  //   1. The mu-shape → TeamMatchupCard prop mapping
+  //   2. The unfilled-bracket "config mode" placeholder rendering
+  //   3. The result-tinted outer border (matchGrn40 when finalized)
+  //
+  // Visual reconciliation note: when this view first ships, finalized cards
+  // will look slightly different from prior — TeamMatchupCard uses
+  // `K.matchGrn + "18"` for the winner half tint vs the prior `+12`. This
+  // is the same alignment Schedule got in the previous Tier 1 swap, and
+  // keeping all three views on the same exact tint is the whole point of
+  // consolidation. If a stronger contrast is needed, change it once in
+  // TeamMatchupCard and all three update together.
   const MatchupCard = ({ mu, showConfig, configMu, isConsolation }) => {
-    // Badge styling — bracket seeds get the prominent maize+navy treatment to highlight
-    // progression through the bracket. Non-playoff (consolation) matches use the original
-    // muted light-blue so they visually recede from the bracket they accompany.
-    const badgeStyle = isConsolation
-      ? { background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, color: K.logoBright }
-      : { background: K.act, border: `1px solid ${K.act}`, color: K.logoBlue };
+    // Center strip is a flat "VS" pill. Same for both filled and config
+    // modes — a compact 9pt uppercase glyph in K.t3.
+    const vsCenter = (
+      <span style={{
+        fontSize: 9, fontWeight: 700, color: K.t3,
+        letterSpacing: 1, whiteSpace: "nowrap",
+      }}>VS</span>
+    );
+
+    // ── Config (placeholder) mode ──
+    // Round is unfilled; show "Winner M1" / "Loser M2" / "#3 Seed" labels
+    // pulled from the round config. Names are dimmed to K.t3 by passing
+    // them as the `name1Line1` field — TeamMatchupCard will render them
+    // in the standard name slot, so we ride the name slot's typography
+    // and let the surrounding card layout do the rest. No seeds, no
+    // winner state.
     if (!mu && showConfig && configMu) {
-      // Unfilled — show config labels. Single-row layout matches the filled variant.
       return (
-        <div style={{
-          background: K.card, borderRadius: 8, border: `1px solid ${K.bdr}`,
-          overflow: "hidden", width: "100%",
-          display: "flex", alignItems: "stretch",
-        }}>
-          <div style={{
-            flex: 1, minWidth: 0, display: "flex", alignItems: "center",
-            padding: "8px 10px",
-            fontSize: 12, fontWeight: 600, color: K.t3,
-          }}>
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {slotLabel(configMu, "s1")}
-            </span>
-          </div>
-          <div style={{
-            flexShrink: 0, minWidth: 44,
-            background: K.inp,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            padding: "0 8px",
-            borderLeft: `1px solid ${K.bdr}40`, borderRight: `1px solid ${K.bdr}40`,
-          }}>
-            <span style={{ fontSize: 9, color: K.t3, fontWeight: 700, letterSpacing: 1 }}>VS</span>
-          </div>
-          <div style={{
-            flex: 1, minWidth: 0, display: "flex", alignItems: "center", justifyContent: "flex-end",
-            padding: "8px 10px",
-            fontSize: 12, fontWeight: 600, color: K.t3,
-          }}>
-            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", textAlign: "right" }}>
-              {slotLabel(configMu, "s2")}
-            </span>
-          </div>
-        </div>
+        <TeamMatchupCard
+          team1={{ name1Line1: slotLabel(configMu, "s1"), name1Line2: "" }}
+          team2={{ name1Line1: slotLabel(configMu, "s2"), name1Line2: "" }}
+          compact
+          center={vsCenter}
+        />
       );
     }
-
     if (!mu) return null;
 
-    const t1Faded = mu.t2Won ? K.t3 : K.t1;
-    const t2Faded = mu.t1Won ? K.t3 : K.t1;
-    const t1BgTint = mu.t1Won ? K.matchGrn + "12" : "transparent";
-    const t2BgTint = mu.t2Won ? K.matchGrn + "12" : "transparent";
-    const outerBorder = mu.hasResult ? (mu.t1Won || mu.t2Won ? K.matchGrn + "40" : K.bdr) : K.bdr;
+    // ── Filled mode ──
+    // Map mu's pre-resolved fields onto TeamMatchupCard. The two-line stack
+    // pulls from players1/players2 (last names array, always 2 entries for
+    // 2v2). Falls back to the combined name1/name2 string when the player
+    // arrays are empty — rare safety net for malformed teams.
+    const team1Props = {
+      name1Line1: mu.players1?.[0] || mu.name1,
+      name1Line2: mu.players1?.[1] || "",
+      seed: mu.seed1,
+    };
+    const team2Props = {
+      name1Line1: mu.players2?.[0] || mu.name2,
+      name1Line2: mu.players2?.[1] || "",
+      seed: mu.seed2,
+    };
 
-    // Single-row horizontal layout: [seed · name]  VS/result  [name · seed]
-    // Winning team gets the green tint + accent bar; losing team is muted.
-    // Team names wrap onto multiple lines so both players show in full.
+    // Tint the outer frame green when the bracket card has been played and
+    // produced a winner. Preserves the prior "this round is settled at a
+    // glance" affordance from the inline MatchupCard. Skipped when there's
+    // no result yet (or a tie, which technically can't happen in playoffs
+    // but we handle defensively).
+    const outerBorderColor = mu.hasResult && (mu.t1Won || mu.t2Won)
+      ? `${K.matchGrn}40`
+      : null;
+
     return (
-      <div style={{
-        background: K.card, borderRadius: 8, border: `1px solid ${outerBorder}`,
-        overflow: "hidden", width: "100%",
-        display: "flex", alignItems: "stretch",
-        minHeight: 60,
-      }}>
-        {/* Team 1 — flex-grow so long names don't squeeze; tint runs the full half */}
-        <div style={{
-          flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6,
-          padding: "8px 10px", background: t1BgTint,
-          borderLeft: mu.t1Won ? `3px solid ${K.matchGrn}` : "3px solid transparent",
-        }}>
-          <div style={{
-            width: 18, height: 18, borderRadius: 5, flexShrink: 0,
-            ...badgeStyle,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 9, fontWeight: 800,
-          }}>{mu.seed1}</div>
-          {/* Teammate names always stacked on two lines so the card rhythm is
-              consistent regardless of name length. Falls back to combined name1
-              if the players1 array isn't populated. */}
-          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
-            {mu.players1 && mu.players1.some(n => n) ? mu.players1.map((nm, i) => (
-              <div key={i} style={{ fontSize: 12, fontWeight: 700, color: t1Faded, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2 }}>
-                {nm || "—"}
-              </div>
-            )) : (
-              <div style={{ fontSize: 12, fontWeight: 700, color: t1Faded, wordBreak: "break-word", lineHeight: 1.25 }}>
-                {mu.name1}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* VS / result pill — sits in the center, its own vertical strip.
-            For playoff matches (configured tiebreakers apply), ties are impossible —
-            winner is decided by the league's playoffTiebreaker. For regular matches
-            that can legitimately tie we still show VS when there's no winner yet. */}
-        <div style={{
-          flexShrink: 0, minWidth: 44,
-          background: K.inp,
-          display: "flex", alignItems: "center", justifyContent: "center",
-          padding: "0 8px",
-          borderLeft: `1px solid ${K.bdr}40`, borderRight: `1px solid ${K.bdr}40`,
-        }}>
-          <span style={{
-            fontSize: 9, fontWeight: 700,
-            color: K.t3,
-            letterSpacing: 1, whiteSpace: "nowrap",
-          }}>
-            VS
-          </span>
-        </div>
-
-        {/* Team 2 — mirrored from team 1: seed on the RIGHT. Same stacked behavior. */}
-        <div style={{
-          flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6,
-          padding: "8px 10px", background: t2BgTint,
-          borderRight: mu.t2Won ? `3px solid ${K.matchGrn}` : "3px solid transparent",
-          justifyContent: "flex-end",
-        }}>
-          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1, alignItems: "flex-end" }}>
-            {mu.players2 && mu.players2.some(n => n) ? mu.players2.map((nm, i) => (
-              <div key={i} style={{ fontSize: 12, fontWeight: 700, color: t2Faded, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, textAlign: "right", maxWidth: "100%" }}>
-                {nm || "—"}
-              </div>
-            )) : (
-              <div style={{ fontSize: 12, fontWeight: 700, color: t2Faded, wordBreak: "break-word", lineHeight: 1.25, textAlign: "right" }}>
-                {mu.name2}
-              </div>
-            )}
-          </div>
-          <div style={{
-            width: 18, height: 18, borderRadius: 5, flexShrink: 0,
-            ...badgeStyle,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 9, fontWeight: 800,
-          }}>{mu.seed2}</div>
-        </div>
-      </div>
+      <TeamMatchupCard
+        team1={team1Props}
+        team2={team2Props}
+        winnerSide={mu.t1Won ? "team1" : mu.t2Won ? "team2" : null}
+        isFinal={mu.hasResult}
+        isConsolation={isConsolation}
+        compact
+        outerBorderColor={outerBorderColor}
+        center={vsCenter}
+      />
     );
   };
 
@@ -1470,15 +1369,18 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   }, [lockedWeeks]);
 
   const standings = useMemo(() => {
-    return buildStandings(teams, lockedResults, isRecord);
-  }, [teams, lockedResults, isRecord]);
+    // lockedOnly: false because the caller has already filtered to lockedResults.
+    // Passing standingsMethod (string) instead of isRecord (boolean) — the
+    // shared function does its own "=== record" check.
+    return buildStandingsForSeed(teams, lockedResults, schedule, leagueConfig?.standingsMethod, false);
+  }, [teams, lockedResults, schedule, leagueConfig?.standingsMethod]);
 
   const prevStandings = useMemo(() => {
     if (latestLockedWeek === 0) return null;
     const prevResults = lockedResults.filter(r => r.week !== latestLockedWeek);
     if (prevResults.length === 0 && lockedResults.length > 0) return null;
-    return buildStandings(teams, prevResults, isRecord);
-  }, [teams, lockedResults, latestLockedWeek, isRecord]);
+    return buildStandingsForSeed(teams, prevResults, schedule, leagueConfig?.standingsMethod, false);
+  }, [teams, lockedResults, latestLockedWeek, schedule, leagueConfig?.standingsMethod]);
 
   const prevPositionMap = useMemo(() => {
     if (!prevStandings) return {};
