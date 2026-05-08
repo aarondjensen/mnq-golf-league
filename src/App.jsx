@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
-import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, buildStandingsForSeed, pairNonBracketTeams, collectPriorMatchups } from "./theme";
+import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp } from "./theme";
 import { parseScheduleDate } from "./lib/scheduleDate";
 import { usePullToRefresh } from "./lib/usePullToRefresh";
+import { autoSeedIfReady as autoSeedIfReadyLib } from "./lib/scheduleAutoSeed";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
 import ErrorBoundary from "./ErrorBoundary";
 
@@ -472,208 +473,27 @@ export default function GolfLeagueApp() {
     allScoresCacheRef.current = null;
   }, []);
 
-  // Auto-seed empty seeded (non-playoff) weeks once the round-robin block completes,
-  // AND auto-seed playoff rounds as they become resolvable. See lib/scheduleAutoSeed
-  // refactor in the audit notes — this lives here for now.
+  // ── Auto-seed wrapper ──
+  // The 200-line implementation lives in lib/scheduleAutoSeed now. This
+  // wrapper bundles the refs into the params object the lib expects.
+  // Why refs instead of just passing `schedule`/`matchResults`/etc. through
+  // useCallback's closure: the wrapper can fire from a setTimeout (e.g.,
+  // saveLeagueConfig schedules `setTimeout(() => autoSeedIfReady(0), 0)`),
+  // and at that point the realtime subscription may have already updated
+  // schedule/matchResults beyond the closure's snapshot. Reading via
+  // `*.current` guarantees we feed the lib the latest state at CALL
+  // time, not the older state captured at useCallback-creation time.
+  // The lib itself is pure: it returns its result and writes to Firestore;
+  // it doesn't touch React state directly.
   const autoSeedIfReady = useCallback(async (justLockedWeek) => {
-    const currentSchedule = scheduleRef.current;
-    const currentMatchResults = matchResultsRef.current;
-
-    const isConfigRefresh = justLockedWeek === 0;
-    const lockedWk = isConfigRefresh ? null : currentSchedule.find(s => s.week === justLockedWeek);
-    if (!isConfigRefresh && !lockedWk) return 0;
-
-    const projectedSchedule = isConfigRefresh ? currentSchedule : currentSchedule.map(s =>
-      s.week === justLockedWeek ? { ...s, locked: true } : s
-    );
-
-    const lockSeedsEnabled = leagueConfig?.lockSeedsEnabled === true;
-    const existingLocked = leagueConfig?.lockedSeeds;
-    let seeds;
-
-    const computeSeeds = () => buildStandingsForSeed(
-      teams, currentMatchResults, projectedSchedule, leagueConfig?.standingsMethod
-    ).map(s => s.teamId);
-
-    let seededCount = 0;
-    const rrWeeks = currentSchedule.filter(s => !s.isPlayoff && !s.seeded && !s.rainedOut);
-    const allRRLocked = rrWeeks.length > 0 && rrWeeks.every(s =>
-      s.locked === true || s.week === justLockedWeek
-    );
-
-    if (allRRLocked) {
-      const useLocked = lockSeedsEnabled && existingLocked && existingLocked.length === teams.length;
-      seeds = useLocked ? existingLocked : computeSeeds();
-
-      if (!useLocked && lockSeedsEnabled) {
-        await db.upsert("league_config", { ...leagueConfig, id: leagueConfig?.id || `${LEAGUE_ID}_config`, league_id: LEAGUE_ID, lockedSeeds: seeds });
-      }
-
-      const n = seeds.length;
-      const pairCount = Math.floor(n / 2);
-      if (pairCount >= 1) {
-        const seededRegWeeks = currentSchedule.filter(s => s.seeded === true && !s.isPlayoff && !s.rainedOut).sort((a, b) => a.week - b.week);
-        const customWeeks = leagueConfig?.customSeedWeeks;
-
-        for (let si = 0; si < seededRegWeeks.length; si++) {
-          const wk = seededRegWeeks[si];
-          if (wk.locked === true) continue;
-          const weekPairs = (customWeeks && customWeeks[si]) || null;
-          const matches = [];
-          if (weekPairs && weekPairs.length === pairCount) {
-            for (const pair of weekPairs) {
-              const t1 = seeds[pair.s1 - 1];
-              const t2 = seeds[pair.s2 - 1];
-              if (t1 && t2) matches.push({ team1: t1, team2: t2 });
-            }
-          } else {
-            for (let i = 0; i < pairCount; i++) {
-              matches.push({ team1: seeds[i], team2: seeds[n - 1 - i] });
-            }
-          }
-          if (matches.length) {
-            await db.upsert("league_schedule", { ...wk, matches, league_id: LEAGUE_ID });
-            seededCount++;
-          }
-        }
-      }
-    }
-
-    let playoffCount = 0;
-
-    const playoffWeeksList = currentSchedule.filter(s => s.isPlayoff === true).sort((a, b) => a.week - b.week);
-    if (playoffWeeksList.length === 0) {
-      return { seeded: seededCount, playoff: 0 };
-    }
-
-    const playoffRoundsCfg = leagueConfig?.playoffRounds || [];
-    if (playoffRoundsCfg.length === 0) {
-      return { seeded: seededCount, playoff: 0 };
-    }
-
-    if (!seeds) {
-      seeds = existingLocked && existingLocked.length === teams.length
-        ? existingLocked
-        : computeSeeds();
-    }
-
-    for (let pi = 0; pi < playoffWeeksList.length; pi++) {
-      const pWk = playoffWeeksList[pi];
-      if (pWk.locked === true) continue;
-      const hasExistingMatches = pWk.matches && pWk.matches.length > 0;
-      if (hasExistingMatches) {
-        const hasAnyScoreOrResult = (currentMatchResults || []).some(r => r.week === pWk.week)
-          || Object.keys(holeScoresRef.current || {}).some(k => k.startsWith(`w${pWk.week}_`));
-        if (hasAnyScoreOrResult) continue;
-      }
-
-      const roundDef = playoffRoundsCfg[pi];
-
-      if (pi === 0 && (!roundDef || !roundDef.matchups || !roundDef.matchups.length)) {
-        const n = seeds.length;
-        const pairCount = Math.floor(n / 2);
-        if (pairCount < 1) break;
-        const matches = [];
-        for (let i = 0; i < pairCount; i++) {
-          matches.push({ team1: seeds[i], team2: seeds[n - 1 - i] });
-        }
-        const priorMatchups = collectPriorMatchups(currentSchedule, pWk.week);
-        const { pairs: consolationPairs } = pairNonBracketTeams(teams, matches, priorMatchups);
-        matches.push(...consolationPairs);
-        await db.upsert("league_schedule", { ...pWk, matches, league_id: LEAGUE_ID });
-        playoffCount++;
-        continue;
-      }
-
-      if (!roundDef || !roundDef.matchups || !roundDef.matchups.length) break;
-
-      let prevWinners = [];
-      let prevLosers = [];
-      if (pi > 0) {
-        const prevPWk = playoffWeeksList[pi - 1];
-        if (!prevPWk.locked && prevPWk.week !== justLockedWeek) break;
-        if (!prevPWk.matches || prevPWk.matches.length === 0) break;
-        const prevResults = (currentMatchResults || []).filter(r => r.week === prevPWk.week);
-        if (prevResults.length < prevPWk.matches.length) break;
-        const prevRoundDef = playoffRoundsCfg[pi - 1];
-        const prevBracketCount = (prevRoundDef?.matchups || []).length;
-        const prevBracketMatches = prevBracketCount > 0
-          ? prevPWk.matches.slice(0, prevBracketCount)
-          : prevPWk.matches;
-        prevBracketMatches.forEach((m) => {
-          const r = prevResults.find(pr => pr.team1Id === m.team1 && pr.team2Id === m.team2);
-          if (r) {
-            const d = (r.team1Points || 0) - (r.team2Points || 0);
-            prevWinners.push(d >= 0 ? r.team1Id : r.team2Id);
-            prevLosers.push(d >= 0 ? r.team2Id : r.team1Id);
-          }
-        });
-      }
-
-      const resolveSlot = (mu, side) => {
-        const type = mu[side + "type"];
-        const val = mu[side];
-        if (type === "seed") {
-          const seedIdx = parseInt(val) - 1;
-          return seedIdx >= 0 && seedIdx < seeds.length ? seeds[seedIdx] : null;
-        } else if (type === "winner") {
-          if (val === "lowestWinner" || val === "lowestSeed") {
-            const sorted = prevWinners.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => b.rank - a.rank);
-            return sorted[0]?.id || null;
-          } else if (val === "nextLowestWinner" || val === "nextLowestSeed") {
-            const sorted = prevWinners.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => b.rank - a.rank);
-            return sorted[1]?.id || null;
-          } else if (val?.startsWith("winner_")) {
-            const idx = parseInt(val.split("_")[1]);
-            return prevWinners[idx] || null;
-          }
-        } else if (type === "loser") {
-          if (val === "highestLoser") {
-            const sorted = prevLosers.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => a.rank - b.rank);
-            return sorted[0]?.id || null;
-          } else if (val === "nextHighestLoser") {
-            const sorted = prevLosers.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => a.rank - b.rank);
-            return sorted[1]?.id || null;
-          } else if (val?.startsWith("loser_")) {
-            const idx = parseInt(val.split("_")[1]);
-            return prevLosers[idx] || null;
-          }
-        }
-        return null;
-      };
-
-      const bracketMatches = [];
-      const usedTeamIds = new Set();
-      let hasDuplicate = false;
-      for (const mu of roundDef.matchups) {
-        const t1 = resolveSlot(mu, "s1");
-        const t2 = resolveSlot(mu, "s2");
-        if (!t1 || !t2) continue;
-        if (usedTeamIds.has(t1) || usedTeamIds.has(t2) || t1 === t2) {
-          hasDuplicate = true;
-          console.warn(
-            `[autoSeedIfReady] Skipping duplicate team in Round ${pi + 1} ` +
-            `(week ${pWk.week}): matchup ${JSON.stringify(mu)} resolves to ` +
-            `t1=${t1} t2=${t2} — already used: ${[...usedTeamIds].join(", ")}`
-          );
-          continue;
-        }
-        usedTeamIds.add(t1);
-        usedTeamIds.add(t2);
-        bracketMatches.push({ team1: t1, team2: t2 });
-      }
-
-      if (bracketMatches.length !== roundDef.matchups.length && !hasDuplicate) break;
-
-      const priorMatchups = collectPriorMatchups(currentSchedule, pWk.week);
-      const { pairs: consolationPairs } = pairNonBracketTeams(teams, bracketMatches, priorMatchups);
-      const matches = [...bracketMatches, ...consolationPairs];
-
-      await db.upsert("league_schedule", { ...pWk, matches, league_id: LEAGUE_ID });
-      playoffCount++;
-    }
-
-    return { seeded: seededCount, playoff: playoffCount };
+    return autoSeedIfReadyLib({
+      justLockedWeek,
+      schedule: scheduleRef.current,
+      matchResults: matchResultsRef.current,
+      holeScores: holeScoresRef.current,
+      teams,
+      leagueConfig,
+    });
   }, [teams, leagueConfig]);
 
   // Import historical scores from a [name, season, week, hole, score] array.
