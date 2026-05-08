@@ -97,12 +97,9 @@ export function formatTeeTime(baseTime, idx, interval = 8) {
 //     1. higher win % ((w + 0.5*t) / gp)
 //     2. more wins
 //     3. fewer losses
-//     4. more holes won (hw) ← previously this fallback existed only in
-//        Standings.jsx's local copy; consolidating brings it here so seeding
-//        and Standings agree on the same tiebreak chain. Without this final
-//        fallback, two teams perfectly tied on the first three criteria would
-//        be ordered by Object.values insertion order (effectively team id),
-//        which is arbitrary and tournament-incorrect.
+//     (no 4th step — see code comment near the sort about why a tempting
+//      `b.hw - a.hw` fallback was tried, why it was reverted, and what
+//      a future migration would need to do to safely add it back.)
 //
 // W/L/T comes from match-play result via `resultLetterFor`, NOT from a points
 // comparison. In lowHighBonus and legacy teamNetTotal data a TIED match-play
@@ -140,13 +137,31 @@ export function buildStandingsForSeed(teams, matchResults, schedule, standingsMe
   const isRecord = standingsMethod === "record";
   const arr = Object.values(pts);
   if (isRecord) {
+    // Record-mode tiebreaker chain — kept at 3 steps (win% → wins → losses)
+    // for compatibility with existing lockedSeeds snapshots in the wild.
+    //
+    // A previous round of this audit added a 4th-step `b.hw - a.hw` fallback
+    // here, intending to handle the rare case where two teams are perfectly
+    // tied on win%, wins, AND losses. While that's a more thorough chain in
+    // theory, it caused live regressions: lockedSeeds snapshots in deployed
+    // leagues were computed under this 3-step chain. After the 4-step
+    // change, Schedule (which reads the snapshot via buildSeedMap) and
+    // Standings (which computes live) would produce different orderings,
+    // making team A appear as rank 1 in Standings while paired in seed-2
+    // matches in the schedule.
+    //
+    // Reverting here restores parity with existing snapshots. If/when a
+    // 4-step chain is reintroduced, it MUST be paired with a one-time
+    // migration that recomputes and re-saves leagueConfig.lockedSeeds for
+    // every league, so snapshots match the new algorithm. Without that,
+    // any league that locked seeds before the change will see this same
+    // disagreement.
     arr.sort((a, b) => {
       const aPct = a.gp ? (a.w + a.t * 0.5) / a.gp : 0;
       const bPct = b.gp ? (b.w + b.t * 0.5) / b.gp : 0;
       if (bPct !== aPct) return bPct - aPct;
       if (b.w !== a.w) return b.w - a.w;
-      if (a.l !== b.l) return a.l - b.l;
-      return b.hw - a.hw;
+      return a.l - b.l;
     });
   } else {
     arr.sort((a, b) => b.points - a.points || b.hw - a.hw);
