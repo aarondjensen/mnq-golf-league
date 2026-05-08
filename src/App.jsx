@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } fro
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
 import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, buildStandingsForSeed, pairNonBracketTeams, collectPriorMatchups } from "./theme";
 import { parseScheduleDate } from "./lib/scheduleDate";
+import { usePullToRefresh } from "./lib/usePullToRefresh";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
 import ErrorBoundary from "./ErrorBoundary";
 
@@ -98,14 +99,13 @@ export default function GolfLeagueApp() {
   }, []);
   useEffect(() => () => { if (appToastTimer.current) clearTimeout(appToastTimer.current); }, []);
 
-  // Pull-to-refresh
-  const [pullY, setPullY] = useState(0);
-  const [refreshing, setRefreshing] = useState(false);
-  const touchStartY = useRef(0);
-  const pullYRef = useRef(0);
-  const pullingRef = useRef(false);
-  const PULL_THRESHOLD = 80;
-  const appBodyRef = useRef(null);
+  // ── Pull-to-refresh ──
+  // Lives in lib/usePullToRefresh now. The hook call itself is below this
+  // block (after refetchOneTimeReads + hasNewBundle are defined, since they're
+  // its dependencies). What stays HERE: popupOpenRef, which the hook reads via
+  // ref so popup-open state changes don't churn the touch event handlers.
+  // What's removed: the 6 lines of pull-related state + threshold constant +
+  // the resetPull useCallback (now both inside the hook).
 
   // Track whether ANY popup is open (for consistent body lock + pull-to-refresh)
   const [popupOpen, setPopupOpen] = useState(false);
@@ -133,12 +133,7 @@ export default function GolfLeagueApp() {
     setDarkMode(!darkMode);
   };
 
-  const resetPull = useCallback(() => {
-    setPullY(0);
-    pullYRef.current = 0;
-    touchStartY.current = 0;
-    pullingRef.current = false;
-  }, []);
+  // resetPull moved to usePullToRefresh hook (returned in destructure below).
 
   // Re-fetch the three collections that don't have live subscriptions (course,
   // scoring rules, config). Used on mount and by pull-to-refresh.
@@ -183,145 +178,21 @@ export default function GolfLeagueApp() {
     }
   }, []);
 
-  useEffect(() => {
-    if (refreshing) return;
-    const getScrollEl = () => appBodyRef.current || document.querySelector('.app-body');
-    let activeScrollEl = null;
-    let insidePopup = false;
-    let popupScrollEl = null;
-    const findScrollEl = (target) => {
-      let el = target;
-      while (el) {
-        if (el.hasAttribute && el.hasAttribute('data-popup')) return null;
-        if (el.classList && el.classList.contains('app-body')) return el;
-        el = el.parentElement;
-      }
-      return getScrollEl();
-    };
-    const findPopupScroll = (target) => {
-      let el = target;
-      while (el) {
-        if (el.hasAttribute && el.hasAttribute('data-popup-scroll')) return el;
-        if (el.hasAttribute && el.hasAttribute('data-popup')) return null;
-        el = el.parentElement;
-      }
-      return null;
-    };
-    const handleStart = (e) => {
-      if (popupOpenRef.current) {
-        touchStartY.current = 0;
-        return;
-      }
-      activeScrollEl = findScrollEl(e.target);
-      insidePopup = activeScrollEl === null;
-      popupScrollEl = insidePopup ? findPopupScroll(e.target) : null;
-      touchStartY.current = e.touches[0].clientY;
-      pullingRef.current = false;
-    };
-    const handleMove = (e) => {
-      if (!touchStartY.current) return;
-      if (popupOpenRef.current) {
-        if (pullingRef.current) { pullingRef.current = false; pullYRef.current = 0; setPullY(0); }
-        touchStartY.current = 0;
-        return;
-      }
+  // ── Hook up pull-to-refresh ──
+  // Attach `appBodyRef` to the main scroll body div in the JSX below; the
+  // hook reads scrollTop from it to gate the gesture. PULL_THRESHOLD is
+  // also returned from the hook so the spinner JSX can use the same value
+  // when deciding when to flip the spinner color from gray → maize.
+  const { pullY, refreshing, appBodyRef, PULL_THRESHOLD } = usePullToRefresh({
+    popupOpenRef,
+    hasNewBundle,
+    refetchOneTimeReads,
+  });
 
-      let atTop;
-      if (insidePopup) {
-        atTop = popupScrollEl ? popupScrollEl.scrollTop <= 1 : true;
-      } else {
-        atTop = activeScrollEl ? activeScrollEl.scrollTop <= 1 : true;
-      }
-
-      const currentY = e.touches[0].clientY;
-      const diff = currentY - touchStartY.current;
-
-      if (pullingRef.current) {
-        if (diff <= 0 || !atTop) {
-          pullingRef.current = false;
-          pullYRef.current = 0;
-          setPullY(0);
-          touchStartY.current = currentY;
-        } else {
-          e.preventDefault();
-          const val = Math.min(diff * 0.4, 120);
-          pullYRef.current = val;
-          setPullY(val);
-        }
-      } else if (atTop && diff > 10) {
-        touchStartY.current = currentY;
-        pullingRef.current = true;
-        e.preventDefault();
-        pullYRef.current = 0;
-        setPullY(0);
-      } else if (!atTop) {
-        touchStartY.current = currentY;
-      }
-    };
-    const handleEnd = () => {
-      if (popupOpenRef.current) {
-        pullingRef.current = false;
-        pullYRef.current = 0;
-        setPullY(0);
-        touchStartY.current = 0;
-        activeScrollEl = null;
-        insidePopup = false;
-        popupScrollEl = null;
-        return;
-      }
-      pullingRef.current = false;
-      activeScrollEl = null;
-      insidePopup = false;
-      popupScrollEl = null;
-      if (pullYRef.current >= PULL_THRESHOLD) {
-        setPullY(PULL_THRESHOLD); pullYRef.current = PULL_THRESHOLD;
-        setRefreshing(true);
-        const hardSafety = setTimeout(() => {
-          console.warn('[pull-to-refresh] hard safety timeout — forcing reset');
-          setRefreshing(false);
-          setPullY(0);
-          pullYRef.current = 0;
-          touchStartY.current = 0;
-        }, 8000);
-        setTimeout(async () => {
-          try {
-            const needsUpdate = await hasNewBundle();
-            if (needsUpdate) {
-              clearTimeout(hardSafety);
-              window.location.reload();
-              return;
-            }
-            refetchOneTimeReads();
-          } catch (e) {
-            console.error('[pull-to-refresh] refresh failed:', e);
-          } finally {
-            clearTimeout(hardSafety);
-            setRefreshing(false);
-            setPullY(0);
-            pullYRef.current = 0;
-            touchStartY.current = 0;
-          }
-        }, 600);
-      } else { setPullY(0); pullYRef.current = 0; touchStartY.current = 0; }
-    };
-    document.addEventListener('touchstart', handleStart, { passive: true });
-    document.addEventListener('touchmove', handleMove, { passive: false });
-    document.addEventListener('touchend', handleEnd, { passive: true });
-    document.addEventListener('touchcancel', handleEnd, { passive: true });
-    return () => {
-      document.removeEventListener('touchstart', handleStart);
-      document.removeEventListener('touchmove', handleMove);
-      document.removeEventListener('touchend', handleEnd);
-      document.removeEventListener('touchcancel', handleEnd);
-    };
-  }, [refreshing, refetchOneTimeReads, hasNewBundle]);
-
-  useEffect(() => {
-    if (pullY > 0 && !refreshing) {
-      const safety = setTimeout(resetPull, 2000);
-      return () => clearTimeout(safety);
-    }
-  }, [pullY, refreshing, resetPull]);
+  // ── Pull-to-refresh effects extracted to lib/usePullToRefresh ──
+  // The hook owns the touch event installation + soft watchdog. Caller
+  // (this file) only attaches `appBodyRef` to the scroll body and renders
+  // the spinner JSX based on the returned `pullY` / `refreshing` values.
 
   useEffect(() => { setPopupOpen(false); }, [tab]);
 
@@ -430,7 +301,13 @@ export default function GolfLeagueApp() {
     const id = `${LEAGUE_ID}_s${CURRENT_SEASON}_w${week}_p${playerId}_h${hole}`;
     setHoleScores(prev => ({ ...prev, [`w${week}_p${playerId}_h${hole}`]: score }));
     allScoresCacheRef.current = null;
-    await db.upsert("league_hole_scores", { id, league_id: LEAGUE_ID, season: CURRENT_SEASON, week, player_id: playerId, hole, score, ts: Date.now() });
+    // Return the upsert result. db.upsert resolves to the data object on
+    // success and to `null` when Firestore rejects the write (network drop,
+    // permission denied, doc-too-large). Schedule.jsx's commitEditedScores
+    // checks this return value to detect silent save failures and surface
+    // them via toast — without this `return`, that check always sees
+    // undefined and treats every save as successful.
+    return await db.upsert("league_hole_scores", { id, league_id: LEAGUE_ID, season: CURRENT_SEASON, week, player_id: playerId, hole, score, ts: Date.now() });
   }, []);
 
   const fetchWeekScores = useCallback(async (weekNum) => {
@@ -510,6 +387,14 @@ export default function GolfLeagueApp() {
     await db.batchDelete("league_hole_scores", weekFilter);
     await db.batchDelete("league_match_results", mrFilter);
     await db.batchDelete("league_ctp", ctpFilter);
+    // Invalidate the season-scores cache. Without this, a subsequent
+    // recalcHandicaps (or anything else that calls fetchAllScores) returns
+    // a stale cached snapshot that still contains the just-deleted week's
+    // scores, producing inflated handicap rolls. resetSeasonData and
+    // saveScore both invalidate this same cache; clearWeekData was the
+    // odd one out, easy to miss because it's only called from rain-out
+    // and reset-week flows that don't immediately recompute handicaps.
+    allScoresCacheRef.current = null;
   }, []);
 
   // Auto-seed empty seeded (non-playoff) weeks once the round-robin block completes,
@@ -754,20 +639,49 @@ export default function GolfLeagueApp() {
     const par = courseData ? (courseData.frontPars || []).reduce((a, b) => a + b, 0) : 36;
     const recentN = scoringRules.hcpRecentCount ?? 8;
     const bestN = scoringRules.hcpBestCount ?? 6;
-    let updated = 0;
+
+    // Collect all updates first, then batch-write in a single Firestore
+    // round-trip. Previously this was a serial `for ... await savePlayer`
+    // loop — on a 20-player league that meant 20 sequential round-trips
+    // (~3-6s on typical mobile network), and the realtime subscription
+    // would fire 20 separate updates back, each re-rendering Players /
+    // Standings / Scoring. Batching collapses the writes into one ~200ms
+    // commit and produces a single subscription update, so the UI stays
+    // smooth and the action completes fast enough that the appToast feels
+    // responsive instead of laggy.
+    //
+    // Semantics preserved: only update players whose computed handicap
+    // ACTUALLY CHANGED. db.batchUpsert uses { merge: true } same as
+    // db.upsert under the hood, so write-shape is identical to the prior
+    // savePlayer call. League_id is added per-doc (consistent with
+    // savePlayer's spread).
+    const updates = [];
     for (const p of players) {
       const rounds = allScores[p.id] || [];
       const newHcp = calcPlayerHcp(rounds, recentN, bestN, par);
       if (newHcp !== null && newHcp !== p.handicapIndex) {
-        await savePlayer({ ...p, handicapIndex: newHcp });
-        updated++;
+        updates.push({ ...p, handicapIndex: newHcp, league_id: LEAGUE_ID });
       }
     }
+
+    let updated = 0;
+    if (updates.length > 0) {
+      try {
+        updated = await db.batchUpsert("league_players", updates);
+      } catch (e) {
+        // batchUpsert throws on Firestore failure (unlike upsert which
+        // catches and returns null). Surface to the user via toast and
+        // re-throw so the caller's await-chain knows it failed.
+        appToast("Handicap update failed — please try again", "error", 3000);
+        throw e;
+      }
+    }
+
     if (updated > 0) {
       appToast(`${updated} handicap${updated === 1 ? "" : "s"} updated`, "info", 2200);
     }
     return updated;
-  }, [players, courseData, scoringRules, fetchAllScores, savePlayer, appToast]);
+  }, [players, courseData, scoringRules, fetchAllScores, appToast]);
 
   const saveCourseData = useCallback(async (c) => {
     const data = { ...c, id: `${LEAGUE_ID}_course`, league_id: LEAGUE_ID };

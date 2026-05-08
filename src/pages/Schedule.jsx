@@ -309,16 +309,30 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     // rejection, network timeout, etc.) bubbles up to the toast/console
     // surface — but the popup state recovers regardless.
     try {
-      // Persist score changes
+      // Persist score changes. saveScore in App.jsx now returns its
+      // db.upsert result — null on Firestore rejection. We treat null as a
+      // hard failure mid-loop so the user knows immediately rather than
+      // discovering missing scores after the next page refresh.
+      // (Note: a partial-write here can leave the saved match_result and
+      // saved hole_scores temporarily out of step. The auto-heal effect on
+      // Schedule's next mount will re-converge them; the throw also keeps
+      // the popup open so the user can fix the network and retry the whole
+      // commit, which is the cleanest recovery.)
       for (const pid of allPids) {
         for (let h = 0; h < 9; h++) {
           const newVal = editScores[`${pid}_${h}`] || 0;
           const oldVal = oldScores[`w${weekNum}_p${pid}_h${h}`] || 0;
-          if (newVal !== oldVal) await saveScore(weekNum, pid, h, newVal);
+          if (newVal !== oldVal) {
+            const r = await saveScore(weekNum, pid, h, newVal);
+            if (r === null) throw new Error(`Score write failed for player ${pid}, hole ${h + 1} — Firestore rejected the upsert.`);
+          }
         }
         const newAbsent = editAbsent[pid] ? 1 : 0;
         const oldAbsent = oldScores[`w${weekNum}_p${pid}_habsent`] === 1 ? 1 : 0;
-        if (newAbsent !== oldAbsent) await saveScore(weekNum, pid, "absent", newAbsent);
+        if (newAbsent !== oldAbsent) {
+          const r = await saveScore(weekNum, pid, "absent", newAbsent);
+          if (r === null) throw new Error(`Absent flag write failed for player ${pid} — Firestore rejected the upsert.`);
+        }
       }
 
       // Persist the recomputed match_result. We pass the pre-computed `calc`
