@@ -1228,6 +1228,19 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     [schedule]
   );
 
+  // Determine whether playoffs are configured at all — used to gate the
+  // Playoffs tab pill (audit issue #19). During an early-season period
+  // when no playoff weeks have been added to the schedule yet, showing
+  // a Playoffs tab is just a dead-end click. Hide it entirely. Once the
+  // commissioner configures playoff weeks (Admin → Schedule), the tab
+  // appears. This also incidentally collapses the toggle pills bar to
+  // a single "Season" tab when there's nothing else, and the existing
+  // `tabs.length > 1` gate hides the bar entirely.
+  const hasPlayoffs = useMemo(() =>
+    schedule.some(wk => wk.isPlayoff === true && !wk.rainedOut),
+    [schedule]
+  );
+
   const hasIndividualEvent = leagueConfig?.individualEvent !== false; // default on
   // Default tab on first mount, strictly aligned to season phase:
   //   - "bracket" (Playoffs) → playoffs are CURRENTLY ACTIVE, defined as
@@ -1263,6 +1276,15 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     if (!userPickedTab.current) setView(defaultView);
   }, [defaultView]);
   const pickTab = (id) => { userPickedTab.current = true; setView(id); };
+
+  // Safety guard: if `view` ends up pointing at a tab that no longer
+  // exists (e.g., user picked Playoffs, then commissioner removed all
+  // playoff weeks), bounce to "standings". Otherwise the page renders
+  // an empty branch with no nav back to a valid view.
+  useEffect(() => {
+    const validIds = new Set(["standings", ...(hasPlayoffs ? ["bracket"] : []), ...(hasIndividualEvent ? ["individual"] : [])]);
+    if (!validIds.has(view)) setView("standings");
+  }, [view, hasPlayoffs, hasIndividualEvent]);
 
   const handleExpand = (teamId) => {
     const next = expanded === teamId ? null : teamId;
@@ -1520,7 +1542,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   //   placeholder beforehand. Omitted entirely if the league doesn't run an individual event.
   const tabs = [
     { id: "standings", label: "Season" },
-    { id: "bracket", label: "Playoffs" },
+    ...(hasPlayoffs ? [{ id: "bracket", label: "Playoffs" }] : []),
     ...(hasIndividualEvent ? [{ id: "individual", label: "Individual" }] : []),
   ];
 

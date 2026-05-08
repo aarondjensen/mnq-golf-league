@@ -8,6 +8,18 @@ import { autoHealMatchResults } from "../lib/autoHealMatchResults";
 import { parseTiebreakerResult, TeamMatchupCard, ResultCenter } from "../TeamMatchupCard";
 import { EditConfirmationPopup } from "../components/EditConfirmationPopup";
 
+// Column widths for the "My Schedule" compact row + its header bars.
+// Defined once so the row and its header always line up; the audit found
+// these had drifted (header used 40, row used 44 for the result/tee-time
+// column — a 4px misalignment). Pulling them into one place prevents
+// future drift and makes the layout intent obvious.
+const MY_SCHEDULE_COLS = {
+  week: 22,
+  date: 52,
+  result: 44,  // Result for completed weeks, tee time for upcoming weeks
+  side: 38,
+};
+
 export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen, appToast }) {
   const [showAll, setShowAll] = useState(false);
   const [myOnly, setMyOnly] = useState(true);
@@ -647,9 +659,9 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
             opacity: isRainedOut ? 0.5 : 1, gap: 10, textAlign: "left",
           }}
         >
-          <div style={{ width: 22, fontSize: 14, fontWeight: 700, color: K.t1, flexShrink: 0 }}>{wk.week}</div>
-          <div style={{ width: 52, fontSize: 12, fontWeight: 600, color: K.t1, flexShrink: 0 }}>{wk.date || "—"}</div>
-          <div style={{ width: 44, flexShrink: 0, color: isRainedOut ? K.warn : isComplete ? resultColor : isSeeded ? K.t3 : K.act }}>
+          <div style={{ width: MY_SCHEDULE_COLS.week, fontSize: 14, fontWeight: 700, color: K.t1, flexShrink: 0 }}>{wk.week}</div>
+          <div style={{ width: MY_SCHEDULE_COLS.date, fontSize: 12, fontWeight: 600, color: K.t1, flexShrink: 0 }}>{wk.date || "—"}</div>
+          <div style={{ width: MY_SCHEDULE_COLS.result, flexShrink: 0, color: isRainedOut ? K.warn : isComplete ? resultColor : isSeeded ? K.t3 : K.act }}>
             {isRainedOut ? (
               <span style={{ fontSize: 14, fontWeight: 700 }}>—</span>
             ) : isComplete ? (
@@ -665,7 +677,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
               <span style={{ fontSize: 14, fontWeight: 700 }}>{teeTimeShort}</span>
             )}
           </div>
-          <div style={{ width: 38, fontSize: 11, fontWeight: 600, color: K.hcpBlue, flexShrink: 0 }}>
+          <div style={{ width: MY_SCHEDULE_COLS.side, fontSize: 11, fontWeight: 600, color: K.hcpBlue, flexShrink: 0 }}>
             {isRainedOut ? "" : side === 'front' ? 'Front' : 'Back'}
           </div>
           <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
@@ -1035,10 +1047,10 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       {/* My Schedule column header — upcoming */}
       {myOnly && weeksToShow.upcoming.length > 0 && (
         <div style={{ display: "flex", alignItems: "center", padding: "0 14px 6px", fontSize: 9, color: K.t3, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8, gap: 10 }}>
-          <div style={{ width: 22 }}>Wk</div>
-          <div style={{ width: 52 }}>Date</div>
-          <div style={{ width: 40 }}>Time</div>
-          <div style={{ width: 38 }}>Side</div>
+          <div style={{ width: MY_SCHEDULE_COLS.week }}>Wk</div>
+          <div style={{ width: MY_SCHEDULE_COLS.date }}>Date</div>
+          <div style={{ width: MY_SCHEDULE_COLS.result }}>Time</div>
+          <div style={{ width: MY_SCHEDULE_COLS.side }}>Side</div>
           <div style={{ flex: 1 }}>Opponent</div>
         </div>
       )}
@@ -1059,10 +1071,10 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           {/* My Schedule column header — complete */}
           {myOnly && (
             <div style={{ display: "flex", alignItems: "center", padding: "0 14px 6px", fontSize: 9, color: K.t3, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8, gap: 10 }}>
-              <div style={{ width: 22 }}>Wk</div>
-              <div style={{ width: 52 }}>Date</div>
-              <div style={{ width: 40 }}>Result</div>
-              <div style={{ width: 38 }}>Side</div>
+              <div style={{ width: MY_SCHEDULE_COLS.week }}>Wk</div>
+              <div style={{ width: MY_SCHEDULE_COLS.date }}>Date</div>
+              <div style={{ width: MY_SCHEDULE_COLS.result }}>Result</div>
+              <div style={{ width: MY_SCHEDULE_COLS.side }}>Side</div>
               <div style={{ flex: 1 }}>Opponent</div>
             </div>
           )}
@@ -1120,7 +1132,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           }}>
             <div onClick={e => e.stopPropagation()} data-popup-scroll style={{
               background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14,
-              padding: "14px 12px", width: "100%", maxWidth: 460,
+              padding: "14px 10px", width: "100%", maxWidth: 460,
               maxHeight: "100%", overflowY: "auto", overscrollBehavior: "contain",
               pointerEvents: "auto",
               boxShadow: "0 12px 40px rgba(0,0,0,.4)",
@@ -1130,14 +1142,19 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 <button onClick={() => setEditingMatch(null)} style={{ background: "none", border: "none", color: K.t3, fontSize: 18, cursor: "pointer", padding: "0 4px" }}>✕</button>
               </div>
 
-              {/* Hole header */}
-              <div style={{ display: "flex", marginBottom: 2, paddingLeft: 64 }}>
+              {/* Hole header — was paddingLeft 64 to "indent past the player
+                  meta column," but the meta row above wraps full-width
+                  (avatar + name + HCP + Absent toggle), so the 64px indent
+                  served no functional alignment purpose. Dropping it gives
+                  iPhone SE about 25% more horizontal space for score inputs.
+                  See audit issue #12. */}
+              <div style={{ display: "flex", marginBottom: 2 }}>
                 {Array.from({ length: 9 }, (_, i) => (
                   <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, fontWeight: 700, color: K.t3 }}>{side === 'front' ? i + 1 : i + 10}</div>
                 ))}
               </div>
               {/* Par row */}
-              <div style={{ display: "flex", marginBottom: 8, paddingLeft: 64 }}>
+              <div style={{ display: "flex", marginBottom: 8 }}>
                 {pars.map((p, i) => (
                   <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 600, color: K.t2 }}>{p}</div>
                 ))}
@@ -1186,8 +1203,8 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                         {absent ? "✓ Absent" : "Mark Absent"}
                       </button>
                     </div>
-                    {/* Score input row */}
-                    <div style={{ display: "flex", paddingLeft: 64 }}>
+                    {/* Score input row — paddingLeft removed for #12 (mobile fix) */}
+                    <div style={{ display: "flex" }}>
                       {Array.from({ length: 9 }, (_, h) => {
                         const val = getS(pid, h);
                         const par = pars[h];

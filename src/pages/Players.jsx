@@ -4,8 +4,24 @@ import { K, EmptyState, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, CHEVRON_S
 export default function PlayersView({ players, course, schedule, scoringRules, fetchAllScores, members }) {
   const recentN = scoringRules.hcpRecentCount ?? 8;
   const bestN = scoringRules.hcpBestCount ?? 6;
+  // ── Background-loaded detail data ──
+  // The Players tab used to block rendering on a `fetchAllScores()` call —
+  // a Firestore fetch of every hole_score doc across all seasons (5000+ rows
+  // for a league with imported history). Worse: that cache is invalidated on
+  // every score save, so during live scoring the cost is paid repeatedly.
+  //
+  // The fix: the BASIC list (player name, current handicap, rank, comm
+  // badge) needs nothing from allScores — it all comes from `players`
+  // props directly. Only the EXPANDED detail view needs allScores (recent
+  // rounds list, dropped-rounds context, hcpChange arrow). So render
+  // immediately with what's already in props, fetch detail data in
+  // background, populate the detail-only fields when ready.
+  //
+  // Trade-off: the hcpChange arrow on the collapsed row only appears
+  // after the background fetch resolves. That's fine — it was always
+  // a "after Loading..." appearance, just now the surrounding list is
+  // visible during the wait instead of hidden.
   const [allScores, setAllScores] = useState(null);
-  const [loading, setLoading] = useState(true);
   const [expanded, setExpanded] = useState(null);
 
   const commPlayerIds = (members || []).filter(m => m.isCommissioner).map(m => m.playerId);
@@ -21,19 +37,20 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
 
   useEffect(() => {
     let cancelled = false;
-    setLoading(true);
     fetchAllScores().then(scores => {
-      if (!cancelled) { setAllScores(scores); setLoading(false); }
+      if (!cancelled) setAllScores(scores);
     });
     return () => { cancelled = true; };
   }, [fetchAllScores]);
 
   const playerStats = useMemo(() => {
-    if (!allScores) return [];
     const par = course ? (course.frontPars || []).reduce((a, b) => a + b, 0) : 36;
     const currentSeason = new Date().getFullYear();
     return players.map(p => {
-      const allRounds = allScores[p.id] || [];
+      // Detail-only fields — empty/null until allScores arrives in
+      // background. The basic list fields below (idx, name, etc.) work
+      // regardless.
+      const allRounds = allScores ? (allScores[p.id] || []) : [];
       const totalRounds = allRounds.length;
       const recentRounds = allRounds.slice(-recentN);
       // Two rounds just before the recentN window — these "just dropped out of
@@ -57,14 +74,16 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
       const sorted = [...recentRounds].sort((a, b) => a.gross - b.gross);
       const best = sorted.slice(0, scaledBest);
 
-      // Use stored handicapIndex — the single source of truth, updated when a week is locked
+      // Use stored handicapIndex — the single source of truth, updated when a week is locked.
+      // This DOESN'T require allScores, so it always renders.
       const idx = p.handicapIndex ?? null;
 
       // Week-over-week change arrow: only show if the player's most recent round
       // is from the current season (otherwise the arrow is stale/confusing).
       // Compare current handicap to what it would have been before the most recent week's round(s).
+      // Requires allScores — null until background fetch resolves.
       let hcpChange = null;
-      if (allRounds.length >= 2 && idx !== null) {
+      if (allScores && allRounds.length >= 2 && idx !== null) {
         const lastRound = allRounds[allRounds.length - 1];
         if (lastRound.season === currentSeason) {
           // Strip all rounds matching the most-recent (season, week) — handles the rare case
@@ -83,7 +102,7 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
     }).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   }, [players, allScores, course, recentN, bestN]);
 
-  if (loading) return <div style={{ textAlign: "center", padding: 40, color: K.t3, fontSize: 13 }}>Loading...</div>;
+  // No more loading gate — render the basic list immediately.
 
   return (
     <div>
@@ -140,7 +159,14 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
             </div>
             {isExpanded && (
               <div style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderTop: "none", borderRadius: `0 0 ${CARD_RADIUS}px ${CARD_RADIUS}px`, padding: "10px 10px", fontSize: 12 }}>
-                {p.recentRounds.length === 0 ? (
+                {/* Distinguish "still loading" from "loaded, but empty" — we
+                    don't want to misleadingly say "no rounds found" while the
+                    background fetch is still in flight. allScores is null
+                    until the fetchAllScores effect resolves; once it resolves,
+                    even an empty player still gets `[]` mapped via `|| []`. */}
+                {allScores === null ? (
+                  <div style={{ color: K.t3, fontStyle: "italic", padding: 4 }}>Loading rounds…</div>
+                ) : p.recentRounds.length === 0 ? (
                   <div style={{ color: K.t3, fontStyle: "italic", padding: 4 }}>No completed rounds found</div>
                 ) : (() => {
                   // Resolve front/back for a given (season, week). Current season
