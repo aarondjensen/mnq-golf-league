@@ -6,8 +6,9 @@ import { computeMatchResult, readScoreEffective, getStrokesForHole, resultLetter
 import { parseScheduleDate } from "../lib/scheduleDate";
 import { autoHealMatchResults } from "../lib/autoHealMatchResults";
 import { parseTiebreakerResult, TeamMatchupCard, ResultCenter } from "../TeamMatchupCard";
+import { EditConfirmationPopup } from "../components/EditConfirmationPopup";
 
-export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen }) {
+export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen, appToast }) {
   const [showAll, setShowAll] = useState(false);
   const [myOnly, setMyOnly] = useState(true);
   const [expandedWeeks, setExpandedWeeks] = useState({});
@@ -35,22 +36,19 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   const [pendingEdits, setPendingEdits] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  // Inline toast for save feedback. The reasons we need this:
-  //   1. Save & Re-sign with no actual changes used to silently close the edit
-  //      popup, leaving the commissioner unsure whether the save worked.
-  //   2. saveMatchResult relies on db.upsert which CATCHES errors and returns
-  //      null. Without surfacing that null, a Firestore write failure looked
-  //      identical to success — the popup just closed. Edits would silently
-  //      vanish on retry from a different browser session.
-  // Shape: { msg, kind }  where kind is "info" | "error". Auto-clears after
-  // 3s. Rendered as a fixed banner near the top of the page (zIndex above
-  // both edit popups so it's visible during retry flows).
-  const [toast, setToast] = useState(null);
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 3000);
-    return () => clearTimeout(t);
-  }, [toast]);
+  // Toast feedback for save flows comes from the parent now (App.jsx's
+  // appToast). Previously Schedule had its own local toast state with its
+  // own animation styling — added in audit issue #2 when the save-failure
+  // detection went in. After issue #17 consolidated to a single global
+  // toast, Schedule calls appToast() instead. Single source of truth for
+  // toast positioning, animation, and z-index across the app — also means
+  // a save toast won't double up if the user navigates away and back.
+  // Defensive fallback: if the prop isn't provided (very old caller),
+  // route to console so feedback isn't completely silent.
+  const safeToast = useCallback((msg, kind = "info") => {
+    if (typeof appToast === "function") appToast(msg, kind, 3000);
+    else console.log(`[Schedule toast ${kind}] ${msg}`);
+  }, [appToast]);
 
   // Notify parent when edit popup is open
   useEffect(() => {
@@ -270,7 +268,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     // commissioner force a re-sign even with no fresh edits.
     if (!changedScores.length && !changedAbsents.length && Object.keys(diff).length === 0) {
       setEditingMatch(null);
-      setToast({ msg: "No changes to save — match is already up to date", kind: "info" });
+      safeToast("No changes to save — match is already up to date", "info");
       return;
     }
 
@@ -386,7 +384,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       // them why the popup didn't close, and they can choose to retry or
       // back out manually.
       console.error("Save edited scores failed:", err);
-      setToast({ msg: "Save failed — please check your connection and try again", kind: "error" });
+      safeToast("Save failed — please check your connection and try again", "error");
     } finally {
       setSaving(false);
     }
@@ -1000,26 +998,11 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
   return (
     <div>
-      {/* Save-feedback toast. Lives above all popups (zIndex 1100) so error
-          messages remain visible while the pendingEdits popup stays open
-          for retry. Style mirrors App.jsx's appToast for visual consistency
-          across the app — same animation, same palette, same positioning.
-          Once we consolidate to a single global appToast (audit issue #17),
-          this local copy goes away and we'd just call the prop instead. */}
-      {toast && (
-        <>
-          <style>{`@keyframes schedToastDown { 0% { transform: translateX(-50%) translateY(-20px); opacity: 0; } 100% { transform: translateX(-50%) translateY(0); opacity: 1; } }`}</style>
-          <div style={{
-            position: "fixed", top: 30, left: "50%", transform: "translateX(-50%)",
-            background: toast.kind === "error" ? K.red : K.act, color: K.bg,
-            padding: "12px 24px", borderRadius: 12,
-            fontSize: 13, fontWeight: 700, zIndex: 1100,
-            maxWidth: "min(90vw, 480px)", textAlign: "center", lineHeight: 1.4,
-            boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-            animation: "schedToastDown 0.3s ease",
-          }}>{toast.msg}</div>
-        </>
-      )}
+      {/* Toast feedback for save flows is rendered by App.jsx's global
+          appToast now (audit issue #17 consolidation). The local toast
+          component that lived here is gone — Schedule just calls the
+          appToast prop and the parent handles positioning, animation,
+          and z-index uniformly with everywhere else in the app. */}
 
       {/* Filter bar — single row */}
       <div style={{ display: "flex", gap: 5, marginBottom: 14, alignItems: "center" }}>
@@ -1248,162 +1231,20 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       })()}
 
       {/* ── Edit confirmation popup ──
-          Renders OVER the edit popup when pendingEdits is set. Shows:
-            - Match-result diff (W/L/T flip, points, winner)
-            - Per-hole score changes
-            - Absent-flag changes
-          Confirm → commitEditedScores persists the changes. Cancel → drops
-          pendingEdits and returns to the edit popup so the commissioner can
-          adjust further. The popup uses the same fixed-viewport positioning
-          as the edit popup so it's always visible. */}
-      {pendingEdits && (() => {
-        const { diff, changedScores, changedAbsents } = pendingEdits;
-        const hasResultChange = Object.keys(diff).length > 0;
-        return (<>
-          <div onClick={() => setPendingEdits(null)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.75)", zIndex: 600 }} />
-          <div data-popup style={{
-            position: "fixed", top: 20, left: 0, right: 0, bottom: 20,
-            zIndex: 650,
-            display: "flex", justifyContent: "center", alignItems: "flex-start",
-            padding: "0 10px",
-            pointerEvents: "none",
-          }}>
-            <div onClick={e => e.stopPropagation()} data-popup-scroll style={{
-              background: K.bg, border: `1px solid ${K.warn}`, borderRadius: 14,
-              padding: "16px 14px", width: "100%", maxWidth: 460,
-              maxHeight: "100%", overflowY: "auto", overscrollBehavior: "contain",
-              pointerEvents: "auto",
-              boxShadow: `0 12px 40px ${K.warn}40`,
-            }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <div style={{ fontSize: 14, fontWeight: 800, color: K.warn, letterSpacing: .3 }}>
-                  Confirm Score Edit
-                </div>
-                <button onClick={() => setPendingEdits(null)} style={{ background: "none", border: "none", color: K.t3, fontSize: 18, cursor: "pointer", padding: "0 4px" }}>✕</button>
-              </div>
-
-              {/* Lead-in summary */}
-              <div style={{ fontSize: 12, color: K.t2, marginBottom: 14, lineHeight: 1.5 }}>
-                {hasResultChange
-                  ? "Saving these changes will update the match result. Standings and schedule will reflect the new outcome."
-                  : "Score values will be updated. Match result is unchanged."}
-              </div>
-
-              {/* Match result diff */}
-              {hasResultChange && (
-                <div style={{ background: K.warn + "12", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "10px 12px", marginBottom: 12 }}>
-                  <div style={{ fontSize: 9, fontWeight: 800, color: K.warn, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>Match result</div>
-                  {diff.result && (
-                    <div style={{ fontSize: 12, color: K.t1, marginBottom: 4 }}>
-                      <span style={{ color: K.t3 }}>Result: </span>
-                      <span style={{ textDecoration: "line-through", color: K.t3 }}>{diff.result.from}</span>
-                      <span style={{ margin: "0 6px", color: K.t3 }}>→</span>
-                      <span style={{ fontWeight: 700 }}>{diff.result.to}</span>
-                    </div>
-                  )}
-                  {diff.winner && (
-                    <div style={{ fontSize: 12, color: K.t1, marginBottom: 4 }}>
-                      <span style={{ color: K.t3 }}>Winner: </span>
-                      <span style={{ textDecoration: "line-through", color: K.t3 }}>{diff.winner.from}</span>
-                      <span style={{ margin: "0 6px", color: K.t3 }}>→</span>
-                      <span style={{ fontWeight: 700 }}>{diff.winner.to}</span>
-                    </div>
-                  )}
-                  {diff.t1Points && (
-                    <div style={{ fontSize: 12, color: K.t1, marginBottom: 4 }}>
-                      <span style={{ color: K.t3 }}>{lastNamesOnly(teams.find(t => t.id === pendingEdits.t1.id)?.name || "Team 1")} points: </span>
-                      <span style={{ textDecoration: "line-through", color: K.t3 }}>{diff.t1Points.from}</span>
-                      <span style={{ margin: "0 6px", color: K.t3 }}>→</span>
-                      <span style={{ fontWeight: 700 }}>{diff.t1Points.to}</span>
-                    </div>
-                  )}
-                  {diff.t2Points && (
-                    <div style={{ fontSize: 12, color: K.t1 }}>
-                      <span style={{ color: K.t3 }}>{lastNamesOnly(teams.find(t => t.id === pendingEdits.t2.id)?.name || "Team 2")} points: </span>
-                      <span style={{ textDecoration: "line-through", color: K.t3 }}>{diff.t2Points.from}</span>
-                      <span style={{ margin: "0 6px", color: K.t3 }}>→</span>
-                      <span style={{ fontWeight: 700 }}>{diff.t2Points.to}</span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Score changes */}
-              {changedScores.length > 0 && (
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 9, fontWeight: 800, color: K.t3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
-                    Score changes ({changedScores.length})
-                  </div>
-                  <div style={{ background: K.inp, borderRadius: 8, padding: "8px 10px", fontSize: 11, color: K.t2, lineHeight: 1.7 }}>
-                    {changedScores.map((c, i) => (
-                      <div key={i}>
-                        <span style={{ color: K.t1, fontWeight: 700 }}>{c.playerName}</span>
-                        <span style={{ color: K.t3 }}> · Hole {c.hole}: </span>
-                        <span style={{ textDecoration: "line-through", color: K.t3 }}>{c.oldVal || "—"}</span>
-                        <span style={{ margin: "0 6px", color: K.t3 }}>→</span>
-                        <span style={{ fontWeight: 700, color: K.t1 }}>{c.newVal}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Absent flag changes */}
-              {changedAbsents.length > 0 && (
-                <div style={{ marginBottom: 12 }}>
-                  <div style={{ fontSize: 9, fontWeight: 800, color: K.t3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
-                    Attendance changes
-                  </div>
-                  <div style={{ background: K.inp, borderRadius: 8, padding: "8px 10px", fontSize: 11, color: K.t2, lineHeight: 1.7 }}>
-                    {changedAbsents.map((c, i) => (
-                      <div key={i}>
-                        <span style={{ color: K.t1, fontWeight: 700 }}>{c.playerName}</span>
-                        <span style={{ color: K.t3 }}> marked </span>
-                        <span style={{ fontWeight: 700, color: c.newAbsent ? K.red : K.grn }}>
-                          {c.newAbsent ? "Absent" : "Present"}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {/* Confirm / Cancel */}
-              <div style={{ display: "flex", gap: 8, marginTop: 14 }}>
-                <button
-                  onClick={commitEditedScores}
-                  disabled={saving}
-                  style={{
-                    flex: 1, padding: "12px",
-                    borderRadius: 8,
-                    background: saving ? K.inp : K.warn,
-                    border: "none",
-                    color: saving ? K.t3 : K.bg,
-                    fontSize: 13, fontWeight: 800, letterSpacing: .3,
-                    cursor: saving ? "default" : "pointer",
-                  }}
-                >
-                  {saving ? "Saving..." : "Confirm & Save"}
-                </button>
-                <button
-                  onClick={() => setPendingEdits(null)}
-                  disabled={saving}
-                  style={{
-                    padding: "12px 18px",
-                    borderRadius: 8,
-                    background: K.inp, border: `1px solid ${K.bdr}`,
-                    color: K.t2,
-                    fontSize: 13, fontWeight: 700,
-                    cursor: saving ? "default" : "pointer",
-                  }}
-                >
-                  Back
-                </button>
-              </div>
-            </div>
-          </div>
-        </>);
-      })()}
+          Extracted to EditConfirmationPopup component (audit issue #29).
+          The component is pure presentation; this caller owns the data
+          (pendingEdits state) and the save handler (commitEditedScores).
+          Cancel just drops the pendingEdits state, returning the user
+          to the underlying Edit Scores popup. */}
+      <EditConfirmationPopup
+        pendingEdits={pendingEdits}
+        teams={teams}
+        saving={saving}
+        onConfirm={commitEditedScores}
+        onCancel={() => setPendingEdits(null)}
+        K={K}
+        lastNamesOnly={lastNamesOnly}
+      />
     </div>
   );
 }

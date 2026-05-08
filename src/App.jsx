@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
-import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
+import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
 import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, buildStandingsForSeed, pairNonBracketTeams, collectPriorMatchups } from "./theme";
 import { parseScheduleDate } from "./lib/scheduleDate";
 import { usePullToRefresh } from "./lib/usePullToRefresh";
@@ -267,23 +267,76 @@ export default function GolfLeagueApp() {
   // Auth actions
   const doGoogleSignIn = async () => { try { await signInWithPopup(_auth, _googleProvider); } catch (e) { console.error(e); throw e; } };
   const doEmailSignIn = async (email, pw) => {
+    // Email/password sign-in with an auto-create fallback for first-time
+    // users (so the UI doesn't need a separate "Sign Up" form).
+    //
+    // The orphan-account risk
+    // ───────────────────────
+    // Firebase returns `auth/invalid-credential` for BOTH "no such user" and
+    // "wrong password" — same error code, same message. The naive flow
+    // ("on invalid-credential, try to create the user") would create an
+    // orphan account if a returning user mistypes their password and the
+    // create attempt happens to succeed (e.g., Firebase glitch, or email
+    // enumeration protection wasn't fully active). The previous code had a
+    // belt-and-suspenders catch on `email-already-in-use` from the create
+    // attempt — that catches MOST cases but isn't a guarantee.
+    //
+    // Defense in depth here:
+    //   1. Try sign-in.
+    //   2. On invalid-credential / user-not-found, ASK Firebase whether
+    //      this email already has any sign-in methods registered. If yes,
+    //      it's definitely a wrong-password scenario — throw immediately
+    //      without attempting create. This is the strongest guarantee.
+    //   3. If Firebase reports no methods (truly new user), attempt create.
+    //   4. Belt-and-suspenders: keep the email-already-in-use catch in
+    //      case fetchSignInMethodsForEmail's email-enumeration protection
+    //      returns an empty list for a real existing account.
+    //
+    // Note on email enumeration protection: when enabled in Firebase, step
+    // 2 may return [] even for existing emails (privacy feature). That's
+    // why step 4 is still here as a fallback — the create attempt itself
+    // is the canonical "is this email taken?" check.
     try {
       await signInWithEmailAndPassword(_auth, email, pw);
     } catch (e) {
-      if (e.code === "auth/user-not-found" || e.code === "auth/invalid-credential" || e.code === "auth/invalid-login-credentials") {
-        try {
-          const c = await createUserWithEmailAndPassword(_auth, email, pw);
-          await updateProfile(c.user, { displayName: email.split("@")[0] });
-        } catch (createErr) {
-          if (createErr.code === "auth/email-already-in-use") {
-            const err = new Error("Wrong password");
-            err.code = "auth/wrong-password";
-            throw err;
-          }
-          throw createErr;
+      const isAmbiguous = e.code === "auth/user-not-found"
+        || e.code === "auth/invalid-credential"
+        || e.code === "auth/invalid-login-credentials";
+      if (!isAmbiguous) throw e;
+
+      // Step 2: check whether this email is already registered.
+      try {
+        const methods = await fetchSignInMethodsForEmail(_auth, email);
+        if (methods && methods.length > 0) {
+          // Email is registered → this was a wrong-password attempt. Do
+          // NOT attempt to create a duplicate account.
+          const err = new Error("Wrong password");
+          err.code = "auth/wrong-password";
+          throw err;
         }
-      } else {
-        throw e;
+      } catch (lookupErr) {
+        // If the lookup itself fails (network issue, etc.), fall through
+        // to step 3's create attempt — which has its own protection in
+        // step 4. Don't let a transient lookup failure block legitimate
+        // first-time signups.
+        if (lookupErr.code === "auth/wrong-password") throw lookupErr;
+      }
+
+      // Step 3: appears to be a new user — attempt create.
+      try {
+        const c = await createUserWithEmailAndPassword(_auth, email, pw);
+        await updateProfile(c.user, { displayName: email.split("@")[0] });
+      } catch (createErr) {
+        // Step 4: belt-and-suspenders. If create fails because the email
+        // exists, this WAS a wrong-password scenario despite step 2 not
+        // catching it (likely email enumeration protection masked the
+        // existence). Surface as wrong-password.
+        if (createErr.code === "auth/email-already-in-use") {
+          const err = new Error("Wrong password");
+          err.code = "auth/wrong-password";
+          throw err;
+        }
+        throw createErr;
       }
     }
   };
@@ -810,10 +863,15 @@ export default function GolfLeagueApp() {
     { id: "schedule", label: "Schedule", icon: "calendar" },
   ];
 
+  // More menu order: Admin first (when present) so the privileged tool is
+  // grouped at the top and visually distinct from the regular nav items
+  // below it. Sign Out stays at the bottom — separated from the navigation
+  // entries by intent. Previously Admin was sandwiched between CTP and
+  // Sign Out, which was easy to miss-tap when reaching for Sign Out.
   const moreItems = [
+    ...(isComm ? [{ id: "admin", label: "Admin", icon: "settings" }] : []),
     { id: "stats", label: "Stats", icon: "barChart" },
     { id: "ctp", label: "CTP", icon: "target" },
-    ...(isComm ? [{ id: "admin", label: "Admin", icon: "settings" }] : []),
     { id: "signout", label: "Sign Out", icon: "key" },
   ];
 
@@ -959,7 +1017,12 @@ export default function GolfLeagueApp() {
 
       <div className="app-body" ref={appBodyRef}>
         <div style={{ maxWidth: 900, width: "100%", margin: "0 auto" }}>
-          {upcomingBanner && tab !== "scoring" && (() => {
+          {/* upcomingBanner only renders on Standings + Schedule. Showing it on
+              Players, Stats, CTP, Admin felt out of context — the user is doing
+              an unrelated task, and the "your next match" banner clutters the
+              top of every page. Scoring already excludes itself because the
+              live scoring view IS the next-match context. */}
+          {upcomingBanner && (tab === "standings" || tab === "schedule") && (() => {
             return (
               <div style={{ background: K.card, border: `1.5px solid ${bannerGrn}`, borderRadius: 10, margin: "6px 14px", padding: "10px 16px", display: "flex", alignItems: "center" }}>
                 <div style={{ width: 80, flexShrink: 0, textAlign: "left", lineHeight: 1.3, padding: "6px 0" }}>
@@ -982,7 +1045,7 @@ export default function GolfLeagueApp() {
           <Suspense fallback={TabFallback}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} fetchAllScores={fetchAllScores} saveMatchResult={saveMatchResult} />}
           {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} deleteMatchResult={deleteMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} commMode={commMode} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} openFinalize={openFinalize} onFinalizeOpened={() => setOpenFinalize(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} recalcHandicaps={recalcHandicaps} clearWeekData={clearWeekData} autoSeedIfReady={autoSeedIfReady} />}
-          {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} isComm={isComm} saveScore={saveScore} saveMatchResult={saveMatchResult} setPopupOpen={setPopupOpen} />}
+          {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} isComm={isComm} saveScore={saveScore} saveMatchResult={saveMatchResult} setPopupOpen={setPopupOpen} appToast={appToast} />}
           {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} />}
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
           {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} isComm={isComm} saveCtp={saveCtp} />}
