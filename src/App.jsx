@@ -26,27 +26,49 @@ export default function GolfLeagueApp() {
   const [players, setPlayers] = useState([]);
   const [teams, setTeams] = useState([]);
   const [schedule, setSchedule] = useState([]);
-  // Ref mirror of schedule — same rationale as matchResultsRef below. Used so auto-seeding
-  // can see the just-locked week without waiting for a snapshot + re-render.
-  const scheduleRef = useRef([]);
-  useEffect(() => { scheduleRef.current = schedule; }, [schedule]);
   const [courseData, setCourseData] = useState(null);
   const [scoringRules, setScoringRules] = useState(DEFAULT_SCORING);
   const [holeScores, setHoleScores] = useState({});
   const [ctpData, setCtpData] = useState([]);
   const [matchResults, setMatchResults] = useState([]);
-  // Ref mirror of matchResults — used inside autoSeedIfReady so playoff-round auto-seeding
-  // can read the just-saved match result without waiting for a Firestore snapshot + re-render.
-  // Without this, Phase 2 (advance to next playoff round) could read stale matchResults and
-  // sporadically bail out with "prior round not fully scored" even when it was.
-  const matchResultsRef = useRef([]);
-  useEffect(() => { matchResultsRef.current = matchResults; }, [matchResults]);
-  // Ref mirror of holeScores — used by autoSeedIfReady's stale-bracket guard
-  // so we can detect "scores already entered for this week" without a re-render
-  // and without making the callback dep on the large holeScores map.
-  const holeScoresRef = useRef({});
-  useEffect(() => { holeScoresRef.current = holeScores; }, [holeScores]);
   const [leagueConfig, setLeagueConfig] = useState({ name: "Golf League 2026", year: 2026 });
+
+  // ── Latest-state ref for autoSeedIfReady ──
+  // Replaces the previous three separate refs (scheduleRef,
+  // matchResultsRef, holeScoresRef) with one consolidated ref. Updated
+  // via useEffect after every state change so the ref always reflects
+  // the most recent committed state.
+  //
+  // Why it exists at all
+  // ────────────────────
+  // Callers like saveLeagueConfig do `setTimeout(() => autoSeedIfReady(0), 0)`.
+  // If the autoSeedIfReady wrapper had `leagueConfig` in its useCallback
+  // deps and read state via closure, the setTimeout would fire the OLD
+  // wrapper (captured at save-call time, before setLeagueConfig had
+  // propagated), and that wrapper's closure would have the OLD config —
+  // so autoSeedIfReady wouldn't see the very change that triggered it.
+  // Reading state from a ref at call time sidesteps this: regardless of
+  // when the wrapper was created, it sees the latest state.
+  //
+  // Why one ref instead of three
+  // ────────────────────────────
+  // Bundling into one object means one useEffect, one place to add a
+  // new field if autoSeedIfReady ever needs more state, and the ref's
+  // shape mirrors the lib function's parameter shape exactly. Cuts
+  // App.jsx's hook count and makes the relationship explicit.
+  //
+  // Why the wrapper now has empty deps
+  // ─────────────────────────────────
+  // The wrapper is stable across renders. autoSeedIfReady is passed as
+  // a prop to multiple page components (Scoring, Schedule, Admin) — a
+  // stable identity means those components don't see prop churn on every
+  // realtime subscription update. They previously got a new wrapper
+  // identity any time teams or leagueConfig changed.
+  const autoSeedStateRef = useRef({});
+  useEffect(() => {
+    autoSeedStateRef.current = { schedule, matchResults, holeScores, teams, leagueConfig };
+  }, [schedule, matchResults, holeScores, teams, leagueConfig]);
+
   const [members, setMembers] = useState([]);
   const [membersLoaded, setMembersLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
@@ -474,27 +496,17 @@ export default function GolfLeagueApp() {
   }, []);
 
   // ── Auto-seed wrapper ──
-  // The 200-line implementation lives in lib/scheduleAutoSeed now. This
-  // wrapper bundles the refs into the params object the lib expects.
-  // Why refs instead of just passing `schedule`/`matchResults`/etc. through
-  // useCallback's closure: the wrapper can fire from a setTimeout (e.g.,
-  // saveLeagueConfig schedules `setTimeout(() => autoSeedIfReady(0), 0)`),
-  // and at that point the realtime subscription may have already updated
-  // schedule/matchResults beyond the closure's snapshot. Reading via
-  // `*.current` guarantees we feed the lib the latest state at CALL
-  // time, not the older state captured at useCallback-creation time.
-  // The lib itself is pure: it returns its result and writes to Firestore;
-  // it doesn't touch React state directly.
+  // The 200-line implementation lives in lib/scheduleAutoSeed. This wrapper
+  // forwards to the lib using the latest-state ref (declared near the top
+  // of this component). Empty deps = stable identity across renders, which
+  // matters because autoSeedIfReady is passed as a prop to multiple page
+  // components.
   const autoSeedIfReady = useCallback(async (justLockedWeek) => {
     return autoSeedIfReadyLib({
       justLockedWeek,
-      schedule: scheduleRef.current,
-      matchResults: matchResultsRef.current,
-      holeScores: holeScoresRef.current,
-      teams,
-      leagueConfig,
+      ...autoSeedStateRef.current,
     });
-  }, [teams, leagueConfig]);
+  }, []);
 
   // Import historical scores from a [name, season, week, hole, score] array.
   // See importHistoricalData.js for the source format.
