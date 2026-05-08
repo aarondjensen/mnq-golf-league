@@ -145,13 +145,27 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
                 ) : (() => {
                   // Resolve front/back for a given (season, week). Current season
                   // can override via schedule.side; historical seasons fall back
-                  // to the default odd=front, even=back alternation.
+                  // to the default odd=front, even=back alternation — with one
+                  // explicit Week-1 override.
+                  //
+                  // Week 1 is ALWAYS Back 9 in this league, by tradition. The
+                  // current-season schedule encodes that with side:'back' on
+                  // Week 1, so the commissioner-set value wins. But historical
+                  // seasons don't have a schedule available here — the only
+                  // info is (season, week) — so the fallback would default to
+                  // getWeekSide(1) which returns 'front' (odd weeks default to
+                  // front). That's wrong for the league's actual Week 1 history.
+                  // Hard-code the override here so historical Week 1 rounds
+                  // display "Back 9" consistently with the live schedule.
+                  // Same convention enforced in App.jsx's auto-seed flow and
+                  // in Schedule.jsx's tee-time labels — keep these in sync.
                   const currentSeason = new Date().getFullYear();
                   const getRoundSide = (season, week) => {
                     if (season === currentSeason && schedule) {
                       const wk = schedule.find(s => s.week === week);
                       if (wk?.side) return wk.side;
                     }
+                    if (week === 1) return 'back';
                     return getWeekSide(week);
                   };
 

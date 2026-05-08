@@ -287,7 +287,29 @@ export default function GolfLeagueApp() {
       }
     }
   };
-  const doSignOut = async () => { await signOut(_auth); setLeagueUser(null); setTab("standings"); };
+  const doSignOut = async () => {
+    // Reset auth-derived state SYNCHRONOUSLY before awaiting signOut. The
+    // auth-state listener (line 224 effect) will eventually fire and reset
+    // these too, but it's async — there's a render gap between
+    // setLeagueUser(null) and the listener clearing membersLoaded, during
+    // which `!leagueUser && membersLoaded` is true and the render falls
+    // through to JoinScreen with stale member data flashing on screen
+    // before the listener catches up. Resetting here makes the transition
+    // go LoadingScreen → AuthScreen cleanly, no flash.
+    //
+    // Also clearing commMode + impersonating: a commissioner who signs out
+    // and lets someone else sign in on the same device would otherwise
+    // start the next session in commMode=true (their setting persisted
+    // through the signout). Resetting here ensures every sign-in starts
+    // clean.
+    setMembersLoaded(false);
+    setMembers([]);
+    setLeagueUser(null);
+    setCommMode(false);
+    setImpersonating(null);
+    setTab("standings");
+    await signOut(_auth);
+  };
   const doPasswordReset = async (email) => {
     if (!email) { const e = new Error("Enter your email first"); e.code = "auth/missing-email"; throw e; }
     await sendPasswordResetEmail(_auth, email);
@@ -698,8 +720,27 @@ export default function GolfLeagueApp() {
     const data = { ...c, id: `${LEAGUE_ID}_config`, league_id: LEAGUE_ID };
     await db.upsert("league_config", data);
     setLeagueConfig(data);
-    const playoffChanged = JSON.stringify(prev?.playoffRounds || []) !== JSON.stringify(data.playoffRounds || []);
-    const customSeedChanged = JSON.stringify(prev?.customSeedWeeks || null) !== JSON.stringify(data.customSeedWeeks || null);
+    // Stable deep-equality: JSON.stringify with a sorted-keys replacer
+    // produces a canonical form that's invariant to key insertion order
+    // for objects nested anywhere in the tree. Plain JSON.stringify
+    // would return false-positives "changed" when a nested object's
+    // keys were written in a different order on the prev vs. data side
+    // — even though the underlying values were identical. Today's data
+    // shapes happen to be order-stable by construction, but a future
+    // refactor that builds these via spread/destructure could silently
+    // break the comparison. Belt-and-suspenders: works regardless of
+    // construction discipline. The performance cost (one extra walk
+    // per save) is negligible for these small objects.
+    const stableStringify = (obj) => JSON.stringify(obj, (_k, v) => {
+      if (v && typeof v === "object" && !Array.isArray(v)) {
+        const sorted = {};
+        Object.keys(v).sort().forEach(k => { sorted[k] = v[k]; });
+        return sorted;
+      }
+      return v;
+    });
+    const playoffChanged = stableStringify(prev?.playoffRounds || []) !== stableStringify(data.playoffRounds || []);
+    const customSeedChanged = stableStringify(prev?.customSeedWeeks || null) !== stableStringify(data.customSeedWeeks || null);
     const standingsMethodChanged = (prev?.standingsMethod || "") !== (data.standingsMethod || "");
     if (playoffChanged || customSeedChanged || standingsMethodChanged) {
       setTimeout(() => { autoSeedIfReady(0); }, 0);
