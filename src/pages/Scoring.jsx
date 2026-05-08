@@ -6,7 +6,7 @@ import { K, I, BackBtn, Card, EmptyState,
 import { LEAGUE_ID } from "../firebase";
 import { computeMatchResult, resultLetterFor, readScoreEffective, readStrokesEffectiveExt, computePlayoffTiebreaker } from "../lib/matchCalc";
 import { parseScheduleDate } from "../lib/scheduleDate";
-import { parseTiebreakerResult } from "../TeamMatchupCard";
+import { parseTiebreakerResult, TeamMatchupCard } from "../TeamMatchupCard";
 import { SharedScorecard } from "../components/SharedScorecard";
 
 // ═══════════════════════════════════════════════════════════════
@@ -935,327 +935,232 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             };
             const nameColor = (pid) => (isPending && isCardIncomplete(pid)) ? K.act : K.t1;
 
-            return (
-              <div key={mi} style={{
-                background: K.card,
-                borderRadius: 10,
-                border: isMyMatch ? `1.5px solid ${K.act}` : `1px solid ${K.bdr}`,
-                overflow: "hidden",
-                boxShadow: isMyMatch ? `0 2px 8px ${K.act}18` : "0 1px 3px rgba(0,0,0,.12), 0 1px 2px rgba(0,0,0,.08)",
-              }}>
-                <button onClick={() => setExpandedMatch(isExp ? null : mi)} style={{ width: "100%", padding: 0, cursor: "pointer", textAlign: "left", background: "transparent", border: "none", display: "block" }}>
-                  {/* Standings-style single-row card: [seed · team]  VS/status  [team · seed].
-                      Green tint + accent bar on the leading/winning team's half. Team names
-                      stack on two lines so both players show in full.
-                      Outer container is `position: relative` so the expand
-                      chevron can be absolutely positioned at the bottom-center
-                      of the whole card without occupying flex space — letting
-                      every panel use the same simple flex centering and stay
-                      vertically aligned with each other. */}
-                  <div style={{ display: "flex", alignItems: "stretch", minHeight: 60, position: "relative" }}>
-                    {/* TEAM 1 — left half. Teammate names always stacked on two lines so
-                        the row has a consistent height + rhythm regardless of name length. */}
-                    <div style={{
-                      flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8,
-                      padding: "10px 12px",
-                      background: t1Leading ? K.matchGrn + "18" : "transparent",
-                      borderLeft: t1Leading ? `3px solid ${K.matchGrn}` : "3px solid transparent",
-                      opacity: t2Leading && isFinalOrSigned ? 0.6 : 1,
-                    }}>
-                      {showSeeds && (
-                        <div style={{
-                          width: 20, height: 20, borderRadius: 5, flexShrink: 0,
-                          background: K.act, border: `1px solid ${K.act}`, color: K.logoBlue,
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 10, fontWeight: 800,
-                        }}>{seedMap[dispT1?.id] || "?"}</div>
-                      )}
-                      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: nameColor(dispT1?.player1), whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2 }}>
-                          {dn(dispT1?.player1)}
-                        </div>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: nameColor(dispT1?.player2), whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2 }}>
-                          {dn(dispT1?.player2)}
-                        </div>
-                      </div>
-                    </div>
+            // ── Map Scoring's per-match data → TeamMatchupCard props ──
+            //
+            // Scoring's All Matches card is the most feature-dense of the
+            // three matchup-card sites: live progress with green leader
+            // arrows, name color shifts during PENDING state, attestation
+            // status row, and the expanded scorecard panel. All of those
+            // map cleanly onto TeamMatchupCard's slots:
+            //
+            //   • team1/team2 names: { text, color } objects so PENDING
+            //     state can pulse incomplete players in K.act gold
+            //   • center: custom JSX with the leader-arrow flanks
+            //   • footer: the attestation status row (signer + attesters)
+            //   • expanded: the SharedScorecard scorecard
+            //
+            // The leader arrows are rendered HERE in the caller because
+            // they're not a generic "arrow at result" pattern — they only
+            // appear in Scoring's live-leading state, never in Schedule
+            // (which just shows the final result text) or Standings.
+            const team1Props = {
+              name1Line1: { text: dn(dispT1?.player1), color: nameColor(dispT1?.player1) },
+              name1Line2: { text: dn(dispT1?.player2), color: nameColor(dispT1?.player2) },
+              seed: showSeeds ? (seedMap[dispT1?.id] || null) : null,
+            };
+            const team2Props = {
+              name1Line1: { text: dn(dispT2?.player1), color: nameColor(dispT2?.player1) },
+              name1Line2: { text: dn(dispT2?.player2), color: nameColor(dispT2?.player2) },
+              seed: showSeeds ? (seedMap[dispT2?.id] || null) : null,
+            };
 
-                    {/* Center strip — same flex shape as the team panels:
-                        single-layer alignItems: center, no extra rows, no
-                        spacers. This guarantees the result lands at the same
-                        vertical center as the team names on either side.
-                        The chevron is rendered separately, absolutely
-                        positioned at the bottom of the outer row container,
-                        so it doesn't reserve space in this strip's flex
-                        layout and doesn't push the result off-center. */}
-                    <div style={{
-                      flexShrink: 0, minWidth: 90,
-                      background: K.inp,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      padding: "10px 6px",
-                      borderLeft: `1px solid ${K.bdr}40`, borderRight: `1px solid ${K.bdr}40`,
-                    }}>
-                      <div style={{ position: "relative", display: "inline-block" }}>
-                        <div style={{
-                          fontSize: centerText.length > 5 ? 14 : centerText.length > 3 ? 15 : 17, fontWeight: 800,
-                          color: centerColor, letterSpacing: .3,
-                          whiteSpace: "nowrap", textAlign: "center", lineHeight: 1.05,
-                        }}>{centerText}</div>
-                        {t1Leading && isFinalOrSigned && (
-                          <div style={{
-                            position: "absolute", right: "100%", top: "50%",
-                            transform: "translateY(-50%)",
-                            marginRight: 6,
-                            width: 0, height: 0,
-                            borderTop: "6px solid transparent",
-                            borderBottom: "6px solid transparent",
-                            borderRight: `8px solid ${K.matchGrn}`,
-                          }} />
-                        )}
-                        {t2Leading && isFinalOrSigned && (
-                          <div style={{
-                            position: "absolute", left: "100%", top: "50%",
-                            transform: "translateY(-50%)",
-                            marginLeft: 6,
-                            width: 0, height: 0,
-                            borderTop: "6px solid transparent",
-                            borderBottom: "6px solid transparent",
-                            borderLeft: `8px solid ${K.matchGrn}`,
-                          }} />
-                        )}
-                      </div>
-                    </div>
+            // Center strip: result/status text, flanked by green leader arrows
+            // when one team is leading on a finalized match. Chevron underneath
+            // when expandable.
+            const arrowFlankL = t1Leading && isFinalOrSigned ? (
+              <div style={{
+                position: "absolute", right: "100%", top: "50%",
+                transform: "translateY(-50%)",
+                marginRight: 6,
+                width: 0, height: 0,
+                borderTop: "6px solid transparent",
+                borderBottom: "6px solid transparent",
+                borderRight: `8px solid ${K.matchGrn}`,
+              }} />
+            ) : null;
+            const arrowFlankR = t2Leading && isFinalOrSigned ? (
+              <div style={{
+                position: "absolute", left: "100%", top: "50%",
+                transform: "translateY(-50%)",
+                marginLeft: 6,
+                width: 0, height: 0,
+                borderTop: "6px solid transparent",
+                borderBottom: "6px solid transparent",
+                borderLeft: `8px solid ${K.matchGrn}`,
+              }} />
+            ) : null;
+            const center = (
+              <>
+                <div style={{ position: "relative", display: "inline-block" }}>
+                  {arrowFlankL}
+                  <div style={{
+                    fontSize: centerText.length > 5 ? 14 : centerText.length > 3 ? 15 : 17, fontWeight: 800,
+                    color: centerColor, letterSpacing: .3,
+                    whiteSpace: "nowrap", textAlign: "center", lineHeight: 1.05,
+                  }}>{centerText}</div>
+                  {arrowFlankR}
+                </div>
+                <div style={{ fontSize: 11, color: K.t3, lineHeight: 1, marginTop: 2 }}>
+                  {isExp ? "▴" : "▾"}
+                </div>
+              </>
+            );
 
-                    {/* TEAM 2 — right half (mirrored: seed on the right). Stacked names too. */}
-                    <div style={{
-                      flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8,
-                      padding: "10px 12px",
-                      background: t2Leading ? K.matchGrn + "18" : "transparent",
-                      borderRight: t2Leading ? `3px solid ${K.matchGrn}` : "3px solid transparent",
-                      justifyContent: "flex-end",
-                      opacity: t1Leading && isFinalOrSigned ? 0.6 : 1,
-                    }}>
-                      <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2, alignItems: "flex-end" }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: nameColor(dispT2?.player1), whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, textAlign: "right", maxWidth: "100%" }}>
-                          {dn(dispT2?.player1)}
-                        </div>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: nameColor(dispT2?.player2), whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2, textAlign: "right", maxWidth: "100%" }}>
-                          {dn(dispT2?.player2)}
-                        </div>
-                      </div>
-                      {showSeeds && (
-                        <div style={{
-                          width: 20, height: 20, borderRadius: 5, flexShrink: 0,
-                          background: K.act, border: `1px solid ${K.act}`, color: K.logoBlue,
-                          display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 10, fontWeight: 800,
-                        }}>{seedMap[dispT2?.id] || "?"}</div>
-                      )}
-                    </div>
-                    {/* Expand chevron — absolutely positioned at bottom-center
-                        of the whole row so it doesn't reserve flex space in
-                        any panel. This keeps team names and the match result
-                        sharing the exact same vertical center; the chevron
-                        sits in the lower portion of the row's natural padding. */}
-                    <div style={{
-                      position: "absolute", left: 0, right: 0, bottom: 1,
-                      textAlign: "center",
-                      fontSize: 11, color: K.t3, lineHeight: 1,
-                      pointerEvents: "none",
-                    }}>{isExp ? "▴" : "▾"}</div>
+            // Attestation row builder — IIFE because it's bulky and we
+            // only want to compute it once per render. Returns null when
+            // there's no signer AND no attester slots to show (degenerate
+            // case for empty matches), which collapses the footer prop
+            // to undefined and TeamMatchupCard skips it cleanly.
+            const attestationFooter = (() => {
+              const signer = playerMap[res?.signedByPlayerId];
+              const hasSigner = !!signer;
+              const attesterList = hasSigner
+                ? resNonSigners
+                : (() => {
+                    const allPids = [...mT1Pids, ...mT2Pids].filter(pid =>
+                      holeScores[`w${week}_p${pid}_habsent`] !== 1
+                    );
+                    return allPids.slice(0, Math.max(0, allPids.length - 1));
+                  })();
+              if (!hasSigner && attesterList.length === 0) return null;
+
+              const initialsOf = (pid) => {
+                const p = playerMap[pid];
+                if (!p) return "";
+                return p.name.split(' ').map(n => n[0]).join('').toUpperCase();
+              };
+              const Badge = ({ pid, filled }) => (
+                <div style={{
+                  width: 18, height: 18, borderRadius: "50%",
+                  background: filled ? K.t2 : K.card,
+                  border: `1.5px solid ${K.t2}`,
+                  color: filled ? "#fff" : K.t2,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 8, fontWeight: 800, letterSpacing: -.2,
+                }}>{pid ? initialsOf(pid) : ""}</div>
+              );
+
+              return (
+                <div style={{
+                  borderTop: `1px solid ${K.bdr}30`,
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: "5px 10px", gap: 8,
+                  fontSize: 10, color: K.t3, lineHeight: 1.3,
+                  position: "relative",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9 }}>Signed</span>
+                    <Badge pid={signer?.id} filled={!!signer} />
                   </div>
-                </button>
-
-                {/* Attestation status row — renders in two states:
-                    1. SIGNED-BUT-NOT-FULLY-ATTESTED: progress bar + "Signed by X"
-                       + pending initials (each non-signer who still needs to attest).
-                    2. FULLY ATTESTED: a persistent "Signed by X · Attested by Y, Z"
-                       attribution line, so there's a permanent record on the card of
-                       who signed and who attested — visible even after the match goes
-                       to FINAL. Previously this information disappeared once attestation
-                       completed, leaving no visible trace of who did what.
-                    Nothing renders when the match hasn't been signed yet. */}
-                {/* Attestation row — ALWAYS rendered so every card has the
-                    same structure and height. Three states share one layout:
-                    1. Match has no signer yet (pending/in-progress): show
-                       "SIGNED [○] · ATTESTED [○] [○] [○]" with all blank
-                       outlined circles. Layout placeholder so the next state
-                       transition doesn't shift other cards.
-                    2. Signed-but-not-fully-attested: signer badge filled w/
-                       initials, attester badges outlined+initials (unconfirmed)
-                       or filled+initials (confirmed).
-                    3. Fully attested: all badges filled w/ initials.
-                    The badge fill states alone convey progress — no separate
-                    progress bar needed. Card heights remain identical because
-                    the row DOM doesn't change shape across states. */}
-                {(() => {
-                  const signer = playerMap[res?.signedByPlayerId];
-                  // The discriminator is "do we have a signer?" — NOT `isSigned`.
-                  // `isSigned` (defined above as `isFinalOrSigned && !res.attested`)
-                  // flips to false the moment the LAST attester records, which
-                  // would otherwise blank out every attester badge even though
-                  // their pids are correctly stored in `attestedBy`. Using
-                  // `signer` here keeps the row populated through the
-                  // signed-pending → fully-attested transition.
-                  const hasSigner = !!signer;
-                  // Build the attester list. When signed, we use resNonSigners
-                  // (filters absents). When unsigned, fall back to all present
-                  // players minus one slot reserved for the eventual signer —
-                  // exact identity of who will sign vs attest is unknown until
-                  // someone signs, so for the placeholder state we just show
-                  // (N-1) blank attester slots after a blank signer slot.
-                  const attesterList = hasSigner
-                    ? resNonSigners
-                    : (() => {
-                        const allPids = [...mT1Pids, ...mT2Pids].filter(pid =>
-                          holeScores[`w${week}_p${pid}_habsent`] !== 1
-                        );
-                        return allPids.slice(0, Math.max(0, allPids.length - 1));
-                      })();
-                  // Skip render only if no players in match (degenerate case).
-                  if (!hasSigner && attesterList.length === 0) return null;
-
-                  const initialsOf = (pid) => {
-                    const p = playerMap[pid];
-                    if (!p) return "";
-                    return p.name.split(' ').map(n => n[0]).join('').toUpperCase();
-                  };
-                  // Badge style:
-                  //   filled  → solid K.t2 background, white initials   (signed/attested = "done")
-                  //   unfilled → solid card background, K.t2 initials   (pending = inverse)
-                  // Border is K.t2 in both states so the badges are the
-                  // same diameter and align perfectly. Using K.card (not
-                  // transparent) on the unfilled state guarantees the
-                  // card background, not whatever happens to be behind it,
-                  // shows through — important on green-tinted winning
-                  // halves where transparent would pick up the green.
-                  const Badge = ({ pid, filled }) => (
+                  {progressLabel && (
                     <div style={{
-                      width: 18, height: 18, borderRadius: "50%",
-                      background: filled ? K.t2 : K.card,
-                      border: `1.5px solid ${K.t2}`,
-                      color: filled ? "#fff" : K.t2,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: 8, fontWeight: 800, letterSpacing: -.2,
-                    }}>{pid ? initialsOf(pid) : ""}</div>
-                  );
-
-                  return (
-                    <div style={{
-                      borderTop: `1px solid ${K.bdr}30`,
-                      display: "flex", alignItems: "center", justifyContent: "space-between",
-                      padding: "5px 10px", gap: 8,
-                      fontSize: 10, color: K.t3, lineHeight: 1.3,
-                      position: "relative",
-                    }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9 }}>Signed</span>
-                        <Badge pid={signer?.id} filled={!!signer} />
-                      </div>
-                      {/* Status indicator — FINAL when attested, "Thru N" when
-                          in progress with at least one full hole scored.
-                          Absolutely positioned at horizontal center of the row
-                          so it lines up directly under the match result in the
-                          center strip above, regardless of how wide the
-                          SIGNED / ATTESTED groups happen to be. Out of normal
-                          flow, so it doesn't push the badge groups around. */}
-                      {progressLabel && (
-                        <div style={{
-                          position: "absolute", left: "50%", top: "50%",
-                          transform: "translate(-50%, -50%)",
-                          fontSize: 9, fontWeight: 700, color: progressColor,
-                          textTransform: "uppercase", letterSpacing: .8,
-                          whiteSpace: "nowrap",
-                          pointerEvents: "none",
-                        }}>{progressLabel}</div>
-                      )}
-                      {attesterList.length > 0 && (
-                        <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                          <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9, marginRight: 2 }}>Attested</span>
-                          {attesterList.map((pid, i) => (
-                            <Badge
-                              key={`att-${pid || i}`}
-                              pid={hasSigner ? pid : null}
-                              filled={hasSigner && resAttestedBy.includes(pid)}
-                            />
-                          ))}
-                        </div>
-                      )}
+                      position: "absolute", left: "50%", top: "50%",
+                      transform: "translate(-50%, -50%)",
+                      fontSize: 9, fontWeight: 700, color: progressColor,
+                      textTransform: "uppercase", letterSpacing: .8,
+                      whiteSpace: "nowrap",
+                      pointerEvents: "none",
+                    }}>{progressLabel}</div>
+                  )}
+                  {attesterList.length > 0 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9, marginRight: 2 }}>Attested</span>
+                      {attesterList.map((pid, i) => (
+                        <Badge
+                          key={`att-${pid || i}`}
+                          pid={hasSigner ? pid : null}
+                          filled={hasSigner && resAttestedBy.includes(pid)}
+                        />
+                      ))}
                     </div>
-                  );
-                })()}
+                  )}
+                </div>
+              );
+            })();
 
-                {/* Expanded scorecard — uses SharedScorecard */}
-                {isExp && (() => {
-                  // Delegates the absent-substitution model to matchCalc.js's
-                  // canonical readers. Replaces ~20 lines of inline helpers
-                  // (amIsAbsent, amGetTeammate, amGetEffectiveScore) that
-                  // duplicated logic already exported from matchCalc.
-                  const amIsAbsent = (pid) => holeScores[`w${week}_p${pid}_habsent`] === 1;
-                  const amGetEffectiveScore = (pid, h) => readScoreEffective({
-                    pid, h, week, holeScores,
-                    t1Pids: mT1Pids, t2Pids: mT2Pids,
-                    pars, hcps, players,
-                  });
-                  const amGetEffectiveStrokes = (pid, h) => readStrokesEffectiveExt({
-                    pid, h, week, holeScores,
-                    t1Pids: mT1Pids, t2Pids: mT2Pids,
-                    players, hcps,
-                  });
-                  const amGetInitials = (pid) => { const pl = playerMap[pid]; return pl ? pl.name.split(' ').map(n => n[0]).join('') : "?"; };
+            // Expanded scorecard — same SharedScorecard call as before,
+            // wrapped in TeamMatchupCard's `expanded` slot so the card's
+            // outer chrome (border, radius, shadow) wraps it cleanly.
+            const expandedPanel = isExp ? (() => {
+              const amIsAbsent = (pid) => holeScores[`w${week}_p${pid}_habsent`] === 1;
+              const amGetEffectiveScore = (pid, h) => readScoreEffective({
+                pid, h, week, holeScores,
+                t1Pids: mT1Pids, t2Pids: mT2Pids,
+                pars, hcps, players,
+              });
+              const amGetEffectiveStrokes = (pid, h) => readStrokesEffectiveExt({
+                pid, h, week, holeScores,
+                t1Pids: mT1Pids, t2Pids: mT2Pids,
+                players, hcps,
+              });
+              const amGetInitials = (pid) => { const pl = playerMap[pid]; return pl ? pl.name.split(' ').map(n => n[0]).join('') : "?"; };
 
-                  const dispT1Pids = swapped ? mT2Pids : mT1Pids;
-                  const dispT2Pids = swapped ? mT1Pids : mT2Pids;
+              const dispT1Pids = swapped ? mT2Pids : mT1Pids;
+              const dispT2Pids = swapped ? mT1Pids : mT2Pids;
 
-                  // Compute match status from raw T1 perspective, then flip if swapped
-                  const rawStatus = computeMatchStatus(mT1Pids, mT2Pids, amGetEffectiveScore, amGetEffectiveStrokes, pars);
-                  const dispHoleResults = swapped ? rawStatus.holeResults.map(r => r !== null ? -r : null) : rawStatus.holeResults;
-                  const dispRunning = []; let dCum = 0;
-                  dispHoleResults.forEach(r => { if (r !== null) dCum += r; dispRunning.push(r !== null ? dCum : null); });
-                  let dispClinchHole = null, dispClinchText = null;
-                  for (let h = 0; h < 9; h++) {
-                    if (dispRunning[h] === null) break;
-                    const lead = Math.abs(dispRunning[h]);
-                    const rem = 8 - h;
-                    if (lead > rem) {
-                      dispClinchHole = h;
-                      const updn = dispRunning[h] > 0 ? "UP" : "DN";
-                      dispClinchText = rem > 0 ? lead + "&" + rem : lead + updn;
-                      break;
-                    }
-                  }
+              const rawStatus = computeMatchStatus(mT1Pids, mT2Pids, amGetEffectiveScore, amGetEffectiveStrokes, pars);
+              const dispHoleResults = swapped ? rawStatus.holeResults.map(r => r !== null ? -r : null) : rawStatus.holeResults;
+              const dispRunning = []; let dCum = 0;
+              dispHoleResults.forEach(r => { if (r !== null) dCum += r; dispRunning.push(r !== null ? dCum : null); });
+              let dispClinchHole = null, dispClinchText = null;
+              for (let h = 0; h < 9; h++) {
+                if (dispRunning[h] === null) break;
+                const lead = Math.abs(dispRunning[h]);
+                const rem = 8 - h;
+                if (lead > rem) {
+                  dispClinchHole = h;
+                  const updn = dispRunning[h] > 0 ? "UP" : "DN";
+                  dispClinchText = rem > 0 ? lead + "&" + rem : lead + updn;
+                  break;
+                }
+              }
 
-                  const sc = SharedScorecard({
-                    pars, side, hcps, team1Pids: dispT1Pids, team2Pids: dispT2Pids,
-                    getScore: amGetEffectiveScore, getStrokes: amGetEffectiveStrokes, getHcp: amGetHcp,
-                    getInitials: amGetInitials, isAbsent: amIsAbsent,
-                    holeResults: dispHoleResults, runningStatus: dispRunning,
-                    clinchHole: dispClinchHole, clinchText: dispClinchText,
-                    variant: "allMatches", showTotals: true, matchGrn,
-                  });
+              const sc = SharedScorecard({
+                pars, side, hcps, team1Pids: dispT1Pids, team2Pids: dispT2Pids,
+                getScore: amGetEffectiveScore, getStrokes: amGetEffectiveStrokes, getHcp: amGetHcp,
+                getInitials: amGetInitials, isAbsent: amIsAbsent,
+                holeResults: dispHoleResults, runningStatus: dispRunning,
+                clinchHole: dispClinchHole, clinchText: dispClinchText,
+                variant: "allMatches", showTotals: true, matchGrn,
+              });
 
-                  return (
-                    <div style={{ padding: "6px 8px 10px", borderTop: `1px solid ${K.bdr}30` }}>
-                      <sc.HoleRow />
-                      <sc.ParRow />
-                      {weekSch?.isPlayoff && <sc.HcpRow />}
-                      <div style={{ fontSize: 9, fontWeight: 700, color: K.acc, textTransform: "uppercase", letterSpacing: 1, padding: "4px 4px 2px" }}>
-                        {showSeeds && seedMap[dispT1?.id] && <span style={{ color: K.logoBright, marginRight: 4 }}>#{seedMap[dispT1.id]}</span>}
-                        {dispT1.name}
-                      </div>
-                      {dispT1Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
-                      <sc.TeamNetRow pids={dispT1Pids} isTeam1Side={true} />
-                      <sc.MatchRow />
-                      <div style={{ fontSize: 9, fontWeight: 700, color: K.acc, textTransform: "uppercase", letterSpacing: 1, padding: "4px 4px 2px" }}>
-                        {showSeeds && seedMap[dispT2?.id] && <span style={{ color: K.logoBright, marginRight: 4 }}>#{seedMap[dispT2.id]}</span>}
-                        {dispT2.name}
-                      </div>
-                      {dispT2Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
-                      <sc.TeamNetRow pids={dispT2Pids} isTeam1Side={false} />
-                    </div>
-                  );
-                })()}
-              </div>
+              return (
+                <div style={{ padding: "6px 8px 10px", borderTop: `1px solid ${K.bdr}30` }}>
+                  <sc.HoleRow />
+                  <sc.ParRow />
+                  {weekSch?.isPlayoff && <sc.HcpRow />}
+                  <div style={{ fontSize: 9, fontWeight: 700, color: K.acc, textTransform: "uppercase", letterSpacing: 1, padding: "4px 4px 2px" }}>
+                    {showSeeds && seedMap[dispT1?.id] && <span style={{ color: K.logoBright, marginRight: 4 }}>#{seedMap[dispT1.id]}</span>}
+                    {dispT1.name}
+                  </div>
+                  {dispT1Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
+                  <sc.TeamNetRow pids={dispT1Pids} isTeam1Side={true} />
+                  <sc.MatchRow />
+                  <div style={{ fontSize: 9, fontWeight: 700, color: K.acc, textTransform: "uppercase", letterSpacing: 1, padding: "4px 4px 2px" }}>
+                    {showSeeds && seedMap[dispT2?.id] && <span style={{ color: K.logoBright, marginRight: 4 }}>#{seedMap[dispT2.id]}</span>}
+                    {dispT2.name}
+                  </div>
+                  {dispT2Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
+                  <sc.TeamNetRow pids={dispT2Pids} isTeam1Side={false} />
+                </div>
+              );
+            })() : null;
+
+            return (
+              <TeamMatchupCard
+                key={mi}
+                team1={team1Props}
+                team2={team2Props}
+                winnerSide={t1Leading ? "team1" : t2Leading ? "team2" : null}
+                isFinal={isFinalOrSigned}
+                highlightSelf={!!isMyMatch}
+                isConsolation={true}
+                centerWidth={90}
+                onClick={() => setExpandedMatch(isExp ? null : mi)}
+                center={center}
+                footer={attestationFooter}
+                expanded={expandedPanel}
+              />
             );
           })}
         </div>
