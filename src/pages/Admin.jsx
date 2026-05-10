@@ -2299,7 +2299,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         {/* ── WEEKLY TAB ── */}
         {subTab === "weekly" && (<>
           {!schedule.length ? (
-            <div style={{ textAlign: "center", padding: 30, color: K.t3, fontSize: 13 }}>No schedule yet. Generate one in the Setup tab.</div>
+            <EmptyState icon="calendar" title="No schedule yet" subtitle="Generate one in the Setup tab." />
           ) : (<>
             {/* Shuffle button — only shows if no weeks are locked */}
             {(() => {

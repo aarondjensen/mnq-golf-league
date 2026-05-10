@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { K, EmptyState, Card, SubLabel, LIST_GAP, CARD_RADIUS, getWeekSide } from "../theme";
+import { K, EmptyState, Card, SubLabel, LIST_GAP, CARD_RADIUS, getWeekSide, LoadingPanel } from "../theme";
 
 // ──────────────────────────────────────────────────────────────────────────
 //  StatsView — season-long leaderboards
@@ -79,7 +79,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
     }).filter(Boolean);
   }, [players, course, schedule, scores]);
 
-  if (loading) return <div style={{ textAlign: "center", padding: 40, color: K.t3, fontSize: 13 }} className="pu">Loading...</div>;
+  if (loading) return <LoadingPanel />;
   if (!course) return <EmptyState icon="barChart" title="Course not configured" subtitle="Stats unlock once the commissioner sets up the course." />;
   if (!stats.length) return <EmptyState icon="barChart" title="No completed rounds yet" subtitle="Stats appear here as players post 9-hole rounds." />;
 

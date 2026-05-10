@@ -364,6 +364,11 @@ export const getCSS = (k) => `
   @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
   @keyframes mnqSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  /* skeletonPulse — distinct from .pu's text pulse. Oscillates the
+     background color of skeleton rows between K.inp and a slightly
+     lighter shade so loading lists feel "alive" without being noisy.
+     Pages stagger animation-delay per row for a gentle ripple effect. */
+  @keyframes skeletonPulse { 0%, 100% { opacity: .55; } 50% { opacity: .9; } }
   input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
   input[type=number] { -moz-appearance: textfield; }
   .hole-input:focus { outline: 2px solid ${k.act}; outline-offset: -1px; background: ${k.cardHi} !important; }
@@ -437,6 +442,74 @@ export const EmptyState = ({ icon, title, subtitle }) => (
     <div style={{ marginBottom: 12, display: "flex", justifyContent: "center", opacity: .4 }}>{typeof icon === "string" ? I[icon]?.(40, K.t3) || null : icon}</div>
     <div style={{ color: K.t2, fontSize: 15, fontWeight: 500, letterSpacing: .8 }}>{title}</div>
     {subtitle && <div style={{ color: K.t3, fontSize: 13, marginTop: 4, letterSpacing: .7 }}>{subtitle}</div>}
+  </div>
+);
+
+// ──────────────────────────────────────────────────────────────────
+//  LoadingPanel — replaces the inline "Loading..." text divs that
+//  used to live in 6 places (TabFallback, Auth, Stats, Schedule,
+//  Standings ×2). Single source so any future tweak propagates.
+//
+//  `subtitle` lets callers say what's loading (e.g. "scores", "matches")
+//  without rebuilding the whole panel. `size="compact"` is for use
+//  INSIDE an already-mounted view (e.g. an expansion row waiting on
+//  per-week data) — smaller padding, smaller font. Default is for
+//  top-level page loading.
+// ──────────────────────────────────────────────────────────────────
+export const LoadingPanel = ({ subtitle, size = "default" }) => {
+  const compact = size === "compact";
+  return (
+    <div
+      className="pu"
+      style={{
+        textAlign: "center",
+        padding: compact ? 10 : 40,
+        color: K.t3,
+        fontSize: compact ? 11 : 13,
+        letterSpacing: .5,
+      }}
+    >
+      Loading{subtitle ? ` ${subtitle}` : ""}…
+    </div>
+  );
+};
+
+// ──────────────────────────────────────────────────────────────────
+//  SkeletonRow / SkeletonList — gray pulsing placeholders for the
+//  shape of incoming list content. Used during cold-start before the
+//  first Firestore snapshot fires. Replaces the "empty state flash"
+//  pattern where pages briefly render EmptyState before data arrives.
+//
+//  SkeletonRow is a single gray block at a given height. Pass `style`
+//  to override (border-radius, background, etc.) per-page. SkeletonList
+//  repeats SkeletonRow N times with consistent gap + a stagger so the
+//  pulse ripples down the list rather than blinking in lockstep.
+//
+//  Pages decide when to render skeletons vs. EmptyState by checking
+//  a `dataLoaded` flag fed from App.jsx — see App.jsx's `dataLoaded`
+//  state and the subscription callbacks that flip it on first snapshot.
+// ──────────────────────────────────────────────────────────────────
+export const SkeletonRow = ({ height = 56, style }) => (
+  <div
+    style={{
+      height,
+      background: K.inp,
+      borderRadius: CARD_RADIUS,
+      animation: "skeletonPulse 1.6s ease-in-out infinite",
+      ...style,
+    }}
+  />
+);
+
+export const SkeletonList = ({ count = 6, height = 56, gap = LIST_GAP, style }) => (
+  <div style={{ display: "flex", flexDirection: "column", gap, ...style }}>
+    {Array.from({ length: count }, (_, i) => (
+      <SkeletonRow
+        key={i}
+        height={height}
+        style={{ animationDelay: `${i * 0.08}s` }}
+      />
+    ))}
   </div>
 );
 

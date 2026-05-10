@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, calcPlayerHcp, buildSeedMap, buildStandingsForSeed } from "../theme";
+import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, calcPlayerHcp, buildSeedMap, buildStandingsForSeed, LoadingPanel, SkeletonList } from "../theme";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/matchCalc";
 import { isScheduleDateAtOrPast } from "../lib/scheduleDate";
@@ -1059,7 +1059,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
   }, [players, teams, course, playoffWeeks, scores, allRounds, scoringRules, leagueConfig]);
 
   if (loading && playoffWeeks.length > 0) {
-    return <div style={{ textAlign: "center", padding: 40, color: K.t3, fontSize: 13 }} className="pu">Loading scores...</div>;
+    return <LoadingPanel subtitle="scores" />;
   }
 
   if (!playoffWeeks.length) {
@@ -1215,7 +1215,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
 // ════════════════════════════════════════════════════════════
 //  MAIN STANDINGS VIEW
 // ════════════════════════════════════════════════════════════
-export default function StandingsView({ teams, players, matchResults, leagueConfig, schedule, fetchSeasonScores, course, fetchWeekScores, scoringRules, fetchAllScores, saveMatchResult }) {
+export default function StandingsView({ teams, players, matchResults, leagueConfig, schedule, fetchSeasonScores, course, fetchWeekScores, scoringRules, fetchAllScores, saveMatchResult, dataLoaded }) {
   const isRecord = leagueConfig?.standingsMethod === "record";
   const [expanded, setExpanded] = useState(null);
   const [expandedResult, setExpandedResult] = useState(null);
@@ -1458,7 +1458,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     const pars = side === 'front' ? course.frontPars : course.backPars;
     const hcps = side === 'front' ? course.frontHcps : course.backHcps;
     const wkScores = weekScores[mr.week];
-    if (!wkScores) return <div style={{ padding: 8, textAlign: "center", color: K.t3, fontSize: 11 }} className="pu">Loading...</div>;
+    if (!wkScores) return <LoadingPanel size="compact" />;
 
     const myTeamObj = teams.find(t => t.id === teamId);
     const oppTeamId = mr.team1Id === teamId ? mr.team2Id : mr.team1Id;
@@ -1536,6 +1536,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   };
 
   const gt = (id) => teams.find(t => t.id === id);
+  if (dataLoaded && !dataLoaded.teams) return <SkeletonList count={10} height={60} />;
   if (!teams.length) return <EmptyState icon="trophy" title="No teams yet" subtitle="Commissioner needs to set up teams." />;
 
   // W-L-T cell widths — sized for 1–2 digit values. Was 22/8 originally

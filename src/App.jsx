@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
-import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp } from "./theme";
+import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, LoadingPanel } from "./theme";
 import { parseScheduleDate } from "./lib/scheduleDate";
 import { usePullToRefresh } from "./lib/usePullToRefresh";
 import { autoSeedIfReady as autoSeedIfReadyLib } from "./lib/scheduleAutoSeed";
@@ -27,6 +27,17 @@ export default function GolfLeagueApp() {
   const [players, setPlayers] = useState([]);
   const [teams, setTeams] = useState([]);
   const [schedule, setSchedule] = useState([]);
+  // dataLoaded tracks whether each Firestore subscription has fired at
+  // least once. Pages use it to choose between SkeletonList (cold-start
+  // first paint, data still en route) and EmptyState (data fetched,
+  // genuinely empty). Without this, the cold-start path briefly
+  // renders the empty state before the snapshot arrives — visible flash
+  // on slow connections.
+  const [dataLoaded, setDataLoaded] = useState({
+    players: false,
+    teams: false,
+    schedule: false,
+  });
   const [courseData, setCourseData] = useState(null);
   const [scoringRules, setScoringRules] = useState(DEFAULT_SCORING);
   const [holeScores, setHoleScores] = useState({});
@@ -257,9 +268,18 @@ export default function GolfLeagueApp() {
       else setLeagueUser(null);
     }));
 
-    unsubs.push(db.subscribe("league_players", LF, (docs) => setPlayers(docs)));
-    unsubs.push(db.subscribe("league_teams", LF, (docs) => setTeams(docs)));
-    unsubs.push(db.subscribe("league_schedule", LF, (docs) => setSchedule(docs.filter(d => d.week > 0).sort((a, b) => a.week - b.week))));
+    unsubs.push(db.subscribe("league_players", LF, (docs) => {
+      setPlayers(docs);
+      setDataLoaded(prev => prev.players ? prev : { ...prev, players: true });
+    }));
+    unsubs.push(db.subscribe("league_teams", LF, (docs) => {
+      setTeams(docs);
+      setDataLoaded(prev => prev.teams ? prev : { ...prev, teams: true });
+    }));
+    unsubs.push(db.subscribe("league_schedule", LF, (docs) => {
+      setSchedule(docs.filter(d => d.week > 0).sort((a, b) => a.week - b.week));
+      setDataLoaded(prev => prev.schedule ? prev : { ...prev, schedule: true });
+    }));
     unsubs.push(db.subscribe("league_match_results", LF, (docs) => setMatchResults(docs)));
     unsubs.push(db.subscribe("league_ctp", LF, (docs) => setCtpData(docs)));
 
@@ -753,7 +773,7 @@ export default function GolfLeagueApp() {
 
   const bannerGrn = K.matchGrn;
 
-  const TabFallback = <div style={{ textAlign: "center", padding: 40, color: K.t3, fontSize: 13 }} className="pu">Loading...</div>;
+  const TabFallback = <LoadingPanel />;
 
   return (
     <div className="app-shell">
@@ -876,10 +896,10 @@ export default function GolfLeagueApp() {
           <div className="main-content fi" key={tab}>
           <ErrorBoundary>
           <Suspense fallback={TabFallback}>
-          {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} fetchAllScores={fetchAllScores} saveMatchResult={saveMatchResult} />}
+          {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} fetchAllScores={fetchAllScores} saveMatchResult={saveMatchResult} dataLoaded={dataLoaded} />}
           {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} deleteMatchResult={deleteMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} commMode={commMode} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} openFinalize={openFinalize} onFinalizeOpened={() => setOpenFinalize(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} recalcHandicaps={recalcHandicaps} clearWeekData={clearWeekData} autoSeedIfReady={autoSeedIfReady} />}
-          {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} isComm={isComm} saveScore={saveScore} saveMatchResult={saveMatchResult} setPopupOpen={setPopupOpen} appToast={appToast} />}
-          {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} />}
+          {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} isComm={isComm} saveScore={saveScore} saveMatchResult={saveMatchResult} setPopupOpen={setPopupOpen} appToast={appToast} dataLoaded={dataLoaded} />}
+          {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} dataLoaded={dataLoaded} />}
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
           {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} isComm={isComm} saveCtp={saveCtp} />}
           {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} saveMatchResult={saveMatchResult} resetSeasonData={resetSeasonData} importHistoricalScores={importHistoricalScores} recalcHandicaps={recalcHandicaps} autoSeedIfReady={autoSeedIfReady} clearWeekData={clearWeekData} />}

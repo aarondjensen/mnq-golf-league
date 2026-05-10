@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE, buildSeedMap } from "../theme";
+import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE, buildSeedMap, LoadingPanel, SkeletonList } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { Popup } from "../components/Popup";
@@ -21,7 +21,7 @@ const MY_SCHEDULE_COLS = {
   side: 38,
 };
 
-export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen, appToast }) {
+export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen, appToast, dataLoaded }) {
   const [showAll, setShowAll] = useState(false);
   const [myOnly, setMyOnly] = useState(true);
   const [expandedWeeks, setExpandedWeeks] = useState({});
@@ -500,6 +500,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     return weekNum === schedule[currentWeekIdx]?.week;
   };
 
+  if (dataLoaded && !dataLoaded.schedule) return <SkeletonList count={12} height={48} />;
   if (!schedule.length) return <EmptyState icon="calendar" title="No schedule yet" subtitle="Commissioner needs to generate the schedule." />;
 
   // ── ICS calendar ──
@@ -744,7 +745,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const pars = side === 'front' ? course.frontPars : course.backPars;
     const hcps = side === 'front' ? course.frontHcps : course.backHcps;
     const wkScores = matchScores[wk.week];
-    if (!wkScores) return <div style={{ padding: 10, textAlign: "center", color: K.t3, fontSize: 11 }} className="pu">Loading scores...</div>;
+    if (!wkScores) return <LoadingPanel subtitle="scores" size="compact" />;
 
     const t1 = teams.find(t => t.id === m.team1);
     const t2 = teams.find(t => t.id === m.team2);

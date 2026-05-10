@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
-import { K, EmptyState, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, CHEVRON_SIZE, calcPlayerHcp, getWeekSide } from "../theme";
+import { K, EmptyState, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, CHEVRON_SIZE, calcPlayerHcp, getWeekSide, LoadingPanel, SkeletonList } from "../theme";
 
-export default function PlayersView({ players, course, schedule, scoringRules, fetchAllScores, members }) {
+export default function PlayersView({ players, course, schedule, scoringRules, fetchAllScores, members, dataLoaded }) {
   const recentN = scoringRules.hcpRecentCount ?? 8;
   const bestN = scoringRules.hcpBestCount ?? 6;
   // ── Background-loaded detail data ──
@@ -102,7 +102,17 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
     }).sort((a, b) => (a.name || "").localeCompare(b.name || ""));
   }, [players, allScores, course, recentN, bestN]);
 
-  // No more loading gate — render the basic list immediately.
+  // Cold-start skeleton — `dataLoaded.players` flips true once App.jsx
+  // receives the first onSnapshot for league_players, even if it returns
+  // empty. Lets us distinguish "still fetching" (skeleton) from "truly
+  // no players" (EmptyState) so the page doesn't flash empty state then
+  // pop in players a moment later.
+  if (dataLoaded && !dataLoaded.players) {
+    return <SkeletonList count={10} height={56} />;
+  }
+  if (!players.length) {
+    return <EmptyState icon="user" title="No players yet" subtitle="Commissioner needs to add players in Admin." />;
+  }
 
   return (
     <div>
@@ -165,7 +175,7 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
                     until the fetchAllScores effect resolves; once it resolves,
                     even an empty player still gets `[]` mapped via `|| []`. */}
                 {allScores === null ? (
-                  <div style={{ color: K.t3, fontStyle: "italic", padding: 4 }}>Loading rounds…</div>
+                  <LoadingPanel subtitle="rounds" size="compact" />
                 ) : p.recentRounds.length === 0 ? (
                   <div style={{ color: K.t3, fontStyle: "italic", padding: 4 }}>No completed rounds found</div>
                 ) : (() => {
