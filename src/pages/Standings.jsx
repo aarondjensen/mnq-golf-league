@@ -1501,8 +1501,15 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     const isT1 = mr.team1Id === teamId;
     const dispT1Pids = isT1 ? t1Pids : t2Pids;
     const dispT2Pids = isT1 ? t2Pids : t1Pids;
+    const dispT1Obj = isT1 ? teams.find(t => t.id === mr.team1Id) : teams.find(t => t.id === mr.team2Id);
+    const dispT2Obj = isT1 ? teams.find(t => t.id === mr.team2Id) : teams.find(t => t.id === mr.team1Id);
     const dispHR = !isT1 ? holeResults.map(x => -x) : holeResults;
     const dispRS = !isT1 ? runningStatus.map(x => -x) : runningStatus;
+    // Local showSeeds — historical matches in seeded or playoff weeks get the
+    // seed badge; round-robin weeks don't. Pulled from the schedule entry for
+    // this specific week so the badge follows the actual week's flag, not the
+    // current state of the league.
+    const showSeedsLocal = !!(wk && (wk.seeded === true || wk.isPlayoff === true));
 
     const sc = SharedScorecard({
       pars, side, hcps, team1Pids: dispT1Pids, team2Pids: dispT2Pids,
@@ -1516,9 +1523,12 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
       <div style={{ margin: "4px 0 2px" }}>
         <sc.HoleRow />
         <sc.ParRow />
+        {wk?.isPlayoff && <sc.HcpRow />}
+        <sc.TeamLabelRow name={dispT1Obj?.name} seed={showSeedsLocal ? (seedMap[dispT1Obj?.id] || null) : null} />
         {dispT1Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
         <sc.TeamNetRow pids={dispT1Pids} isTeam1Side={true} />
         <sc.MatchRow />
+        <sc.TeamLabelRow name={dispT2Obj?.name} seed={showSeedsLocal ? (seedMap[dispT2Obj?.id] || null) : null} />
         {dispT2Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
         <sc.TeamNetRow pids={dispT2Pids} isTeam1Side={false} />
       </div>

@@ -38,7 +38,11 @@
 // passed through unchanged when the result is rewritten.
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Internal helpers — never exported, used only inside computeMatchResult
+//  Helpers — buildStrokesMap is exported for direct use by views that need
+//  per-hole stroke allocation outside the full match-result calculation flow
+//  (e.g. Schedule's Edit Scores popup renders dots above each input). The
+//  rest of the helpers below stay file-local since they only make sense
+//  inside computeMatchResult's calling context.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Build a stroke-allocation map for a player's net handicap. Returns
@@ -48,7 +52,7 @@
 //
 // `nh` = 9-hole net handicap (already halved from full 18-hole index).
 // `hcps` = array of 9 course handicap indices for the played side.
-function buildStrokesMap(nh, hcps) {
+export function buildStrokesMap(nh, hcps) {
   const sorted = hcps.map((h, i) => ({ idx: i, hcp: h })).sort((a, b) => a.hcp - b.hcp);
   const mp = {};
   let rem = Math.abs(nh);

@@ -1129,17 +1129,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   <sc.HoleRow />
                   <sc.ParRow />
                   {weekSch?.isPlayoff && <sc.HcpRow />}
-                  <div style={{ fontSize: 9, fontWeight: 700, color: K.acc, textTransform: "uppercase", letterSpacing: 1, padding: "4px 4px 2px" }}>
-                    {showSeeds && seedMap[dispT1?.id] && <span style={{ color: K.logoBright, marginRight: 4 }}>#{seedMap[dispT1.id]}</span>}
-                    {dispT1.name}
-                  </div>
+                  <sc.TeamLabelRow name={dispT1?.name} seed={showSeeds ? (seedMap[dispT1?.id] || null) : null} />
                   {dispT1Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
                   <sc.TeamNetRow pids={dispT1Pids} isTeam1Side={true} />
                   <sc.MatchRow />
-                  <div style={{ fontSize: 9, fontWeight: 700, color: K.acc, textTransform: "uppercase", letterSpacing: 1, padding: "4px 4px 2px" }}>
-                    {showSeeds && seedMap[dispT2?.id] && <span style={{ color: K.logoBright, marginRight: 4 }}>#{seedMap[dispT2.id]}</span>}
-                    {dispT2.name}
-                  </div>
+                  <sc.TeamLabelRow name={dispT2?.name} seed={showSeeds ? (seedMap[dispT2?.id] || null) : null} />
                   {dispT2Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
                   <sc.TeamNetRow pids={dispT2Pids} isTeam1Side={false} />
                 </div>
@@ -1886,6 +1880,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <scComp.HoleRow />
               <scComp.ParRow />
               {weekSch?.isPlayoff && <scComp.HcpRow />}
+              <scComp.TeamLabelRow name={sc.myTeamObj?.name} seed={showSeeds ? (seedMap[sc.myTeamObj?.id] || null) : null} />
               {sc.myPids.map(pid => <scComp.PlayerRow key={pid} pid={pid} />)}
               <scComp.TeamNetRow pids={sc.myPids} isTeam1Side={true} />
             </div>
@@ -1894,6 +1889,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <scComp.HoleRow />
               <scComp.ParRow />
               {weekSch?.isPlayoff && <scComp.HcpRow />}
+              <scComp.TeamLabelRow name={sc.oppTeamObj?.name} seed={showSeeds ? (seedMap[sc.oppTeamObj?.id] || null) : null} />
               {sc.oppPids.map(pid => <scComp.PlayerRow key={pid} pid={pid} />)}
               <scComp.TeamNetRow pids={sc.oppPids} isTeam1Side={false} />
             </div>
@@ -1980,13 +1976,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const pl = playerMap[pid]; if (!pl) return null;
         const absent = isPlayerAbsent(pid);
         const score = getS(pid, curHole); const strokes = getStrokes(pid, curHole); const nh = getNineHcp(pid); const run = getRunning(pid);
-        // Par-relative button window: birdie / par / bogey / double / triple.
-        // PlayerScoreCard's recenter logic shifts the window when the player's
-        // score lands outside [par-1, par+3] — e.g. an ace on a par 3 (1) or a
-        // 9 on a par 4. The recentered case hides the par-relative labels in
-        // PlayerScoreCard since "Birdie/Par/Bogey/..." no longer line up with
-        // the shifted numbers.
-        const btns = [par - 1, par, par + 1, par + 2, par + 3];
+        const btns = par === 3 ? [1,2,3,4,5,6,7] : par === 5 ? [2,3,4,5,6,7,8] : [2,3,4,5,6,7,8];
         const hole1Done = allP.filter(p => !isPlayerAbsent(p)).every(p => getRawScore(p, 0) > 0);
         const absentLocked = hole1Done && !absent;
         const absentBtn = !isAlreadyFinalized ? (
@@ -2058,52 +2048,40 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const isMyT1 = t1.id === myTeamId;
         const scMyPids = isMyT1 ? t1Players : t2Players;
         const scOppPids = isMyT1 ? t2Players : t1Players;
+        const myTeamObj = isMyT1 ? t1 : t2;
+        const oppTeamObj = isMyT1 ? t2 : t1;
         const scStatus = computeMatchStatus(scMyPids, scOppPids, getS, getStrokes, pars);
-        const sc = buildSC(scMyPids, scOppPids, scStatus.holeResults, scStatus.runningStatus, scStatus.clinchHole, scStatus.clinchText, "allMatches", true);
-        const holeStatuses = Array.from({ length: 9 }, (_, i) => {
-          let holesUp = 0, hasData = false;
-          for (let h = 0; h <= i; h++) {
-            let t1HN = 0, t2HN = 0, t1OK = true, t2OK = true;
-            t1Players.forEach(pid => { const s = getS(pid, h); if (s <= 0) t1OK = false; else t1HN += s - getStrokes(pid, h); });
-            t2Players.forEach(pid => { const s = getS(pid, h); if (s <= 0) t2OK = false; else t2HN += s - getStrokes(pid, h); });
-            if (t1OK && t2OK) { if (t1HN < t2HN) holesUp += isMyT1 ? 1 : -1; else if (t1HN > t2HN) holesUp += isMyT1 ? -1 : 1; hasData = true; } else { hasData = false; break; }
-          }
-          return hasData ? holesUp : null;
-        });
-        let matchClinchHole = null, clinchScoreText = null;
-        for (let h = 0; h < 9; h++) {
-          if (holeStatuses[h] === null) break;
-          const lead = Math.abs(holeStatuses[h]); const rem = 8 - h;
-          if (lead > rem) { matchClinchHole = h; clinchScoreText = rem > 0 ? `${lead}&${rem}` : `${lead}UP`; break; }
-        }
+        // buildSC at "full" variant matches the after-signed inline scorecard
+        // (#5) and the Finalize popup (#7) — same call sites that already use
+        // split-card frame + canonical MatchRow. The popup is now visually
+        // identical to those two surfaces, just wrapped in a modal.
+        const sc = buildSC(scMyPids, scOppPids, scStatus.holeResults, scStatus.runningStatus, scStatus.clinchHole, scStatus.clinchText, "full", true);
         return (<>
           <div onClick={() => setShowScorecard(false)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 400 }} />
           <div onClick={() => setShowScorecard(false)} data-popup style={{ position: "fixed", inset: 0, zIndex: 450, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "0 0 10px", width: "100%", maxWidth: 420, overflow: "hidden", overscrollBehavior: "contain" }}>
-            <sc.HoleRow />
-            <sc.ParRow />
-            {weekSch?.isPlayoff && <sc.HcpRow />}
-            <div style={{ padding: "0 4px" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: 10, width: "100%", maxWidth: 420, overflow: "hidden", overscrollBehavior: "contain" }}>
+            {/* My team card */}
+            <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, overflow: "hidden", marginBottom: 4 }}>
+              <sc.HoleRow />
+              <sc.ParRow />
+              {weekSch?.isPlayoff && <sc.HcpRow />}
+              <sc.TeamLabelRow name={myTeamObj?.name} seed={showSeeds ? (seedMap[myTeamObj?.id] || null) : null} />
               {scMyPids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
               <sc.TeamNetRow pids={scMyPids} isTeam1Side={true} />
-              <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "3px 0" }} />
-              <div style={{ display: "flex", alignItems: "center", background: K.acc + "18", borderBottom: `2px solid ${K.bdr}40` }}>
-                <div style={{ width: 44, flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700, padding: "5px 0", borderRight: `1px solid ${K.bdr}25`, paddingLeft: 4, letterSpacing: .3 }}>MATCH</div>
-                {holeStatuses.map((st, i) => {
-                  if (matchClinchHole !== null && i === matchClinchHole) {
-                    const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-                    return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, color, fontWeight: 800, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none" }}>{clinchScoreText}</div>;
-                  }
-                  if (matchClinchHole !== null && i > matchClinchHole) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none" }} />;
-                  if (st === null) return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none", color: K.t3 + "30" }}>—</div>;
-                  const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-                  return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800, color, lineHeight: "22px", padding: "5px 0", borderRight: i < 8 ? `1px solid ${K.bdr}25` : "none" }}>{st > 0 ? <><span style={{ fontSize: 15 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 15 }}>▼</span>{Math.abs(st)}</> : <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: .5 }}>TIED</span>}</div>;
-                })}
-              </div>
-              <div style={{ borderBottom: `2px solid ${K.bdr}40`, margin: "3px 0" }} />
+            </div>
+
+            <sc.MatchRow />
+
+            {/* Opp team card */}
+            <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, overflow: "hidden" }}>
+              <sc.HoleRow />
+              <sc.ParRow />
+              {weekSch?.isPlayoff && <sc.HcpRow />}
+              <sc.TeamLabelRow name={oppTeamObj?.name} seed={showSeeds ? (seedMap[oppTeamObj?.id] || null) : null} />
               {scOppPids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
               <sc.TeamNetRow pids={scOppPids} isTeam1Side={false} />
             </div>
+
             <button onClick={() => setShowScorecard(false)} style={{ display: "block", width: "calc(100% - 20px)", margin: "10px auto 0", padding: "9px", background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.t2, fontSize: 13, fontWeight: 600, cursor: "pointer", letterSpacing: .4 }}>
               Close
             </button>
@@ -2198,6 +2176,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 <scComp.HoleRow />
                 <scComp.ParRow />
                 {weekSch?.isPlayoff && <scComp.HcpRow />}
+                <scComp.TeamLabelRow name={sc.myTeamObj?.name} seed={showSeeds ? (seedMap[sc.myTeamObj?.id] || null) : null} />
                 {sc.myPids.map(pid => <scComp.PlayerRow key={pid} pid={pid} />)}
                 <scComp.TeamNetRow pids={sc.myPids} isTeam1Side={true} />
               </div>
@@ -2209,6 +2188,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 <scComp.HoleRow />
                 <scComp.ParRow />
                 {weekSch?.isPlayoff && <scComp.HcpRow />}
+                <scComp.TeamLabelRow name={sc.oppTeamObj?.name} seed={showSeeds ? (seedMap[sc.oppTeamObj?.id] || null) : null} />
                 {sc.oppPids.map(pid => <scComp.PlayerRow key={pid} pid={pid} />)}
                 <scComp.TeamNetRow pids={sc.oppPids} isTeam1Side={false} />
               </div>
@@ -2287,16 +2267,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 }
 
 
-// ──────────────────────────────────────────────────────────────────────────
-//  Score-button labels — index-aligned with the par-relative button window
-// ──────────────────────────────────────────────────────────────────────────
-// The parent passes a 5-element btns array of [par-1, par, par+1, par+2, par+3].
-// These labels sit directly beneath each button so the row is self-documenting.
-// They're hidden when the recenter logic shifts the window outside the default
-// (e.g. an ace on a par 3, or a 9 on a par 4) since "Birdie/Par/Bogey/..." no
-// longer line up with the shifted numbers — see `showLabels` below.
-const SCORE_LABELS = ["Birdie", "Par", "Bogey", "Double", "Triple"];
-
 function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, pid, week, curHole, saveScore, K, absentBtn }) {
   const handleScore = (val) => {
     saveScore(week, pid, curHole, val);
@@ -2311,64 +2281,29 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
     const shift = minBtn - score;
     btns = defaultBtns.map(b => b - shift);
   }
-  // Reference equality is intentional: btns === defaultBtns is true ONLY when
-  // recenter didn't fire (we'd have re-assigned btns to a freshly-mapped array).
-  // When labels would mislabel a shifted number (e.g. "Birdie" sitting under a
-  // 5 on a par 4 because we shifted to [5,6,7,8,9] for a triple-bogey-or-worse
-  // entry) we just hide them. Empty-string label slot still reserves vertical
-  // space so the row height doesn't shift between default and recentered.
-  const showLabels = btns === defaultBtns;
-  // Last name only — matches the rest of the app's display convention.
-  // Disambiguation against same-last-name teammates is handled implicitly by
-  // the (HCP) pill and stroke dots that follow on the same row.
-  const lastName = pl.name.split(' ').pop();
-
   return (
-    <Card style={{ marginBottom: 3, padding: "8px 10px" }}>
-      {/* Top row — last name + handicap pill + stroke dots, with Absent
-          pushed to the right edge. Net/thru info moves to its own thin
-          sub-line below so the name has the full horizontal budget and
-          stops truncating on iPhone SE. */}
-      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2, minWidth: 0 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: 0 }}>{lastName}</span>
+    <Card style={{ marginBottom: 3, padding: "6px 10px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 5, minWidth: 0 }}>
+        <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flexShrink: 1 }}>{pl.name}</span>
         <span style={{ fontSize: 11, fontWeight: 600, color: K.t2, flexShrink: 0 }}>({nh})</span>
         {strokes > 0 && <span style={{ color: K.hcpBlue, fontSize: 12, letterSpacing: 1, flexShrink: 0, lineHeight: 1 }}>{"●".repeat(strokes)}</span>}
+        <div style={{ flex: 1 }} />
+        {run.thru > 0 && <span style={{ fontSize: 10, color: K.t3, flexShrink: 0, whiteSpace: "nowrap" }}>Net: <strong style={{ color: run.netVsPar < 0 ? K.red : run.netVsPar === 0 ? K.t3 : K.t1 }}>{run.netVsPar > 0 ? "+" + run.netVsPar : run.netVsPar === 0 ? "E" : run.netVsPar}</strong> thru {run.thru}</span>}
         {absentBtn}
       </div>
-      {/* Net / thru sub-line — its own row so the score-button row gets the
-          full horizontal budget. min-height reserves the slot before any
-          holes are scored so the layout doesn't shift the moment a player
-          taps their first score. */}
-      <div style={{ fontSize: 10, color: K.t3, marginBottom: 6, lineHeight: 1.1, minHeight: 12 }}>
-        {run.thru > 0 && (
-          <>Net <strong style={{ color: run.netVsPar < 0 ? K.red : run.netVsPar === 0 ? K.t3 : K.t1, fontWeight: 700 }}>{run.netVsPar > 0 ? "+" + run.netVsPar : run.netVsPar === 0 ? "E" : run.netVsPar}</strong> thru {run.thru}</>
-        )}
-      </div>
-      {/* Score-button row — 5 par-relative buttons at 44px tall (Apple HIG
-          minimum touch target) plus −/+ nudge buttons. Each score button
-          stacks a label beneath it (Birdie / Par / Bogey / Double / Triple);
-          labels render empty in the recenter case (see showLabels). The −/+
-          buttons intentionally have no labels — they're nudge controls, not
-          scores. The 12px reserved label slot keeps the row height stable
-          regardless of recenter state. */}
-      <div style={{ display: "flex", gap: 4, alignItems: "flex-start" }}>
-        {btns.map((btn, idx) => {
+      <div style={{ display: "flex", gap: 3 }}>
+        {btns.map(btn => {
           const isCur = btn === score; const sd = btn - par;
           const boxSize = 32;
           return (
-            <div key={btn} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, minWidth: 0 }}>
-              <button onClick={() => handleScore(isCur ? 0 : btn)} style={{ width: "100%", height: 44, borderRadius: 8, cursor: "pointer", fontSize: 15, fontWeight: 800, border: "none", background: isCur ? K.acc : K.inp, color: isCur ? K.bg : K.t2, position: "relative", transition: "all .15s", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                {isCur && sd !== 0 && <div style={{ position: "absolute", width: boxSize, height: boxSize, left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}><div style={{ position: "absolute", inset: 0, borderRadius: sd < 0 ? "50%" : 3, border: `1.5px solid ${sd < 0 ? K.red : K.bg}` }} />{Math.abs(sd) >= 2 && <div style={{ position: "absolute", inset: 3, borderRadius: sd < 0 ? "50%" : 2, border: `1px solid ${sd < 0 ? K.red : K.bg}` }} />}</div>}
-                <span style={{ position: "relative", zIndex: 1 }}>{btn}</span>
-              </button>
-              <div style={{ fontSize: 9, color: K.t3, fontWeight: 600, letterSpacing: 0.4, lineHeight: 1, height: 12 }}>
-                {showLabels ? SCORE_LABELS[idx] : ""}
-              </div>
-            </div>
+            <button key={btn} onClick={() => handleScore(isCur ? 0 : btn)} style={{ flex: 1, height: 38, borderRadius: 8, cursor: "pointer", fontSize: 15, fontWeight: 800, border: "none", background: isCur ? K.acc : K.inp, color: isCur ? K.bg : K.t2, position: "relative", transition: "all .15s", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              {isCur && sd !== 0 && <div style={{ position: "absolute", width: boxSize, height: boxSize, left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}><div style={{ position: "absolute", inset: 0, borderRadius: sd < 0 ? "50%" : 3, border: `1.5px solid ${sd < 0 ? K.red : K.bg}` }} />{Math.abs(sd) >= 2 && <div style={{ position: "absolute", inset: 3, borderRadius: sd < 0 ? "50%" : 2, border: `1px solid ${sd < 0 ? K.red : K.bg}` }} />}</div>}
+              <span style={{ position: "relative", zIndex: 1 }}>{btn}</span>
+            </button>
           );
         })}
-        <button onClick={() => handleScore(Math.max(1, (score || par) - 1))} style={{ width: 30, height: 44, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>−</button>
-        <button onClick={() => handleScore((score || par) + 1)} style={{ width: 30, height: 44, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>+</button>
+        <button onClick={() => handleScore(Math.max(1, (score || par) - 1))} style={{ width: 26, height: 38, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>−</button>
+        <button onClick={() => handleScore((score || par) + 1)} style={{ width: 26, height: 38, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>+</button>
       </div>
     </Card>
   );

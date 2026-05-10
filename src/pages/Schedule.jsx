@@ -787,10 +787,15 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const isMyT2 = myTeam && m.team2 === myTeam.id;
     const dispT1Pids = isMyT2 ? t2Pids : t1Pids;
     const dispT2Pids = isMyT2 ? t1Pids : t2Pids;
+    const dispT1 = isMyT2 ? t2 : t1;
+    const dispT2 = isMyT2 ? t1 : t2;
     const dispHR = isMyT2 ? holeResults.map(r => -r) : holeResults;
     const dispRS = isMyT2 ? runningStatus.map(r => -r) : runningStatus;
     const dispCH = clinchHole;
     const dispCT = clinchText;
+    // Local showSeeds so the seed badge in TeamLabelRow only appears during
+    // seeded weeks or playoffs — matches Scoring's All Matches expansion (#4).
+    const showSeedsLocal = (wk.seeded === true) || (wk.isPlayoff === true);
 
     const sc = SharedScorecard({
       pars, side, hcps, team1Pids: dispT1Pids, team2Pids: dispT2Pids,
@@ -804,9 +809,12 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       <div style={{ margin: "4px 0 2px" }}>
         <sc.HoleRow />
         <sc.ParRow />
+        {wk.isPlayoff && <sc.HcpRow />}
+        <sc.TeamLabelRow name={dispT1?.name} seed={showSeedsLocal ? (seedMap[dispT1?.id] || null) : null} />
         {dispT1Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
         <sc.TeamNetRow pids={dispT1Pids} isTeam1Side={true} />
         <sc.MatchRow />
+        <sc.TeamLabelRow name={dispT2?.name} seed={showSeedsLocal ? (seedMap[dispT2?.id] || null) : null} />
         {dispT2Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
         <sc.TeamNetRow pids={dispT2Pids} isTeam1Side={false} />
       </div>

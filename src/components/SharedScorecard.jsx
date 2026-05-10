@@ -238,6 +238,32 @@ export function SharedScorecard({
     );
   };
 
+  // ────────────────────────────────────────────────────────────────
+  //  TeamLabelRow — small uppercase team-name header that sits above
+  //  each team's PlayerRow stack. Becomes canonical so every scorecard
+  //  surface (Schedule expansion, Standings expansion, Scoring All
+  //  Matches, Sign Scorecard popup) renders team names with the same
+  //  typography.
+  //
+  //  Renders nothing when no name is passed — keeps existing call sites
+  //  that didn't supply team1Label/team2Label working unchanged.
+  //  Optional `seed` prop renders a "#N" badge in front of the name,
+  //  used during seeded weeks and playoff weeks.
+  // ────────────────────────────────────────────────────────────────
+  const TeamLabelRow = ({ name, seed }) => {
+    if (!name) return null;
+    return (
+      <div style={{
+        fontSize: 9, fontWeight: 700, color: K.acc,
+        textTransform: "uppercase", letterSpacing: 1,
+        padding: "4px 4px 2px",
+      }}>
+        {seed != null && <span style={{ color: K.logoBright, marginRight: 4 }}>#{seed}</span>}
+        {name}
+      </div>
+    );
+  };
+
   const MatchRow = () => {
     if (!showMatchRow || !runningStatus) return null;
     const mGrn = matchGrn || K.matchGrn;
@@ -301,5 +327,5 @@ export function SharedScorecard({
     );
   };
 
-  return { HoleRow, ParRow, HcpRow, PlayerRow, TeamNetRow, MatchRow };
+  return { HoleRow, ParRow, HcpRow, PlayerRow, TeamNetRow, MatchRow, TeamLabelRow };
 }
