@@ -2,7 +2,8 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE, buildSeedMap } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 import { SharedScorecard } from "../components/SharedScorecard";
-import { computeMatchResult, readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/matchCalc";
+import { Popup } from "../components/Popup";
+import { computeMatchResult, readScoreEffective, getStrokesForHole, resultLetterFor, buildStrokesMap } from "../lib/matchCalc";
 import { parseScheduleDate } from "../lib/scheduleDate";
 import { autoHealMatchResults } from "../lib/autoHealMatchResults";
 import { parseTiebreakerResult, TeamMatchupCard, ResultCenter } from "../TeamMatchupCard";
@@ -1101,6 +1102,11 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         const { wk, m, res } = editingMatch;
         const side = wk.side || getWeekSide(wk.week);
         const pars = course ? (side === 'front' ? course.frontPars : course.backPars) : [4,4,4,3,5,4,4,3,5];
+        // hcps drives the stroke-dot row above each player's input row. Same
+        // shape as pars (9 entries) and same fallback set as prepareEditedScores
+        // uses earlier in the file, so an under-configured course still renders
+        // sensible dot placement instead of crashing.
+        const hcps = course ? (side === 'front' ? course.frontHcps : course.backHcps) : [1,3,5,7,9,11,13,15,17];
         const t1 = teams.find(t => t.id === m.team1);
         const t2 = teams.find(t => t.id === m.team2);
         const t1Pids = [t1?.player1, t1?.player2].filter(Boolean);
@@ -1129,26 +1135,15 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         // scrolls rather than overflowing off-screen. Earlier versions tried
         // to anchor to the clicked button's document Y; that left the popup
         // stuck off-screen on long pages, which is the bug this revision fixes.
-        return (<>
-          <div onClick={() => setEditingMatch(null)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 500 }} />
-          <div data-popup style={{
-            position: "fixed", top: 20, left: 0, right: 0, bottom: 20,
-            zIndex: 550,
-            display: "flex", justifyContent: "center", alignItems: "flex-start",
-            padding: "0 10px",
-            pointerEvents: "none",
-          }}>
-            <div onClick={e => e.stopPropagation()} data-popup-scroll style={{
-              background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14,
-              padding: "14px 10px", width: "100%", maxWidth: 460,
-              maxHeight: "100%", overflowY: "auto", overscrollBehavior: "contain",
-              pointerEvents: "auto",
-              boxShadow: "0 12px 40px rgba(0,0,0,.4)",
-            }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>Edit Scores — Week {wk.week}</div>
-                <button onClick={() => setEditingMatch(null)} style={{ background: "none", border: "none", color: K.t3, fontSize: 18, cursor: "pointer", padding: "0 4px" }}>✕</button>
-              </div>
+        return (
+          <Popup
+            onClose={() => setEditingMatch(null)}
+            maxWidth={460}
+            showClose={true}
+            padding="14px 10px"
+            outerPadding={10}
+          >
+            <div style={{ fontSize: 14, fontWeight: 700, color: K.t1, marginBottom: 12, paddingRight: 40 }}>Edit Scores — Week {wk.week}</div>
 
               {/* Hole header — was paddingLeft 64 to "indent past the player
                   meta column," but the meta row above wraps full-width
@@ -1175,6 +1170,13 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
               {[...t1Pids, null, ...t2Pids].map((pid, idx) => {
                 if (pid === null) return <div key="sep" style={{ height: 1, background: K.bdr + "40", margin: "8px 0" }} />;
                 const absent = isAbs(pid);
+                // Per-hole stroke allocation for THIS player. Deliberately
+                // simple: uses the player's own handicap, ignoring absent-aware
+                // teammate substitution. The popup represents what the saved
+                // hole_scores will look like after the commissioner taps Save —
+                // the absent flag affects the recompute, not which holes the
+                // player gets strokes on.
+                const strokeMap = buildStrokesMap(getHcp(pid), hcps);
                 return (
                   <div key={pid} style={{ marginBottom: 10, opacity: absent ? 0.55 : 1 }}>
                     {/* Player meta row — initials avatar, name, hcp, absent toggle */}
@@ -1211,6 +1213,25 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                         {absent ? "✓ Absent" : "Mark Absent"}
                       </button>
                     </div>
+                    {/* Stroke-dot row — small blue dot above each hole this
+                        player receives a stroke on. 1 stroke = 1 dot, 2 strokes
+                        = 2 dots. Aligns column-for-column with the input row
+                        below (same flex:1 cell structure) so the dots sit
+                        directly over their respective inputs. The 6px reserved
+                        height keeps the row visually consistent across players,
+                        even those with very low handicaps and few/no strokes. */}
+                    <div style={{ display: "flex", marginBottom: 2 }}>
+                      {Array.from({ length: 9 }, (_, h) => {
+                        const sCount = strokeMap[h] || 0;
+                        return (
+                          <div key={h} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", height: 6, gap: 2 }}>
+                            {Array.from({ length: sCount }, (_, i) => (
+                              <div key={i} style={{ width: 4, height: 4, borderRadius: "50%", background: K.hcpBlue }} />
+                            ))}
+                          </div>
+                        );
+                      })}
+                    </div>
                     {/* Score input row — paddingLeft removed for #12 (mobile fix) */}
                     <div style={{ display: "flex" }}>
                       {Array.from({ length: 9 }, (_, h) => {
@@ -1241,18 +1262,51 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                   </div>
                 );
               })}
-              {/* Save / Cancel */}
+              {/* Save / Cancel — three explicit states for the Save button:
+                    • incomplete (some present player has missing scores)  → dark, disabled
+                    • ready    (all scores entered, no save in progress)   → gold, clickable
+                    • saving   (mid-write to Firestore)                    → gold at 60% opacity with spinner
+                  Prior code collapsed `incomplete` and `saving` into the same
+                  dark-disabled visual; on a slow connection that's the same
+                  thing a user sees while the row is incomplete, so they tap
+                  again. Keeping the gold background while saving makes the
+                  state obviously "actively working" rather than "blocked." */}
               <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
-                <button onClick={prepareEditedScores} disabled={!allFilled || saving} style={{ flex: 1, padding: 10, borderRadius: 8, background: allFilled && !saving ? K.warn : K.inp, border: allFilled && !saving ? "none" : `1px solid ${K.bdr}`, color: allFilled && !saving ? K.bg : K.t3, fontSize: 13, fontWeight: 700, cursor: allFilled && !saving ? "pointer" : "default" }}>
-                  {saving ? "Saving..." : "Save & Re-sign"}
-                </button>
+                {(() => {
+                  const state = !allFilled ? "incomplete" : saving ? "saving" : "ready";
+                  return (
+                    <button
+                      onClick={prepareEditedScores}
+                      disabled={state !== "ready"}
+                      style={{
+                        flex: 1, padding: 10, borderRadius: 8,
+                        fontSize: 13, fontWeight: 700,
+                        background: state === "incomplete" ? K.inp : K.warn,
+                        border: state === "incomplete" ? `1px solid ${K.bdr}` : "none",
+                        color: state === "incomplete" ? K.t3 : K.bg,
+                        cursor: state === "ready" ? "pointer" : "default",
+                        opacity: state === "saving" ? 0.6 : 1,
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                        transition: "opacity .15s",
+                      }}
+                    >
+                      {state === "saving" && (
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none"
+                          stroke="currentColor" strokeWidth="2.8" strokeLinecap="round"
+                          style={{ animation: "mnqSpin 0.8s linear infinite" }}>
+                          <path d="M21 12a9 9 0 1 1-3-6.7" />
+                        </svg>
+                      )}
+                      {state === "saving" ? "Saving..." : "Save & Re-sign"}
+                    </button>
+                  );
+                })()}
                 <button onClick={() => setEditingMatch(null)} style={{ padding: "10px 16px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
                   Cancel
                 </button>
               </div>
-            </div>
-          </div>
-        </>);
+          </Popup>
+        );
       })()}
 
       {/* ── Edit confirmation popup ──

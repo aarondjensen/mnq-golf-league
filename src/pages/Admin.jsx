@@ -4,56 +4,17 @@ import { K, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   getWeekSide, formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, lastNamesOnly,
   buildStandingsForSeed as sharedBuildStandingsForSeed, buildSeedMap,
   pairNonBracketTeams, collectPriorMatchups } from "../theme";
+import { ConfirmModal } from "../components/Popup";
 
-// ── Shared confirm modal used across every admin sub-page ──
-// Replaces window.confirm across admin. window.confirm renders tiny native dialogs
-// on mobile that clash visually with the rest of the app — a themed modal is
-// consistent and more readable. Pattern: set a non-null state object with
-// { title, message, confirmLabel, cancelLabel, destructive, onConfirm, onCancel }
-// and render <ConfirmModal modal={state} /> at the end of your component.
-// The modal closes by calling whichever handler you pass.
-function ConfirmModal({ modal }) {
-  if (!modal) return null;
-  return (
-    <div
-      onClick={() => modal.onCancel && modal.onCancel()}
-      style={{
-        position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        zIndex: 1000, padding: 20,
-      }}
-    >
-      <div onClick={e => e.stopPropagation()} style={{
-        background: K.card, borderRadius: 12, padding: 20, maxWidth: 360, width: "100%",
-        border: `1px solid ${K.bdr}`, boxShadow: "0 20px 40px rgba(0,0,0,0.3)",
-      }}>
-        <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 8 }}>{modal.title}</div>
-        {modal.message && (
-          <div style={{ fontSize: 12, color: K.t2, lineHeight: 1.5, marginBottom: 16, whiteSpace: "pre-wrap" }}>{modal.message}</div>
-        )}
-        <div style={{ display: "flex", gap: 8 }}>
-          <button
-            onClick={() => modal.onCancel && modal.onCancel()}
-            style={{ flex: 1, padding: "10px 14px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 13, fontWeight: 600, cursor: "pointer" }}
-          >
-            {modal.cancelLabel || "Cancel"}
-          </button>
-          <button
-            onClick={() => modal.onConfirm && modal.onConfirm()}
-            style={{
-              flex: 1, padding: "10px 14px", borderRadius: 8,
-              background: modal.destructive ? K.red : K.act, border: "none",
-              color: modal.destructive ? "#fff" : K.bg,
-              fontSize: 13, fontWeight: 700, cursor: "pointer",
-            }}
-          >
-            {modal.confirmLabel || "Confirm"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+// NOTE: ConfirmModal used to live in this file as a local helper. It's now
+// imported from components/Popup.jsx so every confirm in the app (Admin,
+// Scoring, etc.) shares the same chrome. The shared component supports the
+// `<ConfirmModal modal={state} />` API this file uses at 9 call sites, so
+// none of those sites need to change. State shape supported:
+//   { title, message, confirmLabel, cancelLabel, destructive, onConfirm, onCancel }
+// (plus an optional `eyebrow` for the branded "MnQ Golf League" callout
+// used in Scoring's confirms — Admin doesn't pass that, so its modals
+// render without an eyebrow, identical to today.)
 
 
 export default function AdminView(props) {

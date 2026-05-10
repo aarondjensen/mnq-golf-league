@@ -6,6 +6,7 @@ import { usePullToRefresh } from "./lib/usePullToRefresh";
 import { autoSeedIfReady as autoSeedIfReadyLib } from "./lib/scheduleAutoSeed";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
 import ErrorBoundary from "./ErrorBoundary";
+import { Popup } from "./components/Popup";
 
 // Fix #2: Lazy-load page components — Vite will code-split each into its own chunk.
 // Only the active tab's code is downloaded and parsed on navigation.
@@ -910,44 +911,39 @@ export default function GolfLeagueApp() {
       )}
 
       {showPlayerPicker && (
-        <>
-          <div onClick={() => setShowPlayerPicker(false)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 400 }} />
-          <div onClick={() => setShowPlayerPicker(false)} data-popup style={{ position: "fixed", inset: 0, zIndex: 450, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-            <div onClick={e => e.stopPropagation()} data-popup-scroll style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "16px", width: "100%", maxWidth: 340, maxHeight: "70vh", overflowY: "auto", overscrollBehavior: "contain", WebkitOverflowScrolling: "touch" }}>
-              <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 12, textAlign: "center" }}>Switch Player</div>
-              {impersonating && (
-                <button onClick={() => { setImpersonating(null); setShowPlayerPicker(false); }} style={{ width: "100%", padding: "10px 14px", marginBottom: 8, borderRadius: 8, background: K.teal + "15", border: `1px solid ${K.teal}40`, color: K.teal, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
-                  Back to My Account
+        <Popup onClose={() => setShowPlayerPicker(false)} maxWidth={340}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 12, textAlign: "center" }}>Switch Player</div>
+          {impersonating && (
+            <button onClick={() => { setImpersonating(null); setShowPlayerPicker(false); }} style={{ width: "100%", padding: "10px 14px", marginBottom: 8, borderRadius: 8, background: K.teal + "15", border: `1px solid ${K.teal}40`, color: K.teal, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+              Back to My Account
+            </button>
+          )}
+          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+            {[...activePlayers].sort((a, b) => a.name.localeCompare(b.name)).map(p => {
+              const isSelf = p.id === leagueUser.playerId;
+              const isActive = impersonating?.playerId === p.id;
+              return (
+                <button key={p.id} onClick={() => {
+                  if (isSelf) { setImpersonating(null); }
+                  else { setImpersonating({ playerId: p.id, name: p.name }); }
+                  setShowPlayerPicker(false);
+                }} style={{
+                  padding: "10px 14px", borderRadius: 8, cursor: "pointer", textAlign: "left",
+                  background: isActive ? K.teal + "15" : isSelf ? K.acc + "10" : K.card,
+                  border: `1px solid ${isActive ? K.teal + "40" : isSelf ? K.acc + "30" : K.bdr}`,
+                  color: K.t1, fontSize: 14, fontWeight: 600, display: "flex", justifyContent: "space-between", alignItems: "center",
+                }}>
+                  <span>{p.name}</span>
+                  {isSelf && <span style={{ fontSize: 10, color: K.t3, fontWeight: 500 }}>(you)</span>}
+                  {isActive && <span style={{ fontSize: 10, color: K.teal, fontWeight: 500 }}>active</span>}
                 </button>
-              )}
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                {[...activePlayers].sort((a, b) => a.name.localeCompare(b.name)).map(p => {
-                  const isSelf = p.id === leagueUser.playerId;
-                  const isActive = impersonating?.playerId === p.id;
-                  return (
-                    <button key={p.id} onClick={() => {
-                      if (isSelf) { setImpersonating(null); }
-                      else { setImpersonating({ playerId: p.id, name: p.name }); }
-                      setShowPlayerPicker(false);
-                    }} style={{
-                      padding: "10px 14px", borderRadius: 8, cursor: "pointer", textAlign: "left",
-                      background: isActive ? K.teal + "15" : isSelf ? K.acc + "10" : K.card,
-                      border: `1px solid ${isActive ? K.teal + "40" : isSelf ? K.acc + "30" : K.bdr}`,
-                      color: K.t1, fontSize: 14, fontWeight: 600, display: "flex", justifyContent: "space-between", alignItems: "center",
-                    }}>
-                      <span>{p.name}</span>
-                      {isSelf && <span style={{ fontSize: 10, color: K.t3, fontWeight: 500 }}>(you)</span>}
-                      {isActive && <span style={{ fontSize: 10, color: K.teal, fontWeight: 500 }}>active</span>}
-                    </button>
-                  );
-                })}
-              </div>
-              <button onClick={() => setShowPlayerPicker(false)} style={{ display: "block", width: "100%", margin: "12px 0 0", padding: "9px", background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.t2, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
-                Cancel
-              </button>
-            </div>
+              );
+            })}
           </div>
-        </>
+          <button onClick={() => setShowPlayerPicker(false)} style={{ display: "block", width: "100%", margin: "12px 0 0", padding: "9px", background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.t2, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+            Cancel
+          </button>
+        </Popup>
       )}
 
       {commMode && (

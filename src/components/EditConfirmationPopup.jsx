@@ -43,6 +43,7 @@
 //                        and stays trivially testable.
 
 import React from "react";
+import { Popup } from "./Popup";
 
 export function EditConfirmationPopup({
   pendingEdits,
@@ -59,28 +60,23 @@ export function EditConfirmationPopup({
   const hasResultChange = Object.keys(diff).length > 0;
 
   return (
-    <>
-      <div onClick={onCancel} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.75)", zIndex: 600 }} />
-      <div data-popup style={{
-        position: "fixed", top: 20, left: 0, right: 0, bottom: 20,
-        zIndex: 650,
-        display: "flex", justifyContent: "center", alignItems: "flex-start",
-        padding: "0 10px",
-        pointerEvents: "none",
-      }}>
-        <div onClick={e => e.stopPropagation()} data-popup-scroll style={{
-          background: K.bg, border: `1px solid ${K.warn}`, borderRadius: 14,
-          padding: "16px 14px", width: "100%", maxWidth: 460,
-          maxHeight: "100%", overflowY: "auto", overscrollBehavior: "contain",
-          pointerEvents: "auto",
-          boxShadow: `0 12px 40px ${K.warn}40`,
-        }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div style={{ fontSize: 14, fontWeight: 800, color: K.warn, letterSpacing: .3 }}>
-              Confirm Score Edit
-            </div>
-            <button onClick={onCancel} style={{ background: "none", border: "none", color: K.t3, fontSize: 18, cursor: "pointer", padding: "0 4px" }}>✕</button>
-          </div>
+    <Popup
+      onClose={onCancel}
+      maxWidth={460}
+      zIndex="modal"
+      showClose={true}
+      padding="16px 14px"
+      outerPadding={10}
+      innerStyle={{
+        // Orange warn-tinted border + glow signal "this is the destructive
+        // confirm" vs. the neutral Edit Scores popup it sits on top of.
+        border: `1px solid ${K.warn}`,
+        boxShadow: `0 12px 40px ${K.warn}40`,
+      }}
+    >
+      <div style={{ fontSize: 14, fontWeight: 800, color: K.warn, letterSpacing: .3, marginBottom: 12, paddingRight: 40 }}>
+        Confirm Score Edit
+      </div>
 
           {/* Lead-in summary */}
           <div style={{ fontSize: 12, color: K.t2, marginBottom: 14, lineHeight: 1.5 }}>
@@ -200,8 +196,6 @@ export function EditConfirmationPopup({
               Back
             </button>
           </div>
-        </div>
-      </div>
-    </>
+    </Popup>
   );
 }

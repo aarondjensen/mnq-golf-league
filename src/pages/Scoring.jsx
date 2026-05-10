@@ -8,6 +8,7 @@ import { computeMatchResult, resultLetterFor, readScoreEffective, readStrokesEff
 import { parseScheduleDate } from "../lib/scheduleDate";
 import { parseTiebreakerResult, TeamMatchupCard } from "../TeamMatchupCard";
 import { SharedScorecard } from "../components/SharedScorecard";
+import { Popup, ConfirmModal } from "../components/Popup";
 
 // ═══════════════════════════════════════════════════════════════
 //  Helper: compute strokes map for a given handicap
@@ -1343,54 +1344,51 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             }, 2500);
           };
 
-          return (<>
-            <div onClick={() => setShowCtpPopup(false)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 500 }} />
-            <div data-popup style={{ position: "fixed", inset: 0, zIndex: 550, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-              <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "20px", width: "100%", maxWidth: 360 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>Finalize Week {week}</div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 14, textTransform: "uppercase", letterSpacing: 1 }}>Closest to the Pin</div>
+          return (
+            <Popup onClose={() => setShowCtpPopup(false)} maxWidth={360} padding={20}>
+              <div style={{ fontSize: 11, fontWeight: 700, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>Finalize Week {week}</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 14, textTransform: "uppercase", letterSpacing: 1 }}>Closest to the Pin</div>
 
-                {par3Holes.map(holeNum => {
-                  const sel = ctpSelections[holeNum] || {};
-                  return (
-                    <div key={holeNum} style={{ marginBottom: 14, background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 10, padding: "12px" }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: K.t1, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Hole {holeNum}</div>
-                      <select
-                        value={sel.playerId || ""}
-                        onChange={e => setCtpSelections(prev => ({ ...prev, [holeNum]: { ...prev[holeNum], playerId: e.target.value } }))}
-                        style={{ width: "100%", padding: "10px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13, marginBottom: 6 }}
-                      >
-                        <option value="">No winner</option>
-                        {allPlayersSorted.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                      </select>
-                      {sel.playerId && (
-                        <input
-                          type="text"
-                          placeholder="Distance (e.g. 4'6&quot;)"
-                          value={sel.distance || ""}
-                          onChange={e => setCtpSelections(prev => ({ ...prev, [holeNum]: { ...prev[holeNum], distance: e.target.value } }))}
-                          style={{ width: "100%", padding: "8px 10px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13 }}
-                        />
-                      )}
-                    </div>
-                  );
-                })}
+              {par3Holes.map(holeNum => {
+                const sel = ctpSelections[holeNum] || {};
+                return (
+                  <div key={holeNum} style={{ marginBottom: 14, background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 10, padding: "12px" }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: K.t1, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Hole {holeNum}</div>
+                    <select
+                      value={sel.playerId || ""}
+                      onChange={e => setCtpSelections(prev => ({ ...prev, [holeNum]: { ...prev[holeNum], playerId: e.target.value } }))}
+                      style={{ width: "100%", padding: "10px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13, marginBottom: 6 }}
+                    >
+                      <option value="">No winner</option>
+                      {allPlayersSorted.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                    </select>
+                    {sel.playerId && (
+                      <input
+                        type="text"
+                        placeholder="Distance (e.g. 4'6&quot;)"
+                        value={sel.distance || ""}
+                        onChange={e => setCtpSelections(prev => ({ ...prev, [holeNum]: { ...prev[holeNum], distance: e.target.value } }))}
+                        style={{ width: "100%", padding: "8px 10px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13 }}
+                      />
+                    )}
+                  </div>
+                );
+              })}
 
-                {par3Holes.length === 0 && (
-                  <div style={{ fontSize: 13, color: K.t3, padding: "8px 0" }}>No par 3 holes this side</div>
-                )}
+              {par3Holes.length === 0 && (
+                <div style={{ fontSize: 13, color: K.t3, padding: "8px 0" }}>No par 3 holes this side</div>
+              )}
 
-                <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-                  <button onClick={handleFinalize} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-                    Finalize Week
-                  </button>
-                  <button onClick={() => setShowCtpPopup(false)} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-                    Cancel
-                  </button>
-                </div>
+              <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                <button onClick={handleFinalize} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                  Finalize Week
+                </button>
+                <button onClick={() => setShowCtpPopup(false)} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                  Cancel
+                </button>
               </div>
-            </div>
-          </>);
+            </Popup>
+          );
         })()}
 
         {toast && (
@@ -1399,24 +1397,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           </div>
         )}
         {/* Confirm modal (for rain out etc.) */}
-        {confirmModal && (<>
-          <div onClick={() => setConfirmModal(null)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 900 }} />
-          <div data-popup style={{ position: "fixed", inset: 0, zIndex: 950, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-            <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "20px", width: "100%", maxWidth: 320 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>MnQ Golf League</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 6 }}>{confirmModal.title}</div>
-              <div style={{ fontSize: 13, color: K.t2, lineHeight: 1.5, marginBottom: 16, whiteSpace: "pre-line" }}>{confirmModal.message}</div>
-              <div style={{ display: "flex", gap: 8 }}>
-                <button onClick={confirmModal.onConfirm} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-                  Confirm
-                </button>
-                <button onClick={() => setConfirmModal(null)} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-                  Cancel
-                </button>
-              </div>
-            </div>
-          </div>
-        </>)}
+        <ConfirmModal modal={confirmModal && {
+          ...confirmModal,
+          eyebrow: confirmModal.eyebrow || "MnQ Golf League",
+          onCancel: confirmModal.onCancel || (() => setConfirmModal(null)),
+        }} />
       </div>
     );
   }
@@ -2056,10 +2041,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         // split-card frame + canonical MatchRow. The popup is now visually
         // identical to those two surfaces, just wrapped in a modal.
         const sc = buildSC(scMyPids, scOppPids, scStatus.holeResults, scStatus.runningStatus, scStatus.clinchHole, scStatus.clinchText, "full", true);
-        return (<>
-          <div onClick={() => setShowScorecard(false)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 400 }} />
-          <div onClick={() => setShowScorecard(false)} data-popup style={{ position: "fixed", inset: 0, zIndex: 450, display: "flex", alignItems: "center", justifyContent: "center", padding: 12 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: 10, width: "100%", maxWidth: 420, overflow: "hidden", overscrollBehavior: "contain" }}>
+        return (
+          <Popup onClose={() => setShowScorecard(false)} maxWidth={420} padding={10} outerPadding={12}>
             {/* My team card */}
             <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, overflow: "hidden", marginBottom: 4 }}>
               <sc.HoleRow />
@@ -2085,9 +2068,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             <button onClick={() => setShowScorecard(false)} style={{ display: "block", width: "calc(100% - 20px)", margin: "10px auto 0", padding: "9px", background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.t2, fontSize: 13, fontWeight: 600, cursor: "pointer", letterSpacing: .4 }}>
               Close
             </button>
-          </div>
-          </div>
-        </>);
+          </Popup>
+        );
       })()}
       {/* Finalize / Show Match Details buttons */}
       {allComplete && !showFinalize && !isAlreadyFinalized && (
@@ -2237,24 +2219,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         </>);
       })()}
       {/* Custom confirm modal */}
-      {confirmModal && (<>
-        <div onClick={() => setConfirmModal(null)} data-popup style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 900 }} />
-        <div data-popup style={{ position: "fixed", inset: 0, zIndex: 950, display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
-          <div onClick={e => e.stopPropagation()} style={{ background: K.bg, border: `1px solid ${K.bdr}`, borderRadius: 14, padding: "20px", width: "100%", maxWidth: 320 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>MnQ Golf League</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 6 }}>{confirmModal.title}</div>
-            <div style={{ fontSize: 13, color: K.t2, lineHeight: 1.5, marginBottom: 16, whiteSpace: "pre-line" }}>{confirmModal.message}</div>
-            <div style={{ display: "flex", gap: 8 }}>
-              <button onClick={confirmModal.onConfirm} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-                Confirm
-              </button>
-              <button onClick={() => setConfirmModal(null)} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      </>)}
+      <ConfirmModal modal={confirmModal && {
+        ...confirmModal,
+        eyebrow: confirmModal.eyebrow || "MnQ Golf League",
+        onCancel: confirmModal.onCancel || (() => setConfirmModal(null)),
+      }} />
       {/* Toast */}
       {toast && (<>
         <style>{`@keyframes toastDown { 0% { transform: translateX(-50%) translateY(-20px); opacity: 0; } 100% { transform: translateX(-50%) translateY(0); opacity: 1; } }`}</style>
