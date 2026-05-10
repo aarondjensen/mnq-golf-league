@@ -1,19 +1,27 @@
 import { useState, useEffect, useMemo } from "react";
 import { K, EmptyState, Card, SubLabel, LIST_GAP, CARD_RADIUS, getWeekSide, LoadingPanel } from "../theme";
+import { buildStrokesMap } from "../lib/matchCalc";
 
 // ──────────────────────────────────────────────────────────────────────────
 //  StatsView — season-long leaderboards
 // ──────────────────────────────────────────────────────────────────────────
-// Replaces the prior "Coming soon" placeholder. Computes from current-season
-// hole_scores: lowest gross round, lowest net round, fewest bogeys+ across
-// all rounds, most birdies+. Refreshes when the user opens this tab.
+// Computes per-player stats from current-season hole_scores. Boards split
+// across three themed sections: Rounds, Holes, Specialists. A page-level
+// Gross/Net toggle drives most boards; specialist boards by par type are
+// always gross (the par segmentation already controls for difficulty by
+// definition), while hardest/easiest hole boards respect the toggle since
+// stroke allocation matters most there.
 //
-// Light implementation by design — the heavy individual-tournament leaderboard
-// already lives in Standings → Individual. This page is for "fun" season
-// stats that don't drive standings.
+// Sample-size caveat: no minimums enforced. Early-season boards may show
+// noisy single-round leaders — that's the trade-off for showing data as
+// it accumulates rather than hiding it until "enough" rounds are in.
+//
+// Performance: O(players × weeks × 9) per recompute. For 20 players over
+// 16 weeks that's ~3000 iterations — well within useMemo budget.
 export default function StatsView({ players, course, schedule, scoringRules, fetchSeasonScores }) {
   const [scores, setScores] = useState({});
   const [loading, setLoading] = useState(true);
+  const [mode, setMode] = useState("gross");  // "gross" | "net"
 
   useEffect(() => {
     if (!fetchSeasonScores) return;
@@ -27,54 +35,138 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
     return () => { cancelled = true; };
   }, [fetchSeasonScores]);
 
-  // Build per-player aggregate stats from current-season hole_scores.
+  // ──────────────────────────────────────────────────────────────────────
+  //  Build per-player aggregate stats from current-season hole_scores.
+  // ──────────────────────────────────────────────────────────────────────
+  // The hole-sequence array (per player) is the key data structure for
+  // streak calc: every hole the player encountered this season, in
+  // chronological order, marked played / not-played so a missing hole
+  // breaks any active streak.
   const stats = useMemo(() => {
     if (!course) return [];
     const frontPars = course.frontPars || [];
-    const backPars = course.backPars || [];
+    const backPars  = course.backPars  || [];
+    const frontHcps = course.frontHcps || [];
+    const backHcps  = course.backHcps  || [];
+
+    const sortedWeeks = [...(schedule || [])].sort((a, b) => a.week - b.week);
 
     return players.map(p => {
-      const rounds = []; // { week, side, gross, net, birdiePlus, bogeyPlus }
       const hcp = Math.round(p.handicapIndex || 0);
-      // Walk weeks; collect any complete (9-hole) round.
-      for (const wk of (schedule || [])) {
+      const rounds = [];                   // [{ week, side, gross, net, sidePar }]
+      const holeSequence = [];             // [{ par, gross, net, played }] in time order
+
+      // Aggregate counters
+      let totalParsGross = 0,    totalParsNet = 0;
+      let totalBirdiesGross = 0, totalBirdiesNet = 0;
+      let parOrBetterRoundsGross = 0, parOrBetterRoundsNet = 0;
+
+      // Specialist sums + counts
+      let par3Sum = 0,      par3Count = 0;
+      let par5Sum = 0,      par5Count = 0;
+      let hardSumGross = 0, hardSumNet = 0, hardCount = 0;
+      let easySumGross = 0, easySumNet = 0, easyCount = 0;
+
+      for (const wk of sortedWeeks) {
         if (wk.rainedOut) continue;
         if (typeof wk.week !== "number" || wk.week <= 0) continue;
-        const side = wk.side || getWeekSide(wk.week);
-        const pars = side === 'front' ? frontPars : backPars;
-        if (!pars.length) continue;
-        // Skip if marked absent for this week.
         if (scores[`w${wk.week}_p${p.id}_habsent`] === 1) continue;
 
-        let gross = 0, holesPlayed = 0, birdiePlus = 0, bogeyPlus = 0;
+        const side = wk.side || getWeekSide(wk.week);
+        const pars = side === 'front' ? frontPars : backPars;
+        const hcps = side === 'front' ? frontHcps : backHcps;
+        if (!pars.length || !hcps.length) continue;
+
+        const strokes = buildStrokesMap(hcp, hcps);
+
+        let gross = 0, holesPlayed = 0;
+
         for (let h = 0; h < 9; h++) {
           const s = scores[`w${wk.week}_p${p.id}_h${h}`] || 0;
+          const par = pars[h] || 4;
+          const str = strokes[h] || 0;
+          const hcpVal = hcps[h];
+
           if (s > 0) {
             gross += s;
             holesPlayed++;
-            const par = pars[h] || 4;
-            if (s <= par - 1) birdiePlus++;
-            if (s >= par + 1) bogeyPlus++;
+            const netHole = s - str;
+
+            // Pars (exactly par; the par-or-better count is round-level below)
+            if (s === par)       totalParsGross++;
+            if (netHole === par) totalParsNet++;
+
+            // Birdies (one under par)
+            if (s === par - 1)       totalBirdiesGross++;
+            if (netHole === par - 1) totalBirdiesNet++;
+
+            // Specialist — par-type. Gross only by intent; the par
+            // segmentation itself controls for hole difficulty.
+            if (par === 3) { par3Sum += s; par3Count++; }
+            if (par === 5) { par5Sum += s; par5Count++; }
+
+            // Specialist — hardest/easiest by global course HCP index.
+            // HCPs 1-3 = three globally hardest holes across the 18-hole
+            // course; HCPs 16-18 = three easiest. A player encounters
+            // these as their schedule lands on the relevant side.
+            if (hcpVal <= 3)  { hardSumGross += s; hardSumNet += netHole; hardCount++; }
+            if (hcpVal >= 16) { easySumGross += s; easySumNet += netHole; easyCount++; }
+
+            holeSequence.push({ par, gross: s, net: netHole, played: true });
+          } else {
+            // No score recorded — streak-breaking marker.
+            holeSequence.push({ par, gross: 0, net: 0, played: false });
           }
         }
+
         if (holesPlayed === 9) {
-          rounds.push({ week: wk.week, side, gross, net: gross - hcp, birdiePlus, bogeyPlus });
+          const sidePar = pars.reduce((a, b) => a + b, 0);
+          const net = gross - hcp;
+          rounds.push({ week: wk.week, side, gross, net, sidePar });
+          if (gross <= sidePar) parOrBetterRoundsGross++;
+          if (net   <= sidePar) parOrBetterRoundsNet++;
         }
       }
 
       if (!rounds.length) return null;
-      const lowestGross = Math.min(...rounds.map(r => r.gross));
-      const lowestNet = Math.min(...rounds.map(r => r.net));
-      const totalBirdiePlus = rounds.reduce((a, r) => a + r.birdiePlus, 0);
-      const totalBogeyPlus = rounds.reduce((a, r) => a + r.bogeyPlus, 0);
+
+      // Longest par-or-better streak — runs across rounds in chronological
+      // order. Any missed hole (absence, missing score, or above-par hole)
+      // breaks the streak. Both gross and net streaks tracked independently.
+      let curG = 0, maxG = 0, curN = 0, maxN = 0;
+      for (const h of holeSequence) {
+        if (!h.played) { curG = 0; curN = 0; continue; }
+        if (h.gross <= h.par) { curG++; if (curG > maxG) maxG = curG; } else curG = 0;
+        if (h.net   <= h.par) { curN++; if (curN > maxN) maxN = curN; } else curN = 0;
+      }
+
+      const sum = (arr, f) => arr.reduce((a, x) => a + f(x), 0);
       return {
         playerId: p.id,
         name: p.name,
         rounds: rounds.length,
-        lowestGross,
-        lowestNet,
-        birdiePlus: totalBirdiePlus,
-        bogeyPlus: totalBogeyPlus,
+        // Best round
+        lowestGross: Math.min(...rounds.map(r => r.gross)),
+        lowestNet:   Math.min(...rounds.map(r => r.net)),
+        // Round average
+        avgGross: sum(rounds, r => r.gross) / rounds.length,
+        avgNet:   sum(rounds, r => r.net)   / rounds.length,
+        // Round-level par-or-better count
+        parOrBetterRoundsGross,
+        parOrBetterRoundsNet,
+        // Hole-level cumulative
+        totalParsGross,    totalParsNet,
+        totalBirdiesGross, totalBirdiesNet,
+        // Streaks
+        maxStreakGross: maxG,
+        maxStreakNet:   maxN,
+        // Specialists
+        par3Avg: par3Count > 0 ? par3Sum / par3Count : null,
+        par5Avg: par5Count > 0 ? par5Sum / par5Count : null,
+        hardestAvgGross: hardCount > 0 ? hardSumGross / hardCount : null,
+        hardestAvgNet:   hardCount > 0 ? hardSumNet   / hardCount : null,
+        easyAvgGross:    easyCount > 0 ? easySumGross / easyCount : null,
+        easyAvgNet:      easyCount > 0 ? easySumNet   / easyCount : null,
       };
     }).filter(Boolean);
   }, [players, course, schedule, scores]);
@@ -83,12 +175,17 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
   if (!course) return <EmptyState icon="barChart" title="Course not configured" subtitle="Stats unlock once the commissioner sets up the course." />;
   if (!stats.length) return <EmptyState icon="barChart" title="No completed rounds yet" subtitle="Stats appear here as players post 9-hole rounds." />;
 
-  // Each leaderboard takes the same shape: a sorted list with a hero metric.
+  // ──────────────────────────────────────────────────────────────────────
+  //  Board renderer — sorted leaderboard with top-5 + hero number.
+  // ──────────────────────────────────────────────────────────────────────
+  // valueFn returning null filters the player out of the board (e.g.
+  // "par 3 specialist" hides anyone who hasn't played a par 3 yet).
   const board = (title, subtitle, valueFn, sortDir = 'asc', valueFmt) => {
     const sorted = [...stats]
       .filter(s => valueFn(s) !== null && valueFn(s) !== undefined)
       .sort((a, b) => sortDir === 'asc' ? valueFn(a) - valueFn(b) : valueFn(b) - valueFn(a))
       .slice(0, 5);
+    if (!sorted.length) return null;
     return (
       <div style={{ marginBottom: 16 }}>
         <SubLabel>{title}</SubLabel>
@@ -120,15 +217,127 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
     );
   };
 
+  // ──────────────────────────────────────────────────────────────────────
+  //  Gross/Net toggle — segmented pill at the top of the page. Drives
+  //  every board that takes a `mode`-dependent valueFn. Par-3 and Par-5
+  //  specialist boards ignore the toggle (always gross).
+  // ──────────────────────────────────────────────────────────────────────
+  const Toggle = (
+    <div style={{
+      display: "flex", background: K.inp, borderRadius: 8, padding: 2,
+      marginBottom: 16,
+    }}>
+      {["gross", "net"].map(m => (
+        <button
+          key={m}
+          onClick={() => setMode(m)}
+          style={{
+            flex: 1, padding: "8px 0", borderRadius: 6, border: "none",
+            background: mode === m ? K.acc : "transparent",
+            color: mode === m ? K.bg : K.t3,
+            fontSize: 12, fontWeight: 700, cursor: "pointer",
+            letterSpacing: 1, textTransform: "uppercase",
+            transition: "all .15s",
+          }}
+        >
+          {m}
+        </button>
+      ))}
+    </div>
+  );
+
+  const isNet = mode === "net";
+  const modeLabel = isNet ? "Net" : "Gross";
+
+  // Section header — visual separator between Rounds / Holes / Specialists.
+  const Section = ({ title }) => (
+    <div style={{
+      fontSize: 9, fontWeight: 800, color: K.t3,
+      letterSpacing: 2, textTransform: "uppercase",
+      margin: "8px 0 10px", paddingBottom: 6,
+      borderBottom: `1px solid ${K.bdr}40`,
+    }}>{title}</div>
+  );
+
   return (
     <div>
-      {board("Lowest Gross Round", "Best 9-hole gross score this season", s => s.lowestGross, 'asc')}
-      {board("Lowest Net Round", "Best 9-hole net score this season", s => s.lowestNet, 'asc')}
-      {board("Most Birdies+", "Birdies / eagles / better across the season", s => s.birdiePlus, 'desc')}
-      {board("Fewest Bogeys+", "Bogey or worse holes — lower is better", s => s.bogeyPlus, 'asc')}
+      {Toggle}
+
+      <Section title="Rounds" />
+      {board(
+        `Round Average — ${modeLabel}`,
+        "Mean score across all completed rounds",
+        s => isNet ? s.avgNet : s.avgGross,
+        'asc',
+        v => v.toFixed(1),
+      )}
+      {board(
+        `Best Round — ${modeLabel}`,
+        "Lowest single-round score",
+        s => isNet ? s.lowestNet : s.lowestGross,
+        'asc',
+      )}
+      {board(
+        `Rounds Par-or-Better — ${modeLabel}`,
+        "Rounds at or under course par for the side played",
+        s => isNet ? s.parOrBetterRoundsNet : s.parOrBetterRoundsGross,
+        'desc',
+      )}
+
+      <Section title="Holes" />
+      {board(
+        `Total Pars — ${modeLabel}`,
+        "Holes scored exactly at par across the season",
+        s => isNet ? s.totalParsNet : s.totalParsGross,
+        'desc',
+      )}
+      {board(
+        `Total Birdies — ${modeLabel}`,
+        "One under par on a hole, summed across the season",
+        s => isNet ? s.totalBirdiesNet : s.totalBirdiesGross,
+        'desc',
+      )}
+      {board(
+        `Longest Par-or-Better Streak — ${modeLabel}`,
+        "Consecutive holes at par or better, across rounds",
+        s => isNet ? s.maxStreakNet : s.maxStreakGross,
+        'desc',
+        v => v > 0 ? `${v}` : "—",
+      )}
+
+      <Section title="Specialists" />
+      {board(
+        "Par-3 Specialist",
+        "Average gross score on par-3 holes",
+        s => s.par3Avg,
+        'asc',
+        v => v.toFixed(2),
+      )}
+      {board(
+        "Par-5 Specialist",
+        "Average gross score on par-5 holes",
+        s => s.par5Avg,
+        'asc',
+        v => v.toFixed(2),
+      )}
+      {board(
+        `Hardest-Holes Specialist — ${modeLabel}`,
+        "Average on the three globally toughest holes (HCP 1–3)",
+        s => isNet ? s.hardestAvgNet : s.hardestAvgGross,
+        'asc',
+        v => v.toFixed(2),
+      )}
+      {board(
+        `Easy-Holes Specialist — ${modeLabel}`,
+        "Average on the three easiest holes (HCP 16–18)",
+        s => isNet ? s.easyAvgNet : s.easyAvgGross,
+        'asc',
+        v => v.toFixed(2),
+      )}
+
       <Card style={{ padding: "10px 14px", marginTop: 8 }}>
         <div style={{ fontSize: 11, color: K.t3, lineHeight: 1.5 }}>
-          Stats reflect every completed 9-hole round in the current season — round-robin, seeded, and playoff weeks alike. Rounds where the player was marked absent are excluded.
+          Stats reflect every completed 9-hole round in the current season — round-robin, seeded, and playoff weeks alike. Rounds where the player was marked absent are excluded. Streaks span across rounds; any missed hole breaks the run.
         </div>
       </Card>
     </div>
