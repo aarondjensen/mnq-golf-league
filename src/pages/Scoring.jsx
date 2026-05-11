@@ -2326,19 +2326,19 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
         {btns.map((btn, idx) => {
           const isCur = btn === score; const sd = btn - par;
           const boxSize = 32;
-          // Par anchor — the button matching par gets a subtle 2px gold
-          // strip across the top (rendered via inset boxShadow so the
-          // borderRadius stays clean and no layout shift). Suppressed
-          // when par is the actively-selected score, since the gold
-          // background already carries the focus. In the recenter case
+          // Par anchor — the button matching par gets a subtle label
+          // emphasis (brighter color + bolder weight) so the golfer's
+          // eye finds par as the visual reference. Suppressed when par
+          // is the selected score, since the gold active background
+          // already serves as the focal point. In the recenter case
           // (e.g. a 9 on par 4 → btns become [5,6,7,8,9]), par isn't
-          // in the array so isPar is false everywhere and no anchor
+          // in the array so isPar is false everywhere and no emphasis
           // shows — the unlabeled state already signals "abnormal."
           const isPar = btn === par;
           const showParAnchor = isPar && !isCur;
           return (
             <div key={btn} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, minWidth: 0 }}>
-              <button onClick={() => handleScore(isCur ? 0 : btn)} style={{ width: "100%", height: 44, borderRadius: 8, cursor: "pointer", fontSize: 15, fontWeight: 800, border: "none", background: isCur ? K.acc : K.inp, color: isCur ? K.bg : K.t2, position: "relative", transition: "all .15s", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: showParAnchor ? `inset 0 2px 0 ${K.acc}` : "none" }}>
+              <button onClick={() => handleScore(isCur ? 0 : btn)} style={{ width: "100%", height: 44, borderRadius: 8, cursor: "pointer", fontSize: 15, fontWeight: 800, border: "none", background: isCur ? K.acc : K.inp, color: isCur ? K.bg : K.t2, position: "relative", transition: "all .15s", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {isCur && sd !== 0 && <div style={{ position: "absolute", width: boxSize, height: boxSize, left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}><div style={{ position: "absolute", inset: 0, borderRadius: sd < 0 ? "50%" : 3, border: `1.5px solid ${sd < 0 ? K.red : K.bg}` }} />{Math.abs(sd) >= 2 && <div style={{ position: "absolute", inset: 3, borderRadius: sd < 0 ? "50%" : 2, border: `1px solid ${sd < 0 ? K.red : K.bg}` }} />}</div>}
                 <span style={{ position: "relative", zIndex: 1 }}>{btn}</span>
               </button>
