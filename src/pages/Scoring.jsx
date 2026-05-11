@@ -2319,22 +2319,40 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
           scores. The 12px reserved label slot keeps the row height stable
           regardless of recenter state. */}
       <div style={{ display: "flex", gap: 4, alignItems: "flex-start" }}>
+        {/* − nudge button moved to the FAR LEFT so the par button sits
+            dead center of the 7-button row. Symmetric with the + on the
+            far right. */}
+        <button onClick={() => handleScore(Math.max(1, (score || par) - 1))} style={{ width: 30, height: 44, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>−</button>
         {btns.map((btn, idx) => {
           const isCur = btn === score; const sd = btn - par;
           const boxSize = 32;
+          // Par anchor — the button matching par gets a subtle 2px gold
+          // strip across the top (rendered via inset boxShadow so the
+          // borderRadius stays clean and no layout shift). Suppressed
+          // when par is the actively-selected score, since the gold
+          // background already carries the focus. In the recenter case
+          // (e.g. a 9 on par 4 → btns become [5,6,7,8,9]), par isn't
+          // in the array so isPar is false everywhere and no anchor
+          // shows — the unlabeled state already signals "abnormal."
+          const isPar = btn === par;
+          const showParAnchor = isPar && !isCur;
           return (
             <div key={btn} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, minWidth: 0 }}>
-              <button onClick={() => handleScore(isCur ? 0 : btn)} style={{ width: "100%", height: 44, borderRadius: 8, cursor: "pointer", fontSize: 15, fontWeight: 800, border: "none", background: isCur ? K.acc : K.inp, color: isCur ? K.bg : K.t2, position: "relative", transition: "all .15s", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <button onClick={() => handleScore(isCur ? 0 : btn)} style={{ width: "100%", height: 44, borderRadius: 8, cursor: "pointer", fontSize: 15, fontWeight: 800, border: "none", background: isCur ? K.acc : K.inp, color: isCur ? K.bg : K.t2, position: "relative", transition: "all .15s", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: showParAnchor ? `inset 0 2px 0 ${K.acc}` : "none" }}>
                 {isCur && sd !== 0 && <div style={{ position: "absolute", width: boxSize, height: boxSize, left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}><div style={{ position: "absolute", inset: 0, borderRadius: sd < 0 ? "50%" : 3, border: `1.5px solid ${sd < 0 ? K.red : K.bg}` }} />{Math.abs(sd) >= 2 && <div style={{ position: "absolute", inset: 3, borderRadius: sd < 0 ? "50%" : 2, border: `1px solid ${sd < 0 ? K.red : K.bg}` }} />}</div>}
                 <span style={{ position: "relative", zIndex: 1 }}>{btn}</span>
               </button>
-              <div style={{ fontSize: 9, color: K.t3, fontWeight: 600, letterSpacing: 0.4, lineHeight: 1, height: 12 }}>
+              {/* Par's label gets a brighter color + bolder weight so the
+                  "Par" word also reads as the visual anchor below the
+                  button. Both cues fire from the same `showParAnchor`
+                  flag so the anchor disappears together when par is
+                  selected. */}
+              <div style={{ fontSize: 9, color: showParAnchor ? K.t2 : K.t3, fontWeight: showParAnchor ? 700 : 600, letterSpacing: 0.4, lineHeight: 1, height: 12 }}>
                 {showLabels ? SCORE_LABELS[idx] : ""}
               </div>
             </div>
           );
         })}
-        <button onClick={() => handleScore(Math.max(1, (score || par) - 1))} style={{ width: 30, height: 44, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>−</button>
         <button onClick={() => handleScore((score || par) + 1)} style={{ width: 30, height: 44, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>+</button>
       </div>
     </Card>
