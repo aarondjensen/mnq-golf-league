@@ -22,6 +22,12 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
   const [scores, setScores] = useState({});
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState("gross");  // "gross" | "net"
+  // Per-board aggregation toggle ("total" | "avg") for Total Pars and Total
+  // Birdies. Average per round matters because players who miss weeks would
+  // otherwise look worse on cumulative totals than they should — Avg captures
+  // their actual rate, not raw attendance.
+  const [parsAgg,    setParsAgg]    = useState("total");
+  const [birdiesAgg, setBirdiesAgg] = useState("total");
 
   useEffect(() => {
     if (!fetchSeasonScores) return;
@@ -59,7 +65,6 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
       // Aggregate counters
       let totalParsGross = 0,    totalParsNet = 0;
       let totalBirdiesGross = 0, totalBirdiesNet = 0;
-      let parOrBetterRoundsGross = 0, parOrBetterRoundsNet = 0;
 
       // Specialist sums + counts
       let par3Sum = 0,      par3Count = 0;
@@ -79,13 +84,20 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
 
         const strokes = buildStrokesMap(hcp, hcps);
 
+        // Per-side hardest/easiest hole indices — rank the 9 holes by their
+        // hcp values and grab the bottom 3 (hardest, lowest hcp number) and
+        // top 3 (easiest, highest hcp number). Done per-round since front
+        // and back have different hcp distributions.
+        const sortedByHcp = hcps.map((h, i) => ({ h, i })).sort((a, b) => a.h - b.h);
+        const hardestIdxs = new Set(sortedByHcp.slice(0, 3).map(x => x.i));
+        const easiestIdxs = new Set(sortedByHcp.slice(-3).map(x => x.i));
+
         let gross = 0, holesPlayed = 0;
 
         for (let h = 0; h < 9; h++) {
           const s = scores[`w${wk.week}_p${p.id}_h${h}`] || 0;
           const par = pars[h] || 4;
           const str = strokes[h] || 0;
-          const hcpVal = hcps[h];
 
           if (s > 0) {
             gross += s;
@@ -105,12 +117,12 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
             if (par === 3) { par3Sum += s; par3Count++; }
             if (par === 5) { par5Sum += s; par5Count++; }
 
-            // Specialist — hardest/easiest by global course HCP index.
-            // HCPs 1-3 = three globally hardest holes across the 18-hole
-            // course; HCPs 16-18 = three easiest. A player encounters
-            // these as their schedule lands on the relevant side.
-            if (hcpVal <= 3)  { hardSumGross += s; hardSumNet += netHole; hardCount++; }
-            if (hcpVal >= 16) { easySumGross += s; easySumNet += netHole; easyCount++; }
+            // Specialist — hardest/easiest hole on the SIDE being played.
+            // Per-side rank (not global HCP) so each round contributes
+            // exactly 3 hardest and 3 easiest holes regardless of which
+            // side a player plays.
+            if (hardestIdxs.has(h)) { hardSumGross += s; hardSumNet += netHole; hardCount++; }
+            if (easiestIdxs.has(h)) { easySumGross += s; easySumNet += netHole; easyCount++; }
 
             holeSequence.push({ par, gross: s, net: netHole, played: true });
           } else {
@@ -120,11 +132,8 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         }
 
         if (holesPlayed === 9) {
-          const sidePar = pars.reduce((a, b) => a + b, 0);
           const net = gross - hcp;
-          rounds.push({ week: wk.week, side, gross, net, sidePar });
-          if (gross <= sidePar) parOrBetterRoundsGross++;
-          if (net   <= sidePar) parOrBetterRoundsNet++;
+          rounds.push({ week: wk.week, side, gross, net });
         }
       }
 
@@ -151,12 +160,15 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         // Round average
         avgGross: sum(rounds, r => r.gross) / rounds.length,
         avgNet:   sum(rounds, r => r.net)   / rounds.length,
-        // Round-level par-or-better count
-        parOrBetterRoundsGross,
-        parOrBetterRoundsNet,
-        // Hole-level cumulative
+        // Hole-level cumulative — totals and per-round averages. Both shapes
+        // exposed so the Total/Avg toggle on the Total Pars and Total
+        // Birdies boards can switch without recomputing.
         totalParsGross,    totalParsNet,
         totalBirdiesGross, totalBirdiesNet,
+        avgParsGross:    totalParsGross    / rounds.length,
+        avgParsNet:      totalParsNet      / rounds.length,
+        avgBirdiesGross: totalBirdiesGross / rounds.length,
+        avgBirdiesNet:   totalBirdiesNet   / rounds.length,
         // Streaks
         maxStreakGross: maxG,
         maxStreakNet:   maxN,
@@ -180,7 +192,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
   // ──────────────────────────────────────────────────────────────────────
   // valueFn returning null filters the player out of the board (e.g.
   // "par 3 specialist" hides anyone who hasn't played a par 3 yet).
-  const board = (title, subtitle, valueFn, sortDir = 'asc', valueFmt) => {
+  const board = ({ title, valueFn, sortDir = 'asc', valueFmt, headerToggle, subtitle }) => {
     const sorted = [...stats]
       .filter(s => valueFn(s) !== null && valueFn(s) !== undefined)
       .sort((a, b) => sortDir === 'asc' ? valueFn(a) - valueFn(b) : valueFn(b) - valueFn(a))
@@ -188,7 +200,13 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
     if (!sorted.length) return null;
     return (
       <div style={{ marginBottom: 16 }}>
-        <SubLabel>{title}</SubLabel>
+        {/* Header row — title left, optional mini-toggle right. The mini
+            toggle sits on the same baseline as the SubLabel so the row
+            reads as a single header rather than label + separate control. */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: subtitle ? 0 : 6, minHeight: 18 }}>
+          <SubLabel>{title}</SubLabel>
+          {headerToggle}
+        </div>
         {subtitle && <div style={{ fontSize: 10, color: K.t3, marginTop: -4, marginBottom: 6 }}>{subtitle}</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
           {sorted.map((s, i) => (
@@ -216,6 +234,32 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
       </div>
     );
   };
+
+  // ──────────────────────────────────────────────────────────────────────
+  //  MiniToggle — smaller segmented control used in board headers for the
+  //  Total/Avg switch. Visual weight kept low so it doesn't compete with
+  //  the leaderboard rows below.
+  // ──────────────────────────────────────────────────────────────────────
+  const MiniToggle = ({ value, onChange, options }) => (
+    <div style={{ display: "flex", background: K.inp, borderRadius: 5, padding: 1 }}>
+      {options.map(opt => (
+        <button
+          key={opt.value}
+          onClick={() => onChange(opt.value)}
+          style={{
+            padding: "3px 8px", borderRadius: 4, border: "none",
+            background: value === opt.value ? K.acc : "transparent",
+            color: value === opt.value ? K.bg : K.t3,
+            fontSize: 9, fontWeight: 800, cursor: "pointer",
+            letterSpacing: .8, textTransform: "uppercase",
+            transition: "all .15s",
+          }}
+        >
+          {opt.label}
+        </button>
+      ))}
+    </div>
+  );
 
   // ──────────────────────────────────────────────────────────────────────
   //  Gross/Net toggle — segmented pill at the top of the page. Drives
@@ -259,81 +303,84 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
     }}>{title}</div>
   );
 
+  // Total/Avg toggle for the two hole-count boards. Same shape passed to
+  // MiniToggle so the call sites stay symmetric.
+  const totalAvgOptions = [
+    { value: "total", label: "Total" },
+    { value: "avg",   label: "Avg" },
+  ];
+
   return (
     <div>
       {Toggle}
 
       <Section title="Rounds" />
-      {board(
-        `Round Average — ${modeLabel}`,
-        "Mean score across all completed rounds",
-        s => isNet ? s.avgNet : s.avgGross,
-        'asc',
-        v => v.toFixed(1),
-      )}
-      {board(
-        `Best Round — ${modeLabel}`,
-        "Lowest single-round score",
-        s => isNet ? s.lowestNet : s.lowestGross,
-        'asc',
-      )}
-      {board(
-        `Rounds Par-or-Better — ${modeLabel}`,
-        "Rounds at or under course par for the side played",
-        s => isNet ? s.parOrBetterRoundsNet : s.parOrBetterRoundsGross,
-        'desc',
-      )}
+      {board({
+        title: `Round Average — ${modeLabel}`,
+        valueFn: s => isNet ? s.avgNet : s.avgGross,
+        sortDir: 'asc',
+        valueFmt: v => v.toFixed(1),
+      })}
+      {board({
+        title: `Best Round — ${modeLabel}`,
+        valueFn: s => isNet ? s.lowestNet : s.lowestGross,
+        sortDir: 'asc',
+      })}
 
       <Section title="Holes" />
-      {board(
-        `Total Pars — ${modeLabel}`,
-        "Holes scored exactly at par across the season",
-        s => isNet ? s.totalParsNet : s.totalParsGross,
-        'desc',
-      )}
-      {board(
-        `Total Birdies — ${modeLabel}`,
-        "One under par on a hole, summed across the season",
-        s => isNet ? s.totalBirdiesNet : s.totalBirdiesGross,
-        'desc',
-      )}
-      {board(
-        `Longest Par-or-Better Streak — ${modeLabel}`,
-        "Consecutive holes at par or better, across rounds",
-        s => isNet ? s.maxStreakNet : s.maxStreakGross,
-        'desc',
-        v => v > 0 ? `${v}` : "—",
-      )}
+      {board({
+        title: `Pars — ${modeLabel}`,
+        headerToggle: <MiniToggle value={parsAgg} onChange={setParsAgg} options={totalAvgOptions} />,
+        valueFn: s => {
+          if (parsAgg === "avg") return isNet ? s.avgParsNet : s.avgParsGross;
+          return isNet ? s.totalParsNet : s.totalParsGross;
+        },
+        sortDir: 'desc',
+        valueFmt: v => parsAgg === "avg" ? v.toFixed(1) : v,
+      })}
+      {board({
+        title: `Birdies — ${modeLabel}`,
+        headerToggle: <MiniToggle value={birdiesAgg} onChange={setBirdiesAgg} options={totalAvgOptions} />,
+        valueFn: s => {
+          if (birdiesAgg === "avg") return isNet ? s.avgBirdiesNet : s.avgBirdiesGross;
+          return isNet ? s.totalBirdiesNet : s.totalBirdiesGross;
+        },
+        sortDir: 'desc',
+        valueFmt: v => birdiesAgg === "avg" ? v.toFixed(1) : v,
+      })}
+      {board({
+        title: `Longest Par-or-Better Streak — ${modeLabel}`,
+        valueFn: s => isNet ? s.maxStreakNet : s.maxStreakGross,
+        sortDir: 'desc',
+        valueFmt: v => v > 0 ? `${v}` : "—",
+      })}
 
       <Section title="Specialists" />
-      {board(
-        "Par-3 Specialist",
-        "Average gross score on par-3 holes",
-        s => s.par3Avg,
-        'asc',
-        v => v.toFixed(2),
-      )}
-      {board(
-        "Par-5 Specialist",
-        "Average gross score on par-5 holes",
-        s => s.par5Avg,
-        'asc',
-        v => v.toFixed(2),
-      )}
-      {board(
-        `Hardest-Holes Specialist — ${modeLabel}`,
-        "Average on the three globally toughest holes (HCP 1–3)",
-        s => isNet ? s.hardestAvgNet : s.hardestAvgGross,
-        'asc',
-        v => v.toFixed(2),
-      )}
-      {board(
-        `Easy-Holes Specialist — ${modeLabel}`,
-        "Average on the three easiest holes (HCP 16–18)",
-        s => isNet ? s.easyAvgNet : s.easyAvgGross,
-        'asc',
-        v => v.toFixed(2),
-      )}
+      {board({
+        title: "Par-3 Specialist",
+        valueFn: s => s.par3Avg,
+        sortDir: 'asc',
+        valueFmt: v => v.toFixed(2),
+      })}
+      {board({
+        title: "Par-5 Specialist",
+        valueFn: s => s.par5Avg,
+        sortDir: 'asc',
+        valueFmt: v => v.toFixed(2),
+      })}
+      {board({
+        title: `Hardest Holes Specialist — ${modeLabel}`,
+        subtitle: "Average on the 3 hardest handicap holes each 9",
+        valueFn: s => isNet ? s.hardestAvgNet : s.hardestAvgGross,
+        sortDir: 'asc',
+        valueFmt: v => v.toFixed(2),
+      })}
+      {board({
+        title: `Easy Holes Specialist — ${modeLabel}`,
+        valueFn: s => isNet ? s.easyAvgNet : s.easyAvgGross,
+        sortDir: 'asc',
+        valueFmt: v => v.toFixed(2),
+      })}
 
       <Card style={{ padding: "10px 14px", marginTop: 8 }}>
         <div style={{ fontSize: 11, color: K.t3, lineHeight: 1.5 }}>
