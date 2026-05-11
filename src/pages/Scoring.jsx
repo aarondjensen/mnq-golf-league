@@ -2295,7 +2295,9 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
           allocation context reads as a single unit. */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2, minWidth: 0 }}>
         <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{displayName}</span>
-        <span style={{ fontSize: 11, fontWeight: 700, color: K.hcpBlue, flexShrink: 0 }}>({nh})</span>
+        <span style={{ fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+          (<span style={{ color: K.hcpBlue }}>{nh}</span>)
+        </span>
         {strokes > 0 && <span style={{ color: K.hcpBlue, fontSize: 12, letterSpacing: 1, flexShrink: 0, lineHeight: 1 }}>{"●".repeat(strokes)}</span>}
         <div style={{ flex: 1 }} />
         {absentBtn}
