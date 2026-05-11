@@ -1961,7 +1961,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const pl = playerMap[pid]; if (!pl) return null;
         const absent = isPlayerAbsent(pid);
         const score = getS(pid, curHole); const strokes = getStrokes(pid, curHole); const nh = getNineHcp(pid); const run = getRunning(pid);
-        const btns = par === 3 ? [1,2,3,4,5,6,7] : par === 5 ? [2,3,4,5,6,7,8] : [2,3,4,5,6,7,8];
+        // Par-relative button window: birdie / par / bogey / double / triple.
+        // PlayerScoreCard's recenter logic shifts the window when the player's
+        // score lands outside [par-1, par+3] — e.g. an ace on a par 3 (1) or a
+        // 9 on a par 4. The recentered case hides the par-relative labels in
+        // PlayerScoreCard since "Birdie/Par/Bogey/..." no longer line up with
+        // the shifted numbers.
+        const btns = [par - 1, par, par + 1, par + 2, par + 3];
         const hole1Done = allP.filter(p => !isPlayerAbsent(p)).every(p => getRawScore(p, 0) > 0);
         const absentLocked = hole1Done && !absent;
         const absentBtn = !isAlreadyFinalized ? (
@@ -2236,6 +2242,16 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 }
 
 
+// ──────────────────────────────────────────────────────────────────────────
+//  Score-button labels — index-aligned with the par-relative button window
+// ──────────────────────────────────────────────────────────────────────────
+// The parent passes a 5-element btns array of [par-1, par, par+1, par+2, par+3].
+// These labels sit directly beneath each button so the row is self-documenting.
+// They're hidden when the recenter logic shifts the window outside the default
+// (e.g. an ace on a par 3, or a 9 on a par 4) since "Birdie/Par/Bogey/..." no
+// longer line up with the shifted numbers — see `showLabels` below.
+const SCORE_LABELS = ["Birdie", "Par", "Bogey", "Double", "Triple"];
+
 function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, pid, week, curHole, saveScore, K, absentBtn }) {
   const handleScore = (val) => {
     saveScore(week, pid, curHole, val);
@@ -2250,29 +2266,64 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
     const shift = minBtn - score;
     btns = defaultBtns.map(b => b - shift);
   }
+  // Reference equality is intentional: btns === defaultBtns is true ONLY when
+  // recenter didn't fire (we'd have re-assigned btns to a freshly-mapped array).
+  // When labels would mislabel a shifted number (e.g. "Birdie" sitting under a
+  // 5 on a par 4 because we shifted to [5,6,7,8,9] for a triple-bogey-or-worse
+  // entry) we just hide them. Empty-string label slot still reserves vertical
+  // space so the row height doesn't shift between default and recentered.
+  const showLabels = btns === defaultBtns;
+  // Last name only — matches the rest of the app's display convention.
+  // Disambiguation against same-last-name teammates is handled implicitly by
+  // the (HCP) pill and stroke dots that follow on the same row.
+  const lastName = pl.name.split(' ').pop();
+
   return (
-    <Card style={{ marginBottom: 3, padding: "6px 10px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 5, minWidth: 0 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flexShrink: 1 }}>{pl.name}</span>
+    <Card style={{ marginBottom: 3, padding: "8px 10px" }}>
+      {/* Top row — last name + handicap pill + stroke dots, with Absent
+          pushed to the right edge. Net/thru info moves to its own thin
+          sub-line below so the name has the full horizontal budget and
+          stops truncating on iPhone SE. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2, minWidth: 0 }}>
+        <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: 0 }}>{lastName}</span>
         <span style={{ fontSize: 11, fontWeight: 600, color: K.t2, flexShrink: 0 }}>({nh})</span>
         {strokes > 0 && <span style={{ color: K.hcpBlue, fontSize: 12, letterSpacing: 1, flexShrink: 0, lineHeight: 1 }}>{"●".repeat(strokes)}</span>}
-        <div style={{ flex: 1 }} />
-        {run.thru > 0 && <span style={{ fontSize: 10, color: K.t3, flexShrink: 0, whiteSpace: "nowrap" }}>Net: <strong style={{ color: run.netVsPar < 0 ? K.red : run.netVsPar === 0 ? K.t3 : K.t1 }}>{run.netVsPar > 0 ? "+" + run.netVsPar : run.netVsPar === 0 ? "E" : run.netVsPar}</strong> thru {run.thru}</span>}
         {absentBtn}
       </div>
-      <div style={{ display: "flex", gap: 3 }}>
-        {btns.map(btn => {
+      {/* Net / thru sub-line — its own row so the score-button row gets the
+          full horizontal budget. min-height reserves the slot before any
+          holes are scored so the layout doesn't shift the moment a player
+          taps their first score. */}
+      <div style={{ fontSize: 10, color: K.t3, marginBottom: 6, lineHeight: 1.1, minHeight: 12 }}>
+        {run.thru > 0 && (
+          <>Net <strong style={{ color: run.netVsPar < 0 ? K.red : run.netVsPar === 0 ? K.t3 : K.t1, fontWeight: 700 }}>{run.netVsPar > 0 ? "+" + run.netVsPar : run.netVsPar === 0 ? "E" : run.netVsPar}</strong> thru {run.thru}</>
+        )}
+      </div>
+      {/* Score-button row — 5 par-relative buttons at 44px tall (Apple HIG
+          minimum touch target) plus −/+ nudge buttons. Each score button
+          stacks a label beneath it (Birdie / Par / Bogey / Double / Triple);
+          labels render empty in the recenter case (see showLabels). The −/+
+          buttons intentionally have no labels — they're nudge controls, not
+          scores. The 12px reserved label slot keeps the row height stable
+          regardless of recenter state. */}
+      <div style={{ display: "flex", gap: 4, alignItems: "flex-start" }}>
+        {btns.map((btn, idx) => {
           const isCur = btn === score; const sd = btn - par;
           const boxSize = 32;
           return (
-            <button key={btn} onClick={() => handleScore(isCur ? 0 : btn)} style={{ flex: 1, height: 38, borderRadius: 8, cursor: "pointer", fontSize: 15, fontWeight: 800, border: "none", background: isCur ? K.acc : K.inp, color: isCur ? K.bg : K.t2, position: "relative", transition: "all .15s", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {isCur && sd !== 0 && <div style={{ position: "absolute", width: boxSize, height: boxSize, left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}><div style={{ position: "absolute", inset: 0, borderRadius: sd < 0 ? "50%" : 3, border: `1.5px solid ${sd < 0 ? K.red : K.bg}` }} />{Math.abs(sd) >= 2 && <div style={{ position: "absolute", inset: 3, borderRadius: sd < 0 ? "50%" : 2, border: `1px solid ${sd < 0 ? K.red : K.bg}` }} />}</div>}
-              <span style={{ position: "relative", zIndex: 1 }}>{btn}</span>
-            </button>
+            <div key={btn} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, minWidth: 0 }}>
+              <button onClick={() => handleScore(isCur ? 0 : btn)} style={{ width: "100%", height: 44, borderRadius: 8, cursor: "pointer", fontSize: 15, fontWeight: 800, border: "none", background: isCur ? K.acc : K.inp, color: isCur ? K.bg : K.t2, position: "relative", transition: "all .15s", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {isCur && sd !== 0 && <div style={{ position: "absolute", width: boxSize, height: boxSize, left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}><div style={{ position: "absolute", inset: 0, borderRadius: sd < 0 ? "50%" : 3, border: `1.5px solid ${sd < 0 ? K.red : K.bg}` }} />{Math.abs(sd) >= 2 && <div style={{ position: "absolute", inset: 3, borderRadius: sd < 0 ? "50%" : 2, border: `1px solid ${sd < 0 ? K.red : K.bg}` }} />}</div>}
+                <span style={{ position: "relative", zIndex: 1 }}>{btn}</span>
+              </button>
+              <div style={{ fontSize: 9, color: K.t3, fontWeight: 600, letterSpacing: 0.4, lineHeight: 1, height: 12 }}>
+                {showLabels ? SCORE_LABELS[idx] : ""}
+              </div>
+            </div>
           );
         })}
-        <button onClick={() => handleScore(Math.max(1, (score || par) - 1))} style={{ width: 26, height: 38, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>−</button>
-        <button onClick={() => handleScore((score || par) + 1)} style={{ width: 26, height: 38, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>+</button>
+        <button onClick={() => handleScore(Math.max(1, (score || par) - 1))} style={{ width: 30, height: 44, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>−</button>
+        <button onClick={() => handleScore((score || par) + 1)} style={{ width: 30, height: 44, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>+</button>
       </div>
     </Card>
   );
