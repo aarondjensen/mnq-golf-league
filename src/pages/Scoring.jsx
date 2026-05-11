@@ -2273,21 +2273,31 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
   // entry) we just hide them. Empty-string label slot still reserves vertical
   // space so the row height doesn't shift between default and recentered.
   const showLabels = btns === defaultBtns;
-  // Last name only — matches the rest of the app's display convention.
-  // Disambiguation against same-last-name teammates is handled implicitly by
-  // the (HCP) pill and stroke dots that follow on the same row.
-  const lastName = pl.name.split(' ').pop();
+  // Last name + first initial — matches the rest of the app's last-name
+  // display convention but adds a tiny initial in front so teammates with
+  // the same last name (or simply different players with similar names)
+  // stay disambiguated at a glance. Single-name players (rare but possible
+  // in a recreational league with a nickname-only entry) skip the initial.
+  const nameParts = pl.name.split(' ').filter(Boolean);
+  const lastName = nameParts[nameParts.length - 1] || pl.name;
+  const firstInitial = nameParts.length > 1 ? nameParts[0][0] : null;
+  const displayName = firstInitial ? `${firstInitial}. ${lastName}` : lastName;
 
   return (
     <Card style={{ marginBottom: 3, padding: "8px 10px" }}>
-      {/* Top row — last name + handicap pill + stroke dots, with Absent
-          pushed to the right edge. Net/thru info moves to its own thin
-          sub-line below so the name has the full horizontal budget and
-          stops truncating on iPhone SE. */}
+      {/* Top row — initial + last name + handicap pill + stroke dots
+          clustered tight on the LEFT, with a flex spacer pushing the
+          Absent button to the right edge. The name can shrink/truncate
+          (minWidth: 0 + ellipsis) on very narrow screens but normally
+          takes its natural width so handicap and stroke dots sit
+          visually attached to the player it's describing. Handicap
+          color matches stroke dots (K.hcpBlue) so the whole stroke-
+          allocation context reads as a single unit. */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2, minWidth: 0 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", flex: 1, minWidth: 0 }}>{lastName}</span>
-        <span style={{ fontSize: 11, fontWeight: 600, color: K.t2, flexShrink: 0 }}>({nh})</span>
+        <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{displayName}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: K.hcpBlue, flexShrink: 0 }}>({nh})</span>
         {strokes > 0 && <span style={{ color: K.hcpBlue, fontSize: 12, letterSpacing: 1, flexShrink: 0, lineHeight: 1 }}>{"●".repeat(strokes)}</span>}
+        <div style={{ flex: 1 }} />
         {absentBtn}
       </div>
       {/* Net / thru sub-line — its own row so the score-button row gets the
