@@ -7,10 +7,10 @@ import { buildStrokesMap } from "../lib/matchCalc";
 // ──────────────────────────────────────────────────────────────────────────
 // Computes per-player stats from current-season hole_scores. Boards split
 // across three themed sections: Rounds, Holes, Specialists. A page-level
-// Gross/Net toggle drives most boards; specialist boards by par type are
-// always gross (the par segmentation already controls for difficulty by
-// definition), while hardest/easiest hole boards respect the toggle since
-// stroke allocation matters most there.
+// Gross/Net toggle drives every board. Two boards (Pars, Birdies) layer
+// a per-board Total/Avg toggle on top of that — Avg captures players who
+// have missed weeks, since cumulative totals would otherwise under-credit
+// them just for low attendance.
 //
 // Sample-size caveat: no minimums enforced. Early-season boards may show
 // noisy single-round leaders — that's the trade-off for showing data as
@@ -66,9 +66,11 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
       let totalParsGross = 0,    totalParsNet = 0;
       let totalBirdiesGross = 0, totalBirdiesNet = 0;
 
-      // Specialist sums + counts
-      let par3Sum = 0,      par3Count = 0;
-      let par5Sum = 0,      par5Count = 0;
+      // Specialist sums + counts. Par-3 and par-5 now track both gross
+      // and net since high-handicap players get strokes on the harder
+      // par-3s and par-5s, making the net comparison meaningful.
+      let par3SumGross = 0, par3SumNet = 0, par3Count = 0;
+      let par5SumGross = 0, par5SumNet = 0, par5Count = 0;
       let hardSumGross = 0, hardSumNet = 0, hardCount = 0;
       let easySumGross = 0, easySumNet = 0, easyCount = 0;
 
@@ -112,10 +114,10 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
             if (s === par - 1)       totalBirdiesGross++;
             if (netHole === par - 1) totalBirdiesNet++;
 
-            // Specialist — par-type. Gross only by intent; the par
-            // segmentation itself controls for hole difficulty.
-            if (par === 3) { par3Sum += s; par3Count++; }
-            if (par === 5) { par5Sum += s; par5Count++; }
+            // Specialist — par-type. Both gross and net tracked so
+            // each board can toggle independently of the par segmentation.
+            if (par === 3) { par3SumGross += s; par3SumNet += netHole; par3Count++; }
+            if (par === 5) { par5SumGross += s; par5SumNet += netHole; par5Count++; }
 
             // Specialist — hardest/easiest hole on the SIDE being played.
             // Per-side rank (not global HCP) so each round contributes
@@ -173,8 +175,10 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         maxStreakGross: maxG,
         maxStreakNet:   maxN,
         // Specialists
-        par3Avg: par3Count > 0 ? par3Sum / par3Count : null,
-        par5Avg: par5Count > 0 ? par5Sum / par5Count : null,
+        par3AvgGross: par3Count > 0 ? par3SumGross / par3Count : null,
+        par3AvgNet:   par3Count > 0 ? par3SumNet   / par3Count : null,
+        par5AvgGross: par5Count > 0 ? par5SumGross / par5Count : null,
+        par5AvgNet:   par5Count > 0 ? par5SumNet   / par5Count : null,
         hardestAvgGross: hardCount > 0 ? hardSumGross / hardCount : null,
         hardestAvgNet:   hardCount > 0 ? hardSumNet   / hardCount : null,
         easyAvgGross:    easyCount > 0 ? easySumGross / easyCount : null,
@@ -192,7 +196,11 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
   // ──────────────────────────────────────────────────────────────────────
   // valueFn returning null filters the player out of the board (e.g.
   // "par 3 specialist" hides anyone who hasn't played a par 3 yet).
-  const board = ({ title, valueFn, sortDir = 'asc', valueFmt, headerToggle, subtitle }) => {
+  // `playerAnnotation` is an optional (stat) => string|null hook for a
+  // small uppercase tag between the name and the hero number — used
+  // by Pars/Birdies boards in Avg mode to show "5r" so users can see
+  // at a glance why a 4-rounder might outrank a 6-rounder by rate.
+  const board = ({ title, valueFn, sortDir = 'asc', valueFmt, headerToggle, subtitle, playerAnnotation }) => {
     const sorted = [...stats]
       .filter(s => valueFn(s) !== null && valueFn(s) !== undefined)
       .sort((a, b) => sortDir === 'asc' ? valueFn(a) - valueFn(b) : valueFn(b) - valueFn(a))
@@ -209,27 +217,40 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         </div>
         {subtitle && <div style={{ fontSize: 10, color: K.t3, marginTop: -4, marginBottom: 6 }}>{subtitle}</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
-          {sorted.map((s, i) => (
-            <div key={s.playerId} style={{
-              display: "flex", alignItems: "center", padding: "8px 12px",
-              background: K.card, borderRadius: CARD_RADIUS,
-              border: `1px solid ${i === 0 ? K.act + "30" : K.bdr}`,
-            }}>
-              <div style={{
-                width: 22, height: 22, borderRadius: 5,
-                background: i === 0 ? K.act + "20" : K.inp,
-                color: i === 0 ? K.act : K.t3,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 11, fontWeight: 800, flexShrink: 0,
-              }}>{i + 1}</div>
-              <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: K.t1, marginLeft: 10, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {s.name}
+          {sorted.map((s, i) => {
+            const annotation = playerAnnotation ? playerAnnotation(s) : null;
+            return (
+              <div key={s.playerId} style={{
+                display: "flex", alignItems: "center", padding: "8px 12px",
+                background: K.card, borderRadius: CARD_RADIUS,
+                border: `1px solid ${i === 0 ? K.act + "30" : K.bdr}`,
+              }}>
+                <div style={{
+                  width: 22, height: 22, borderRadius: 5,
+                  background: i === 0 ? K.act + "20" : K.inp,
+                  color: i === 0 ? K.act : K.t3,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 11, fontWeight: 800, flexShrink: 0,
+                }}>{i + 1}</div>
+                <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: K.t1, marginLeft: 10, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  {s.name}
+                </div>
+                {annotation && (
+                  <div style={{
+                    fontSize: 9, fontWeight: 700, color: K.t3,
+                    letterSpacing: .5, textTransform: "uppercase",
+                    background: K.inp, padding: "2px 6px", borderRadius: 4,
+                    marginLeft: 6, flexShrink: 0,
+                  }}>
+                    {annotation}
+                  </div>
+                )}
+                <div style={{ fontSize: 16, fontWeight: 800, color: K.t1, marginLeft: 8 }}>
+                  {valueFmt ? valueFmt(valueFn(s)) : valueFn(s)}
+                </div>
               </div>
-              <div style={{ fontSize: 16, fontWeight: 800, color: K.t1, marginLeft: 8 }}>
-                {valueFmt ? valueFmt(valueFn(s)) : valueFn(s)}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     );
@@ -337,6 +358,9 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         },
         sortDir: 'desc',
         valueFmt: v => parsAgg === "avg" ? v.toFixed(1) : v,
+        // In Avg mode, show round count next to each player so users can
+        // see why a 4-rounder might outrank a 6-rounder by per-round rate.
+        playerAnnotation: s => parsAgg === "avg" ? `${s.rounds}r` : null,
       })}
       {board({
         title: `Birdies — ${modeLabel}`,
@@ -347,6 +371,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         },
         sortDir: 'desc',
         valueFmt: v => birdiesAgg === "avg" ? v.toFixed(1) : v,
+        playerAnnotation: s => birdiesAgg === "avg" ? `${s.rounds}r` : null,
       })}
       {board({
         title: `Longest Par-or-Better Streak — ${modeLabel}`,
@@ -357,14 +382,14 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
 
       <Section title="Specialists" />
       {board({
-        title: "Par-3 Specialist",
-        valueFn: s => s.par3Avg,
+        title: `Par-3 Specialist — ${modeLabel}`,
+        valueFn: s => isNet ? s.par3AvgNet : s.par3AvgGross,
         sortDir: 'asc',
         valueFmt: v => v.toFixed(2),
       })}
       {board({
-        title: "Par-5 Specialist",
-        valueFn: s => s.par5Avg,
+        title: `Par-5 Specialist — ${modeLabel}`,
+        valueFn: s => isNet ? s.par5AvgNet : s.par5AvgGross,
         sortDir: 'asc',
         valueFmt: v => v.toFixed(2),
       })}
@@ -377,6 +402,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
       })}
       {board({
         title: `Easy Holes Specialist — ${modeLabel}`,
+        subtitle: "Average on the 3 easiest handicap holes each 9",
         valueFn: s => isNet ? s.easyAvgNet : s.easyAvgGross,
         sortDir: 'asc',
         valueFmt: v => v.toFixed(2),
