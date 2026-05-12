@@ -360,6 +360,54 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       return next;
     });
     saveScore(week, pid, "absent", nowAbsent ? 1 : 0);
+    // Bidirectional sync with Schedule's attendance system. Writing here
+    // means Schedule's My Schedule / Full League views immediately reflect
+    // the absent flag (with the diagonal stripe + Absent pill) without
+    // requiring the player to have used the "I'm out" button. When
+    // un-marking absent, the attendance flag is cleared — even if the
+    // original source was Schedule, that's the expected behavior (you
+    // un-marked them from the live scoring card, so the announcement
+    // is no longer accurate).
+    if (saveAttendance) {
+      saveAttendance(week, pid, nowAbsent ? "absent" : null);
+    }
+  };
+
+  // ── markMakeup ──────────────────────────────────────────────────────
+  // Counterpart to toggleAbsent for the "Makeup" button next to Absent
+  // in the player meta row. Writes attendance status="makeup", which the
+  // existing render block picks up via isPlayerMakingUp to swap the score
+  // card for the dimmed MAKING UP variant. If the player was previously
+  // marked absent (_habsent=1), we explicitly clear that score-side flag
+  // since makeup and absent are mutually exclusive — the match should
+  // stay OPEN pending the makeup score, not auto-substitute teammate's
+  // score as absent would.
+  const markMakeup = (pid) => {
+    if (scoresLocked) {
+      const msg = isComm
+        ? (isWeekLocked
+            ? "Week is locked — use Schedule → Edit Scores to change attendance"
+            : "Match attested — use Schedule → Edit Scores to change attendance")
+        : (isWeekLocked
+            ? "Week is locked — attendance cannot be changed"
+            : "Scorecard attested — only commissioner can edit");
+      setToast(msg);
+      setTimeout(() => setToast(null), 3500);
+      return;
+    }
+    if (!saveAttendance) return;
+    // Clear absent state if this is a transition from absent → makeup.
+    // The local state setter handles the optimistic UI; saveScore writes
+    // the source-of-truth flag clear.
+    if (absentPlayers[pid]) {
+      setAbsentPlayers(prev => {
+        const next = { ...prev };
+        delete next[pid];
+        return next;
+      });
+      saveScore(week, pid, "absent", 0);
+    }
+    saveAttendance(week, pid, "makeup");
   };
 
   // Sync local absent state from Firestore. Reruns whenever:
@@ -2032,31 +2080,53 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const hole1Done = allP.filter(p => !isPlayerAbsent(p)).every(p => getRawScore(p, 0) > 0);
         const absentLocked = hole1Done && !absent;
         const absentBtn = !isAlreadyFinalized ? (
-          <button
-            onClick={() => {
-              if (absentLocked) return;
-              const tm = getTeammate(pid);
-              const tmPlayer = tm ? playerMap[tm] : null;
-              const tmAbsent = tm && isPlayerAbsent(tm);
-              const tmName = tmPlayer?.name || "teammate";
-              const message = tmAbsent
-                ? `Both teammates will be absent — net bogey scores will be used for ${pl.name} and ${tmName}.`
-                : `${tmName}'s scores will count double for match calculations.`;
-              setConfirmModal({
-                title: `Mark ${pl.name} as absent?`,
-                message,
-                onConfirm: () => { toggleAbsent(pid); setConfirmModal(null); },
-              });
-            }}
-            style={{
-              fontSize: 11, fontWeight: 600, color: absentLocked ? K.t3 + "50" : K.t3, background: "none",
-              border: `1px solid ${absentLocked ? K.bdr + "30" : K.bdr}`, borderRadius: 6,
-              padding: "3px 10px", cursor: absentLocked ? "default" : "pointer",
-              opacity: absentLocked ? 0.4 : 1, flexShrink: 0,
-            }}
-          >
-            Absent
-          </button>
+          <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+            {/* Makeup button — amber pill, no absentLocked gate since
+                makeup is an explicit "this person plays later" decision
+                valid at any time. Writes attendance status="makeup" via
+                markMakeup, which clears any prior _habsent flag too. */}
+            <button
+              onClick={() => {
+                setConfirmModal({
+                  title: `Mark ${pl.name} as making up?`,
+                  message: `${pl.name} will post their score later. The match stays open until then.`,
+                  onConfirm: () => { markMakeup(pid); setConfirmModal(null); },
+                });
+              }}
+              style={{
+                fontSize: 11, fontWeight: 600, color: K.warn, background: "none",
+                border: `1px solid ${K.warn}50`, borderRadius: 6,
+                padding: "3px 8px", cursor: "pointer", flexShrink: 0,
+              }}
+            >
+              Makeup
+            </button>
+            <button
+              onClick={() => {
+                if (absentLocked) return;
+                const tm = getTeammate(pid);
+                const tmPlayer = tm ? playerMap[tm] : null;
+                const tmAbsent = tm && isPlayerAbsent(tm);
+                const tmName = tmPlayer?.name || "teammate";
+                const message = tmAbsent
+                  ? `Both teammates will be absent — net bogey scores will be used for ${pl.name} and ${tmName}.`
+                  : `${tmName}'s scores will count double for match calculations.`;
+                setConfirmModal({
+                  title: `Mark ${pl.name} as absent?`,
+                  message,
+                  onConfirm: () => { toggleAbsent(pid); setConfirmModal(null); },
+                });
+              }}
+              style={{
+                fontSize: 11, fontWeight: 600, color: absentLocked ? K.t3 + "50" : K.t3, background: "none",
+                border: `1px solid ${absentLocked ? K.bdr + "30" : K.bdr}`, borderRadius: 6,
+                padding: "3px 8px", cursor: absentLocked ? "default" : "pointer",
+                opacity: absentLocked ? 0.4 : 1, flexShrink: 0,
+              }}
+            >
+              Absent
+            </button>
+          </div>
         ) : null;
         const makingUp = isPlayerMakingUp(pid);
         return <div key={pid}>
