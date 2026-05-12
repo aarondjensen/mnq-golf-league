@@ -17,8 +17,12 @@ import { EditConfirmationPopup } from "../components/EditConfirmationPopup";
 const MY_SCHEDULE_COLS = {
   week: 22,
   date: 52,
-  result: 44,  // Result for completed weeks, tee time for upcoming weeks
-  side: 38,
+  // Stacked column: tee time (or W/L result) on top, Front 9 / Back 9
+  // on bottom — matches the app's upcoming-week banner stack pattern.
+  // Width bumped from 44 → 56 to fit "FRONT 9" / "BACK 9" without
+  // truncation; Front/Back rendered uppercase + slightly smaller font
+  // mirroring the banner's typography.
+  result: 56,
   status: 80,  // Stacked Absent / Making Up buttons, or active status pill
 };
 
@@ -757,33 +761,42 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         >
           <div style={{ width: MY_SCHEDULE_COLS.week, fontSize: 14, fontWeight: 700, color: K.t1, flexShrink: 0 }}>{wk.week}</div>
           <div style={{ width: MY_SCHEDULE_COLS.date, fontSize: 12, fontWeight: 600, color: K.t1, flexShrink: 0 }}>{wk.date || "—"}</div>
-          <div style={{ width: MY_SCHEDULE_COLS.result, flexShrink: 0, color: isRainedOut ? K.warn : isComplete ? resultColor : pendingMakeup ? K.warn : isSeeded ? K.t3 : K.act }}>
+          {/* Result/time column — stacked. Top: tee time, W/L result, or
+              MAKEUP pill. Bottom: FRONT 9 / BACK 9 in muted blue, matching
+              the upcoming-week banner pattern at the top of the app. */}
+          <div style={{ width: MY_SCHEDULE_COLS.result, flexShrink: 0, display: "flex", flexDirection: "column", gap: 1, lineHeight: 1.1, color: isRainedOut ? K.warn : isComplete ? resultColor : pendingMakeup ? K.warn : isSeeded ? K.t3 : K.act }}>
             {isRainedOut ? (
               <span style={{ fontSize: 14, fontWeight: 700 }}>—</span>
             ) : isComplete ? (
-              <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.1 }}>
+              <>
                 <span style={{ fontSize: 14, fontWeight: 800, color: resultColor }}>{wlLetter}</span>
                 {detailText && (
-                  <span style={{ fontSize: 10, fontWeight: 600, color: resultColor, marginTop: 1 }}>{detailText}</span>
+                  <span style={{ fontSize: 10, fontWeight: 600, color: resultColor }}>{detailText}</span>
                 )}
-              </div>
+              </>
             ) : pendingMakeup ? (
-              /* Match is held open because some player is flagged "making up."
-                 Amber MAKEUP pill replaces the tee time display — same column
-                 width budget, smaller font to fit "MAKEUP" cleanly. */
+              /* Match held open because some player is flagged "making up."
+                 Amber pill is intrinsically narrow so it doesn't fill the
+                 column width — alignSelf keeps it left-aligned with the
+                 sub-line below. */
               <span style={{
                 fontSize: 9, fontWeight: 800, letterSpacing: .8,
                 textTransform: "uppercase", color: K.bg,
                 background: K.warn, padding: "2px 5px", borderRadius: 4,
+                alignSelf: "flex-start",
               }}>Makeup</span>
             ) : isSeeded ? (
               <span style={{ fontSize: 14, fontWeight: 700 }}>—</span>
             ) : (
               <span style={{ fontSize: 14, fontWeight: 700 }}>{teeTimeShort}</span>
             )}
-          </div>
-          <div style={{ width: MY_SCHEDULE_COLS.side, fontSize: 11, fontWeight: 600, color: K.hcpBlue, flexShrink: 0 }}>
-            {isRainedOut ? "" : side === 'front' ? 'Front' : 'Back'}
+            {/* Front/Back sub-line — same column, matches banner style.
+                Omitted for rained-out weeks (the "—" speaks for itself). */}
+            {!isRainedOut && (
+              <span style={{ fontSize: 9, fontWeight: 700, color: K.logoBright, letterSpacing: .5, textTransform: "uppercase" }}>
+                {side === 'front' ? 'Front 9' : 'Back 9'}
+              </span>
+            )}
           </div>
           <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", position: "relative", zIndex: 1, minWidth: 0 }}>
             {isRainedOut ? "RAIN" : isSeeded ? (() => {
@@ -1274,7 +1287,6 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           <div style={{ width: MY_SCHEDULE_COLS.week }}>Wk</div>
           <div style={{ width: MY_SCHEDULE_COLS.date }}>Date</div>
           <div style={{ width: MY_SCHEDULE_COLS.result }}>Time</div>
-          <div style={{ width: MY_SCHEDULE_COLS.side }}>Side</div>
           <div style={{ flex: 1 }}>Opponent</div>
           <div style={{ width: MY_SCHEDULE_COLS.status, textAlign: "center" }}>Status</div>
         </div>
@@ -1299,7 +1311,6 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
               <div style={{ width: MY_SCHEDULE_COLS.week }}>Wk</div>
               <div style={{ width: MY_SCHEDULE_COLS.date }}>Date</div>
               <div style={{ width: MY_SCHEDULE_COLS.result }}>Result</div>
-              <div style={{ width: MY_SCHEDULE_COLS.side }}>Side</div>
               <div style={{ flex: 1 }}>Opponent</div>
             </div>
           )}
