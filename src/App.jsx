@@ -27,6 +27,13 @@ export default function GolfLeagueApp() {
   const [players, setPlayers] = useState([]);
   const [teams, setTeams] = useState([]);
   const [schedule, setSchedule] = useState([]);
+  // Attendance flags — players announcing in advance that they will be
+  // absent or making up a future week. Keyed by `w${week}_p${pid}` so
+  // lookups from Schedule.jsx are O(1). Values: { status: "absent" |
+  // "makeup", markedAt, markedBy }. See Schedule.jsx for the UI side
+  // (Mark Out button + confirmation popup). Phase 1: announce only —
+  // Live Scoring and match calc don't yet read from this collection.
+  const [attendance, setAttendance] = useState({});
   // dataLoaded tracks whether each Firestore subscription has fired at
   // least once. Pages use it to choose between SkeletonList (cold-start
   // first paint, data still en route) and EmptyState (data fetched,
@@ -280,6 +287,21 @@ export default function GolfLeagueApp() {
       setSchedule(docs.filter(d => d.week > 0).sort((a, b) => a.week - b.week));
       setDataLoaded(prev => prev.schedule ? prev : { ...prev, schedule: true });
     }));
+    // Attendance subscription. Each doc id encodes (week, pid) per the
+    // saveAttendance convention; flatten to a lookup object so Schedule
+    // can hit `attendance[`w${wk}_p${pid}`]?.status` without scanning.
+    unsubs.push(db.subscribe("league_attendance", LF, (docs) => {
+      const flat = {};
+      for (const d of docs) {
+        if (!d || typeof d.week !== "number" || !d.playerId || !d.status) continue;
+        flat[`w${d.week}_p${d.playerId}`] = {
+          status: d.status,
+          markedAt: d.markedAt,
+          markedBy: d.markedBy,
+        };
+      }
+      setAttendance(flat);
+    }));
     unsubs.push(db.subscribe("league_match_results", LF, (docs) => setMatchResults(docs)));
     unsubs.push(db.subscribe("league_ctp", LF, (docs) => setCtpData(docs)));
 
@@ -478,6 +500,30 @@ export default function GolfLeagueApp() {
   const saveWeekSchedule = useCallback(async (w) => await db.upsert("league_schedule", { ...w, league_id: LEAGUE_ID }), []);
   const setWeekSchedule = useCallback(async (w) => await db.set("league_schedule", { ...w, league_id: LEAGUE_ID }), []);
   const deleteWeekSchedule = useCallback(async (id) => await db.deleteDoc("league_schedule", id), []);
+
+  // Attendance — save = mark a player out for a given week with a status
+  // of "absent" or "makeup"; passing status=null DELETES the flag (the
+  // undo path from the ✕ button on the Schedule row). Doc id is the same
+  // (week, pid) convention used elsewhere so it's deterministic and an
+  // overwrite naturally replaces a prior "absent" with "makeup" or vice
+  // versa without leaving orphaned docs. markedBy is the effective user's
+  // player id (so commissioner impersonation correctly records who acted).
+  const saveAttendance = useCallback(async (week, playerId, status) => {
+    const docId = `${LEAGUE_ID}_w${week}_p${playerId}`;
+    if (status === null) {
+      return await db.deleteDoc("league_attendance", docId);
+    }
+    return await db.upsert("league_attendance", {
+      id: docId,
+      league_id: LEAGUE_ID,
+      season: CURRENT_SEASON,
+      week,
+      playerId,
+      status,
+      markedAt: Date.now(),
+      markedBy: effectiveUser?.playerId || null,
+    });
+  }, [effectiveUser?.playerId]);
 
   const resetSeasonData = useCallback(async () => {
     const seasonFilter = [...LF, { field: "season", op: "==", value: CURRENT_SEASON }];
@@ -898,7 +944,7 @@ export default function GolfLeagueApp() {
           <Suspense fallback={TabFallback}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} fetchAllScores={fetchAllScores} saveMatchResult={saveMatchResult} dataLoaded={dataLoaded} />}
           {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} deleteMatchResult={deleteMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} commMode={commMode} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} openFinalize={openFinalize} onFinalizeOpened={() => setOpenFinalize(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} recalcHandicaps={recalcHandicaps} clearWeekData={clearWeekData} autoSeedIfReady={autoSeedIfReady} />}
-          {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} isComm={isComm} saveScore={saveScore} saveMatchResult={saveMatchResult} setPopupOpen={setPopupOpen} appToast={appToast} dataLoaded={dataLoaded} />}
+          {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} isComm={isComm} saveScore={saveScore} saveMatchResult={saveMatchResult} setPopupOpen={setPopupOpen} appToast={appToast} dataLoaded={dataLoaded} attendance={attendance} saveAttendance={saveAttendance} />}
           {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} dataLoaded={dataLoaded} />}
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
           {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} isComm={isComm} saveCtp={saveCtp} />}
