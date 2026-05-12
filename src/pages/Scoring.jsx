@@ -1010,9 +1010,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               });
               if (pendingMakeup) {
                 centerText = "MAKEUP";
-                centerColor = K.warn;
+                centerColor = K.acc;
                 progressLabel = "PENDING";
-                progressColor = K.warn;
+                progressColor = K.acc;
               } else if (anyScoreEntered) {
                 centerText = "PENDING";
                 centerColor = K.act;
@@ -2094,8 +2094,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 });
               }}
               style={{
-                fontSize: 11, fontWeight: 600, color: K.warn, background: "none",
-                border: `1px solid ${K.warn}50`, borderRadius: 6,
+                fontSize: 11, fontWeight: 600, color: K.t3, background: "none",
+                border: `1px solid ${K.bdr}`, borderRadius: 6,
                 padding: "3px 8px", cursor: "pointer", flexShrink: 0,
               }}
             >
@@ -2131,7 +2131,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const makingUp = isPlayerMakingUp(pid);
         return <div key={pid}>
           {absent ? (
-            <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "12px 14px", marginBottom: 6, opacity: 0.6 }}>
+            <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.red}40`, padding: "12px 14px", marginBottom: 6, opacity: 0.6 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div style={{ fontSize: 16, fontWeight: 700, color: K.t1 }}>{pl.name}</div>
@@ -2151,18 +2151,18 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             </div>
           ) : makingUp ? (
             /* MAKING UP — visually distinct from Absent. Same dimmed-card
-               structure for consistency, but amber accents (K.warn) and
+               structure for consistency, but gold accents (K.acc) and
                copy that reflects the "match stays open" semantics. The
                match calc treats this player as having NO scores yet, so
                the match remains incomplete until either (a) the makeup
                scores are entered later via Schedule → Edit Scores, or
                (b) the player's status is cleared and they're scored
                normally inline. */
-            <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.warn}40`, padding: "12px 14px", marginBottom: 6, opacity: 0.6 }}>
+            <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.acc}40`, padding: "12px 14px", marginBottom: 6, opacity: 0.6 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div style={{ fontSize: 16, fontWeight: 700, color: K.t1 }}>{pl.name}</div>
-                  <span style={{ fontSize: 10, color: K.warn, fontWeight: 700, background: K.warn + "15", padding: "2px 6px", borderRadius: 4 }}>MAKING UP</span>
+                  <span style={{ fontSize: 10, color: K.acc, fontWeight: 700, background: K.acc + "15", padding: "2px 6px", borderRadius: 4 }}>MAKING UP</span>
                 </div>
                 {!isAlreadyFinalized && saveAttendance && (
                   <button

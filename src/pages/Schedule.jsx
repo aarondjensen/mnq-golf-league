@@ -764,7 +764,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           {/* Result/time column — stacked. Top: tee time, W/L result, or
               MAKEUP pill. Bottom: FRONT 9 / BACK 9 in muted blue, matching
               the upcoming-week banner pattern at the top of the app. */}
-          <div style={{ width: MY_SCHEDULE_COLS.result, flexShrink: 0, display: "flex", flexDirection: "column", gap: 1, lineHeight: 1.1, color: isRainedOut ? K.warn : isComplete ? resultColor : pendingMakeup ? K.warn : isSeeded ? K.t3 : K.act }}>
+          <div style={{ width: MY_SCHEDULE_COLS.result, flexShrink: 0, display: "flex", flexDirection: "column", gap: 1, lineHeight: 1.1, color: isRainedOut ? K.warn : isComplete ? resultColor : pendingMakeup ? K.acc : isSeeded ? K.t3 : K.act }}>
             {isRainedOut ? (
               <span style={{ fontSize: 14, fontWeight: 700 }}>—</span>
             ) : isComplete ? (
@@ -782,7 +782,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
               <span style={{
                 fontSize: 9, fontWeight: 800, letterSpacing: .8,
                 textTransform: "uppercase", color: K.bg,
-                background: K.warn, padding: "2px 5px", borderRadius: 4,
+                background: K.acc, padding: "2px 5px", borderRadius: 4,
                 alignSelf: "flex-start",
               }}>Makeup</span>
             ) : isSeeded ? (
@@ -860,9 +860,9 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                     fontSize: 8, fontWeight: 800, letterSpacing: .6,
                     textTransform: "uppercase",
                     padding: "2px 5px", borderRadius: 4,
-                    background: teammateAttn.status === "makeup" ? K.warn + "25" : K.t3 + "25",
-                    color: teammateAttn.status === "makeup" ? K.warn : K.t2,
-                    border: `1px solid ${teammateAttn.status === "makeup" ? K.warn + "60" : K.t3 + "60"}`,
+                    background: teammateAttn.status === "makeup" ? K.acc + "25" : K.red + "25",
+                    color: teammateAttn.status === "makeup" ? K.acc : K.red,
+                    border: `1px solid ${teammateAttn.status === "makeup" ? K.acc + "60" : K.red + "60"}`,
                     alignSelf: "flex-start",
                     marginTop: 2,
                   }}>
@@ -894,7 +894,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                   fontSize: 9, fontWeight: 800, letterSpacing: .8,
                   textTransform: "uppercase",
                   padding: "3px 7px", borderRadius: 5,
-                  background: myAttn.status === "makeup" ? K.warn : K.t3,
+                  background: myAttn.status === "makeup" ? K.acc : K.red,
                   color: K.bg,
                   whiteSpace: "nowrap",
                 }}>
@@ -927,8 +927,8 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 <button
                   onClick={(e) => { e.stopPropagation(); setMarkingWeek({ wk, status: "makeup" }); }}
                   style={{
-                    background: "transparent", border: `1px solid ${K.warn}60`,
-                    color: K.warn, fontSize: 9, fontWeight: 700,
+                    background: "transparent", border: `1px solid ${K.bdr}`,
+                    color: K.t3, fontSize: 9, fontWeight: 700,
                     letterSpacing: .6, textTransform: "uppercase",
                     padding: "4px 4px", borderRadius: 6,
                     cursor: "pointer",
@@ -1194,13 +1194,13 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                     isExpanded={isMatchExp}
                   />
                 ) : tilePendingMakeup ? (
-                  /* Match held open pending a makeup. Amber pill replaces the
+                  /* Match held open pending a makeup. Gold pill replaces the
                      tee time so the open status reads as intentional, not as
                      "we lost the score." */
                   <span style={{
                     fontSize: 10, fontWeight: 800, letterSpacing: .8,
                     textTransform: "uppercase", color: K.bg,
-                    background: K.warn, padding: "3px 7px", borderRadius: 5,
+                    background: K.acc, padding: "3px 7px", borderRadius: 5,
                     display: "inline-block",
                   }}>Makeup</span>
                 ) : (
@@ -1333,7 +1333,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           decision the user just made. */}
       {markingWeek && (() => {
         const isMakeup = markingWeek.status === "makeup";
-        const accent = isMakeup ? K.warn : K.red;
+        const accent = isMakeup ? K.acc : K.red;
         const label = isMakeup ? "Making Up" : "Absent";
         const description = isMakeup
           ? "Playing this week's 9 holes on your own time. The match stays open until your score is posted."
