@@ -1146,6 +1146,19 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 const t1Won = res && resultLetterFor(res, t1?.id) === "W";
                 const t2Won = res && resultLetterFor(res, t2?.id) === "W";
 
+                // Per-player attendance-colored name. Returns either a plain
+                // string (no flag — default color inherited by TeamMatchupCard)
+                // or a {text, color} object that TeamMatchupCard recognizes
+                // and styles accordingly. Gold = makeup, red = absent —
+                // matches the button + pill color rules used elsewhere.
+                const nameWithAttn = (pid) => {
+                  const baseName = dn(pid);
+                  const status = attendance?.[`w${wk.week}_p${pid}`]?.status;
+                  if (status === "makeup") return { text: baseName, color: K.acc };
+                  if (status === "absent") return { text: baseName, color: K.red };
+                  return baseName;
+                };
+
                 // ── Map Schedule's per-match data → TeamMatchupCard props ──
                 //
                 // Naming gotcha: we pass `isConsolation: true` because Schedule's
@@ -1162,15 +1175,15 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 // ordering on the saved match object.
                 const team1Props = {
                   id: t1?.id,
-                  name1Line1: dn(t1?.player1),
-                  name1Line2: dn(t1?.player2),
+                  name1Line1: nameWithAttn(t1?.player1),
+                  name1Line2: nameWithAttn(t1?.player2),
                   record: fmtRecord(t1?.id, wk.week),
                   seed: showSeeds ? (seedMap[t1?.id] || null) : null,
                 };
                 const team2Props = {
                   id: t2?.id,
-                  name1Line1: dn(t2?.player1),
-                  name1Line2: dn(t2?.player2),
+                  name1Line1: nameWithAttn(t2?.player1),
+                  name1Line2: nameWithAttn(t2?.player2),
                   record: fmtRecord(t2?.id, wk.week),
                   seed: showSeeds ? (seedMap[t2?.id] || null) : null,
                 };
