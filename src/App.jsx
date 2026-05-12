@@ -501,30 +501,6 @@ export default function GolfLeagueApp() {
   const setWeekSchedule = useCallback(async (w) => await db.set("league_schedule", { ...w, league_id: LEAGUE_ID }), []);
   const deleteWeekSchedule = useCallback(async (id) => await db.deleteDoc("league_schedule", id), []);
 
-  // Attendance — save = mark a player out for a given week with a status
-  // of "absent" or "makeup"; passing status=null DELETES the flag (the
-  // undo path from the ✕ button on the Schedule row). Doc id is the same
-  // (week, pid) convention used elsewhere so it's deterministic and an
-  // overwrite naturally replaces a prior "absent" with "makeup" or vice
-  // versa without leaving orphaned docs. markedBy is the effective user's
-  // player id (so commissioner impersonation correctly records who acted).
-  const saveAttendance = useCallback(async (week, playerId, status) => {
-    const docId = `${LEAGUE_ID}_w${week}_p${playerId}`;
-    if (status === null) {
-      return await db.deleteDoc("league_attendance", docId);
-    }
-    return await db.upsert("league_attendance", {
-      id: docId,
-      league_id: LEAGUE_ID,
-      season: CURRENT_SEASON,
-      week,
-      playerId,
-      status,
-      markedAt: Date.now(),
-      markedBy: effectiveUser?.playerId || null,
-    });
-  }, [effectiveUser?.playerId]);
-
   const resetSeasonData = useCallback(async () => {
     const seasonFilter = [...LF, { field: "season", op: "==", value: CURRENT_SEASON }];
     await db.batchDelete("league_hole_scores", seasonFilter);
@@ -749,6 +725,37 @@ export default function GolfLeagueApp() {
   const effectiveUser = commMode && impersonating
     ? { ...leagueUser, playerId: impersonating.playerId, name: impersonating.name }
     : leagueUser;
+
+  // Attendance — save = mark a player out for a given week with a status
+  // of "absent" or "makeup"; passing status=null DELETES the flag (the
+  // undo path from the ✕ button on the Schedule row). Doc id is the same
+  // (week, pid) convention used elsewhere so it's deterministic and an
+  // overwrite naturally replaces a prior "absent" with "makeup" or vice
+  // versa without leaving orphaned docs. markedBy is the effective user's
+  // player id (so commissioner impersonation correctly records who acted).
+  //
+  // Placement note: this hook MUST be declared after `effectiveUser` since
+  // it reads from it, and BEFORE the early returns below so the hooks
+  // order stays stable across renders. Moving it elsewhere will either
+  // hit a temporal-dead-zone error (declared above effectiveUser) or a
+  // "rendered fewer hooks than expected" React error (declared below the
+  // conditional returns).
+  const saveAttendance = useCallback(async (week, playerId, status) => {
+    const docId = `${LEAGUE_ID}_w${week}_p${playerId}`;
+    if (status === null) {
+      return await db.deleteDoc("league_attendance", docId);
+    }
+    return await db.upsert("league_attendance", {
+      id: docId,
+      league_id: LEAGUE_ID,
+      season: CURRENT_SEASON,
+      week,
+      playerId,
+      status,
+      markedAt: Date.now(),
+      markedBy: effectiveUser?.playerId || null,
+    });
+  }, [effectiveUser?.playerId]);
 
   if (authLoading) return <LoadingScreen />;
   if (!authUser) return <AuthScreen onGoogle={doGoogleSignIn} onEmail={doEmailSignIn} onPasswordReset={doPasswordReset} />;
