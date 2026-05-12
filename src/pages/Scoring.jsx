@@ -66,7 +66,7 @@ function computeMatchStatus(t1Pids, t2Pids, getScore, getStrokes, pars) {
 // ═══════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
-export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, commMode, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, openAllMatches, onAllMatchesOpened, openFinalize, onFinalizeOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData, autoSeedIfReady }) {
+export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, commMode, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, openAllMatches, onAllMatchesOpened, openFinalize, onFinalizeOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData, autoSeedIfReady, attendance, saveAttendance }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
   // 3-way view toggle: "myMatch" (default scoring view), "allMatches" (week overview), "lowNet" (leaderboard)
@@ -313,6 +313,25 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     return null;
   };
   const isPlayerAbsent = (pid) => !!absentPlayers[pid];
+
+  // ── Attendance integration (Phase 2 of Mark Out feature) ──
+  // Reads from the attendance prop populated by App.jsx subscribing to
+  // league_attendance. Provides two helpers:
+  //   - getAttendanceStatus(pid): "absent" | "makeup" | null
+  //   - isPlayerMakingUp(pid): boolean
+  // Absent state is unified with the existing _habsent mechanism: the
+  // auto-sync effect below writes _habsent=1 for players flagged absent
+  // in advance, so isPlayerAbsent (which reads _habsent) returns the
+  // correct value everywhere else in this file.
+  // Makeup is a separate visual state — players are NOT auto-marked
+  // absent for match calc purposes, so the match remains incomplete
+  // until their makeup scores are entered (commissioner-side via
+  // Schedule → Edit Scores until Phase 3 ships a self-service path).
+  const getAttendanceStatus = (pid) => {
+    if (!attendance || !week) return null;
+    return attendance[`w${week}_p${pid}`]?.status || null;
+  };
+  const isPlayerMakingUp = (pid) => getAttendanceStatus(pid) === "makeup" && !isPlayerAbsent(pid);
   const isBothAbsent = (pid) => {
     const tm = getTeammate(pid);
     return isPlayerAbsent(pid) && tm && isPlayerAbsent(tm);
@@ -371,6 +390,39 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     setAbsentPlayers(abs);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [matchKey, holeScores, week]);
+
+  // ── Attendance → _habsent auto-sync ──────────────────────────────
+  // When a player flagged themselves "absent" in advance via Schedule,
+  // mirror that into the existing _habsent mechanism so match calc
+  // (which reads _habsent directly from holeScores) treats them as
+  // absent without manual toggle. Fires once per week change.
+  //
+  // Deliberately one-way (attendance → _habsent, never the reverse):
+  // clearing _habsent via the Undo button in Scoring shouldn't delete
+  // the attendance announcement — those are different user actions.
+  //
+  // Deliberately NOT applied to makeup status: makeup players should
+  // remain "unmarked" at match calc level so the match stays incomplete
+  // until their scores are entered later.
+  useEffect(() => {
+    if (!attendance || !week || !t1 || !t2) return;
+    // Gate on isWeekLocked only (not full scoresLocked) since isFullyAttested
+    // is declared later in this component and would TDZ-error if read here.
+    // If a week is locked, we shouldn't write attendance flags into it
+    // anyway (rain-outs, etc.). The full-attestation case is a vanishingly
+    // unlikely edge: the match closed before the player opened scoring AND
+    // they had attendance marked. Safe enough to skip checking.
+    if (isWeekLocked) return;
+    const matchPids = [...t1Players, ...t2Players];
+    for (const pid of matchPids) {
+      const status = attendance[`w${week}_p${pid}`]?.status;
+      if (status !== "absent") continue;
+      if (holeScores[`w${week}_p${pid}_habsent`] === 1) continue;
+      // Fire-and-forget; saveScore is idempotent for the absent flag.
+      saveScore(week, pid, "absent", 1);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [matchKey, attendance, week, holeScores, isWeekLocked]);
 
   const allP = (t1 && t2) ? (isTeamNet
     ? [...t1Players, ...t2Players]
@@ -1961,7 +2013,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const pl = playerMap[pid]; if (!pl) return null;
         const absent = isPlayerAbsent(pid);
         const score = getS(pid, curHole); const strokes = getStrokes(pid, curHole); const nh = getNineHcp(pid); const run = getRunning(pid);
-        const btns = par === 3 ? [1,2,3,4,5,6,7] : par === 5 ? [2,3,4,5,6,7,8] : [2,3,4,5,6,7,8];
+        // Par-relative button window: birdie / par / bogey / double / triple.
+        // PlayerScoreCard's recenter logic shifts the window when the player's
+        // score lands outside [par-1, par+3] — e.g. an ace on a par 3 (1) or a
+        // 9 on a par 4. The recentered case hides the par-relative labels in
+        // PlayerScoreCard since "Birdie/Par/Bogey/..." no longer line up with
+        // the shifted numbers.
+        const btns = [par - 1, par, par + 1, par + 2, par + 3];
         const hole1Done = allP.filter(p => !isPlayerAbsent(p)).every(p => getRawScore(p, 0) > 0);
         const absentLocked = hole1Done && !absent;
         const absentBtn = !isAlreadyFinalized ? (
@@ -1991,6 +2049,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             Absent
           </button>
         ) : null;
+        const makingUp = isPlayerMakingUp(pid);
         return <div key={pid}>
           {absent ? (
             <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "12px 14px", marginBottom: 6, opacity: 0.6 }}>
@@ -2009,6 +2068,43 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 {isBothAbsent(pid)
                   ? "Net bogey on each hole (does not count for handicap/stats)"
                   : "Teammate's scores used for match calculations"}
+              </div>
+            </div>
+          ) : makingUp ? (
+            /* MAKING UP — visually distinct from Absent. Same dimmed-card
+               structure for consistency, but amber accents (K.warn) and
+               copy that reflects the "match stays open" semantics. The
+               match calc treats this player as having NO scores yet, so
+               the match remains incomplete until either (a) the makeup
+               scores are entered later via Schedule → Edit Scores, or
+               (b) the player's status is cleared and they're scored
+               normally inline. */
+            <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.warn}40`, padding: "12px 14px", marginBottom: 6, opacity: 0.6 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: K.t1 }}>{pl.name}</div>
+                  <span style={{ fontSize: 10, color: K.warn, fontWeight: 700, background: K.warn + "15", padding: "2px 6px", borderRadius: 4 }}>MAKING UP</span>
+                </div>
+                {!isAlreadyFinalized && saveAttendance && (
+                  <button
+                    onClick={() => {
+                      setConfirmModal({
+                        title: `Clear ${pl.name}'s makeup flag?`,
+                        message: `${pl.name} will be marked present and can be scored normally.`,
+                        onConfirm: async () => {
+                          await saveAttendance(week, pid, null);
+                          setConfirmModal(null);
+                        },
+                      });
+                    }}
+                    style={{ fontSize: 11, fontWeight: 700, color: K.hcpBlue, background: "none", border: `1px solid ${K.hcpBlue}40`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}
+                  >
+                    Undo
+                  </button>
+                )}
+              </div>
+              <div style={{ fontSize: 11, color: K.t3, marginTop: 4 }}>
+                Will post score later · match stays open
               </div>
             </div>
           ) : (
@@ -2236,6 +2332,16 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 }
 
 
+// ──────────────────────────────────────────────────────────────────────────
+//  Score-button labels — index-aligned with the par-relative button window
+// ──────────────────────────────────────────────────────────────────────────
+// The parent passes a 5-element btns array of [par-1, par, par+1, par+2, par+3].
+// These labels sit directly beneath each button so the row is self-documenting.
+// They're hidden when the recenter logic shifts the window outside the default
+// (e.g. an ace on a par 3, or a 9 on a par 4) since "Birdie/Par/Bogey/..." no
+// longer line up with the shifted numbers — see `showLabels` below.
+const SCORE_LABELS = ["Birdie", "Par", "Bogey", "Double", "Triple"];
+
 function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, pid, week, curHole, saveScore, K, absentBtn }) {
   const handleScore = (val) => {
     saveScore(week, pid, curHole, val);
@@ -2250,29 +2356,109 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
     const shift = minBtn - score;
     btns = defaultBtns.map(b => b - shift);
   }
+  // Reference equality is intentional: btns === defaultBtns is true ONLY when
+  // recenter didn't fire (we'd have re-assigned btns to a freshly-mapped array).
+  // When labels would mislabel a shifted number (e.g. "Birdie" sitting under a
+  // 5 on a par 4 because we shifted to [5,6,7,8,9] for a triple-bogey-or-worse
+  // entry) we just hide them. Empty-string label slot still reserves vertical
+  // space so the row height doesn't shift between default and recentered.
+  const showLabels = btns === defaultBtns;
+  // Last name + first initial — matches the rest of the app's last-name
+  // display convention but adds a tiny initial in front so teammates with
+  // the same last name (or simply different players with similar names)
+  // stay disambiguated at a glance. Single-name players (rare but possible
+  // in a recreational league with a nickname-only entry) skip the initial.
+  const nameParts = pl.name.split(' ').filter(Boolean);
+  const lastName = nameParts[nameParts.length - 1] || pl.name;
+  const firstInitial = nameParts.length > 1 ? nameParts[0][0] : null;
+  const displayName = firstInitial ? `${firstInitial}. ${lastName}` : lastName;
+
   return (
-    <Card style={{ marginBottom: 3, padding: "6px 10px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 4, marginBottom: 5, minWidth: 0 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0, flexShrink: 1 }}>{pl.name}</span>
-        <span style={{ fontSize: 11, fontWeight: 600, color: K.t2, flexShrink: 0 }}>({nh})</span>
+    <Card style={{ marginBottom: 3, padding: "8px 10px" }}>
+      {/* Top row — initial + last name + handicap pill + stroke dots
+          clustered tight on the LEFT, with a flex spacer pushing the
+          Absent button to the right edge. The name can shrink/truncate
+          (minWidth: 0 + ellipsis) on very narrow screens but normally
+          takes its natural width so handicap and stroke dots sit
+          visually attached to the player it's describing. Handicap
+          color matches stroke dots (K.hcpBlue) so the whole stroke-
+          allocation context reads as a single unit. */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2, minWidth: 0 }}>
+        <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{displayName}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+          (<span style={{ color: K.hcpBlue }}>{nh}</span>)
+        </span>
         {strokes > 0 && <span style={{ color: K.hcpBlue, fontSize: 12, letterSpacing: 1, flexShrink: 0, lineHeight: 1 }}>{"●".repeat(strokes)}</span>}
         <div style={{ flex: 1 }} />
-        {run.thru > 0 && <span style={{ fontSize: 10, color: K.t3, flexShrink: 0, whiteSpace: "nowrap" }}>Net: <strong style={{ color: run.netVsPar < 0 ? K.red : run.netVsPar === 0 ? K.t3 : K.t1 }}>{run.netVsPar > 0 ? "+" + run.netVsPar : run.netVsPar === 0 ? "E" : run.netVsPar}</strong> thru {run.thru}</span>}
         {absentBtn}
       </div>
-      <div style={{ display: "flex", gap: 3 }}>
-        {btns.map(btn => {
+      {/* Net / thru sub-line — its own row so the score-button row gets the
+          full horizontal budget. min-height reserves the slot before any
+          holes are scored so the layout doesn't shift the moment a player
+          taps their first score. */}
+      <div style={{ fontSize: 10, color: K.t3, marginBottom: 6, lineHeight: 1.1, minHeight: 12 }}>
+        {run.thru > 0 && (
+          <>Net <strong style={{ color: run.netVsPar < 0 ? K.red : run.netVsPar === 0 ? K.t3 : K.t1, fontWeight: 700 }}>{run.netVsPar > 0 ? "+" + run.netVsPar : run.netVsPar === 0 ? "E" : run.netVsPar}</strong> thru {run.thru}</>
+        )}
+      </div>
+      {/* Score-button row — 5 par-relative buttons at 44px tall (Apple HIG
+          minimum touch target) plus −/+ nudge buttons. Each score button
+          stacks a label beneath it (Birdie / Par / Bogey / Double / Triple);
+          labels render empty in the recenter case (see showLabels). The −/+
+          buttons intentionally have no labels — they're nudge controls, not
+          scores. The 12px reserved label slot keeps the row height stable
+          regardless of recenter state. */}
+      <div style={{ display: "flex", gap: 4, alignItems: "flex-start" }}>
+        {/* − nudge button moved to the FAR LEFT so the par button sits
+            dead center of the 7-button row. Symmetric with the + on the
+            far right. */}
+        <button onClick={() => handleScore(Math.max(1, (score || par) - 1))} style={{ width: 30, height: 44, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>−</button>
+        {btns.map((btn, idx) => {
           const isCur = btn === score; const sd = btn - par;
           const boxSize = 32;
+          // Par anchor — the button matching par gets a subtle label
+          // emphasis (brighter color + bolder weight) so the golfer's
+          // eye finds par as the visual reference. Suppressed when par
+          // is the selected score, since the gold active background
+          // already serves as the focal point. In the recenter case
+          // (e.g. a 9 on par 4 → btns become [5,6,7,8,9]), par isn't
+          // in the array so isPar is false everywhere and no emphasis
+          // shows — the unlabeled state already signals "abnormal."
+          const isPar = btn === par;
+          const showParAnchor = isPar && !isCur;
           return (
-            <button key={btn} onClick={() => handleScore(isCur ? 0 : btn)} style={{ flex: 1, height: 38, borderRadius: 8, cursor: "pointer", fontSize: 15, fontWeight: 800, border: "none", background: isCur ? K.acc : K.inp, color: isCur ? K.bg : K.t2, position: "relative", transition: "all .15s", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              {isCur && sd !== 0 && <div style={{ position: "absolute", width: boxSize, height: boxSize, left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}><div style={{ position: "absolute", inset: 0, borderRadius: sd < 0 ? "50%" : 3, border: `1.5px solid ${sd < 0 ? K.red : K.bg}` }} />{Math.abs(sd) >= 2 && <div style={{ position: "absolute", inset: 3, borderRadius: sd < 0 ? "50%" : 2, border: `1px solid ${sd < 0 ? K.red : K.bg}` }} />}</div>}
-              <span style={{ position: "relative", zIndex: 1 }}>{btn}</span>
-            </button>
+            <div key={btn} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, minWidth: 0 }}>
+              <button onClick={() => handleScore(isCur ? 0 : btn)} style={{ width: "100%", height: 44, borderRadius: 8, cursor: "pointer", fontSize: 15, fontWeight: 800, border: "none", background: isCur ? K.acc : K.inp, color: isCur ? K.bg : K.t2, position: "relative", transition: "all .15s", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {/* SELECTED-STATE rings: solid red circles for under-par
+                    (single for birdie, double for eagle), solid bg-color
+                    squares for over-par (single for bogey, double for
+                    double-bogey-or-worse). Renders on top of the gold
+                    selected background so the rings contrast cleanly. */}
+                {isCur && sd !== 0 && <div style={{ position: "absolute", width: boxSize, height: boxSize, left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}><div style={{ position: "absolute", inset: 0, borderRadius: sd < 0 ? "50%" : 3, border: `1.5px solid ${sd < 0 ? K.red : K.bg}` }} />{Math.abs(sd) >= 2 && <div style={{ position: "absolute", inset: 3, borderRadius: sd < 0 ? "50%" : 2, border: `1px solid ${sd < 0 ? K.red : K.bg}` }} />}</div>}
+                {/* RESTING-STATE faint outlines on non-par buttons. Same
+                    geometry as the selected state but at 0.15 opacity, and
+                    in resting-button colors (K.red for under-par circles,
+                    K.t2 for over-par squares). Double squares appear for
+                    sd >= 2 (double-bogey and worse) mirroring the
+                    selected-state convention. Suppressed when the button
+                    is selected — the solid ring above takes over. Also
+                    suppressed for par buttons (sd === 0) — par is its
+                    own anchor via the label emphasis. */}
+                {!isCur && sd !== 0 && <div style={{ position: "absolute", width: boxSize, height: boxSize, left: "50%", top: "50%", transform: "translate(-50%, -50%)", opacity: 0.15 }}><div style={{ position: "absolute", inset: 0, borderRadius: sd < 0 ? "50%" : 3, border: `1.25px solid ${sd < 0 ? K.red : K.t2}` }} />{Math.abs(sd) >= 2 && <div style={{ position: "absolute", inset: 3, borderRadius: sd < 0 ? "50%" : 2, border: `1px solid ${sd < 0 ? K.red : K.t2}` }} />}</div>}
+                <span style={{ position: "relative", zIndex: 1 }}>{btn}</span>
+              </button>
+              {/* Par's label gets a brighter color + bolder weight so the
+                  "Par" word also reads as the visual anchor below the
+                  button. Both cues fire from the same `showParAnchor`
+                  flag so the anchor disappears together when par is
+                  selected. */}
+              <div style={{ fontSize: 9, color: showParAnchor ? K.t2 : K.t3, fontWeight: showParAnchor ? 700 : 600, letterSpacing: 0.4, lineHeight: 1, height: 12 }}>
+                {showLabels ? SCORE_LABELS[idx] : ""}
+              </div>
+            </div>
           );
         })}
-        <button onClick={() => handleScore(Math.max(1, (score || par) - 1))} style={{ width: 26, height: 38, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>−</button>
-        <button onClick={() => handleScore((score || par) + 1)} style={{ width: 26, height: 38, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 13, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>+</button>
+        <button onClick={() => handleScore((score || par) + 1)} style={{ width: 30, height: 44, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>+</button>
       </div>
     </Card>
   );
