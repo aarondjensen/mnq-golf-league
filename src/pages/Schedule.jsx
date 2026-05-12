@@ -21,13 +21,17 @@ const MY_SCHEDULE_COLS = {
   side: 38,
 };
 
-export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen, appToast, dataLoaded }) {
+export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen, appToast, dataLoaded, attendance, saveAttendance }) {
   const [showAll, setShowAll] = useState(false);
   const [myOnly, setMyOnly] = useState(true);
   const [expandedWeeks, setExpandedWeeks] = useState({});
   const [expandedMatchKey, setExpandedMatchKey] = useState(null); // "week_mi"
   const [matchScores, setMatchScores] = useState({}); // { week: { key: score } }
   const [editingMatch, setEditingMatch] = useState(null); // { wk, m, res }
+  // Mark Out popup — when set to a week object, the popup opens asking
+  // whether the player will be Absent or Making Up that week. null = closed.
+  // Two-stage UI: tap "Mark Out" button → opens popup → choose status → save.
+  const [markingWeek, setMarkingWeek] = useState(null);
   const [editScores, setEditScores] = useState({}); // { "pid_h": score }
   // Per-player absent flags within the edit popup. Initialized from Firestore
   // when the popup opens, then toggled inline if the commissioner needs to
@@ -427,6 +431,45 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     return teams.find(t => t.player1 === leagueUser.playerId || t.player2 === leagueUser.playerId);
   }, [teams, leagueUser]);
 
+  // ── Attendance helpers ────────────────────────────────────────────
+  // Phase 1 of the Mark Out feature: players can announce in advance
+  // ("absent" or "makeup") that they'll be out for an upcoming week.
+  // App.jsx owns the state + save fn; this view consumes them.
+  //
+  // teammatePid resolves the OTHER player on my team — used to display
+  // teammate-flagged status tags on my My Schedule rows.
+  const myPlayerId = leagueUser?.playerId || null;
+  const teammatePid = useMemo(() => {
+    if (!myTeam || !myPlayerId) return null;
+    return myTeam.player1 === myPlayerId ? myTeam.player2 : myTeam.player1;
+  }, [myTeam, myPlayerId]);
+
+  // getAttendance — O(1) lookup keyed by (week, pid). Returns null if
+  // no flag is present, otherwise { status, markedAt, markedBy }.
+  const getAttendance = (week, pid) => attendance?.[`w${week}_p${pid}`] || null;
+
+  // markOut — the popup save handler. status: "absent" | "makeup".
+  // Closes the popup on success; surfaces a toast on failure.
+  const markOut = async (week, status) => {
+    if (!myPlayerId) return;
+    const result = await saveAttendance(week, myPlayerId, status);
+    if (result === null && appToast) {
+      appToast("Save failed — please check your connection and try again", "error");
+      return;
+    }
+    setMarkingWeek(null);
+  };
+
+  // clearAttendance — the ✕ undo button. Deletes the doc entirely
+  // so the row returns to its unflagged state.
+  const clearAttendance = async (week) => {
+    if (!myPlayerId) return;
+    const result = await saveAttendance(week, myPlayerId, null);
+    if (result === null && appToast) {
+      appToast("Save failed — please check your connection and try again", "error");
+    }
+  };
+
   const currentWeekIdx = useMemo(() => {
     for (let i = 0; i < schedule.length; i++) {
       const wk = schedule[i];
@@ -610,10 +653,21 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const res = myMatch ? matchResults.find(r => r.week === wk.week && r.team1Id === myMatch.team1 && r.team2Id === myMatch.team2) : null;
 
     let oppName = "TBD";
+    // Stacked opponent names — opp1Name / opp2Name resolved separately
+    // so the column can render each on its own line. lastNamesOnly is
+    // still used to build the joined fallback for any code path that
+    // needs the inline form.
+    let opp1Name = null, opp2Name = null;
     if (myMatch) {
       const oppId = myMatch.team1 === myTeam.id ? myMatch.team2 : myMatch.team1;
       const oppTeam = teams.find(t => t.id === oppId);
       oppName = lastNamesOnly(oppTeam?.name || "TBD");
+      if (oppTeam) {
+        const p1 = players.find(p => p.id === oppTeam.player1);
+        const p2 = players.find(p => p.id === oppTeam.player2);
+        opp1Name = p1 ? p1.name.split(' ').pop() : null;
+        opp2Name = p2 ? p2.name.split(' ').pop() : null;
+      }
     }
 
     const teeTimeShort = myMatch ? fmtTeeTime(origIdx).replace(/\s*(AM|PM)$/i, '') : "—";
@@ -645,12 +699,31 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const resultColor = wlLetter === "W" ? K.matchGrn : wlLetter === "L" ? K.red : K.t2;
 
     const isCurrent = wk.week === schedule[currentWeekIdx]?.week;
+    // Attendance flags for this week. myAttn drives the row-level
+    // dimmed/striped treatment + replaces the "Mark Out" button with
+    // the colored status pill + ✕ undo. teammateAttn surfaces a small
+    // tag next to the opponent so I can see my partner's status.
+    // Only meaningful for non-complete, non-rained-out weeks — past
+    // weeks render as before with no Mark Out affordance at all.
+    const myAttn = !isComplete && !isRainedOut ? getAttendance(wk.week, myPlayerId) : null;
+    const teammateAttn = !isComplete && !isRainedOut && teammatePid ? getAttendance(wk.week, teammatePid) : null;
+    const markable = !isComplete && !isRainedOut && !isSeeded && myPlayerId;
+    const showMarkOut = markable && !myAttn;
 
     return (
-      <div key={wk.week} style={{ borderRadius: CARD_RADIUS, overflow: "hidden", border: `1px solid ${isCurrent && !isRainedOut ? K.matchGrn + "40" : K.bdr}` }}>
-        <button
+      <div key={wk.week} style={{ borderRadius: CARD_RADIUS, overflow: "hidden", border: `1px solid ${isCurrent && !isRainedOut ? K.matchGrn + "40" : K.bdr}`, position: "relative" }}>
+        <div
+          role={isComplete && res ? "button" : undefined}
+          tabIndex={isComplete && res ? 0 : undefined}
           onClick={() => {
             if (isComplete && myMatch && res) {
+              toggleMatchExpand(wk.week, 0);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (!(isComplete && myMatch && res)) return;
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
               toggleMatchExpand(wk.week, 0);
             }
           }}
@@ -658,7 +731,13 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
             display: "flex", alignItems: "center", padding: "11px 14px", width: "100%",
             background: isCurrent && !isRainedOut ? K.matchGrn + "12" : K.card,
             border: "none", cursor: isComplete && res ? "pointer" : "default",
-            opacity: isRainedOut ? 0.5 : 1, gap: 10, textAlign: "left",
+            opacity: isRainedOut ? 0.5 : myAttn ? 0.62 : 1,
+            gap: 10, textAlign: "left",
+            // Diagonal-stripe pattern overlay when flagged out. Uses
+            // backgroundImage so it doesn't disturb the existing
+            // background color. 1px stripes at 9px gaps = subtle.
+            backgroundImage: myAttn ? `repeating-linear-gradient(135deg, transparent 0, transparent 8px, ${K.t3}10 8px, ${K.t3}10 9px)` : "none",
+            position: "relative",
           }}
         >
           <div style={{ width: MY_SCHEDULE_COLS.week, fontSize: 14, fontWeight: 700, color: K.t1, flexShrink: 0 }}>{wk.week}</div>
@@ -682,7 +761,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           <div style={{ width: MY_SCHEDULE_COLS.side, fontSize: 11, fontWeight: 600, color: K.hcpBlue, flexShrink: 0 }}>
             {isRainedOut ? "" : side === 'front' ? 'Front' : 'Back'}
           </div>
-          <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+          <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", position: "relative", zIndex: 1, minWidth: 0 }}>
             {isRainedOut ? "RAIN" : isSeeded ? (() => {
               if (isPlayoff) {
                 const pRound = schedule.filter(s => s.isPlayoff === true && s.week <= wk.week).length;
@@ -723,12 +802,86 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 }
               }
               return "Seeded — TBD";
-            })() : oppName}
+            })() : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0, lineHeight: 1.15 }}>
+                {/* Stacked opponent names — two lines for the two-person
+                    team. Falls back to oppName (joined) if either player
+                    record is missing, then to "TBD" if neither resolved. */}
+                {opp1Name || opp2Name ? (
+                  <>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{opp1Name || "—"}</span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{opp2Name || "—"}</span>
+                  </>
+                ) : (
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{oppName}</span>
+                )}
+                {/* Teammate attendance tag — its own row below the names
+                    so it doesn't compete for horizontal space. Color-coded
+                    by status (amber for makeup, grey for absent). */}
+                {teammateAttn && (
+                  <span style={{
+                    fontSize: 8, fontWeight: 800, letterSpacing: .6,
+                    textTransform: "uppercase",
+                    padding: "2px 5px", borderRadius: 4,
+                    background: teammateAttn.status === "makeup" ? K.warn + "25" : K.t3 + "25",
+                    color: teammateAttn.status === "makeup" ? K.warn : K.t2,
+                    border: `1px solid ${teammateAttn.status === "makeup" ? K.warn + "60" : K.t3 + "60"}`,
+                    alignSelf: "flex-start",
+                    marginTop: 2,
+                  }}>
+                    {lastNamesOnly(players.find(p => p.id === teammatePid)?.name || "")}: {teammateAttn.status === "makeup" ? "Making Up" : "Absent"}
+                  </span>
+                )}
+              </div>
+            )}
           </div>
+          {/* Right-side affordances:
+                - Expand chevron when match is complete (existing behavior)
+                - My attendance pill when I've flagged myself out + ✕ undo
+                - "Mark Out" button on upcoming/markable weeks
+              These are placed inside the outer button so the row layout
+              is unchanged, but each inner button calls stopPropagation
+              so it doesn't trigger the row-level expand handler. */}
           {isComplete && res && (
             <div style={{ flexShrink: 0, color: K.t3, fontSize: 9 }}>{expandedMatchKey === `${wk.week}_0` ? "▾" : "›"}</div>
           )}
-        </button>
+          {myAttn && (
+            <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0, position: "relative", zIndex: 1 }}>
+              <span style={{
+                fontSize: 9, fontWeight: 800, letterSpacing: 1,
+                textTransform: "uppercase",
+                padding: "4px 9px", borderRadius: 6,
+                background: myAttn.status === "makeup" ? K.warn : K.t3,
+                color: myAttn.status === "makeup" ? K.bg : K.bg,
+              }}>
+                {myAttn.status === "makeup" ? "Making Up" : "Absent"}
+              </span>
+              <button
+                onClick={(e) => { e.stopPropagation(); clearAttendance(wk.week); }}
+                aria-label="Clear attendance flag"
+                style={{
+                  background: "transparent", border: "none",
+                  color: K.t3, fontSize: 14, cursor: "pointer",
+                  padding: "0 2px", lineHeight: 1,
+                }}
+              >✕</button>
+            </div>
+          )}
+          {showMarkOut && (
+            <button
+              onClick={(e) => { e.stopPropagation(); setMarkingWeek(wk); }}
+              style={{
+                background: "transparent", border: `1px dashed ${K.bdr}`,
+                color: K.t3, fontSize: 9, fontWeight: 700,
+                letterSpacing: .8, textTransform: "uppercase",
+                padding: "4px 8px", borderRadius: 6,
+                cursor: "pointer", flexShrink: 0,
+              }}
+            >
+              I'm out
+            </button>
+          )}
+        </div>
         {expandedMatchKey === `${wk.week}_0` && isComplete && myMatch && res && (
           <div style={{ padding: "2px 8px 10px", background: K.card, borderTop: `1px solid ${K.bdr}30` }}>
             {renderMatchScorecard(wk, myMatch, res)}
@@ -1096,6 +1249,62 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
       {weeksToShow.upcoming.length === 0 && weeksToShow.complete.length === 0 && (
         <EmptyState icon="calendar" title="No matches to show" />
+      )}
+
+      {/* ═══ Mark Out Popup ═══
+          Player-facing affordance for announcing absence in advance.
+          Two options: "Making Up" (will post score later) or "Absent"
+          (teammate's score will double-count). Phase 1 = save the flag
+          only; Phase 2 wires this into Live Scoring + match calc. */}
+      {markingWeek && (
+        <Popup onClose={() => setMarkingWeek(null)} maxWidth={380} padding={20}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>Week {markingWeek.week} — {markingWeek.date || ""}</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 6 }}>Mark yourself out?</div>
+          <div style={{ fontSize: 12, color: K.t2, lineHeight: 1.4, marginBottom: 16 }}>Choose which type of absence applies. You can change or clear this any time before the match.</div>
+
+          {/* Row 1 — Making Up (recommended, amber) */}
+          <button
+            onClick={() => markOut(markingWeek.week, "makeup")}
+            style={{
+              display: "flex", alignItems: "flex-start", gap: 12,
+              width: "100%", padding: 12, marginBottom: 8,
+              background: K.warn + "12", border: `1px solid ${K.warn}60`,
+              borderRadius: 10, cursor: "pointer", textAlign: "left",
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: K.warn, marginBottom: 2 }}>Making Up</div>
+              <div style={{ fontSize: 11, color: K.t2, lineHeight: 1.4 }}>Playing this week's 9 holes on your own time. Match stays open until your score is posted.</div>
+            </div>
+          </button>
+
+          {/* Row 2 — Absent (red) */}
+          <button
+            onClick={() => markOut(markingWeek.week, "absent")}
+            style={{
+              display: "flex", alignItems: "flex-start", gap: 12,
+              width: "100%", padding: 12, marginBottom: 14,
+              background: K.red + "12", border: `1px solid ${K.red}60`,
+              borderRadius: 10, cursor: "pointer", textAlign: "left",
+            }}
+          >
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: K.red, marginBottom: 2 }}>Absent</div>
+              <div style={{ fontSize: 11, color: K.t2, lineHeight: 1.4 }}>Not playing this week. Your teammate's score will be used in your spot.</div>
+            </div>
+          </button>
+
+          <button
+            onClick={() => setMarkingWeek(null)}
+            style={{
+              width: "100%", padding: 10, borderRadius: 8,
+              background: K.inp, border: `1px solid ${K.bdr}`,
+              color: K.t2, fontSize: 13, fontWeight: 700, cursor: "pointer",
+            }}
+          >
+            Cancel
+          </button>
+        </Popup>
       )}
 
       {/* ═══ Commissioner Edit Scores Popup ═══ */}

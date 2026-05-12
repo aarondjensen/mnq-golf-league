@@ -1,5 +1,5 @@
-import { useState, useEffect, useMemo } from "react";
-import { K, EmptyState, Card, SubLabel, LIST_GAP, CARD_RADIUS, getWeekSide, LoadingPanel } from "../theme";
+import { useState, useEffect, useMemo, useRef } from "react";
+import { K, EmptyState, SubLabel, LIST_GAP, CARD_RADIUS, getWeekSide, LoadingPanel } from "../theme";
 import { buildStrokesMap } from "../lib/matchCalc";
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -22,6 +22,29 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
   const [scores, setScores] = useState({});
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState("gross");  // "gross" | "net"
+  // Sticky-toggle compaction. The sentinel is a 1px div placed just above
+  // the toggle in the document. IntersectionObserver watches whether the
+  // sentinel is visible in the viewport — when it isn't, the user has
+  // scrolled past the toggle's natural position and the toggle should
+  // render in compact form. Cheap, jitter-free, and falls back to "never
+  // compact" if the observer fails to register (no functional loss).
+  const [stuck, setStuck] = useState(false);
+  // Per-board expand state — keyed by board title so each board tracks its
+  // own collapsed/expanded state independently. Default = collapsed (top 5).
+  // Toggling expanded reveals every qualifying player so the full 20-person
+  // league can find themselves on every board.
+  const [expandedBoards, setExpandedBoards] = useState({});
+  const sentinelRef = useRef(null);
+  useEffect(() => {
+    const el = sentinelRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const obs = new IntersectionObserver(
+      ([entry]) => setStuck(!entry.isIntersecting),
+      { threshold: 0 },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, []);
   // Per-board aggregation toggle ("total" | "avg") for Total Pars and Total
   // Birdies. Average per round matters because players who miss weeks would
   // otherwise look worse on cumulative totals than they should — Avg captures
@@ -201,11 +224,14 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
   // by Pars/Birdies boards in Avg mode to show "5r" so users can see
   // at a glance why a 4-rounder might outrank a 6-rounder by rate.
   const board = ({ title, valueFn, sortDir = 'asc', valueFmt, headerToggle, subtitle, playerAnnotation }) => {
-    const sorted = [...stats]
+    const allSorted = [...stats]
       .filter(s => valueFn(s) !== null && valueFn(s) !== undefined)
-      .sort((a, b) => sortDir === 'asc' ? valueFn(a) - valueFn(b) : valueFn(b) - valueFn(a))
-      .slice(0, 5);
-    if (!sorted.length) return null;
+      .sort((a, b) => sortDir === 'asc' ? valueFn(a) - valueFn(b) : valueFn(b) - valueFn(a));
+    if (!allSorted.length) return null;
+    const isExpanded = !!expandedBoards[title];
+    const collapsedCount = 5;
+    const hasMore = allSorted.length > collapsedCount;
+    const shown = isExpanded ? allSorted : allSorted.slice(0, collapsedCount);
     return (
       <div style={{ marginBottom: 16 }}>
         {/* Header row — title left, optional mini-toggle right. The mini
@@ -217,7 +243,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         </div>
         {subtitle && <div style={{ fontSize: 10, color: K.t3, marginTop: -4, marginBottom: 6 }}>{subtitle}</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
-          {sorted.map((s, i) => {
+          {shown.map((s, i) => {
             const annotation = playerAnnotation ? playerAnnotation(s) : null;
             return (
               <div key={s.playerId} style={{
@@ -252,6 +278,25 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
             );
           })}
         </div>
+        {/* Show all / Show less affordance — only renders if there are
+            more than 5 qualifying players. Toggles the title-keyed entry
+            in expandedBoards; functional setState avoids stale-closure
+            issues when the user mashes the button. */}
+        {hasMore && (
+          <button
+            onClick={() => setExpandedBoards(prev => ({ ...prev, [title]: !prev[title] }))}
+            style={{
+              display: "block", width: "100%", marginTop: 6,
+              padding: "6px 12px", borderRadius: CARD_RADIUS,
+              background: "transparent", border: `1px dashed ${K.bdr}`,
+              color: K.t3, fontSize: 11, fontWeight: 700,
+              letterSpacing: 1, textTransform: "uppercase",
+              cursor: "pointer",
+            }}
+          >
+            {isExpanded ? "Show less" : `Show all (${allSorted.length})`}
+          </button>
+        )}
       </div>
     );
   };
@@ -287,28 +332,64 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
   //  every board that takes a `mode`-dependent valueFn. Par-3 and Par-5
   //  specialist boards ignore the toggle (always gross).
   // ──────────────────────────────────────────────────────────────────────
+  //  Sticky page Gross/Net toggle. Expanded at top of page; compacts to
+  //  a slim pinned pill once the sentinel scrolls off-screen. zIndex 10
+  //  keeps it above the boards but below any popup (popup chrome lives
+  //  at 500+). background: K.bg is opaque so scrolling content under the
+  //  stuck toggle doesn't bleed through.
+  // ──────────────────────────────────────────────────────────────────────
   const Toggle = (
-    <div style={{
-      display: "flex", background: K.inp, borderRadius: 8, padding: 2,
-      marginBottom: 16,
-    }}>
-      {["gross", "net"].map(m => (
-        <button
-          key={m}
-          onClick={() => setMode(m)}
-          style={{
-            flex: 1, padding: "8px 0", borderRadius: 6, border: "none",
-            background: mode === m ? K.acc : "transparent",
-            color: mode === m ? K.bg : K.t3,
-            fontSize: 12, fontWeight: 700, cursor: "pointer",
-            letterSpacing: 1, textTransform: "uppercase",
-            transition: "all .15s",
-          }}
-        >
-          {m}
-        </button>
-      ))}
-    </div>
+    <>
+      {/* Sentinel — sits in normal document flow just above the sticky
+          toggle. When this scrolls off-screen, the toggle has stuck. */}
+      <div ref={sentinelRef} style={{ height: 1 }} />
+      <div style={{
+        position: "sticky",
+        top: 0,
+        zIndex: 10,
+        background: K.bg,
+        // When stuck: tighter padding + a hairline bottom border so the
+        // pill has a visual ground line against content scrolling under.
+        // When expanded: original 16px below it, no border (clean header).
+        paddingTop: stuck ? 6 : 0,
+        paddingBottom: stuck ? 6 : 16,
+        borderBottom: `1px solid ${stuck ? K.bdr + "60" : "transparent"}`,
+        transition: "padding .15s ease, border-color .15s ease",
+        // Small negative inset so the bottom border spans full content width
+        // even if the parent has horizontal padding. Tune per app layout.
+        marginLeft: -2,
+        marginRight: -2,
+        paddingLeft: 2,
+        paddingRight: 2,
+      }}>
+        <div style={{
+          display: "flex", background: K.inp, borderRadius: 8, padding: 2,
+          transition: "all .15s ease",
+        }}>
+          {["gross", "net"].map(m => (
+            <button
+              key={m}
+              onClick={() => setMode(m)}
+              style={{
+                flex: 1,
+                // Padding shrinks ~50% in stuck mode to halve the pill's
+                // visual height without changing its width.
+                padding: stuck ? "4px 0" : "8px 0",
+                borderRadius: 6, border: "none",
+                background: mode === m ? K.acc : "transparent",
+                color: mode === m ? K.bg : K.t3,
+                fontSize: stuck ? 11 : 12,
+                fontWeight: 700, cursor: "pointer",
+                letterSpacing: 1, textTransform: "uppercase",
+                transition: "all .15s ease",
+              }}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+      </div>
+    </>
   );
 
   const isNet = mode === "net";
@@ -407,12 +488,6 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         sortDir: 'asc',
         valueFmt: v => v.toFixed(2),
       })}
-
-      <Card style={{ padding: "10px 14px", marginTop: 8 }}>
-        <div style={{ fontSize: 11, color: K.t3, lineHeight: 1.5 }}>
-          Stats reflect every completed 9-hole round in the current season — round-robin, seeded, and playoff weeks alike. Rounds where the player was marked absent are excluded. Streaks span across rounds; any missed hole breaks the run.
-        </div>
-      </Card>
     </div>
   );
 }
