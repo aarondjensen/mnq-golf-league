@@ -2339,7 +2339,22 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
           return (
             <div key={btn} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, minWidth: 0 }}>
               <button onClick={() => handleScore(isCur ? 0 : btn)} style={{ width: "100%", height: 44, borderRadius: 8, cursor: "pointer", fontSize: 15, fontWeight: 800, border: "none", background: isCur ? K.acc : K.inp, color: isCur ? K.bg : K.t2, position: "relative", transition: "all .15s", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                {/* SELECTED-STATE rings: solid red circles for under-par
+                    (single for birdie, double for eagle), solid bg-color
+                    squares for over-par (single for bogey, double for
+                    double-bogey-or-worse). Renders on top of the gold
+                    selected background so the rings contrast cleanly. */}
                 {isCur && sd !== 0 && <div style={{ position: "absolute", width: boxSize, height: boxSize, left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}><div style={{ position: "absolute", inset: 0, borderRadius: sd < 0 ? "50%" : 3, border: `1.5px solid ${sd < 0 ? K.red : K.bg}` }} />{Math.abs(sd) >= 2 && <div style={{ position: "absolute", inset: 3, borderRadius: sd < 0 ? "50%" : 2, border: `1px solid ${sd < 0 ? K.red : K.bg}` }} />}</div>}
+                {/* RESTING-STATE faint outlines on non-par buttons. Same
+                    geometry as the selected state but at 0.15 opacity, and
+                    in resting-button colors (K.red for under-par circles,
+                    K.t2 for over-par squares). Double squares appear for
+                    sd >= 2 (double-bogey and worse) mirroring the
+                    selected-state convention. Suppressed when the button
+                    is selected — the solid ring above takes over. Also
+                    suppressed for par buttons (sd === 0) — par is its
+                    own anchor via the label emphasis. */}
+                {!isCur && sd !== 0 && <div style={{ position: "absolute", width: boxSize, height: boxSize, left: "50%", top: "50%", transform: "translate(-50%, -50%)", opacity: 0.15 }}><div style={{ position: "absolute", inset: 0, borderRadius: sd < 0 ? "50%" : 3, border: `1.25px solid ${sd < 0 ? K.red : K.t2}` }} />{Math.abs(sd) >= 2 && <div style={{ position: "absolute", inset: 3, borderRadius: sd < 0 ? "50%" : 2, border: `1px solid ${sd < 0 ? K.red : K.t2}` }} />}</div>}
                 <span style={{ position: "relative", zIndex: 1 }}>{btn}</span>
               </button>
               {/* Par's label gets a brighter color + bolder weight so the
