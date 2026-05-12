@@ -3,7 +3,7 @@ import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSid
 import { LEAGUE_ID } from "../firebase";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { Popup } from "../components/Popup";
-import { computeMatchResult, readScoreEffective, getStrokesForHole, resultLetterFor, buildStrokesMap } from "../lib/matchCalc";
+import { computeMatchResult, readScoreEffective, getStrokesForHole, resultLetterFor, buildStrokesMap, isMatchPendingMakeup } from "../lib/matchCalc";
 import { parseScheduleDate } from "../lib/scheduleDate";
 import { autoHealMatchResults } from "../lib/autoHealMatchResults";
 import { parseTiebreakerResult, TeamMatchupCard, ResultCenter } from "../TeamMatchupCard";
@@ -709,6 +709,19 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const teammateAttn = !isComplete && !isRainedOut && teammatePid ? getAttendance(wk.week, teammatePid) : null;
     const markable = !isComplete && !isRainedOut && !isSeeded && myPlayerId;
     const showMarkOut = markable && !myAttn;
+    // Pending-makeup signal for the result column. Resolved against the
+    // 4 pids in myMatch (not just me/teammate) so opponent-side makeups
+    // also surface — useful to me as the player since the match result
+    // I'd be waiting on depends on them too. Only relevant when the match
+    // isn't already complete and isn't rained out.
+    const matchPids = myMatch
+      ? [myTeam?.player1, myTeam?.player2, ...(teams.find(t => t.id === (myMatch.team1 === myTeam?.id ? myMatch.team2 : myMatch.team1))
+          ? [teams.find(t => t.id === (myMatch.team1 === myTeam?.id ? myMatch.team2 : myMatch.team1)).player1,
+             teams.find(t => t.id === (myMatch.team1 === myTeam?.id ? myMatch.team2 : myMatch.team1)).player2]
+          : [])].filter(Boolean)
+      : [];
+    const pendingMakeup = !isComplete && !isRainedOut && matchPids.length > 0
+      && isMatchPendingMakeup(matchPids, attendance, wk.week);
 
     return (
       <div key={wk.week} style={{ borderRadius: CARD_RADIUS, overflow: "hidden", border: `1px solid ${isCurrent && !isRainedOut ? K.matchGrn + "40" : K.bdr}`, position: "relative" }}>
@@ -742,7 +755,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         >
           <div style={{ width: MY_SCHEDULE_COLS.week, fontSize: 14, fontWeight: 700, color: K.t1, flexShrink: 0 }}>{wk.week}</div>
           <div style={{ width: MY_SCHEDULE_COLS.date, fontSize: 12, fontWeight: 600, color: K.t1, flexShrink: 0 }}>{wk.date || "—"}</div>
-          <div style={{ width: MY_SCHEDULE_COLS.result, flexShrink: 0, color: isRainedOut ? K.warn : isComplete ? resultColor : isSeeded ? K.t3 : K.act }}>
+          <div style={{ width: MY_SCHEDULE_COLS.result, flexShrink: 0, color: isRainedOut ? K.warn : isComplete ? resultColor : pendingMakeup ? K.warn : isSeeded ? K.t3 : K.act }}>
             {isRainedOut ? (
               <span style={{ fontSize: 14, fontWeight: 700 }}>—</span>
             ) : isComplete ? (
@@ -752,6 +765,15 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                   <span style={{ fontSize: 10, fontWeight: 600, color: resultColor, marginTop: 1 }}>{detailText}</span>
                 )}
               </div>
+            ) : pendingMakeup ? (
+              /* Match is held open because some player is flagged "making up."
+                 Amber MAKEUP pill replaces the tee time display — same column
+                 width budget, smaller font to fit "MAKEUP" cleanly. */
+              <span style={{
+                fontSize: 9, fontWeight: 800, letterSpacing: .8,
+                textTransform: "uppercase", color: K.bg,
+                background: K.warn, padding: "2px 5px", borderRadius: 4,
+              }}>Makeup</span>
             ) : isSeeded ? (
               <span style={{ fontSize: 14, fontWeight: 700 }}>—</span>
             ) : (
@@ -1123,12 +1145,28 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 // The fallback `${score1}–${score2}` preserves prior behavior for
                 // legacy results saved without matchResultText (rare but possible
                 // for very old data from before that field existed).
+                // Pending-makeup check uses raw (unswapped) team pids — it's a
+                // property of the match, not the viewer's perspective.
+                const tilePendingMakeup = !res && !isRainedOut && isMatchPendingMakeup(
+                  [rawT1?.player1, rawT1?.player2, rawT2?.player1, rawT2?.player2].filter(Boolean),
+                  attendance, wk.week,
+                );
                 const center = res ? (
                   <ResultCenter
                     resultText={res.matchResultText || `${score1}–${score2}`}
                     isTie={res.matchResultText === "TIED"}
                     isExpanded={isMatchExp}
                   />
+                ) : tilePendingMakeup ? (
+                  /* Match held open pending a makeup. Amber pill replaces the
+                     tee time so the open status reads as intentional, not as
+                     "we lost the score." */
+                  <span style={{
+                    fontSize: 10, fontWeight: 800, letterSpacing: .8,
+                    textTransform: "uppercase", color: K.bg,
+                    background: K.warn, padding: "3px 7px", borderRadius: 5,
+                    display: "inline-block",
+                  }}>Makeup</span>
                 ) : (
                   <div style={{
                     fontSize: 15, fontWeight: 800, color: K.act, letterSpacing: .3,

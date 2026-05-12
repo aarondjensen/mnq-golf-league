@@ -586,3 +586,37 @@ export function resultLetterFor(matchResult, teamId) {
   const oppPts = isT1 ? (matchResult.team2Points || 0) : (matchResult.team1Points || 0);
   return myPts > oppPts ? "W" : myPts < oppPts ? "L" : "T";
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  isMatchPendingMakeup — attendance-aware helper used by every match-result
+//  display surface (Scoring's All Matches tile, Schedule's match rows,
+//  Standings' Recent Matches). Returns true when any of the match's four
+//  players is flagged "makeup" for the week.
+//
+//  Match calc itself doesn't need to know about this — a makeup player has
+//  no scores written (no _habsent, no hole scores), so computeMatchResult
+//  naturally returns an incomplete match and no result is saved. This
+//  helper tells the UI to render an explanatory "PENDING MAKEUP" pill
+//  instead of just "in progress" / "incomplete."
+//
+//  Once the makeup player posts their scores through normal Scoring,
+//  computeMatchResult produces a result, auto-heal writes it to
+//  league_match_results, and the surfaces start showing the real W/L/T
+//  result. The badge logic checks "no saved result AND attendance flagged"
+//  so the transition is automatic — no extra wiring needed.
+//
+//  Parameters:
+//    matchPids   — array of 4 player IDs in the match
+//    attendance  — the flat attendance lookup from App.jsx
+//                  ({ [`w${wk}_p${pid}`]: { status, ... } })
+//    week        — the week number
+// ─────────────────────────────────────────────────────────────────────────────
+export function isMatchPendingMakeup(matchPids, attendance, week) {
+  if (!attendance || !week || !Array.isArray(matchPids) || matchPids.length === 0) {
+    return false;
+  }
+  return matchPids.some(pid => {
+    if (!pid) return false;
+    return attendance[`w${week}_p${pid}`]?.status === "makeup";
+  });
+}

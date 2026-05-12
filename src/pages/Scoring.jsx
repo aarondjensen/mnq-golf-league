@@ -4,7 +4,7 @@ import { K, I, BackBtn, Card, EmptyState,
   formatTeeTime as fmtTeeTimeUtil, LIST_GAP,
   buildSeedMap } from "../theme";
 import { LEAGUE_ID } from "../firebase";
-import { computeMatchResult, resultLetterFor, readScoreEffective, readStrokesEffectiveExt, computePlayoffTiebreaker } from "../lib/matchCalc";
+import { computeMatchResult, resultLetterFor, readScoreEffective, readStrokesEffectiveExt, computePlayoffTiebreaker, isMatchPendingMakeup } from "../lib/matchCalc";
 import { parseScheduleDate } from "../lib/scheduleDate";
 import { parseTiebreakerResult, TeamMatchupCard } from "../TeamMatchupCard";
 import { SharedScorecard } from "../components/SharedScorecard";
@@ -763,10 +763,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   // ── Three-way view toggle helper (used by My Match, All Matches, and Low Net views) ──
   const ViewToggle = () => (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 10 }}>
-      <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
-        <span style={{ fontSize: 11, fontWeight: 700, color: K.t3, textTransform: "uppercase", letterSpacing: 1.5 }}>Week {week}</span>
-        {weekSch?.date && <span style={{ fontSize: 10, color: K.t3 }}>{weekSch.date}</span>}
-      </div>
       <div style={{ display: "flex", background: K.inp, borderRadius: 20, border: `1px solid ${K.bdr}`, padding: 3 }}>
         {[
           { id: "myMatch", label: "My Match" },
@@ -946,23 +942,30 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               else { centerText = "AS"; centerColor = K.t3; }
               progressLabel = "Thru " + thru;
             } else {
-              // No complete hole has been scored yet on the match. Two
-              // sub-cases:
-              //   (a) Some players HAVE entered scores but the match-play
+              // No complete hole has been scored yet on the match. Three
+              // sub-cases, in priority order:
+              //   (a) Any player is flagged "making up" — show PENDING MAKEUP
+              //       since that's the SPECIFIC reason the match is open.
+              //       Overrides the generic PENDING/tee-time labels below
+              //       because it carries actionable info ("we're waiting on
+              //       this person's later round" vs "the round is incomplete").
+              //   (b) Some players HAVE entered scores but the match-play
               //       status can't be computed because at least one player
-              //       hasn't yet — typically a make-up scenario where one
-              //       team teed off and the other is playing later. Show
-              //       PENDING (gold like a tee time, but labeled). This is
-              //       distinct from a not-yet-started match.
-              //   (b) Nobody has entered any scores. Show the scheduled
-              //       tee time as before.
+              //       hasn't yet — show generic PENDING.
+              //   (c) Nobody has entered any scores. Show scheduled tee time.
+              const pendingMakeup = isMatchPendingMakeup([...mT1Pids, ...mT2Pids], attendance, week);
               const anyScoreEntered = [...mT1Pids, ...mT2Pids].some(pid => {
                 for (let h = 0; h < 9; h++) {
                   if ((holeScores[`w${week}_p${pid}_h${h}`] || 0) > 0) return true;
                 }
                 return false;
               });
-              if (anyScoreEntered) {
+              if (pendingMakeup) {
+                centerText = "MAKEUP";
+                centerColor = K.warn;
+                progressLabel = "PENDING";
+                progressColor = K.warn;
+              } else if (anyScoreEntered) {
                 centerText = "PENDING";
                 centerColor = K.act;
               } else {
@@ -1997,6 +2000,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           </div>
         );
       })() : (<>
+      {/* Full Scorecard button — sits above the current-hole banner so
+          it's visible without scrolling past the player cards. Slim
+          padding to keep vertical footprint minimal. */}
+      <button onClick={() => setShowScorecard(true)} style={{ width: "100%", padding: "5px 0", borderRadius: 8, marginBottom: 4, cursor: "pointer", background: K.card, border: `1px solid ${K.bdr}60`, color: K.t2, fontSize: 11, fontWeight: 700, letterSpacing: .5 }}>
+        Full Scorecard
+      </button>
       <div style={{ background: K.acc, borderRadius: 10, padding: "4px 8px", marginBottom: 4, display: "flex", alignItems: "center" }}>
         <button onClick={() => { const prev = Math.max(0, curHole - 1); setCurHole(prev); setEditing(prev < currentHoleIdx); }} disabled={curHole === 0} style={{ width: 28, height: 36, borderRadius: 8, background: "none", border: "none", cursor: curHole === 0 ? "default" : "pointer", color: curHole === 0 ? K.bg + "40" : K.bg, fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
         <div style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 8px" }}>
@@ -2118,12 +2127,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         </button>
       )}
       </>)}
-      {/* Full Scorecard button */}
-      {!isAlreadyFinalized && (
-        <button onClick={() => setShowScorecard(true)} style={{ width: "100%", padding: "7px 0", borderRadius: 8, marginTop: 4, cursor: "pointer", background: K.card, border: `1px solid ${K.bdr}60`, color: K.t2, fontSize: 12, fontWeight: 700, letterSpacing: .5 }}>
-          Full Scorecard
-        </button>
-      )}
       {showScorecard && !isAlreadyFinalized && (() => {
         const myTeamId = myTeam?.id || t1.id;
         const isMyT1 = t1.id === myTeamId;
@@ -2374,7 +2377,7 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
   const displayName = firstInitial ? `${firstInitial}. ${lastName}` : lastName;
 
   return (
-    <Card style={{ marginBottom: 3, padding: "8px 10px" }}>
+    <Card style={{ marginBottom: 3, padding: "6px 10px" }}>
       {/* Top row — initial + last name + handicap pill + stroke dots
           clustered tight on the LEFT, with a flex spacer pushing the
           Absent button to the right edge. The name can shrink/truncate
@@ -2392,11 +2395,11 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
         <div style={{ flex: 1 }} />
         {absentBtn}
       </div>
-      {/* Net / thru sub-line — its own row so the score-button row gets the
-          full horizontal budget. min-height reserves the slot before any
-          holes are scored so the layout doesn't shift the moment a player
-          taps their first score. */}
-      <div style={{ fontSize: 10, color: K.t3, marginBottom: 6, lineHeight: 1.1, minHeight: 12 }}>
+      {/* Net / thru sub-line — tightened to recover vertical space for
+          the top-positioned Full Scorecard button. minHeight still
+          reserves the slot before scoring starts so the layout doesn't
+          jump on first score entry. */}
+      <div style={{ fontSize: 10, color: K.t3, marginBottom: 3, lineHeight: 1.1, minHeight: 10 }}>
         {run.thru > 0 && (
           <>Net <strong style={{ color: run.netVsPar < 0 ? K.red : run.netVsPar === 0 ? K.t3 : K.t1, fontWeight: 700 }}>{run.netVsPar > 0 ? "+" + run.netVsPar : run.netVsPar === 0 ? "E" : run.netVsPar}</strong> thru {run.thru}</>
         )}
