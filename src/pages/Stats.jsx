@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { K, EmptyState, Card, SubLabel, LIST_GAP, CARD_RADIUS, getWeekSide, LoadingPanel } from "../theme";
+import { K, EmptyState, SubLabel, LIST_GAP, CARD_RADIUS, getWeekSide, LoadingPanel } from "../theme";
 import { buildStrokesMap } from "../lib/matchCalc";
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -29,6 +29,11 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
   // render in compact form. Cheap, jitter-free, and falls back to "never
   // compact" if the observer fails to register (no functional loss).
   const [stuck, setStuck] = useState(false);
+  // Per-board expand state — keyed by board title so each board tracks its
+  // own collapsed/expanded state independently. Default = collapsed (top 5).
+  // Toggling expanded reveals every qualifying player so the full 20-person
+  // league can find themselves on every board.
+  const [expandedBoards, setExpandedBoards] = useState({});
   const sentinelRef = useRef(null);
   useEffect(() => {
     const el = sentinelRef.current;
@@ -219,11 +224,14 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
   // by Pars/Birdies boards in Avg mode to show "5r" so users can see
   // at a glance why a 4-rounder might outrank a 6-rounder by rate.
   const board = ({ title, valueFn, sortDir = 'asc', valueFmt, headerToggle, subtitle, playerAnnotation }) => {
-    const sorted = [...stats]
+    const allSorted = [...stats]
       .filter(s => valueFn(s) !== null && valueFn(s) !== undefined)
-      .sort((a, b) => sortDir === 'asc' ? valueFn(a) - valueFn(b) : valueFn(b) - valueFn(a))
-      .slice(0, 5);
-    if (!sorted.length) return null;
+      .sort((a, b) => sortDir === 'asc' ? valueFn(a) - valueFn(b) : valueFn(b) - valueFn(a));
+    if (!allSorted.length) return null;
+    const isExpanded = !!expandedBoards[title];
+    const collapsedCount = 5;
+    const hasMore = allSorted.length > collapsedCount;
+    const shown = isExpanded ? allSorted : allSorted.slice(0, collapsedCount);
     return (
       <div style={{ marginBottom: 16 }}>
         {/* Header row — title left, optional mini-toggle right. The mini
@@ -235,7 +243,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         </div>
         {subtitle && <div style={{ fontSize: 10, color: K.t3, marginTop: -4, marginBottom: 6 }}>{subtitle}</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
-          {sorted.map((s, i) => {
+          {shown.map((s, i) => {
             const annotation = playerAnnotation ? playerAnnotation(s) : null;
             return (
               <div key={s.playerId} style={{
@@ -270,6 +278,25 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
             );
           })}
         </div>
+        {/* Show all / Show less affordance — only renders if there are
+            more than 5 qualifying players. Toggles the title-keyed entry
+            in expandedBoards; functional setState avoids stale-closure
+            issues when the user mashes the button. */}
+        {hasMore && (
+          <button
+            onClick={() => setExpandedBoards(prev => ({ ...prev, [title]: !prev[title] }))}
+            style={{
+              display: "block", width: "100%", marginTop: 6,
+              padding: "6px 12px", borderRadius: CARD_RADIUS,
+              background: "transparent", border: `1px dashed ${K.bdr}`,
+              color: K.t3, fontSize: 11, fontWeight: 700,
+              letterSpacing: 1, textTransform: "uppercase",
+              cursor: "pointer",
+            }}
+          >
+            {isExpanded ? "Show less" : `Show all (${allSorted.length})`}
+          </button>
+        )}
       </div>
     );
   };
@@ -461,12 +488,6 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         sortDir: 'asc',
         valueFmt: v => v.toFixed(2),
       })}
-
-      <Card style={{ padding: "10px 14px", marginTop: 8 }}>
-        <div style={{ fontSize: 11, color: K.t3, lineHeight: 1.5 }}>
-          Stats reflect every completed 9-hole round in the current season — round-robin, seeded, and playoff weeks alike. Rounds where the player was marked absent are excluded. Streaks span across rounds; any missed hole breaks the run.
-        </div>
-      </Card>
     </div>
   );
 }
