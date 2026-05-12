@@ -653,10 +653,21 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const res = myMatch ? matchResults.find(r => r.week === wk.week && r.team1Id === myMatch.team1 && r.team2Id === myMatch.team2) : null;
 
     let oppName = "TBD";
+    // Stacked opponent names — opp1Name / opp2Name resolved separately
+    // so the column can render each on its own line. lastNamesOnly is
+    // still used to build the joined fallback for any code path that
+    // needs the inline form.
+    let opp1Name = null, opp2Name = null;
     if (myMatch) {
       const oppId = myMatch.team1 === myTeam.id ? myMatch.team2 : myMatch.team1;
       const oppTeam = teams.find(t => t.id === oppId);
       oppName = lastNamesOnly(oppTeam?.name || "TBD");
+      if (oppTeam) {
+        const p1 = players.find(p => p.id === oppTeam.player1);
+        const p2 = players.find(p => p.id === oppTeam.player2);
+        opp1Name = p1 ? p1.name.split(' ').pop() : null;
+        opp2Name = p2 ? p2.name.split(' ').pop() : null;
+      }
     }
 
     const teeTimeShort = myMatch ? fmtTeeTime(origIdx).replace(/\s*(AM|PM)$/i, '') : "—";
@@ -750,7 +761,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           <div style={{ width: MY_SCHEDULE_COLS.side, fontSize: 11, fontWeight: 600, color: K.hcpBlue, flexShrink: 0 }}>
             {isRainedOut ? "" : side === 'front' ? 'Front' : 'Back'}
           </div>
-          <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis", position: "relative", zIndex: 1 }}>
+          <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", position: "relative", zIndex: 1, minWidth: 0 }}>
             {isRainedOut ? "RAIN" : isSeeded ? (() => {
               if (isPlayoff) {
                 const pRound = schedule.filter(s => s.isPlayoff === true && s.week <= wk.week).length;
@@ -792,24 +803,36 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
               }
               return "Seeded — TBD";
             })() : (
-              <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{oppName}</span>
-                {/* Teammate attendance tag — small inline pill so I can see
-                    when my partner has announced they'll be out. Colored by
-                    status: amber for makeup, grey for absent. */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0, lineHeight: 1.15 }}>
+                {/* Stacked opponent names — two lines for the two-person
+                    team. Falls back to oppName (joined) if either player
+                    record is missing, then to "TBD" if neither resolved. */}
+                {opp1Name || opp2Name ? (
+                  <>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{opp1Name || "—"}</span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{opp2Name || "—"}</span>
+                  </>
+                ) : (
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{oppName}</span>
+                )}
+                {/* Teammate attendance tag — its own row below the names
+                    so it doesn't compete for horizontal space. Color-coded
+                    by status (amber for makeup, grey for absent). */}
                 {teammateAttn && (
                   <span style={{
                     fontSize: 8, fontWeight: 800, letterSpacing: .6,
-                    textTransform: "uppercase", flexShrink: 0,
+                    textTransform: "uppercase",
                     padding: "2px 5px", borderRadius: 4,
                     background: teammateAttn.status === "makeup" ? K.warn + "25" : K.t3 + "25",
                     color: teammateAttn.status === "makeup" ? K.warn : K.t2,
                     border: `1px solid ${teammateAttn.status === "makeup" ? K.warn + "60" : K.t3 + "60"}`,
+                    alignSelf: "flex-start",
+                    marginTop: 2,
                   }}>
                     {lastNamesOnly(players.find(p => p.id === teammatePid)?.name || "")}: {teammateAttn.status === "makeup" ? "Making Up" : "Absent"}
                   </span>
                 )}
-              </span>
+              </div>
             )}
           </div>
           {/* Right-side affordances:
@@ -855,7 +878,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 cursor: "pointer", flexShrink: 0,
               }}
             >
-              Mark Out
+              I'm out
             </button>
           )}
         </div>
