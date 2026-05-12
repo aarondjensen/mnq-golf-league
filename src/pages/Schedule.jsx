@@ -19,6 +19,7 @@ const MY_SCHEDULE_COLS = {
   date: 52,
   result: 44,  // Result for completed weeks, tee time for upcoming weeks
   side: 38,
+  status: 80,  // Stacked Absent / Making Up buttons, or active status pill
 };
 
 export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen, appToast, dataLoaded, attendance, saveAttendance }) {
@@ -28,9 +29,10 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   const [expandedMatchKey, setExpandedMatchKey] = useState(null); // "week_mi"
   const [matchScores, setMatchScores] = useState({}); // { week: { key: score } }
   const [editingMatch, setEditingMatch] = useState(null); // { wk, m, res }
-  // Mark Out popup — when set to a week object, the popup opens asking
-  // whether the player will be Absent or Making Up that week. null = closed.
-  // Two-stage UI: tap "Mark Out" button → opens popup → choose status → save.
+  // Confirmation popup state for the row-level Absent / Making Up buttons.
+  // Now stores both the week AND the pre-selected status so the popup
+  // is a single-action confirmation (matching Scoring's pattern). null = closed.
+  // Shape: { wk: scheduleWeek, status: "absent" | "makeup" }
   const [markingWeek, setMarkingWeek] = useState(null);
   const [editScores, setEditScores] = useState({}); // { "pid_h": score }
   // Per-player absent flags within the edit popup. Initialized from Firestore
@@ -857,52 +859,73 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
               </div>
             )}
           </div>
-          {/* Right-side affordances:
-                - Expand chevron when match is complete (existing behavior)
-                - My attendance pill when I've flagged myself out + ✕ undo
-                - "Mark Out" button on upcoming/markable weeks
-              These are placed inside the outer button so the row layout
-              is unchanged, but each inner button calls stopPropagation
-              so it doesn't trigger the row-level expand handler. */}
+          {/* Chevron for completed match rows — sits between opponent
+              column and the status column so it doesn't displace the
+              status column's alignment with its header. */}
           {isComplete && res && (
             <div style={{ flexShrink: 0, color: K.t3, fontSize: 9 }}>{expandedMatchKey === `${wk.week}_0` ? "▾" : "›"}</div>
           )}
-          {myAttn && (
-            <div style={{ display: "flex", alignItems: "center", gap: 4, flexShrink: 0, position: "relative", zIndex: 1 }}>
-              <span style={{
-                fontSize: 9, fontWeight: 800, letterSpacing: 1,
-                textTransform: "uppercase",
-                padding: "4px 9px", borderRadius: 6,
-                background: myAttn.status === "makeup" ? K.warn : K.t3,
-                color: myAttn.status === "makeup" ? K.bg : K.bg,
-              }}>
-                {myAttn.status === "makeup" ? "Making Up" : "Absent"}
-              </span>
-              <button
-                onClick={(e) => { e.stopPropagation(); clearAttendance(wk.week); }}
-                aria-label="Clear attendance flag"
-                style={{
-                  background: "transparent", border: "none",
-                  color: K.t3, fontSize: 14, cursor: "pointer",
-                  padding: "0 2px", lineHeight: 1,
-                }}
-              >✕</button>
-            </div>
-          )}
-          {showMarkOut && (
-            <button
-              onClick={(e) => { e.stopPropagation(); setMarkingWeek(wk); }}
-              style={{
-                background: "transparent", border: `1px dashed ${K.bdr}`,
-                color: K.t3, fontSize: 9, fontWeight: 700,
-                letterSpacing: .8, textTransform: "uppercase",
-                padding: "4px 8px", borderRadius: 6,
-                cursor: "pointer", flexShrink: 0,
-              }}
-            >
-              I'm out
-            </button>
-          )}
+          {/* Status column — fixed-width to align with the "Status" header.
+              Three states:
+                (a) Player has flagged themselves: pill + ✕ undo (centered).
+                (b) Markable upcoming week: two stacked buttons (Absent /
+                    Making Up). Each fires the confirm popup with the
+                    chosen status pre-decided, matching Scoring's pattern.
+                (c) Past or rained-out: empty cell (preserves alignment).
+              Inner buttons stopPropagation so they don't trigger the
+              row-level expand handler. */}
+          <div style={{ width: MY_SCHEDULE_COLS.status, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1 }}>
+            {myAttn ? (
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+                <span style={{
+                  fontSize: 9, fontWeight: 800, letterSpacing: .8,
+                  textTransform: "uppercase",
+                  padding: "3px 7px", borderRadius: 5,
+                  background: myAttn.status === "makeup" ? K.warn : K.t3,
+                  color: K.bg,
+                  whiteSpace: "nowrap",
+                }}>
+                  {myAttn.status === "makeup" ? "Making Up" : "Absent"}
+                </span>
+                <button
+                  onClick={(e) => { e.stopPropagation(); clearAttendance(wk.week); }}
+                  aria-label="Clear attendance flag"
+                  style={{
+                    background: "transparent", border: "none",
+                    color: K.t3, fontSize: 11, cursor: "pointer",
+                    padding: "0 2px", lineHeight: 1,
+                  }}
+                >✕ Clear</button>
+              </div>
+            ) : showMarkOut ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 3, width: "100%" }}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setMarkingWeek({ wk, status: "absent" }); }}
+                  style={{
+                    background: "transparent", border: `1px solid ${K.bdr}`,
+                    color: K.t3, fontSize: 9, fontWeight: 700,
+                    letterSpacing: .6, textTransform: "uppercase",
+                    padding: "4px 4px", borderRadius: 6,
+                    cursor: "pointer",
+                  }}
+                >
+                  Absent
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setMarkingWeek({ wk, status: "makeup" }); }}
+                  style={{
+                    background: "transparent", border: `1px solid ${K.warn}60`,
+                    color: K.warn, fontSize: 9, fontWeight: 700,
+                    letterSpacing: .6, textTransform: "uppercase",
+                    padding: "4px 4px", borderRadius: 6,
+                    cursor: "pointer",
+                  }}
+                >
+                  Making Up
+                </button>
+              </div>
+            ) : null}
+          </div>
         </div>
         {expandedMatchKey === `${wk.week}_0` && isComplete && myMatch && res && (
           <div style={{ padding: "2px 8px 10px", background: K.card, borderTop: `1px solid ${K.bdr}30` }}>
@@ -1253,6 +1276,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           <div style={{ width: MY_SCHEDULE_COLS.result }}>Time</div>
           <div style={{ width: MY_SCHEDULE_COLS.side }}>Side</div>
           <div style={{ flex: 1 }}>Opponent</div>
+          <div style={{ width: MY_SCHEDULE_COLS.status, textAlign: "center" }}>Status</div>
         </div>
       )}
 
@@ -1289,61 +1313,53 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         <EmptyState icon="calendar" title="No matches to show" />
       )}
 
-      {/* ═══ Mark Out Popup ═══
-          Player-facing affordance for announcing absence in advance.
-          Two options: "Making Up" (will post score later) or "Absent"
-          (teammate's score will double-count). Phase 1 = save the flag
-          only; Phase 2 wires this into Live Scoring + match calc. */}
-      {markingWeek && (
-        <Popup onClose={() => setMarkingWeek(null)} maxWidth={380} padding={20}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>Week {markingWeek.week} — {markingWeek.date || ""}</div>
-          <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 6 }}>Mark yourself out?</div>
-          <div style={{ fontSize: 12, color: K.t2, lineHeight: 1.4, marginBottom: 16 }}>Choose which type of absence applies. You can change or clear this any time before the match.</div>
-
-          {/* Row 1 — Making Up (recommended, amber) */}
-          <button
-            onClick={() => markOut(markingWeek.week, "makeup")}
-            style={{
-              display: "flex", alignItems: "flex-start", gap: 12,
-              width: "100%", padding: 12, marginBottom: 8,
-              background: K.warn + "12", border: `1px solid ${K.warn}60`,
-              borderRadius: 10, cursor: "pointer", textAlign: "left",
-            }}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: K.warn, marginBottom: 2 }}>Making Up</div>
-              <div style={{ fontSize: 11, color: K.t2, lineHeight: 1.4 }}>Playing this week's 9 holes on your own time. Match stays open until your score is posted.</div>
+      {/* ═══ Mark Out Confirmation Popup ═══
+          Single-choice confirmation matching Scoring's confirm-modal pattern.
+          The row's two inline buttons (Absent / Making Up) pre-decide the
+          status; this popup confirms it. Visual styling adapts to the chosen
+          status (amber border + amber primary button for Makeup; red border +
+          red primary button for Absent) so the confirmation reinforces the
+          decision the user just made. */}
+      {markingWeek && (() => {
+        const isMakeup = markingWeek.status === "makeup";
+        const accent = isMakeup ? K.warn : K.red;
+        const label = isMakeup ? "Making Up" : "Absent";
+        const description = isMakeup
+          ? "Playing this week's 9 holes on your own time. The match stays open until your score is posted."
+          : "Not playing this week. Your teammate's score will be used in your spot.";
+        return (
+          <Popup onClose={() => setMarkingWeek(null)} maxWidth={380} padding={20}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>Week {markingWeek.wk.week} — {markingWeek.wk.date || ""}</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 6 }}>
+              Mark yourself as <span style={{ color: accent }}>{label}</span>?
             </div>
-          </button>
-
-          {/* Row 2 — Absent (red) */}
-          <button
-            onClick={() => markOut(markingWeek.week, "absent")}
-            style={{
-              display: "flex", alignItems: "flex-start", gap: 12,
-              width: "100%", padding: 12, marginBottom: 14,
-              background: K.red + "12", border: `1px solid ${K.red}60`,
-              borderRadius: 10, cursor: "pointer", textAlign: "left",
-            }}
-          >
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: K.red, marginBottom: 2 }}>Absent</div>
-              <div style={{ fontSize: 11, color: K.t2, lineHeight: 1.4 }}>Not playing this week. Your teammate's score will be used in your spot.</div>
+            <div style={{ fontSize: 12, color: K.t2, lineHeight: 1.4, marginBottom: 18 }}>{description}</div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                onClick={() => setMarkingWeek(null)}
+                style={{
+                  flex: 1, padding: 11, borderRadius: 8,
+                  background: K.inp, border: `1px solid ${K.bdr}`,
+                  color: K.t2, fontSize: 13, fontWeight: 700, cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => markOut(markingWeek.wk.week, markingWeek.status)}
+                style={{
+                  flex: 1, padding: 11, borderRadius: 8,
+                  background: accent, border: "none",
+                  color: K.bg, fontSize: 13, fontWeight: 800, cursor: "pointer",
+                  letterSpacing: .5,
+                }}
+              >
+                Confirm
+              </button>
             </div>
-          </button>
-
-          <button
-            onClick={() => setMarkingWeek(null)}
-            style={{
-              width: "100%", padding: 10, borderRadius: 8,
-              background: K.inp, border: `1px solid ${K.bdr}`,
-              color: K.t2, fontSize: 13, fontWeight: 700, cursor: "pointer",
-            }}
-          >
-            Cancel
-          </button>
-        </Popup>
-      )}
+          </Popup>
+        );
+      })()}
 
       {/* ═══ Commissioner Edit Scores Popup ═══ */}
       {editingMatch && (() => {
