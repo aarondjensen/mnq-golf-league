@@ -1632,18 +1632,34 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
         <div style={{ background: K.card, border: `1px solid ${K.bdr}`, borderTop: "none", borderRadius: "0 0 8px 8px", overflow: "hidden" }}>
           {(() => {
-            // Rank = "position in ascending order" regardless of current display direction.
-            // So the best score is always rank 1 even when the list is flipped to worst→best.
-            const completeCount = rows.filter(r => r.complete).length;
+            // Traditional golf rank — rank = (count of players with strictly
+            // better score) + 1. Tied players share a rank; the next rank
+            // skips by the tie group size. e.g. 1, 2, T3, T3, 5 (NOT 1, 2,
+            // T3, T4, 5 which is what the old position-based logic produced).
+            //
+            // Both rank and tie status are properties of the score itself,
+            // not the row's position in the displayed list, so the same
+            // values hold whether we're sorted ascending (best first) or
+            // descending (worst first).
+            const completeRows = rows.filter(r => r.complete);
             return rows.map((r, i) => {
               const isMe = r.pid === leagueUser.playerId;
               const isLast = i === rows.length - 1;
               const showRank = r.complete;
-              // True ascending position for this row (1-indexed). In desc mode, top rows are higher rank numbers.
-              const rank = showRank ? (lowNetDir === "asc" ? i + 1 : completeCount - i) : null;
+              // Golf rank: count rows with strictly better score on the
+              // active sort column, then +1. For "asc" (low net is best)
+              // and the typical golf scenario, "better" = lower value.
+              const rank = showRank
+                ? completeRows.filter(other => other[sortKey] < r[sortKey]).length + 1
+                : null;
               const isLeader = rank === 1;
-              // Tied with the prior visible row on the active sort column
-              const tiedAbove = r.complete && i > 0 && rows[i - 1].complete && rows[i - 1][sortKey] === r[sortKey];
+              // A row is tied when at least one OTHER complete row has the
+              // same score on the active sort column. Shows the "T" prefix
+              // on every member of a tied group (rather than just the
+              // second occurrence as the old tiedAbove check did).
+              const isTied = showRank && completeRows.some(other =>
+                other.pid !== r.pid && other[sortKey] === r[sortKey]
+              );
               // Green emphasis follows the active sort column
               const netIsActive = sortKey === "net";
               const grossIsActive = sortKey === "gross";
@@ -1654,7 +1670,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   background: isMe ? K.acc + "12" : "transparent",
                 }}>
                   <div style={{ width: 22, flexShrink: 0, textAlign: "center", fontSize: 12, fontWeight: 700, color: isLeader ? K.matchGrn : K.t3 }}>
-                    {showRank ? (tiedAbove ? "T" : "") + rank : "—"}
+                    {showRank ? (isTied ? "T" : "") + rank : "—"}
                   </div>
                   <div style={{ flex: 1, minWidth: 0, paddingLeft: 8, fontSize: 13, fontWeight: isMe ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {r.name}
