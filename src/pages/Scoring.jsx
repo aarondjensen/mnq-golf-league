@@ -1037,7 +1037,21 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               }
               return false;
             };
-            const nameColor = (pid) => (isPending && isCardIncomplete(pid)) ? K.act : K.t1;
+            // Name color resolves in priority order:
+            //   1. Attendance "makeup" → K.acc gold (explicit announcement)
+            //   2. Attendance "absent" → K.red (explicit announcement)
+            //   3. Live PENDING with incomplete card → K.act gold (waiting on)
+            //   4. Default → K.t1
+            // Attendance flags beat the live-pending signal because they
+            // carry more information ("this player won't be here today")
+            // vs the generic "scoring not complete yet."
+            const nameColor = (pid) => {
+              const attnStatus = attendance?.[`w${week}_p${pid}`]?.status;
+              if (attnStatus === "makeup") return K.acc;
+              if (attnStatus === "absent") return K.red;
+              if (isPending && isCardIncomplete(pid)) return K.act;
+              return K.t1;
+            };
 
             // ── Map Scoring's per-match data → TeamMatchupCard props ──
             //
