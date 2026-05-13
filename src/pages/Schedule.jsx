@@ -764,7 +764,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           {/* Result/time column — stacked. Top: tee time, W/L result, or
               MAKEUP pill. Bottom: FRONT 9 / BACK 9 in muted blue, matching
               the upcoming-week banner pattern at the top of the app. */}
-          <div style={{ width: MY_SCHEDULE_COLS.result, flexShrink: 0, display: "flex", flexDirection: "column", gap: 1, lineHeight: 1.1, color: isRainedOut ? K.warn : isComplete ? resultColor : pendingMakeup ? K.acc : isSeeded ? K.t3 : K.act }}>
+          <div style={{ width: MY_SCHEDULE_COLS.result, flexShrink: 0, display: "flex", flexDirection: "column", gap: 1, lineHeight: 1.1, color: isRainedOut ? K.warn : isComplete ? resultColor : pendingMakeup ? K.act : isSeeded ? K.t3 : K.act }}>
             {isRainedOut ? (
               <span style={{ fontSize: 14, fontWeight: 700 }}>—</span>
             ) : isComplete ? (
@@ -782,7 +782,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
               <span style={{
                 fontSize: 9, fontWeight: 800, letterSpacing: .8,
                 textTransform: "uppercase", color: K.bg,
-                background: K.acc, padding: "2px 5px", borderRadius: 4,
+                background: K.act, padding: "2px 5px", borderRadius: 4,
                 alignSelf: "flex-start",
               }}>Makeup</span>
             ) : isSeeded ? (
@@ -860,9 +860,9 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                     fontSize: 8, fontWeight: 800, letterSpacing: .6,
                     textTransform: "uppercase",
                     padding: "2px 5px", borderRadius: 4,
-                    background: teammateAttn.status === "makeup" ? K.acc + "25" : K.red + "25",
-                    color: teammateAttn.status === "makeup" ? K.acc : K.red,
-                    border: `1px solid ${teammateAttn.status === "makeup" ? K.acc + "60" : K.red + "60"}`,
+                    background: teammateAttn.status === "makeup" ? K.act + "25" : K.red + "25",
+                    color: teammateAttn.status === "makeup" ? K.act : K.red,
+                    border: `1px solid ${teammateAttn.status === "makeup" ? K.act + "60" : K.red + "60"}`,
                     alignSelf: "flex-start",
                     marginTop: 2,
                   }}>
@@ -894,7 +894,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                   fontSize: 9, fontWeight: 800, letterSpacing: .8,
                   textTransform: "uppercase",
                   padding: "3px 7px", borderRadius: 5,
-                  background: myAttn.status === "makeup" ? K.acc : K.red,
+                  background: myAttn.status === "makeup" ? K.act : K.red,
                   color: K.bg,
                   whiteSpace: "nowrap",
                 }}>
@@ -1154,7 +1154,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 const nameWithAttn = (pid) => {
                   const baseName = dn(pid);
                   const status = attendance?.[`w${wk.week}_p${pid}`]?.status;
-                  if (status === "makeup") return { text: baseName, color: K.acc };
+                  if (status === "makeup") return { text: baseName, color: K.act };
                   if (status === "absent") return { text: baseName, color: K.red };
                   return baseName;
                 };
@@ -1213,7 +1213,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                   <span style={{
                     fontSize: 10, fontWeight: 800, letterSpacing: .8,
                     textTransform: "uppercase", color: K.bg,
-                    background: K.acc, padding: "3px 7px", borderRadius: 5,
+                    background: K.act, padding: "3px 7px", borderRadius: 5,
                     display: "inline-block",
                   }}>Makeup</span>
                 ) : (
@@ -1346,7 +1346,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           decision the user just made. */}
       {markingWeek && (() => {
         const isMakeup = markingWeek.status === "makeup";
-        const accent = isMakeup ? K.acc : K.red;
+        const accent = isMakeup ? K.act : K.red;
         const label = isMakeup ? "Making Up" : "Absent";
         const description = isMakeup
           ? "Playing this week's 9 holes on your own time. The match stays open until your score is posted."

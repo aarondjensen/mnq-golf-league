@@ -1009,8 +1009,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 return false;
               });
               if (pendingMakeup) {
-                centerText = "PENDING";
-                centerColor = K.act;
+                centerText = "MAKEUP";
+                centerColor = K.acc;
+                progressLabel = "PENDING";
+                progressColor = K.acc;
               } else if (anyScoreEntered) {
                 centerText = "PENDING";
                 centerColor = K.act;
