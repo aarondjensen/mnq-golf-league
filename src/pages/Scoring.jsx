@@ -1010,9 +1010,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               });
               if (pendingMakeup) {
                 centerText = "MAKEUP";
-                centerColor = K.acc;
+                centerColor = K.act;
                 progressLabel = "PENDING";
-                progressColor = K.acc;
+                progressColor = K.act;
               } else if (anyScoreEntered) {
                 centerText = "PENDING";
                 centerColor = K.act;
@@ -1038,16 +1038,19 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               return false;
             };
             // Name color resolves in priority order:
-            //   1. Attendance "makeup" → K.acc gold (explicit announcement)
+            //   1. Attendance "makeup" → K.act gold (explicit announcement)
             //   2. Attendance "absent" → K.red (explicit announcement)
             //   3. Live PENDING with incomplete card → K.act gold (waiting on)
             //   4. Default → K.t1
             // Attendance flags beat the live-pending signal because they
             // carry more information ("this player won't be here today")
             // vs the generic "scoring not complete yet."
+            //
+            // Color-token gotcha: K.act = maize gold (#deab12, brand color),
+            // K.acc = light gray. Easy to confuse — makeup should be K.act.
             const nameColor = (pid) => {
               const attnStatus = attendance?.[`w${week}_p${pid}`]?.status;
-              if (attnStatus === "makeup") return K.acc;
+              if (attnStatus === "makeup") return K.act;
               if (attnStatus === "absent") return K.red;
               if (isPending && isCardIncomplete(pid)) return K.act;
               return K.t1;
@@ -2181,39 +2184,53 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             </div>
           ) : makingUp ? (
             /* MAKING UP — visually distinct from Absent. Same dimmed-card
-               structure for consistency, but gold accents (K.acc) and
-               copy that reflects the "match stays open" semantics. The
-               match calc treats this player as having NO scores yet, so
-               the match remains incomplete until either (a) the makeup
-               scores are entered later via Schedule → Edit Scores, or
-               (b) the player's status is cleared and they're scored
-               normally inline. */
-            <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.acc}40`, padding: "12px 14px", marginBottom: 6, opacity: 0.6 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: K.t1 }}>{pl.name}</div>
-                  <span style={{ fontSize: 10, color: K.acc, fontWeight: 700, background: K.acc + "15", padding: "2px 6px", borderRadius: 4 }}>MAKING UP</span>
+               structure for consistency, but gold accents (K.act, maize)
+               so the player reads as "makeup-flagged" at a glance. Two
+               action buttons: Undo (revert to no flag, confirmed) and
+               Play (affirmative "I'm here, let's score now", one-tap).
+               Functionally both clear the attendance flag; the UX framing
+               is what differs.
+               Color-token gotcha: K.act is the maize brand gold (#deab12),
+               K.acc is a light gray. Easy to confuse — makeup should be
+               K.act everywhere it appears. */
+            <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.act}40`, padding: "12px 14px", marginBottom: 6, opacity: 0.6 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{pl.name}</div>
+                  <span style={{ fontSize: 10, color: K.act, fontWeight: 700, background: K.act + "15", padding: "2px 6px", borderRadius: 4, flexShrink: 0 }}>MAKING UP</span>
                 </div>
                 {!isAlreadyFinalized && saveAttendance && (
-                  <button
-                    onClick={() => {
-                      setConfirmModal({
-                        title: `Clear ${pl.name}'s makeup flag?`,
-                        message: `${pl.name} will be marked present and can be scored normally.`,
-                        onConfirm: async () => {
-                          await saveAttendance(week, pid, null);
-                          setConfirmModal(null);
-                        },
-                      });
-                    }}
-                    style={{ fontSize: 11, fontWeight: 700, color: K.hcpBlue, background: "none", border: `1px solid ${K.hcpBlue}40`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}
-                  >
-                    Undo
-                  </button>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <button
+                      onClick={() => {
+                        setConfirmModal({
+                          title: `Clear ${pl.name}'s makeup flag?`,
+                          message: `${pl.name} will be marked present and can be scored normally.`,
+                          onConfirm: async () => {
+                            await saveAttendance(week, pid, null);
+                            setConfirmModal(null);
+                          },
+                        });
+                      }}
+                      style={{ fontSize: 11, fontWeight: 700, color: K.hcpBlue, background: "none", border: `1px solid ${K.hcpBlue}40`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}
+                    >
+                      Undo
+                    </button>
+                    {/* PLAY — affirmative "I'm here, let's score" button.
+                        Same downstream action as Undo (clears attendance)
+                        but framed as a positive action so it doesn't need
+                        a confirm popup. Solid green to read as the primary
+                        path when the player has actually shown up. */}
+                    <button
+                      onClick={async () => {
+                        await saveAttendance(week, pid, null);
+                      }}
+                      style={{ fontSize: 11, fontWeight: 800, color: K.bg, background: K.grn, border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", letterSpacing: .5 }}
+                    >
+                      PLAY
+                    </button>
+                  </div>
                 )}
-              </div>
-              <div style={{ fontSize: 11, color: K.t3, marginTop: 4 }}>
-                Will post score later · match stays open
               </div>
             </div>
           ) : (
