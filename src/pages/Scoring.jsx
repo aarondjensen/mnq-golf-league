@@ -1009,10 +1009,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 return false;
               });
               if (pendingMakeup) {
-                centerText = "MAKEUP";
-                centerColor = K.acc;
-                progressLabel = "PENDING";
-                progressColor = K.acc;
+                centerText = "PENDING";
+                centerColor = K.act;
               } else if (anyScoreEntered) {
                 centerText = "PENDING";
                 centerColor = K.act;
@@ -1037,7 +1035,24 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               }
               return false;
             };
-            const nameColor = (pid) => (isPending && isCardIncomplete(pid)) ? K.act : K.t1;
+            // Name color resolves in priority order:
+            //   1. Attendance "makeup" → K.act gold (explicit announcement)
+            //   2. Attendance "absent" → K.red (explicit announcement)
+            //   3. Live PENDING with incomplete card → K.act gold (waiting on)
+            //   4. Default → K.t1
+            // Attendance flags beat the live-pending signal because they
+            // carry more information ("this player won't be here today")
+            // vs the generic "scoring not complete yet."
+            //
+            // Color-token gotcha: K.act = maize gold (#deab12, brand color),
+            // K.acc = light gray. Easy to confuse — makeup should be K.act.
+            const nameColor = (pid) => {
+              const attnStatus = attendance?.[`w${week}_p${pid}`]?.status;
+              if (attnStatus === "makeup") return K.act;
+              if (attnStatus === "absent") return K.red;
+              if (isPending && isCardIncomplete(pid)) return K.act;
+              return K.t1;
+            };
 
             // ── Map Scoring's per-match data → TeamMatchupCard props ──
             //
@@ -1618,18 +1633,34 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
         <div style={{ background: K.card, border: `1px solid ${K.bdr}`, borderTop: "none", borderRadius: "0 0 8px 8px", overflow: "hidden" }}>
           {(() => {
-            // Rank = "position in ascending order" regardless of current display direction.
-            // So the best score is always rank 1 even when the list is flipped to worst→best.
-            const completeCount = rows.filter(r => r.complete).length;
+            // Traditional golf rank — rank = (count of players with strictly
+            // better score) + 1. Tied players share a rank; the next rank
+            // skips by the tie group size. e.g. 1, 2, T3, T3, 5 (NOT 1, 2,
+            // T3, T4, 5 which is what the old position-based logic produced).
+            //
+            // Both rank and tie status are properties of the score itself,
+            // not the row's position in the displayed list, so the same
+            // values hold whether we're sorted ascending (best first) or
+            // descending (worst first).
+            const completeRows = rows.filter(r => r.complete);
             return rows.map((r, i) => {
               const isMe = r.pid === leagueUser.playerId;
               const isLast = i === rows.length - 1;
               const showRank = r.complete;
-              // True ascending position for this row (1-indexed). In desc mode, top rows are higher rank numbers.
-              const rank = showRank ? (lowNetDir === "asc" ? i + 1 : completeCount - i) : null;
+              // Golf rank: count rows with strictly better score on the
+              // active sort column, then +1. For "asc" (low net is best)
+              // and the typical golf scenario, "better" = lower value.
+              const rank = showRank
+                ? completeRows.filter(other => other[sortKey] < r[sortKey]).length + 1
+                : null;
               const isLeader = rank === 1;
-              // Tied with the prior visible row on the active sort column
-              const tiedAbove = r.complete && i > 0 && rows[i - 1].complete && rows[i - 1][sortKey] === r[sortKey];
+              // A row is tied when at least one OTHER complete row has the
+              // same score on the active sort column. Shows the "T" prefix
+              // on every member of a tied group (rather than just the
+              // second occurrence as the old tiedAbove check did).
+              const isTied = showRank && completeRows.some(other =>
+                other.pid !== r.pid && other[sortKey] === r[sortKey]
+              );
               // Green emphasis follows the active sort column
               const netIsActive = sortKey === "net";
               const grossIsActive = sortKey === "gross";
@@ -1640,7 +1671,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   background: isMe ? K.acc + "12" : "transparent",
                 }}>
                   <div style={{ width: 22, flexShrink: 0, textAlign: "center", fontSize: 12, fontWeight: 700, color: isLeader ? K.matchGrn : K.t3 }}>
-                    {showRank ? (tiedAbove ? "T" : "") + rank : "—"}
+                    {showRank ? (isTied ? "T" : "") + rank : "—"}
                   </div>
                   <div style={{ flex: 1, minWidth: 0, paddingLeft: 8, fontSize: 13, fontWeight: isMe ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {r.name}
@@ -2151,39 +2182,53 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             </div>
           ) : makingUp ? (
             /* MAKING UP — visually distinct from Absent. Same dimmed-card
-               structure for consistency, but gold accents (K.acc) and
-               copy that reflects the "match stays open" semantics. The
-               match calc treats this player as having NO scores yet, so
-               the match remains incomplete until either (a) the makeup
-               scores are entered later via Schedule → Edit Scores, or
-               (b) the player's status is cleared and they're scored
-               normally inline. */
-            <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.acc}40`, padding: "12px 14px", marginBottom: 6, opacity: 0.6 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: K.t1 }}>{pl.name}</div>
-                  <span style={{ fontSize: 10, color: K.acc, fontWeight: 700, background: K.acc + "15", padding: "2px 6px", borderRadius: 4 }}>MAKING UP</span>
+               structure for consistency, but gold accents (K.act, maize)
+               so the player reads as "makeup-flagged" at a glance. Two
+               action buttons: Undo (revert to no flag, confirmed) and
+               Play (affirmative "I'm here, let's score now", one-tap).
+               Functionally both clear the attendance flag; the UX framing
+               is what differs.
+               Color-token gotcha: K.act is the maize brand gold (#deab12),
+               K.acc is a light gray. Easy to confuse — makeup should be
+               K.act everywhere it appears. */
+            <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.act}40`, padding: "12px 14px", marginBottom: 6, opacity: 0.6 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{pl.name}</div>
+                  <span style={{ fontSize: 10, color: K.act, fontWeight: 700, background: K.act + "15", padding: "2px 6px", borderRadius: 4, flexShrink: 0 }}>MAKING UP</span>
                 </div>
                 {!isAlreadyFinalized && saveAttendance && (
-                  <button
-                    onClick={() => {
-                      setConfirmModal({
-                        title: `Clear ${pl.name}'s makeup flag?`,
-                        message: `${pl.name} will be marked present and can be scored normally.`,
-                        onConfirm: async () => {
-                          await saveAttendance(week, pid, null);
-                          setConfirmModal(null);
-                        },
-                      });
-                    }}
-                    style={{ fontSize: 11, fontWeight: 700, color: K.hcpBlue, background: "none", border: `1px solid ${K.hcpBlue}40`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}
-                  >
-                    Undo
-                  </button>
+                  <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                    <button
+                      onClick={() => {
+                        setConfirmModal({
+                          title: `Clear ${pl.name}'s makeup flag?`,
+                          message: `${pl.name} will be marked present and can be scored normally.`,
+                          onConfirm: async () => {
+                            await saveAttendance(week, pid, null);
+                            setConfirmModal(null);
+                          },
+                        });
+                      }}
+                      style={{ fontSize: 11, fontWeight: 700, color: K.hcpBlue, background: "none", border: `1px solid ${K.hcpBlue}40`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}
+                    >
+                      Undo
+                    </button>
+                    {/* PLAY — affirmative "I'm here, let's score" button.
+                        Same downstream action as Undo (clears attendance)
+                        but framed as a positive action so it doesn't need
+                        a confirm popup. Solid green to read as the primary
+                        path when the player has actually shown up. */}
+                    <button
+                      onClick={async () => {
+                        await saveAttendance(week, pid, null);
+                      }}
+                      style={{ fontSize: 11, fontWeight: 800, color: K.bg, background: K.grn, border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", letterSpacing: .5 }}
+                    >
+                      PLAY
+                    </button>
+                  </div>
                 )}
-              </div>
-              <div style={{ fontSize: 11, color: K.t3, marginTop: 4 }}>
-                Will post score later · match stays open
               </div>
             </div>
           ) : (
