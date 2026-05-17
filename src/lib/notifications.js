@@ -13,17 +13,9 @@
 // by playerId, sending the push to every token saved against a player.
 // Multi-device support comes for free: each browser (work laptop + phone
 // PWA, etc.) gets its own token and is added independently.
-//
-// Module load policy: firebase/messaging is imported DYNAMICALLY inside
-// the functions that use it, NOT at the top of this file. This matters
-// because importing firebase/messaging synchronously can fail on iOS
-// Safari < 16.4 / non-secure contexts / browsers without Notification
-// API — that failure would propagate to the consumer (the route module
-// in NotificationsSettings.jsx) and cause the entire page chunk to fail
-// to evaluate. Dynamic imports contain the failure to the specific
-// function call, so the page always renders even when push is unsupported.
 
-import { db, LEAGUE_ID, getMessagingInstance } from "../firebase";
+import { getToken, onMessage, deleteToken } from "firebase/messaging";
+import { getMessagingInstance, db, LEAGUE_ID } from "../firebase";
 
 // ─── VAPID public key ───────────────────────────────────────────────────
 // Generated in Firebase Console: Project Settings → Cloud Messaging →
@@ -34,7 +26,7 @@ import { db, LEAGUE_ID, getMessagingInstance } from "../firebase";
 // REPLACE this placeholder with the public key from Firebase Console
 // before deploying. The app will work without it (in-app state is sane)
 // but no push notifications will ever fire until this is filled in.
-const VAPID_PUBLIC_KEY = "REPLACE_WITH_VAPID_PUBLIC_KEY_FROM_FIREBASE_CONSOLE";
+const VAPID_PUBLIC_KEY = "BPHCLmvYDg5QBwHFnMVIn5aLeQHY2BTk2UHtihRVeA114PdrUEMBiBuB7UF81vJ4Fvc-cKvJUjccJSEVv8JWVKw";
 
 // ─── Permission state ───────────────────────────────────────────────────
 // Returns one of:
@@ -54,17 +46,10 @@ export const getNotificationPermissionState = () => {
 // Idempotent: registers once and caches the registration for token requests.
 // Registration is at /firebase-messaging-sw.js (Vite serves /public/ at root).
 // scope: "/" so the SW controls the whole app.
-//
-// Returns the registration, or an object { error: string } on failure so
-// the caller can surface a meaningful error message. Most common failure
-// is a 404 (the SW file wasn't deployed — likely the public/firebase-
-// messaging-sw.js wasn't copied into the local repo's public/ folder).
 let _swRegistration = null;
 const registerServiceWorker = async () => {
   if (_swRegistration) return _swRegistration;
-  if (!("serviceWorker" in navigator)) {
-    return { error: "Service Worker not supported by this browser" };
-  }
+  if (!("serviceWorker" in navigator)) return null;
   try {
     _swRegistration = await navigator.serviceWorker.register(
       "/firebase-messaging-sw.js",
@@ -72,11 +57,8 @@ const registerServiceWorker = async () => {
     );
     return _swRegistration;
   } catch (e) {
-    // Capture both common failures: SecurityError (HTTPS missing),
-    // TypeError (file not found or wrong MIME), bad scope, etc.
-    const detail = e?.message || String(e);
-    console.error("Service worker registration failed:", detail, e);
-    return { error: detail };
+    console.error("Service worker registration failed:", e);
+    return null;
   }
 };
 
@@ -111,13 +93,7 @@ export const registerForPush = async (playerId) => {
 
   // Register SW (or get cached registration) and check FCM support
   const reg = await registerServiceWorker();
-  if (!reg || reg.error) {
-    return {
-      success: false,
-      state: "error",
-      error: reg?.error ? `Service worker: ${reg.error}` : "sw_registration_failed",
-    };
-  }
+  if (!reg) return { success: false, state: "error", error: "sw_registration_failed" };
 
   const messaging = await getMessagingInstance();
   if (!messaging) return { success: false, state: "unsupported" };
@@ -133,7 +109,6 @@ export const registerForPush = async (playerId) => {
   //   3. Stable across SW restarts; rotates infrequently (months)
   let token;
   try {
-    const { getToken } = await import("firebase/messaging");
     token = await getToken(messaging, {
       vapidKey: VAPID_PUBLIC_KEY,
       serviceWorkerRegistration: reg,
@@ -163,25 +138,6 @@ export const registerForPush = async (playerId) => {
   return { success: true, state: "granted", token };
 };
 
-// ─── Subscription status check ──────────────────────────────────────────
-// Returns true if there's at least one active token registered for this
-// player. Used by the settings page on mount to show the correct state
-// — distinct from browser permission, which stays "granted" forever once
-// given and can't tell us whether the user actively unsubscribed.
-export const checkSubscriptionStatus = async (playerId) => {
-  if (!playerId) return false;
-  try {
-    const docs = await db.get("league_notifications_tokens", [
-      { field: "league_id", op: "==", value: LEAGUE_ID },
-      { field: "playerId", op: "==", value: playerId },
-    ]);
-    return docs.length > 0;
-  } catch (e) {
-    console.warn("checkSubscriptionStatus failed:", e);
-    return false;
-  }
-};
-
 // ─── Unsubscribe ────────────────────────────────────────────────────────
 // Two phases: delete the token on the FCM side (stops the push endpoint
 // from accepting messages for this device) AND delete the Firestore doc
@@ -190,10 +146,7 @@ export const checkSubscriptionStatus = async (playerId) => {
 export const unsubscribeFromPush = async (playerId) => {
   const messaging = await getMessagingInstance();
   if (messaging) {
-    try {
-      const { deleteToken } = await import("firebase/messaging");
-      await deleteToken(messaging);
-    } catch (e) { console.warn("deleteToken failed:", e); }
+    try { await deleteToken(messaging); } catch (e) { console.warn("deleteToken failed:", e); }
   }
   // Clean up all token docs for this player. Multi-device users get all
   // their devices unsubscribed at once — which is the right behavior since
@@ -220,7 +173,6 @@ export const initForegroundNotifications = async () => {
   if (_foregroundUnsub) return; // idempotent
   const messaging = await getMessagingInstance();
   if (!messaging) return;
-  const { onMessage } = await import("firebase/messaging");
   _foregroundUnsub = onMessage(messaging, (payload) => {
     const { title = "MnQ Golf", body = "" } = payload.notification || {};
     const data = payload.data || {};
