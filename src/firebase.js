@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, doc, setDoc, getDocs, query, where, writeBatch, onSnapshot, deleteDoc } from "firebase/firestore";
 import { getAuth, signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, onAuthStateChanged, signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
+import { getMessaging, isSupported as isMessagingSupported } from "firebase/messaging";
 
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDW3tTWxOlrPoKiflmlh_6JPLe8vbvVEUE",
@@ -17,6 +18,32 @@ const _app = initializeApp(FIREBASE_CONFIG);
 const _db = getFirestore(_app);
 export const _auth = getAuth(_app);
 export const _googleProvider = new GoogleAuthProvider();
+
+// ─── Firebase Cloud Messaging ──────────────────────────────────────────
+// Messaging only exists in environments with a Service Worker + Push API
+// + Notifications API. iOS Safari < 16.4 lacks Push API entirely; older
+// browsers may lack one or more. isSupported() does the runtime check;
+// the lazy init below avoids crashing in unsupported environments.
+//
+// Use case: src/lib/notifications.js calls getMessagingInstance() and
+// gates everything else on a non-null return.
+let _messaging = null;
+let _messagingChecked = false;
+export const getMessagingInstance = async () => {
+  if (_messagingChecked) return _messaging;
+  _messagingChecked = true;
+  try {
+    const supported = await isMessagingSupported();
+    if (!supported) return null;
+    _messaging = getMessaging(_app);
+    return _messaging;
+  } catch (e) {
+    // Some browsers throw rather than returning false from isSupported.
+    // Treat any error as "not supported" — Phase 1 is best-effort.
+    console.warn("Firebase Messaging unavailable:", e?.message || e);
+    return null;
+  }
+};
 
 // Firestore writeBatch hard limit is 500 ops per commit. We chunk to 500 so
 // each batch is a single atomic transaction (not 500 parallel network calls).

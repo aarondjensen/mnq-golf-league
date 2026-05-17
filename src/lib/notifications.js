@@ -1,0 +1,249 @@
+// ─────────────────────────────────────────────────────────────────────────
+//  src/lib/notifications.js — push notification client helpers
+// ─────────────────────────────────────────────────────────────────────────
+// Owns the entire client-side push lifecycle:
+//   1. Service worker registration
+//   2. Permission request flow
+//   3. FCM token acquisition
+//   4. Token persistence to Firestore (so Cloud Functions can target it)
+//   5. Foreground message rendering (FCM doesn't auto-show in foreground)
+//   6. Unsubscribe / token revocation
+//
+// The Cloud Functions side reads from `league_notifications_tokens` keyed
+// by playerId, sending the push to every token saved against a player.
+// Multi-device support comes for free: each browser (work laptop + phone
+// PWA, etc.) gets its own token and is added independently.
+
+import { getToken, onMessage, deleteToken } from "firebase/messaging";
+import { getMessagingInstance, db, LEAGUE_ID } from "../firebase";
+
+// ─── VAPID public key ───────────────────────────────────────────────────
+// Generated in Firebase Console: Project Settings → Cloud Messaging →
+// Web configuration → "Web Push certificates" → Generate key pair.
+// The PUBLIC key goes here (safe to commit). The PRIVATE key stays in
+// Cloud Functions and is never exposed to the browser.
+//
+// REPLACE this placeholder with the public key from Firebase Console
+// before deploying. The app will work without it (in-app state is sane)
+// but no push notifications will ever fire until this is filled in.
+const VAPID_PUBLIC_KEY = "REPLACE_WITH_VAPID_PUBLIC_KEY_FROM_FIREBASE_CONSOLE";
+
+// ─── Permission state ───────────────────────────────────────────────────
+// Returns one of:
+//   "unsupported" — browser lacks Notification API or SW or Push API
+//   "default"     — never asked
+//   "granted"     — user said yes
+//   "denied"      — user said no (can't re-prompt; must direct to settings)
+export const getNotificationPermissionState = () => {
+  if (typeof window === "undefined") return "unsupported";
+  if (!("Notification" in window) || !("serviceWorker" in navigator)) {
+    return "unsupported";
+  }
+  return Notification.permission; // "default" | "granted" | "denied"
+};
+
+// ─── Service worker registration ───────────────────────────────────────
+// Idempotent: registers once and caches the registration for token requests.
+// Registration is at /firebase-messaging-sw.js (Vite serves /public/ at root).
+// scope: "/" so the SW controls the whole app.
+let _swRegistration = null;
+const registerServiceWorker = async () => {
+  if (_swRegistration) return _swRegistration;
+  if (!("serviceWorker" in navigator)) return null;
+  try {
+    _swRegistration = await navigator.serviceWorker.register(
+      "/firebase-messaging-sw.js",
+      { scope: "/" }
+    );
+    return _swRegistration;
+  } catch (e) {
+    console.error("Service worker registration failed:", e);
+    return null;
+  }
+};
+
+// ─── Main entry point: register for push notifications ─────────────────
+// Returns { success: boolean, state: string, error?: string }
+// state is one of: "granted", "denied", "unsupported", "no_token", "error"
+//
+// Call this from the Notifications settings page when the user taps "Enable."
+// Triggered by user gesture so iOS Safari shows the permission prompt
+// (it suppresses requestPermission() calls that aren't user-initiated).
+export const registerForPush = async (playerId) => {
+  if (!playerId) {
+    return { success: false, state: "error", error: "missing playerId" };
+  }
+  if (getNotificationPermissionState() === "unsupported") {
+    return { success: false, state: "unsupported" };
+  }
+
+  // Ask permission. If already granted, this is a no-op that returns "granted".
+  // If denied, the browser refuses to re-prompt — user must go to browser
+  // settings to undo. We surface that state distinctly so the UI can show
+  // "you've blocked notifications, here's how to unblock."
+  let permission;
+  try {
+    permission = await Notification.requestPermission();
+  } catch (e) {
+    return { success: false, state: "error", error: e.message };
+  }
+  if (permission !== "granted") {
+    return { success: false, state: permission };
+  }
+
+  // Register SW (or get cached registration) and check FCM support
+  const reg = await registerServiceWorker();
+  if (!reg) return { success: false, state: "error", error: "sw_registration_failed" };
+
+  const messaging = await getMessagingInstance();
+  if (!messaging) return { success: false, state: "unsupported" };
+
+  if (!VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY.startsWith("REPLACE")) {
+    console.warn("VAPID public key not configured — push won't fire");
+    return { success: false, state: "error", error: "vapid_key_missing" };
+  }
+
+  // Acquire FCM token. This call:
+  //   1. Subscribes the SW to the FCM push endpoint
+  //   2. Returns a token uniquely identifying this browser instance
+  //   3. Stable across SW restarts; rotates infrequently (months)
+  let token;
+  try {
+    token = await getToken(messaging, {
+      vapidKey: VAPID_PUBLIC_KEY,
+      serviceWorkerRegistration: reg,
+    });
+  } catch (e) {
+    console.error("FCM getToken failed:", e);
+    return { success: false, state: "error", error: e.message };
+  }
+  if (!token) return { success: false, state: "no_token" };
+
+  // Persist token to Firestore so Cloud Functions can target this device.
+  // Doc id encodes (player, token-hash) so a player with multiple devices
+  // gets multiple docs; revoking one doesn't affect the others.
+  // Hash because raw FCM tokens are ~160 chars — too long for a clean doc id.
+  const tokenHash = await sha256Short(token);
+  const docId = `${LEAGUE_ID}_p${playerId}_${tokenHash}`;
+  await db.upsert("league_notifications_tokens", {
+    id: docId,
+    league_id: LEAGUE_ID,
+    playerId,
+    token,
+    userAgent: navigator.userAgent.slice(0, 200), // helps Aaron debug stale tokens
+    registeredAt: Date.now(),
+    lastSeenAt: Date.now(),
+  });
+
+  return { success: true, state: "granted", token };
+};
+
+// ─── Unsubscribe ────────────────────────────────────────────────────────
+// Two phases: delete the token on the FCM side (stops the push endpoint
+// from accepting messages for this device) AND delete the Firestore doc
+// (stops Cloud Functions from trying to send). Both are best-effort —
+// if one fails, the user is still functionally unsubscribed in the UI.
+export const unsubscribeFromPush = async (playerId) => {
+  const messaging = await getMessagingInstance();
+  if (messaging) {
+    try { await deleteToken(messaging); } catch (e) { console.warn("deleteToken failed:", e); }
+  }
+  // Clean up all token docs for this player. Multi-device users get all
+  // their devices unsubscribed at once — which is the right behavior since
+  // the toggle is a per-user preference, not per-device.
+  if (playerId) {
+    const docs = await db.get("league_notifications_tokens", [
+      { field: "league_id", op: "==", value: LEAGUE_ID },
+      { field: "playerId", op: "==", value: playerId },
+    ]);
+    await Promise.all(docs.map(d => db.deleteDoc("league_notifications_tokens", d.id)));
+  }
+  return { success: true };
+};
+
+// ─── Foreground message handler ────────────────────────────────────────
+// FCM splits foreground vs background message delivery: when the app tab
+// is open and focused, onMessage fires INSTEAD OF the SW's onBackgroundMessage.
+// To keep behavior consistent (push always shows a notification regardless
+// of app state) we re-render the notification here using the same payload.
+//
+// Call this once from App.jsx on mount.
+let _foregroundUnsub = null;
+export const initForegroundNotifications = async () => {
+  if (_foregroundUnsub) return; // idempotent
+  const messaging = await getMessagingInstance();
+  if (!messaging) return;
+  _foregroundUnsub = onMessage(messaging, (payload) => {
+    const { title = "MnQ Golf", body = "" } = payload.notification || {};
+    const data = payload.data || {};
+    // Use the SW registration's showNotification (not new Notification(...))
+    // because the latter is restricted/inconsistent across browsers.
+    if (_swRegistration) {
+      _swRegistration.showNotification(title, {
+        body,
+        icon: "/favicon/web-app-manifest-192x192.png",
+        badge: "/favicon/web-app-manifest-192x192.png",
+        data,
+        tag: data.type || "default",
+        renotify: true,
+      });
+    }
+  });
+};
+
+// ─── App badge management from page context ───────────────────────────
+// Call this when the user opens the app or navigates to a page that
+// "consumes" pending notifications. Sends a message to the SW which
+// owns the canonical badge state (counts survive SW restart via IDB).
+export const clearAppBadge = async () => {
+  if (typeof navigator === "undefined") return;
+  // Try direct API first — works on the page context too on most browsers
+  if (navigator.clearAppBadge) {
+    try { await navigator.clearAppBadge(); } catch { /* swallow */ }
+  }
+  // And tell the SW so its IDB state is reset too
+  if (navigator.serviceWorker?.controller) {
+    navigator.serviceWorker.controller.postMessage({ type: "CLEAR_BADGE" });
+  }
+};
+
+// ─── Detect installed PWA ──────────────────────────────────────────────
+// iOS specifically: web push only works when launched from the home
+// screen, NOT in a regular Safari tab. This helper drives the "install
+// to home screen first" onboarding nudge.
+export const isStandalonePWA = () => {
+  if (typeof window === "undefined") return false;
+  // iOS-specific: navigator.standalone is the only reliable signal there.
+  // Chrome/Edge/Firefox use the standard display-mode media query.
+  return (
+    window.navigator.standalone === true ||
+    window.matchMedia?.("(display-mode: standalone)").matches === true
+  );
+};
+
+// ─── iOS Safari version detection ──────────────────────────────────────
+// Push on iOS requires 16.4+. Below that the install-to-home-screen
+// onboarding should explain that an OS upgrade is needed.
+export const isIOSPushCapable = () => {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  const isIOS = /iPhone|iPad|iPod/.test(ua);
+  if (!isIOS) return true; // non-iOS users are pre-qualified
+  const match = ua.match(/OS (\d+)_(\d+)/);
+  if (!match) return false;
+  const [major, minor] = [parseInt(match[1], 10), parseInt(match[2], 10)];
+  return major > 16 || (major === 16 && minor >= 4);
+};
+
+// ─── Helpers ───────────────────────────────────────────────────────────
+// Short hash of the FCM token used as part of the doc id. Web Crypto
+// SHA-256 is universally available; we take the first 16 hex chars
+// (64 bits) which is plenty for collision avoidance at our scale.
+const sha256Short = async (input) => {
+  const buf = new TextEncoder().encode(input);
+  const hash = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(hash))
+    .slice(0, 8)
+    .map(b => b.toString(16).padStart(2, "0"))
+    .join("");
+};

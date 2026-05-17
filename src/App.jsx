@@ -17,6 +17,7 @@ const PlayersView = lazy(() => import("./pages/Players"));
 const StatsView = lazy(() => import("./pages/Stats"));
 const CTPView = lazy(() => import("./pages/CTP"));
 const AdminView = lazy(() => import("./pages/Admin"));
+const NotificationsSettings = lazy(() => import("./pages/NotificationsSettings"));
 
 
 export default function GolfLeagueApp() {
@@ -110,6 +111,21 @@ export default function GolfLeagueApp() {
     window.addEventListener("hashchange", onHashChange);
     if (!window.location.hash) window.location.hash = "standings";
     return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  // ── Push notification foreground handler ─────────────────────────────
+  // Mounts once at app start. When the app is in the foreground, FCM
+  // delivers messages via onMessage (NOT the SW's onBackgroundMessage),
+  // and Chrome/Firefox don't auto-show a notification UI for those. This
+  // handler bridges that gap by manually calling showNotification on the
+  // SW registration, so the user sees the same banner either way.
+  // Safe to run on every page including unauthed — the helper bails
+  // internally if FCM isn't supported.
+  useEffect(() => {
+    import("./lib/notifications").then(mod => mod.initForegroundNotifications());
+    // Also clear app badge whenever the user opens the app — they're
+    // here now, so any pending notification count is consumed.
+    import("./lib/notifications").then(mod => mod.clearAppBadge());
   }, []);
 
   const [showMore, setShowMore] = useState(false);
@@ -778,6 +794,7 @@ export default function GolfLeagueApp() {
     ...(isComm ? [{ id: "admin", label: "Admin", icon: "settings" }] : []),
     { id: "stats", label: "Stats", icon: "barChart" },
     { id: "ctp", label: "CTP", icon: "target" },
+    { id: "notifications", label: "Notifications", icon: "bell" },
     { id: "signout", label: "Sign Out", icon: "key" },
   ];
 
@@ -955,6 +972,7 @@ export default function GolfLeagueApp() {
           {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} dataLoaded={dataLoaded} />}
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
           {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} isComm={isComm} saveCtp={saveCtp} />}
+          {tab === "notifications" && <NotificationsSettings leagueUser={effectiveUser} appToast={appToast} />}
           {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} saveMatchResult={saveMatchResult} resetSeasonData={resetSeasonData} importHistoricalScores={importHistoricalScores} recalcHandicaps={recalcHandicaps} autoSeedIfReady={autoSeedIfReady} clearWeekData={clearWeekData} />}
           </Suspense>
           </ErrorBoundary>
