@@ -1,7 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, doc, setDoc, getDocs, query, where, writeBatch, onSnapshot, deleteDoc } from "firebase/firestore";
 import { getAuth, signInWithPopup, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, onAuthStateChanged, signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
-import { getMessaging, isSupported as isMessagingSupported } from "firebase/messaging";
 
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDW3tTWxOlrPoKiflmlh_6JPLe8vbvVEUE",
@@ -19,21 +18,25 @@ const _db = getFirestore(_app);
 export const _auth = getAuth(_app);
 export const _googleProvider = new GoogleAuthProvider();
 
-// ─── Firebase Cloud Messaging ──────────────────────────────────────────
+// ─── Firebase Cloud Messaging (lazy-loaded) ─────────────────────────────
 // Messaging only exists in environments with a Service Worker + Push API
 // + Notifications API. iOS Safari < 16.4 lacks Push API entirely; older
-// browsers may lack one or more. isSupported() does the runtime check;
-// the lazy init below avoids crashing in unsupported environments.
+// browsers may lack one or more.
 //
-// Use case: src/lib/notifications.js calls getMessagingInstance() and
-// gates everything else on a non-null return.
+// CRITICAL: This module is imported by every page. A top-level import of
+// firebase/messaging would force every page chunk to depend on the
+// messaging SDK, and any failure (unsupported browser, network issue
+// fetching the chunk) would cascade into "page won't render at all."
+// Dynamic-importing inside the function limits the blast radius — pages
+// load fine even when messaging is broken; only the explicit caller fails.
 let _messaging = null;
 let _messagingChecked = false;
 export const getMessagingInstance = async () => {
   if (_messagingChecked) return _messaging;
   _messagingChecked = true;
   try {
-    const supported = await isMessagingSupported();
+    const { getMessaging, isSupported } = await import("firebase/messaging");
+    const supported = await isSupported();
     if (!supported) return null;
     _messaging = getMessaging(_app);
     return _messaging;

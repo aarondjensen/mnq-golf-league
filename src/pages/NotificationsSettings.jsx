@@ -6,6 +6,7 @@ import {
   getNotificationPermissionState,
   isStandalonePWA,
   isIOSPushCapable,
+  checkSubscriptionStatus,
 } from "../lib/notifications";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -27,6 +28,12 @@ import {
 // so we show "install to home screen first" with brief steps.
 export default function NotificationsSettings({ leagueUser, appToast }) {
   const [permission, setPermission] = useState("default");
+  // Whether the user has an active token registration in Firestore.
+  // Distinct from browser permission state because the user can disable
+  // notifications in our app (deleting the token) without revoking the
+  // browser permission — and re-enable later without a re-prompt. The
+  // UI status reflects subscribed-ness, not permission alone.
+  const [subscribed, setSubscribed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [standalone, setStandalone] = useState(true);
   const [iosOk, setIosOk] = useState(true);
@@ -35,7 +42,14 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
     setPermission(getNotificationPermissionState());
     setStandalone(isStandalonePWA());
     setIosOk(isIOSPushCapable());
-  }, []);
+    // Check Firestore for an existing token — covers the case where
+    // the user previously enabled notifications on this device, killed
+    // the app, and reopened it. We want the UI to show "Enabled" instead
+    // of asking them to re-enable when they've already done so.
+    if (leagueUser?.playerId) {
+      checkSubscriptionStatus(leagueUser.playerId).then(setSubscribed);
+    }
+  }, [leagueUser?.playerId]);
 
   const handleEnable = async () => {
     if (!leagueUser?.playerId) {
@@ -47,6 +61,7 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
     setBusy(false);
     setPermission(getNotificationPermissionState());
     if (result.success) {
+      setSubscribed(true);
       appToast?.("Notifications enabled", "success");
     } else if (result.state === "denied" || result.state === "unsupported") {
       // Both are expected outcomes that the status card on this page
@@ -66,6 +81,7 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
     setBusy(true);
     await unsubscribeFromPush(leagueUser.playerId);
     setBusy(false);
+    setSubscribed(false);
     setPermission(getNotificationPermissionState());
     appToast?.("Notifications disabled", "success");
   };
@@ -151,9 +167,11 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
   // ──────────────────────────────────────────────────────────────────────
   return (
     <div>
-      {/* Status card — adapts copy + button to current permission state */}
+      {/* Status card — adapts copy + button to current state. Note this
+          reads `subscribed`, not `permission` — they can diverge if the
+          user disables in our app without revoking browser permission. */}
       <Card style={{ padding: "16px 18px", marginBottom: 12 }}>
-        {permission === "granted" ? (
+        {subscribed ? (
           <>
             <div style={{ fontSize: 14, fontWeight: 700, color: K.grn, marginBottom: 4 }}>
               ✓ Enabled

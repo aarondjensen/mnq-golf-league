@@ -13,9 +13,17 @@
 // by playerId, sending the push to every token saved against a player.
 // Multi-device support comes for free: each browser (work laptop + phone
 // PWA, etc.) gets its own token and is added independently.
+//
+// Module load policy: firebase/messaging is imported DYNAMICALLY inside
+// the functions that use it, NOT at the top of this file. This matters
+// because importing firebase/messaging synchronously can fail on iOS
+// Safari < 16.4 / non-secure contexts / browsers without Notification
+// API — that failure would propagate to the consumer (the route module
+// in NotificationsSettings.jsx) and cause the entire page chunk to fail
+// to evaluate. Dynamic imports contain the failure to the specific
+// function call, so the page always renders even when push is unsupported.
 
-import { getToken, onMessage, deleteToken } from "firebase/messaging";
-import { getMessagingInstance, db, LEAGUE_ID } from "../firebase";
+import { db, LEAGUE_ID, getMessagingInstance } from "../firebase";
 
 // ─── VAPID public key ───────────────────────────────────────────────────
 // Generated in Firebase Console: Project Settings → Cloud Messaging →
@@ -109,6 +117,7 @@ export const registerForPush = async (playerId) => {
   //   3. Stable across SW restarts; rotates infrequently (months)
   let token;
   try {
+    const { getToken } = await import("firebase/messaging");
     token = await getToken(messaging, {
       vapidKey: VAPID_PUBLIC_KEY,
       serviceWorkerRegistration: reg,
@@ -138,6 +147,25 @@ export const registerForPush = async (playerId) => {
   return { success: true, state: "granted", token };
 };
 
+// ─── Subscription status check ──────────────────────────────────────────
+// Returns true if there's at least one active token registered for this
+// player. Used by the settings page on mount to show the correct state
+// — distinct from browser permission, which stays "granted" forever once
+// given and can't tell us whether the user actively unsubscribed.
+export const checkSubscriptionStatus = async (playerId) => {
+  if (!playerId) return false;
+  try {
+    const docs = await db.get("league_notifications_tokens", [
+      { field: "league_id", op: "==", value: LEAGUE_ID },
+      { field: "playerId", op: "==", value: playerId },
+    ]);
+    return docs.length > 0;
+  } catch (e) {
+    console.warn("checkSubscriptionStatus failed:", e);
+    return false;
+  }
+};
+
 // ─── Unsubscribe ────────────────────────────────────────────────────────
 // Two phases: delete the token on the FCM side (stops the push endpoint
 // from accepting messages for this device) AND delete the Firestore doc
@@ -146,7 +174,10 @@ export const registerForPush = async (playerId) => {
 export const unsubscribeFromPush = async (playerId) => {
   const messaging = await getMessagingInstance();
   if (messaging) {
-    try { await deleteToken(messaging); } catch (e) { console.warn("deleteToken failed:", e); }
+    try {
+      const { deleteToken } = await import("firebase/messaging");
+      await deleteToken(messaging);
+    } catch (e) { console.warn("deleteToken failed:", e); }
   }
   // Clean up all token docs for this player. Multi-device users get all
   // their devices unsubscribed at once — which is the right behavior since
@@ -173,6 +204,7 @@ export const initForegroundNotifications = async () => {
   if (_foregroundUnsub) return; // idempotent
   const messaging = await getMessagingInstance();
   if (!messaging) return;
+  const { onMessage } = await import("firebase/messaging");
   _foregroundUnsub = onMessage(messaging, (payload) => {
     const { title = "MnQ Golf", body = "" } = payload.notification || {};
     const data = payload.data || {};
