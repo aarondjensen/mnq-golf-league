@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { K, Card, SubLabel, LoadingPanel } from "../theme";
+import { K, Card, SubLabel } from "../theme";
 import {
   registerForPush,
   unsubscribeFromPush,
@@ -47,12 +47,16 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
     setBusy(false);
     setPermission(getNotificationPermissionState());
     if (result.success) {
-      appToast?.("Notifications enabled!", "success");
-    } else if (result.state === "denied") {
-      appToast?.("Notifications were blocked — see help below", "error");
-    } else if (result.state === "unsupported") {
-      appToast?.("Notifications not supported on this browser", "error");
+      appToast?.("Notifications enabled", "success");
+    } else if (result.state === "denied" || result.state === "unsupported") {
+      // Both are expected outcomes that the status card on this page
+      // already explains clearly. Skipping the toast avoids the big
+      // red error banner for what's really just an informational state.
+      // The card text below the button does the explaining.
     } else {
+      // Truly unexpected failure (VAPID key missing, SW registration
+      // failed, FCM token fetch errored). These need debugging attention,
+      // so the error toast IS appropriate here.
       appToast?.(`Couldn't enable: ${result.error || result.state}`, "error");
     }
   };
@@ -102,7 +106,6 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
   if (!iosOk) {
     return (
       <div>
-        <SubLabel>Notifications</SubLabel>
         <Card style={{ padding: "16px 18px", marginBottom: 12 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: K.t1, marginBottom: 6 }}>
             iOS update required
@@ -125,7 +128,6 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
   if (needsInstall) {
     return (
       <div>
-        <SubLabel>Notifications</SubLabel>
         <Card style={{ padding: "16px 18px", marginBottom: 12 }}>
           <div style={{ fontSize: 14, fontWeight: 700, color: K.t1, marginBottom: 6 }}>
             Install to home screen first
@@ -149,8 +151,6 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
   // ──────────────────────────────────────────────────────────────────────
   return (
     <div>
-      <SubLabel>Notifications</SubLabel>
-
       {/* Status card — adapts copy + button to current permission state */}
       <Card style={{ padding: "16px 18px", marginBottom: 12 }}>
         {permission === "granted" ? (

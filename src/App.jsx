@@ -10,14 +10,43 @@ import { Popup } from "./components/Popup";
 
 // Fix #2: Lazy-load page components — Vite will code-split each into its own chunk.
 // Only the active tab's code is downloaded and parsed on navigation.
-const StandingsView = lazy(() => import("./pages/Standings"));
-const LiveScoringView = lazy(() => import("./pages/Scoring"));
-const ScheduleView = lazy(() => import("./pages/Schedule"));
-const PlayersView = lazy(() => import("./pages/Players"));
-const StatsView = lazy(() => import("./pages/Stats"));
-const CTPView = lazy(() => import("./pages/CTP"));
-const AdminView = lazy(() => import("./pages/Admin"));
-const NotificationsSettings = lazy(() => import("./pages/NotificationsSettings"));
+// ── Retry helper for lazy() route imports ────────────────────────────
+// Dynamic import() can fail transiently on slow/flaky mobile networks —
+// the chunk request times out, the promise rejects, React's Suspense
+// catches it and bails. Visible symptom: tab is tapped, screen briefly
+// flashes the fallback, then reverts to the previously-rendered tab.
+// Tapping the tab again often succeeds because the browser has cached
+// the in-flight request.
+//
+// This helper retries up to 3 times with a 400ms backoff on each attempt.
+// React only sees the eventual resolve/reject, so it's transparent to
+// the Suspense boundary. Production tradeoff: a hard failure now takes
+// ~1.2s to surface instead of immediate, but immediate failure was
+// invisible to the user anyway (screen just stayed put), so the trade
+// is strictly positive.
+const lazyWithRetry = (importFn) => lazy(async () => {
+  let lastErr;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await importFn();
+    } catch (err) {
+      lastErr = err;
+      if (attempt < 2) {
+        await new Promise(r => setTimeout(r, 400));
+      }
+    }
+  }
+  throw lastErr;
+});
+
+const StandingsView = lazyWithRetry(() => import("./pages/Standings"));
+const LiveScoringView = lazyWithRetry(() => import("./pages/Scoring"));
+const ScheduleView = lazyWithRetry(() => import("./pages/Schedule"));
+const PlayersView = lazyWithRetry(() => import("./pages/Players"));
+const StatsView = lazyWithRetry(() => import("./pages/Stats"));
+const CTPView = lazyWithRetry(() => import("./pages/CTP"));
+const AdminView = lazyWithRetry(() => import("./pages/Admin"));
+const NotificationsSettings = lazyWithRetry(() => import("./pages/NotificationsSettings"));
 
 
 export default function GolfLeagueApp() {
