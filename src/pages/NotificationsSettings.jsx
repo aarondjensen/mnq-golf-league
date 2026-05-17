@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { K, Card, SubLabel } from "../theme";
+import { K, Card } from "../theme";
 import {
   registerForPush,
   unsubscribeFromPush,
@@ -86,30 +86,14 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
     appToast?.("Notifications disabled", "success");
   };
 
-  // Notification types the user will receive. Pulled into a const so it's
-  // easy to add/remove as we ship more triggers without touching the JSX.
-  // Phase 1 ships infrastructure only; Phase 2 wires these triggers up.
+  // Notification types the user will receive. Titles only — they're
+  // descriptive enough; sub-text was noise on a settings list that's
+  // really a quick reference.
   const TYPES = [
-    {
-      icon: "🏆",
-      title: "Weekly results finalized",
-      body: "When the commissioner closes out the week, you'll see the recap.",
-    },
-    {
-      icon: "✍️",
-      title: "Time to attest your scorecard",
-      body: "After all scores are in, you'll be reminded to sign off on your match.",
-    },
-    {
-      icon: "🌧️",
-      title: "Week rained out",
-      body: "If the commissioner calls off league night, you'll know right away.",
-    },
-    {
-      icon: "👋",
-      title: "Player marked out in your match",
-      body: "When someone in your match marks themselves Absent or Making Up.",
-    },
+    { icon: "🏆", title: "Weekly results finalized" },
+    { icon: "✍️", title: "Time to attest your scorecard" },
+    { icon: "🌧️", title: "Week rained out" },
+    { icon: "👋", title: "Player marked out in your match" },
   ];
 
   // ──────────────────────────────────────────────────────────────────────
@@ -212,12 +196,6 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
           </>
         ) : (
           <>
-            <div style={{ fontSize: 14, fontWeight: 700, color: K.t1, marginBottom: 4 }}>
-              Stay in the loop
-            </div>
-            <div style={{ fontSize: 12, color: K.t2, lineHeight: 1.5, marginBottom: 14 }}>
-              Get notified when league nights are rained out, when results are finalized, and when it's time to attest your scorecard.
-            </div>
             <button
               onClick={handleEnable}
               disabled={busy}
@@ -235,17 +213,13 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
         )}
       </Card>
 
-      {/* What you'll get — explanatory list of trigger types */}
-      <SubLabel>What you'll get</SubLabel>
+      {/* List of notification types — titles only, icons for rhythm */}
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {TYPES.map((t, i) => (
           <Card key={i} style={{ padding: "10px 14px" }}>
-            <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
               <div style={{ fontSize: 20, lineHeight: 1, flexShrink: 0 }}>{t.icon}</div>
-              <div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: K.t1, marginBottom: 2 }}>{t.title}</div>
-                <div style={{ fontSize: 11, color: K.t2, lineHeight: 1.4 }}>{t.body}</div>
-              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: K.t1 }}>{t.title}</div>
             </div>
           </Card>
         ))}
