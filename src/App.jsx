@@ -122,7 +122,7 @@ export default function GolfLeagueApp() {
   const [membersLoaded, setMembersLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [liveWeek, setLiveWeek] = useState(null);
-  const validTabs = ["standings", "scoring", "schedule", "players", "stats", "ctp", "admin"];
+  const validTabs = ["standings", "scoring", "schedule", "players", "stats", "ctp", "admin", "notifications"];
   const getTabFromHash = () => {
     const hash = window.location.hash.replace("#", "").toLowerCase();
     return validTabs.includes(hash) ? hash : "standings";
