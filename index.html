@@ -2,15 +2,21 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- ── Favicon ─────────────────────────────────────────────────────
+         Primary: SVG (best quality, single file). Browsers that don't
+         render SVG favicons (older Safari) fall back to the PNG. The
+         PNG path matches what /site.webmanifest references for the
+         home-screen install icon. -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <link rel="apple-touch-icon" href="/favicon/web-app-manifest-192x192.png" />
 
     <!-- ── PWA manifest ────────────────────────────────────────────────
          Wires the app to /site.webmanifest so Chrome/Edge/Android show
-         the "Install" / "Add to Home Screen" prompt. The manifest also
-         drives the home-screen icon, launch background, and orientation.
-         Required for push notifications to work on iOS (Safari + Add to
-         Home Screen is the only path on iOS 16.4+). -->
+         the "Install" / "Add to Home Screen" prompt. Required for push
+         notifications to work on iOS (Safari + Add to Home Screen is
+         the only path on iOS 16.4+). -->
     <link rel="manifest" href="/site.webmanifest" />
 
     <!-- ── iOS-specific PWA meta ──────────────────────────────────────
@@ -18,17 +24,16 @@
          mode when installed to home screen (no Safari chrome). Without
          this, the app opens in a regular Safari tab even when launched
          from the home screen — and push notifications won't work.
-         apple-mobile-web-app-status-bar-style matches the in-app dark
-         background so the status bar isn't a jarring white strip. -->
+         Status bar style "default" gives an opaque bar that respects
+         layout boundaries (vs "black-translucent" which overlays content
+         and pushes the app under the Dynamic Island). -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="MnQ Golf" />
-    <link rel="apple-touch-icon" href="/favicon/web-app-manifest-192x192.png" />
 
     <!-- ── Theme color ────────────────────────────────────────────────
-         Drives the browser chrome color on Android (Chrome). iOS uses
-         the apple-mobile-web-app-status-bar-style above instead. Both
-         match K.bg (#0b1829) so the device chrome blends into the app. -->
+         Android Chrome browser chrome color. iOS uses the status bar
+         style above instead. -->
     <meta name="theme-color" content="#0b1829" />
 
     <title>MnQ Golf</title>
