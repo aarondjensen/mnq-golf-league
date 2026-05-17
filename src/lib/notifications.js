@@ -54,10 +54,17 @@ export const getNotificationPermissionState = () => {
 // Idempotent: registers once and caches the registration for token requests.
 // Registration is at /firebase-messaging-sw.js (Vite serves /public/ at root).
 // scope: "/" so the SW controls the whole app.
+//
+// Returns the registration, or an object { error: string } on failure so
+// the caller can surface a meaningful error message. Most common failure
+// is a 404 (the SW file wasn't deployed — likely the public/firebase-
+// messaging-sw.js wasn't copied into the local repo's public/ folder).
 let _swRegistration = null;
 const registerServiceWorker = async () => {
   if (_swRegistration) return _swRegistration;
-  if (!("serviceWorker" in navigator)) return null;
+  if (!("serviceWorker" in navigator)) {
+    return { error: "Service Worker not supported by this browser" };
+  }
   try {
     _swRegistration = await navigator.serviceWorker.register(
       "/firebase-messaging-sw.js",
@@ -65,8 +72,11 @@ const registerServiceWorker = async () => {
     );
     return _swRegistration;
   } catch (e) {
-    console.error("Service worker registration failed:", e);
-    return null;
+    // Capture both common failures: SecurityError (HTTPS missing),
+    // TypeError (file not found or wrong MIME), bad scope, etc.
+    const detail = e?.message || String(e);
+    console.error("Service worker registration failed:", detail, e);
+    return { error: detail };
   }
 };
 
@@ -101,7 +111,13 @@ export const registerForPush = async (playerId) => {
 
   // Register SW (or get cached registration) and check FCM support
   const reg = await registerServiceWorker();
-  if (!reg) return { success: false, state: "error", error: "sw_registration_failed" };
+  if (!reg || reg.error) {
+    return {
+      success: false,
+      state: "error",
+      error: reg?.error ? `Service worker: ${reg.error}` : "sw_registration_failed",
+    };
+  }
 
   const messaging = await getMessagingInstance();
   if (!messaging) return { success: false, state: "unsupported" };
