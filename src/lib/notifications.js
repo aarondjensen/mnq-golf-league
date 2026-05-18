@@ -34,7 +34,7 @@ import { db, LEAGUE_ID, getMessagingInstance } from "../firebase";
 // REPLACE this placeholder with the public key from Firebase Console
 // before deploying. The app will work without it (in-app state is sane)
 // but no push notifications will ever fire until this is filled in.
-const VAPID_PUBLIC_KEY = "REPLACE_WITH_VAPID_PUBLIC_KEY_FROM_FIREBASE_CONSOLE";
+const VAPID_PUBLIC_KEY = "BPHCLmvYDg5QBwHFnMVIn5aLeQHY2BTk2UHtihRVeA114PdrUEMBiBuB7UF81vJ4Fvc-cKvJUjccJSEVv8JWVKw";
 
 // ─── Permission state ───────────────────────────────────────────────────
 // Returns one of:
