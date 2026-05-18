@@ -150,11 +150,14 @@ export default function GolfLeagueApp() {
   // SW registration, so the user sees the same banner either way.
   // Safe to run on every page including unauthed — the helper bails
   // internally if FCM isn't supported.
+  //
+  // Note: previously this also called clearAppBadge() unconditionally
+  // on app mount. That's no longer correct — under the new "pending
+  // actions" badge model, opening the app doesn't dismiss obligations.
+  // The badge is now reconciled to pendingAttestCount via a separate
+  // useEffect that fires whenever that count changes, including on mount.
   useEffect(() => {
     import("./lib/notifications").then(mod => mod.initForegroundNotifications());
-    // Also clear app badge whenever the user opens the app — they're
-    // here now, so any pending notification count is consumed.
-    import("./lib/notifications").then(mod => mod.clearAppBadge());
   }, []);
 
   const [showMore, setShowMore] = useState(false);
@@ -802,6 +805,60 @@ export default function GolfLeagueApp() {
     });
   }, [effectiveUser?.playerId]);
 
+  // ── Pending-attestation count (drives app + home-screen badges) ────
+  // Count of matches where the current user owes an attestation. Source
+  // of truth for the home-screen app badge AND the in-app badge on the
+  // Scoring tab. A match contributes to the count if ALL of:
+  //   - User is in the match (one of the 4 player slots)
+  //   - User is NOT the signer (signers don't attest their own scorecard)
+  //   - User has not already attested (not in attestedBy array)
+  //   - User is not marked absent that week (absent players auto-substitute,
+  //     no attestation needed from them)
+  //   - Match is not already fully attested (attested !== true)
+  // Memoized on the source data so it only recomputes when those change.
+  const pendingAttestCount = useMemo(() => {
+    const myPid = effectiveUser?.playerId;
+    if (!myPid || !matchResults?.length) return 0;
+    return matchResults.filter(r => {
+      if (r.attested === true) return false;
+      if (r.signedByPlayerId === myPid) return false;
+      if ((r.attestedBy || []).includes(myPid)) return false;
+      const t1 = teams.find(t => t.id === r.team1Id);
+      const t2 = teams.find(t => t.id === r.team2Id);
+      const allPids = [t1?.player1, t1?.player2, t2?.player1, t2?.player2].filter(Boolean);
+      if (!allPids.includes(myPid)) return false;
+      const myAttn = attendance?.[`w${r.week}_p${myPid}`]?.status;
+      if (myAttn === "absent") return false;
+      return true;
+    }).length;
+  }, [matchResults, teams, attendance, effectiveUser?.playerId]);
+
+  // Sync the count to the home-screen app badge. Direct setAppBadge call
+  // works on supported browsers (iOS PWA 16.4+, Chrome Android, macOS Safari
+  // PWA). Older browsers silently no-op. The SW's IDB-backed count is
+  // updated via postMessage too so the SW's notion of badge state stays
+  // consistent — relevant for when the SW shows its fallback notification
+  // and would otherwise recompute its own count.
+  useEffect(() => {
+    if (typeof navigator === "undefined") return;
+    if (pendingAttestCount > 0) {
+      if (navigator.setAppBadge) {
+        try { navigator.setAppBadge(pendingAttestCount); } catch { /* swallow */ }
+      }
+    } else {
+      if (navigator.clearAppBadge) {
+        try { navigator.clearAppBadge(); } catch { /* swallow */ }
+      }
+    }
+    // Tell the SW to sync its IDB-backed counter to match
+    if (navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage({
+        type: "SET_BADGE",
+        count: pendingAttestCount,
+      });
+    }
+  }, [pendingAttestCount]);
+
   if (authLoading) return <LoadingScreen />;
   if (!authUser) return <AuthScreen onGoogle={doGoogleSignIn} onEmail={doEmailSignIn} onPasswordReset={doPasswordReset} />;
   if (!membersLoaded) return <LoadingScreen />;
@@ -1081,9 +1138,27 @@ export default function GolfLeagueApp() {
       <div className="bottom-nav" style={{ margin: "0 auto" }}>
         {tabs.map(t => {
           const active = tab === t.id;
+          // Show red badge with count on the Scoring tab when the user
+          // has pending attestations. Positioned absolutely over the icon
+          // top-right corner so it doesn't widen the nav button.
+          const showBadge = t.id === "scoring" && pendingAttestCount > 0;
+          const badgeLabel = pendingAttestCount > 9 ? "9+" : String(pendingAttestCount);
           return (
             <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }} style={{ flex: 1, background: active ? K.acc + "10" : "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: active ? 1 : .4, transition: "all .2s", padding: "4px 0", borderRadius: 8 }}>
-              <span style={{ display: "flex" }}>{I[t.icon](18, active ? K.acc : K.t2)}</span>
+              <span style={{ display: "flex", position: "relative" }}>
+                {I[t.icon](18, active ? K.acc : K.t2)}
+                {showBadge && (
+                  <span style={{
+                    position: "absolute", top: -4, right: -8,
+                    background: K.red, color: K.bg,
+                    fontSize: 9, fontWeight: 800, lineHeight: 1,
+                    minWidth: 14, height: 14, padding: "0 3px",
+                    borderRadius: 7, display: "flex",
+                    alignItems: "center", justifyContent: "center",
+                    boxSizing: "border-box",
+                  }}>{badgeLabel}</span>
+                )}
+              </span>
               <span style={{ fontSize: 9, fontWeight: active ? 600 : 400, color: active ? K.acc : K.t2 }}>{t.label}</span>
             </button>
           );

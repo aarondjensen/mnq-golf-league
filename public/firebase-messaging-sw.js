@@ -1,19 +1,20 @@
 // ─────────────────────────────────────────────────────────────────────────
 //  firebase-messaging-sw.js — MnQ Golf push notification service worker
 // ─────────────────────────────────────────────────────────────────────────
-// Lives in /public/firebase-messaging-sw.js so Vite serves it at the root
-// path /firebase-messaging-sw.js — Firebase Cloud Messaging requires the
-// service worker to be at the root for scope reasons.
+// Lives in /public/firebase-messaging-sw.js so Vite serves it at the root.
 //
 // Message-format contract with the Cloud Function side:
-//   - Messages are DATA-ONLY (no FCM `notification` block).
-//   - Title/body live in payload.data.title / payload.data.body.
-//   - This SW is responsible for calling showNotification on every push.
+//   - DATA-ONLY messages (no FCM `notification` block)
+//   - Title/body live in payload.data.title / payload.data.body
+//   - data.type is the trigger kind: attest_ready, week_finalized,
+//     rained_out, attendance_marked, test
 //
-// Rationale: FCM's auto-display behavior for notification-block messages
-// is inconsistent on iOS PWA (sometimes the notification vanishes and
-// onBackgroundMessage doesn't fire either). Data-only messages always
-// route through this handler, giving cross-platform consistency.
+// Badge model: "pending actions" semantics, not "unread notifications".
+// Only attest_ready pushes increment the badge (those represent something
+// the user needs to do). The other types are informational and don't add
+// to the badge. The badge clears when the user completes the action
+// (handled app-side via setAppBadge driven by app state), NOT when they
+// tap the notification or open the app.
 
 importScripts("https://www.gstatic.com/firebasejs/12.11.0/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/12.11.0/firebase-messaging-compat.js");
@@ -30,11 +31,6 @@ firebase.initializeApp({
 const messaging = firebase.messaging();
 
 // ─── Immediate activation lifecycle ─────────────────────────────────────
-// Without these, a new SW waits for all existing instances of the page
-// to close before taking over. On iOS PWAs in particular this almost
-// never happens — users keep the PWA in the background indefinitely.
-// skipWaiting + clients.claim mean a fresh deploy takes effect on the
-// next page load. Critical for shipping fixes to this SW.
 self.addEventListener("install", (event) => {
   event.waitUntil(self.skipWaiting());
 });
@@ -42,7 +38,7 @@ self.addEventListener("activate", (event) => {
   event.waitUntil(self.clients.claim());
 });
 
-// ─── Badge state — tracked in IndexedDB so it survives SW restarts ──
+// ─── Badge state — IDB-backed for SW restart survival ──
 const BADGE_DB_NAME = "mnq-notif-state";
 const BADGE_STORE = "kv";
 const BADGE_KEY = "badge-count";
@@ -92,31 +88,31 @@ const applyBadge = async (count) => {
 };
 
 // ─── Background message handler ──────────────────────────────────────────
-// Reads title/body from data block (data-only message format). Wrapped
-// in try/catch so any error inside showNotification or badge update gets
-// logged rather than failing silently — which is critical because iOS
-// PWA push debugging is otherwise opaque. The catch also still calls
-// showNotification with a fallback to ensure SOMETHING displays (iOS
-// will throttle pushes if a push event arrives but no notification is
-// shown).
+// Reads title/body from data block. Only increments the badge for the
+// attest_ready type since that's the only "you need to do something"
+// notification — the other types are informational and the user shouldn't
+// see a persistent red dot for them.
 messaging.onBackgroundMessage(async (payload) => {
   console.log("[SW] onBackgroundMessage fired", payload);
   try {
     const data = payload.data || {};
-    // Data-only format: title and body live in the data block. Fall
-    // back to the legacy notification-block format just in case any
-    // older message is in flight.
     const title = data.title || payload.notification?.title || "MnQ Golf";
     const body = data.body || payload.notification?.body || "";
 
-    // Increment badge before showing — visible count matches storage.
-    try {
-      const current = await getBadgeCount();
-      const next = current + 1;
-      await setBadgeCount(next);
-      await applyBadge(next);
-    } catch (e) {
-      console.warn("[SW] Badge update failed", e);
+    // Badge increment is type-gated. Only attest_ready represents a
+    // pending action — the rest are informational and don't change badge.
+    // The app's useEffect will reconcile this count to the accurate
+    // pending-attestation count when the user next opens the app, so
+    // overcount from this SW-side increment self-corrects.
+    if (data.type === "attest_ready") {
+      try {
+        const current = await getBadgeCount();
+        const next = current + 1;
+        await setBadgeCount(next);
+        await applyBadge(next);
+      } catch (e) {
+        console.warn("[SW] Badge update failed", e);
+      }
     }
 
     return self.registration.showNotification(title, {
@@ -129,8 +125,6 @@ messaging.onBackgroundMessage(async (payload) => {
     });
   } catch (err) {
     console.error("[SW] onBackgroundMessage failed", err);
-    // Last-ditch fallback so iOS doesn't see a silent push (which can
-    // trigger origin-level push permission revocation).
     try {
       return self.registration.showNotification("MnQ Golf", {
         body: "A new update — open the app for details.",
@@ -140,6 +134,11 @@ messaging.onBackgroundMessage(async (payload) => {
 });
 
 // ─── Click handler ──────────────────────────────────────────────────────
+// IMPORTANT: does NOT clear the badge anymore. Under the "pending actions"
+// model, the badge clears only when the user completes the underlying
+// action (taps Attest on a scorecard). The app handles that via its
+// setAppBadge useEffect — when pendingAttestCount goes to 0, it clears.
+// Tapping the notification just navigates; doesn't dismiss the obligation.
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const data = event.notification.data || {};
@@ -155,8 +154,6 @@ self.addEventListener("notificationclick", (event) => {
     const clientList = await self.clients.matchAll({
       type: "window", includeUncontrolled: true,
     });
-    await setBadgeCount(0);
-    await applyBadge(0);
     for (const client of clientList) {
       if ("focus" in client) {
         try { await client.navigate(target); } catch { /* same-origin only; ignore */ }
@@ -169,10 +166,21 @@ self.addEventListener("notificationclick", (event) => {
   })());
 });
 
-// ─── Page → SW message: clear badge ─────────────────────────────────────
+// ─── Page → SW messages ─────────────────────────────────────────────────
+// CLEAR_BADGE: zero out the badge unconditionally (used for explicit
+//   "user dismissed everything" flows, e.g., legacy callers).
+// SET_BADGE: sync the SW's IDB count + applied badge to the value the
+//   app says is canonical. Called by App.jsx whenever its pendingAttest
+//   count changes, keeping the SW's "current count" in sync so subsequent
+//   pushes increment from the correct starting point.
 self.addEventListener("message", async (event) => {
   if (event.data?.type === "CLEAR_BADGE") {
     await setBadgeCount(0);
     await applyBadge(0);
+  }
+  if (event.data?.type === "SET_BADGE") {
+    const count = Math.max(0, parseInt(event.data.count, 10) || 0);
+    await setBadgeCount(count);
+    await applyBadge(count);
   }
 });
