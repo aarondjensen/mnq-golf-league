@@ -384,17 +384,16 @@ export const getCSS = (k) => `
   .schedule-weeks { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
   /* Score-cell text centering. Both the border (circle/square) and the
      score text use translate(-50%, -50%) to center against the same
-     geometric anchor, but the text needs an additional translateY to
-     compensate for League Spartan's slightly-high-sitting numeral glyphs
-     within their line box. Desktop renders 1px nudge perfectly; touch
-     devices (iOS Safari at 3x DPR) need a slightly larger nudge because
-     Core Graphics handles sub-pixel glyph positioning differently than
-     desktop browsers. pointer: coarse media query targets touch devices
-     specifically — width-based queries would catch large tablets too. */
+     geometric anchor. The additional translateY(1px) is a visual nudge
+     to compensate for League Spartan's slightly-high-sitting numeral
+     glyphs within their line box — without it scores appear to "float"
+     above the square's center.
+     Same value used on desktop AND mobile to keep score numbers
+     row-aligned with the player initials column (which has no translateY).
+     A larger mobile-specific value would better center scores within
+     bogey squares but at the cost of visibly dropping below the initials
+     baseline, which is the more noticeable visual problem of the two. */
   .scorecell-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) translateY(1px); z-index: 1; line-height: 1; }
-  @media (pointer: coarse) {
-    .scorecell-text { transform: translate(-50%, -50%) translateY(1.5px); }
-  }
   .standings-grid { display: flex; flex-direction: column; gap: 6px; }
   @media (min-width: 768px) {
     .main-content { padding: 24px 32px; padding-bottom: 20px; margin: 0 auto; }
