@@ -98,7 +98,7 @@ export function ScoreCell({ score, par, strokes, size = 13, color: colorOverride
       </div>
       <div style={{ position: "relative", width: sh, height: sh, display: "flex", alignItems: "center", justifyContent: "center" }}>
         {border}
-        <span style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%) translateY(1px)", zIndex: 1, fontSize: s, fontWeight: 700, lineHeight: 1, ...(textColor ? { color: textColor } : {}) }}>{score}</span>
+        <span className="scorecell-text" style={{ fontSize: s, fontWeight: 700, ...(textColor ? { color: textColor } : {}) }}>{score}</span>
       </div>
     </div>
   );
