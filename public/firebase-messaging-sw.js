@@ -142,11 +142,15 @@ messaging.onBackgroundMessage(async (payload) => {
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const data = event.notification.data || {};
+  // URL map uses hash routing to match App.jsx's getTabFromHash logic —
+  // the app reads window.location.hash, not query params, so /?tab=X
+  // (the previous URL scheme) was silently ignored and the user always
+  // landed on the default tab.
   const urlMap = {
-    week_finalized: "/?tab=standings",
-    attest_ready: "/?tab=scoring",
-    rained_out: "/?tab=schedule",
-    attendance_marked: "/?tab=schedule",
+    week_finalized: "/#standings",
+    attest_ready: "/#scoring",
+    rained_out: "/#schedule",
+    attendance_marked: "/#schedule",
   };
   const target = data.url || urlMap[data.type] || "/";
 

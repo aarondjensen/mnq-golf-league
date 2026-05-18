@@ -205,7 +205,7 @@ exports.onWeekLocked = onDocumentWritten(
           title: `Week ${week} is final`,
           body: "Results are in — check the standings.",
         },
-        data: { type: "week_finalized", week: String(week), url: "/?tab=standings" },
+        data: { type: "week_finalized", week: String(week), url: "/#standings" },
       }, "week_finalized");
     } catch (err) {
       logger.error("onWeekLocked error", { err: err?.message, stack: err?.stack?.slice(0, 500) });
@@ -267,7 +267,7 @@ exports.onMatchResultSigned = onDocumentWritten(
           title: "Time to attest your scorecard",
           body: `Your week ${week} match has been signed — open Scoring to attest.`,
         },
-        data: { type: "attest_ready", week: String(week), url: "/?tab=scoring" },
+        data: { type: "attest_ready", week: String(week), url: "/#scoring" },
       }, "attest_ready");
     } catch (err) {
       logger.error("onMatchResultSigned error", { err: err?.message, stack: err?.stack?.slice(0, 500) });
@@ -305,7 +305,7 @@ exports.onWeekRainedOut = onDocumentWritten(
           title: `Week ${week} rained out`,
           body: "League night is cancelled — check Schedule for makeup info.",
         },
-        data: { type: "rained_out", week: String(week), url: "/?tab=schedule" },
+        data: { type: "rained_out", week: String(week), url: "/#schedule" },
       }, "rained_out");
     } catch (err) {
       logger.error("onWeekRainedOut error", { err: err?.message, stack: err?.stack?.slice(0, 500) });
@@ -406,7 +406,7 @@ exports.onAttendanceMarked = onDocumentWritten(
           title: `${playerName} ${statusText}`,
           body: `Week ${week} match update — check Schedule for details.`,
         },
-        data: { type: "attendance_marked", week: String(week), url: "/?tab=schedule" },
+        data: { type: "attendance_marked", week: String(week), url: "/#schedule" },
       }, "attendance_marked");
     } catch (err) {
       logger.error("onAttendanceMarked error", { err: err?.message, stack: err?.stack?.slice(0, 500) });

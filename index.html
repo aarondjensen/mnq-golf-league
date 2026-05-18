@@ -5,11 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 
     <!-- ── Favicon ─────────────────────────────────────────────────────
-         Primary: SVG (best quality, single file). Browsers that don't
-         render SVG favicons (older Safari) fall back to the PNG. The
-         PNG path matches what /site.webmanifest references for the
-         home-screen install icon. -->
+         Browser walks this list in order. SVG is preferred when available
+         (best quality, scales to any size), but the PNG fallback ensures
+         the browser tab still gets an icon if favicon.svg isn't in the
+         repo — the PNG already exists because site.webmanifest requires
+         it for the PWA install icon. apple-touch-icon is the home-screen
+         icon iOS uses when adding the PWA to the home screen. -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon/web-app-manifest-192x192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/favicon/web-app-manifest-512x512.png" />
     <link rel="apple-touch-icon" href="/favicon/web-app-manifest-192x192.png" />
 
     <!-- ── PWA manifest ────────────────────────────────────────────────
