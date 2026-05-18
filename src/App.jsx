@@ -47,6 +47,7 @@ const StatsView = lazyWithRetry(() => import("./pages/Stats"));
 const CTPView = lazyWithRetry(() => import("./pages/CTP"));
 const AdminView = lazyWithRetry(() => import("./pages/Admin"));
 const NotificationsSettings = lazyWithRetry(() => import("./pages/NotificationsSettings"));
+const NotificationsAdmin = lazyWithRetry(() => import("./pages/NotificationsAdmin"));
 
 
 export default function GolfLeagueApp() {
@@ -122,7 +123,7 @@ export default function GolfLeagueApp() {
   const [membersLoaded, setMembersLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [liveWeek, setLiveWeek] = useState(null);
-  const validTabs = ["standings", "scoring", "schedule", "players", "stats", "ctp", "admin", "notifications"];
+  const validTabs = ["standings", "scoring", "schedule", "players", "stats", "ctp", "admin", "notifications", "pushstatus"];
   const getTabFromHash = () => {
     const hash = window.location.hash.replace("#", "").toLowerCase();
     return validTabs.includes(hash) ? hash : "standings";
@@ -821,6 +822,7 @@ export default function GolfLeagueApp() {
   // Sign Out, which was easy to miss-tap when reaching for Sign Out.
   const moreItems = [
     ...(isComm ? [{ id: "admin", label: "Admin", icon: "settings" }] : []),
+    ...(isComm ? [{ id: "pushstatus", label: "Push Status", icon: "bell" }] : []),
     { id: "stats", label: "Stats", icon: "barChart" },
     { id: "ctp", label: "CTP", icon: "target" },
     { id: "notifications", label: "Notifications", icon: "bell" },
@@ -1002,6 +1004,7 @@ export default function GolfLeagueApp() {
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
           {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} isComm={isComm} saveCtp={saveCtp} />}
           {tab === "notifications" && <NotificationsSettings leagueUser={effectiveUser} appToast={appToast} />}
+          {tab === "pushstatus" && isComm && <NotificationsAdmin players={activePlayers} />}
           {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} saveMatchResult={saveMatchResult} resetSeasonData={resetSeasonData} importHistoricalScores={importHistoricalScores} recalcHandicaps={recalcHandicaps} autoSeedIfReady={autoSeedIfReady} clearWeekData={clearWeekData} />}
           </Suspense>
           </ErrorBoundary>
@@ -1094,7 +1097,7 @@ export default function GolfLeagueApp() {
             <span style={{ fontSize: 9, fontWeight: showMore || moreItems.some(m => m.id === tab) ? 600 : 400, color: showMore || moreItems.some(m => m.id === tab) ? K.acc : K.t2 }}>More</span>
           </button>
           {showMore && (
-            <div style={{ position: "fixed", bottom: `calc(38px + env(safe-area-inset-bottom, 0px))`, right: 14, background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 12, padding: "6px 0", zIndex: 300, minWidth: 180, boxShadow: "0 -4px 20px rgba(0,0,0,.4)" }}>
+            <div style={{ position: "fixed", bottom: `calc(42px + env(safe-area-inset-bottom, 0px))`, right: 14, background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 12, padding: "6px 0", zIndex: 300, minWidth: 180, boxShadow: "0 -4px 20px rgba(0,0,0,.4)" }}>
               {moreItems.map((item) => {
                 const active = tab === item.id;
                 const isSignOut = item.id === "signout";

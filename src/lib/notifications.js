@@ -34,7 +34,7 @@ import { db, LEAGUE_ID, getMessagingInstance } from "../firebase";
 // REPLACE this placeholder with the public key from Firebase Console
 // before deploying. The app will work without it (in-app state is sane)
 // but no push notifications will ever fire until this is filled in.
-const VAPID_PUBLIC_KEY = "BPHCLmvYDg5QBwHFnMVIn5aLeQHY2BTk2UHtihRVeA114PdrUEMBiBuB7UF81vJ4Fvc-cKvJUjccJSEVv8JWVKw";
+const VAPID_PUBLIC_KEY = "REPLACE_WITH_VAPID_PUBLIC_KEY_FROM_FIREBASE_CONSOLE";
 
 // ─── Permission state ───────────────────────────────────────────────────
 // Returns one of:
@@ -150,12 +150,23 @@ export const registerForPush = async (playerId) => {
   // Hash because raw FCM tokens are ~160 chars — too long for a clean doc id.
   const tokenHash = await sha256Short(token);
   const docId = `${LEAGUE_ID}_p${playerId}_${tokenHash}`;
+  // Capture device context at registration time so the commissioner's
+  // notifications admin view can distinguish iOS PWA from desktop from
+  // Android, and spot iOS users who somehow registered without the
+  // standalone install (which is required for push to actually work on
+  // iOS). Both flags are point-in-time snapshots — if the user later
+  // uninstalls the PWA we have no way to detect, but that's a rare
+  // edge case for this league's purposes.
+  const ua = navigator.userAgent || "";
+  const isIOSDevice = /iPhone|iPad|iPod/.test(ua);
   await db.upsert("league_notifications_tokens", {
     id: docId,
     league_id: LEAGUE_ID,
     playerId,
     token,
-    userAgent: navigator.userAgent.slice(0, 200), // helps Aaron debug stale tokens
+    userAgent: ua.slice(0, 200), // helps Aaron debug stale tokens
+    isIOS: isIOSDevice,
+    isStandalone: isStandalonePWA(),
     registeredAt: Date.now(),
     lastSeenAt: Date.now(),
   });
