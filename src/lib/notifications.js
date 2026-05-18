@@ -193,6 +193,35 @@ export const checkSubscriptionStatus = async (playerId) => {
   }
 };
 
+// ─── Send a test push to ourselves ──────────────────────────────────────
+// Calls the sendTestPush Cloud Function (defined in functions/index.js)
+// with the current user's playerId so the user can verify their setup
+// without going through the Firebase Console. The Cloud Function looks
+// up all tokens for the player and fires a push to each — so a user
+// with both phone + laptop registered will see the test on both.
+//
+// Dynamic-imports firebase/functions to avoid bundling the Functions SDK
+// (~10KB) into the main app bundle when it's only needed by this one button.
+export const triggerTestPush = async (playerId) => {
+  if (!playerId) return { success: false, error: "missing playerId" };
+  try {
+    const [{ getFunctions, httpsCallable }, { getApp }] = await Promise.all([
+      import("firebase/functions"),
+      import("firebase/app"),
+    ]);
+    const functions = getFunctions(getApp());
+    const fn = httpsCallable(functions, "sendTestPush");
+    const result = await fn({
+      playerId,
+      message: "Test push from MnQ Golf — your setup works!",
+    });
+    return { success: true, result: result.data };
+  } catch (e) {
+    console.error("triggerTestPush failed:", e);
+    return { success: false, error: e?.message || String(e) };
+  }
+};
+
 // ─── Unsubscribe ────────────────────────────────────────────────────────
 // Two phases: delete the token on the FCM side (stops the push endpoint
 // from accepting messages for this device) AND delete the Firestore doc

@@ -5,6 +5,7 @@ import { K, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   buildStandingsForSeed as sharedBuildStandingsForSeed, buildSeedMap,
   pairNonBracketTeams, collectPriorMatchups } from "../theme";
 import { ConfirmModal } from "../components/Popup";
+import NotificationsAdmin from "./NotificationsAdmin";
 
 // NOTE: ConfirmModal used to live in this file as a local helper. It's now
 // imported from components/Popup.jsx so every confirm in the app (Admin,
@@ -132,6 +133,7 @@ export default function AdminView(props) {
         { id: "config", label: "League", icon: "settings", desc: leagueConfig.name || "Name, year, invite code" },
         { id: "course", label: "Course", icon: "mapPin", desc: course?.name || "Not set" },
         { id: "scoring", label: "Rules", icon: "ruler", desc: "Scoring & handicaps" },
+        { id: "pushstatus", label: "Push Status", icon: "bell", desc: "Who has notifications enabled" },
       ],
     },
     {
@@ -173,6 +175,14 @@ export default function AdminView(props) {
   if (sec === "scoring") return <AdminScoring scoring={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
   if (sec === "members") return <AdminMembers members={members} saveMember={saveMember} deleteMember={deleteMember} players={players} onBack={() => setSec(null)} />;
   if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} resetSeasonData={props.resetSeasonData} importHistoricalScores={props.importHistoricalScores} recalcHandicaps={props.recalcHandicaps} matchResults={matchResults} saveMatchResult={saveMatchResult} schedule={schedule} teams={teams} scoringRules={scoringRules} saveScoringRules={saveScoringRules} onBack={() => setSec(null)} />;
+  // Push notifications admin — separate file so the giant Admin.jsx
+  // doesn't grow further. Inherits commish gating from Admin itself.
+  if (sec === "pushstatus") return (
+    <div>
+      <BackBtn onClick={() => setSec(null)} />
+      <NotificationsAdmin players={activePlayers} />
+    </div>
+  );
 
   const levelColor = (level) => level === "action" ? K.act : level === "warn" ? K.warn : K.hcpBlue;
 

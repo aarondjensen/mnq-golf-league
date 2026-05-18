@@ -47,7 +47,6 @@ const StatsView = lazyWithRetry(() => import("./pages/Stats"));
 const CTPView = lazyWithRetry(() => import("./pages/CTP"));
 const AdminView = lazyWithRetry(() => import("./pages/Admin"));
 const NotificationsSettings = lazyWithRetry(() => import("./pages/NotificationsSettings"));
-const NotificationsAdmin = lazyWithRetry(() => import("./pages/NotificationsAdmin"));
 
 
 export default function GolfLeagueApp() {
@@ -123,7 +122,7 @@ export default function GolfLeagueApp() {
   const [membersLoaded, setMembersLoaded] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [liveWeek, setLiveWeek] = useState(null);
-  const validTabs = ["standings", "scoring", "schedule", "players", "stats", "ctp", "admin", "notifications", "pushstatus"];
+  const validTabs = ["standings", "scoring", "schedule", "players", "stats", "ctp", "admin", "notifications"];
   const getTabFromHash = () => {
     const hash = window.location.hash.replace("#", "").toLowerCase();
     return validTabs.includes(hash) ? hash : "standings";
@@ -822,7 +821,6 @@ export default function GolfLeagueApp() {
   // Sign Out, which was easy to miss-tap when reaching for Sign Out.
   const moreItems = [
     ...(isComm ? [{ id: "admin", label: "Admin", icon: "settings" }] : []),
-    ...(isComm ? [{ id: "pushstatus", label: "Push Status", icon: "bell" }] : []),
     { id: "stats", label: "Stats", icon: "barChart" },
     { id: "ctp", label: "CTP", icon: "target" },
     { id: "notifications", label: "Notifications", icon: "bell" },
@@ -1004,7 +1002,6 @@ export default function GolfLeagueApp() {
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} />}
           {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} isComm={isComm} saveCtp={saveCtp} />}
           {tab === "notifications" && <NotificationsSettings leagueUser={effectiveUser} appToast={appToast} />}
-          {tab === "pushstatus" && isComm && <NotificationsAdmin players={activePlayers} />}
           {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} saveMatchResult={saveMatchResult} resetSeasonData={resetSeasonData} importHistoricalScores={importHistoricalScores} recalcHandicaps={recalcHandicaps} autoSeedIfReady={autoSeedIfReady} clearWeekData={clearWeekData} />}
           </Suspense>
           </ErrorBoundary>

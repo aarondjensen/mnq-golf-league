@@ -18,15 +18,20 @@ import { db, LEAGUE_ID } from "../firebase";
 //   - Group tokens by playerId, join with the players array to get names
 //   - Render summary + per-player rows
 
-// Translate the (isIOS, isStandalone, userAgent) tuple into a short
-// device-type chip label. iOS Safari is the problem case — push can't
-// reach the user there even though they registered, because iOS only
-// delivers push to installed PWAs. (In practice registerForPush should
-// have failed for iOS-non-standalone users, but data hygiene is cheap.)
+// Translate the (userAgent + isStandalone) into a short device-type chip
+// label. The iOS/Android/Desktop split is derived from userAgent (always
+// saved, robust against missing fields). The PWA-vs-Safari distinction
+// for iOS requires isStandalone, which was added in a later release — if
+// that field is missing on an older token doc, we show a neutral "iOS"
+// chip rather than guessing wrong (iOS Safari would be misleading since
+// the user clearly registered successfully — push won't actually fire
+// from a non-standalone iOS Safari tab).
 const deviceType = (token) => {
   const ua = token.userAgent || "";
-  if (token.isIOS) {
-    return token.isStandalone ? { label: "iOS PWA", color: K.grn } : { label: "iOS Safari", color: K.warn };
+  if (/iPhone|iPad|iPod/.test(ua)) {
+    if (token.isStandalone === true) return { label: "iOS PWA", color: K.grn };
+    if (token.isStandalone === false) return { label: "iOS Safari", color: K.warn };
+    return { label: "iOS", color: K.t2 }; // unknown — older token
   }
   if (/Android/i.test(ua)) return { label: "Android", color: K.t2 };
   return { label: "Desktop", color: K.t2 };
@@ -84,8 +89,9 @@ export default function NotificationsAdmin({ players }) {
 
   const enabledCount = rows.filter(r => !r.isOrphan && r.tokens.length > 0).length;
   const totalPlayers = (players || []).length;
-  const iosPwaCount = tokens.filter(t => t.isIOS && t.isStandalone).length;
-  const iosSafariCount = tokens.filter(t => t.isIOS && !t.isStandalone).length;
+  const isIOSToken = (t) => /iPhone|iPad|iPod/.test(t.userAgent || "");
+  const iosPwaCount = tokens.filter(t => isIOSToken(t) && t.isStandalone === true).length;
+  const iosSafariCount = tokens.filter(t => isIOSToken(t) && t.isStandalone === false).length;
 
   return (
     <div>

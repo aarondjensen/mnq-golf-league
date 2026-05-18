@@ -7,6 +7,7 @@ import {
   isStandalonePWA,
   isIOSPushCapable,
   checkSubscriptionStatus,
+  triggerTestPush,
 } from "../lib/notifications";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -73,6 +74,26 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
       // failed, FCM token fetch errored). These need debugging attention,
       // so the error toast IS appropriate here.
       appToast?.(`Couldn't enable: ${result.error || result.state}`, "error");
+    }
+  };
+
+  const handleTest = async () => {
+    if (!leagueUser?.playerId) return;
+    setBusy(true);
+    const result = await triggerTestPush(leagueUser.playerId);
+    setBusy(false);
+    if (result.success) {
+      // The push fires from the server within ~1s. We don't wait for
+      // confirmation — the user will see (or not see) the notification
+      // themselves. Toast is just a friendly "we sent it" ack.
+      const sent = result.result?.sent ?? 0;
+      if (sent > 0) {
+        appToast?.(`Sent test push to ${sent} device${sent === 1 ? "" : "s"}`, "success");
+      } else {
+        appToast?.("No active devices to send to — try Disable/Enable to refresh", "error");
+      }
+    } else {
+      appToast?.(`Test failed: ${result.error}`, "error");
     }
   };
 
@@ -171,9 +192,26 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
                 background: "transparent", border: `1px solid ${K.bdr}`,
                 color: K.t2, fontSize: 13, fontWeight: 700,
                 cursor: busy ? "default" : "pointer", opacity: busy ? .5 : 1,
+                marginBottom: 8,
               }}
             >
               {busy ? "..." : "Disable notifications"}
+            </button>
+            {/* Send-test utility button. Gold outline so it's visually
+                distinct from the gray Disable. Calls the sendTestPush
+                Cloud Function with the current user's playerId. */}
+            <button
+              onClick={handleTest}
+              disabled={busy}
+              style={{
+                width: "100%", padding: "9px", borderRadius: 8,
+                background: "transparent", border: `1px solid ${K.act}60`,
+                color: K.act, fontSize: 12, fontWeight: 700,
+                cursor: busy ? "default" : "pointer", opacity: busy ? .5 : 1,
+                letterSpacing: .3,
+              }}
+            >
+              {busy ? "..." : "Send a test push"}
             </button>
           </>
         ) : permission === "denied" ? (
