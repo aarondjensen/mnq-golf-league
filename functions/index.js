@@ -7,13 +7,9 @@
 //
 // To deploy:
 //   cd functions
-//   npm install
 //   firebase deploy --only functions
 
 const admin = require("firebase-admin");
-// Import HttpsError + onCall together from the same v2/https module —
-// importing HttpsError via firebase-functions/v2.https can fail in some
-// v6 versions where the v2 namespace doesn't re-export http utilities.
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
 const logger = require("firebase-functions/logger");
 
@@ -24,16 +20,22 @@ const messaging = admin.messaging();
 const LEAGUE_ID = "league_2026";
 
 // ─── Core send helper ────────────────────────────────────────────────────
-// Looks up all tokens registered for a player and sends the same payload
-// to each. Cleans up stale tokens (FCM returns specific error codes for
-// devices that have uninstalled / cleared data / etc.) so the token
-// collection stays small and we don't waste API calls on dead targets.
+// IMPORTANT — message format choice: we send DATA-ONLY messages (no
+// top-level `notification` block). This forces every platform's SW to
+// invoke onBackgroundMessage and call showNotification itself. The
+// alternative (sending a notification block) has FCM auto-display the
+// notification on some platforms but not others — and on iOS PWA the
+// auto-display silently fails while ALSO preventing onBackgroundMessage
+// from firing, so the notification just vanishes. Data-only is the
+// consistent path. Trade-off: SW MUST call showNotification on every
+// push, otherwise iOS may throttle our origin's push permissions.
 //
-// payload shape:
+// payload shape (caller-side):
 //   notification: { title: string, body: string }
-//   data: { type: string, week?: string, url?: string, ... } — strings only
+//   data: { type: string, url?: string, ... }
 //
-// Returns: { sent: number, failed: number, cleanedTokens: number, errors: [] }
+// Wire-format (sent to FCM): everything goes into the data map; SW reads
+// title/body from data.title and data.body.
 async function sendToPlayer(playerId, payload) {
   if (!playerId) {
     logger.warn("sendToPlayer: missing playerId");
@@ -47,7 +49,7 @@ async function sendToPlayer(playerId, payload) {
       .where("playerId", "==", playerId)
       .get();
   } catch (err) {
-    logger.error("Firestore query failed", { playerId, err: err?.message, code: err?.code });
+    logger.error("Firestore query failed", { playerId, err: err?.message });
     throw new HttpsError("internal", `Firestore query failed: ${err?.message || err}`);
   }
 
@@ -59,6 +61,16 @@ async function sendToPlayer(playerId, payload) {
   let sent = 0, failed = 0, cleaned = 0;
   const errors = [];
 
+  // Build the data-only payload. FCM requires all data values to be
+  // strings, so the title/body strings go directly. Any data fields the
+  // caller passed in are stringified and merged. Title/body are
+  // top-priority keys; we don't allow data fields to override them.
+  const dataPayload = {
+    ...stringifyDataValues(payload.data || {}),
+    title: payload.notification?.title || "MnQ Golf",
+    body: payload.notification?.body || "",
+  };
+
   for (const tokenDoc of snap.docs) {
     const data = tokenDoc.data();
     const token = data.token;
@@ -69,10 +81,16 @@ async function sendToPlayer(playerId, payload) {
     try {
       await messaging.send({
         token,
-        notification: payload.notification,
-        data: stringifyDataValues(payload.data || {}),
+        // No `notification` block — pure data-only. Forces SW to handle
+        // display, gives us cross-platform consistency on iOS PWA.
+        data: dataPayload,
         webpush: {
-          headers: { TTL: "3600" },
+          headers: {
+            TTL: "3600",
+            // Urgency "high" tells the iOS push relay to wake the SW
+            // promptly rather than batch with low-priority messages.
+            Urgency: "high",
+          },
         },
       });
       sent++;
@@ -85,7 +103,6 @@ async function sendToPlayer(playerId, payload) {
       logger.error("messaging.send failed", { playerId, docId: tokenDoc.id, code, msg });
       errors.push(`${code}: ${msg}`);
 
-      // Stale-token detection — clean up so we don't keep hitting it
       const isStale =
         code === "messaging/registration-token-not-registered" ||
         code === "messaging/invalid-registration-token" ||
@@ -105,7 +122,6 @@ async function sendToPlayer(playerId, payload) {
   return { sent, failed, cleanedTokens: cleaned, errors };
 }
 
-// Helper — FCM data fields must all be strings.
 function stringifyDataValues(obj) {
   const out = {};
   for (const [k, v] of Object.entries(obj)) {
@@ -115,10 +131,6 @@ function stringifyDataValues(obj) {
   return out;
 }
 
-// ─── Test endpoint ──────────────────────────────────────────────────────
-// Called from the Notifications settings page. Wrapped in try/catch so
-// any unexpected error surfaces as a typed HttpsError with a useful
-// message, rather than the generic "internal" code.
 exports.sendTestPush = onCall(async (request) => {
   try {
     const { playerId, message = "This is a test push from MnQ Golf." } = request.data || {};
@@ -134,8 +146,6 @@ exports.sendTestPush = onCall(async (request) => {
 
     logger.info("Test push complete", { playerId, ...result });
 
-    // If we sent to zero devices, surface a helpful error rather than
-    // a silent "success".
     if (result.sent === 0) {
       if (result.errors.includes("no_tokens_registered")) {
         throw new HttpsError("failed-precondition", "No devices registered for this player. Try Disable then Enable.");
@@ -154,5 +164,4 @@ exports.sendTestPush = onCall(async (request) => {
   }
 });
 
-// Export the helper for Phase 2 triggers to use (when they're added)
 exports.__sendToPlayer = sendToPlayer;

@@ -3,25 +3,21 @@
 // ─────────────────────────────────────────────────────────────────────────
 // Lives in /public/firebase-messaging-sw.js so Vite serves it at the root
 // path /firebase-messaging-sw.js — Firebase Cloud Messaging requires the
-// service worker to be at the root (not /assets/, not /public/) so the
-// browser can register it with the correct scope.
+// service worker to be at the root for scope reasons.
 //
-// Why compat SDK: Service Worker context doesn't support ES module imports
-// reliably across older browsers (iOS 16.4 Safari being the relevant edge
-// case). The compat (UMD) build works via importScripts(), which is the
-// vetted SW-compatible pattern Firebase docs use.
+// Message-format contract with the Cloud Function side:
+//   - Messages are DATA-ONLY (no FCM `notification` block).
+//   - Title/body live in payload.data.title / payload.data.body.
+//   - This SW is responsible for calling showNotification on every push.
 //
-// IMPORTANT: This file is NOT processed by Vite. Any env vars or imports
-// must be hardcoded here. Update the firebaseConfig block if the project
-// id ever changes.
+// Rationale: FCM's auto-display behavior for notification-block messages
+// is inconsistent on iOS PWA (sometimes the notification vanishes and
+// onBackgroundMessage doesn't fire either). Data-only messages always
+// route through this handler, giving cross-platform consistency.
 
 importScripts("https://www.gstatic.com/firebasejs/12.11.0/firebase-app-compat.js");
 importScripts("https://www.gstatic.com/firebasejs/12.11.0/firebase-messaging-compat.js");
 
-// ─── Firebase config — mirrors client config in src/firebase.js ──────────
-// Keep these in sync if the underlying project ever changes. The typo
-// "mnq-golf-leage" in the project id is intentional and matches the
-// existing Firestore project.
 firebase.initializeApp({
   apiKey: "AIzaSyDW3tTWxOlrPoKiflmlh_6JPLe8vbvVEUE",
   authDomain: "mnq-golf-leage.firebaseapp.com",
@@ -33,11 +29,20 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// ─── Badge state — tracked in IndexedDB via a simple key/value store ────
-// We can't use localStorage from a service worker. The badge count needs
-// to survive SW restart (Chrome aggressively recycles SWs after 30s idle),
-// so a simple IDB key/value pattern is used. Falls back to a no-op if
-// IDB isn't available (very old browser; should never hit in practice).
+// ─── Immediate activation lifecycle ─────────────────────────────────────
+// Without these, a new SW waits for all existing instances of the page
+// to close before taking over. On iOS PWAs in particular this almost
+// never happens — users keep the PWA in the background indefinitely.
+// skipWaiting + clients.claim mean a fresh deploy takes effect on the
+// next page load. Critical for shipping fixes to this SW.
+self.addEventListener("install", (event) => {
+  event.waitUntil(self.skipWaiting());
+});
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim());
+});
+
+// ─── Badge state — tracked in IndexedDB so it survives SW restarts ──
 const BADGE_DB_NAME = "mnq-notif-state";
 const BADGE_STORE = "kv";
 const BADGE_KEY = "badge-count";
@@ -74,11 +79,6 @@ const setBadgeCount = async (count) => {
   } catch { /* swallow */ }
 };
 
-// Apply the badge to the home-screen icon. Works on installed PWAs on:
-//   - iOS 16.4+ Safari
-//   - Chrome Android (installed)
-//   - macOS Safari (PWA)
-// No-ops gracefully on browsers without Badging API.
 const applyBadge = async (count) => {
   if (count > 0) {
     if (self.navigator.setAppBadge) {
@@ -91,49 +91,58 @@ const applyBadge = async (count) => {
   }
 };
 
-// ─── Background message handler — fires when app is closed/backgrounded ──
-// Foreground messages are handled in src/lib/notifications.js because the
-// FCM SDK splits the two contexts. Both paths should produce the same
-// visible notification, so the payload shape is mirrored.
-//
-// Payload contract from Cloud Functions:
-//   notification: { title, body }
-//   data: { type, week?, matchId?, url? } — type drives the click target
+// ─── Background message handler ──────────────────────────────────────────
+// Reads title/body from data block (data-only message format). Wrapped
+// in try/catch so any error inside showNotification or badge update gets
+// logged rather than failing silently — which is critical because iOS
+// PWA push debugging is otherwise opaque. The catch also still calls
+// showNotification with a fallback to ensure SOMETHING displays (iOS
+// will throttle pushes if a push event arrives but no notification is
+// shown).
 messaging.onBackgroundMessage(async (payload) => {
-  const { title = "MnQ Golf", body = "" } = payload.notification || {};
-  const data = payload.data || {};
+  console.log("[SW] onBackgroundMessage fired", payload);
+  try {
+    const data = payload.data || {};
+    // Data-only format: title and body live in the data block. Fall
+    // back to the legacy notification-block format just in case any
+    // older message is in flight.
+    const title = data.title || payload.notification?.title || "MnQ Golf";
+    const body = data.body || payload.notification?.body || "";
 
-  // Increment badge before showing — by the time the user sees it the
-  // count is already correct.
-  const current = await getBadgeCount();
-  const next = current + 1;
-  await setBadgeCount(next);
-  await applyBadge(next);
+    // Increment badge before showing — visible count matches storage.
+    try {
+      const current = await getBadgeCount();
+      const next = current + 1;
+      await setBadgeCount(next);
+      await applyBadge(next);
+    } catch (e) {
+      console.warn("[SW] Badge update failed", e);
+    }
 
-  return self.registration.showNotification(title, {
-    body,
-    icon: "/favicon/web-app-manifest-192x192.png",
-    badge: "/favicon/web-app-manifest-192x192.png",
-    data,
-    // tag groups notifications of the same type so only the most recent
-    // is shown — e.g. two rain-out notifications from a flaky commish
-    // toggle don't pile up.
-    tag: data.type || "default",
-    // renotify=true makes the device buzz even when a same-tag notification
-    // is being replaced. Otherwise the user might miss the update.
-    renotify: true,
-  });
+    return self.registration.showNotification(title, {
+      body,
+      icon: "/favicon/web-app-manifest-192x192.png",
+      badge: "/favicon/web-app-manifest-192x192.png",
+      data,
+      tag: data.type || "default",
+      renotify: true,
+    });
+  } catch (err) {
+    console.error("[SW] onBackgroundMessage failed", err);
+    // Last-ditch fallback so iOS doesn't see a silent push (which can
+    // trigger origin-level push permission revocation).
+    try {
+      return self.registration.showNotification("MnQ Golf", {
+        body: "A new update — open the app for details.",
+      });
+    } catch { /* truly hopeless */ }
+  }
 });
 
-// ─── Click handler — focuses the existing tab or opens a new one ─────────
-// Clears the badge count on the assumption that opening the app means
-// the user has seen pending notifications. The app can also clear the
-// badge via postMessage if there's a more accurate moment to do so.
+// ─── Click handler ──────────────────────────────────────────────────────
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const data = event.notification.data || {};
-  // Map notification type → in-app URL so taps land on the relevant tab.
-  // Falls back to the app root which shows the default tab (Players).
   const urlMap = {
     week_finalized: "/?tab=standings",
     attest_ready: "/?tab=scoring",
@@ -143,9 +152,6 @@ self.addEventListener("notificationclick", (event) => {
   const target = data.url || urlMap[data.type] || "/";
 
   event.waitUntil((async () => {
-    // Try to focus an existing tab first; only open a new one if none exists.
-    // Mobile users almost always have exactly one open instance, so this
-    // is the right path most of the time.
     const clientList = await self.clients.matchAll({
       type: "window", includeUncontrolled: true,
     });
@@ -163,10 +169,7 @@ self.addEventListener("notificationclick", (event) => {
   })());
 });
 
-// ─── Postmessage from the page — lets the app actively clear the badge ──
-// E.g. when the user opens the Notifications settings or views standings
-// after a finalize-week notification. Saves a SW restart vs waiting for
-// the next push to recompute.
+// ─── Page → SW message: clear badge ─────────────────────────────────────
 self.addEventListener("message", async (event) => {
   if (event.data?.type === "CLEAR_BADGE") {
     await setBadgeCount(0);
