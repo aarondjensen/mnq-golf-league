@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, calcPlayerHcp, buildSeedMap, buildStandingsForSeed, LoadingPanel, SkeletonList } from "../theme";
+import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, calcPlayerHcp, buildSeedMap, buildStandingsForSeed, LoadingPanel, SkeletonList, getPlayerHcpAtWeek } from "../theme";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/matchCalc";
 import { isScheduleDateAtOrPast } from "../lib/scheduleDate";
@@ -1371,8 +1371,14 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
       seedMap,
       healedIds: healedRef.current,
       saveMatchResult,
+      // Pass season-wide rounds + current season so autoHeal can compute
+      // each player's handicap AS OF the historical week. Without these
+      // the function bails — which is by design: running it with
+      // current handicaps caused the retroactive-standings bug.
+      allRoundsByPid: allRounds,
+      season: leagueConfig?.year || new Date().getFullYear(),
     });
-  }, [matchResults, weekScores, course, scoringRules, leagueConfig, saveMatchResult, schedule, teams, players, seedMap]);
+  }, [matchResults, weekScores, course, scoringRules, leagueConfig, saveMatchResult, schedule, teams, players, seedMap, allRounds]);
 
   const lockedWeeks = useMemo(() => {
     const set = new Set();
@@ -1469,16 +1475,42 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     // Render-time helpers — score reading and strokes delegate to lib/matchCalc.js
     // so absent-handling stays consistent with Live Scoring and Schedule. Locals
     // are just thin closures binding the component's pars/hcps/players.
+    //
+    // Build a per-match historicalPlayers array where each player's handicapIndex
+    // reflects what they had GOING INTO this week, using the same fallback chain
+    // as autoHealMatchResults (retroactive calc → startingHandicapIndex →
+    // current). This is what makes the displayed scorecard agree with the
+    // recomputed match result — using today's handicaps in the render shows
+    // wrong stroke dots and wrong hcp labels for any historical match.
+    const recentN = scoringRules?.hcpRecentCount ?? 8;
+    const bestN = scoringRules?.hcpBestCount ?? 6;
+    const frontPar = (course.frontPars || []).reduce((a, b) => a + b, 0) || 36;
+    const currentSeason = leagueConfig?.year || new Date().getFullYear();
+    const historicalPlayers = players.map(p => {
+      const retroHcp = allRounds ? getPlayerHcpAtWeek({
+        playerId: p.id,
+        week: mr.week,
+        season: currentSeason,
+        allRoundsByPid: allRounds,
+        recentN, bestN, frontPar,
+      }) : null;
+      if (retroHcp !== null) return { ...p, handicapIndex: retroHcp };
+      if (p.startingHandicapIndex !== undefined && p.startingHandicapIndex !== null && p.startingHandicapIndex !== "") {
+        return { ...p, handicapIndex: parseFloat(p.startingHandicapIndex) };
+      }
+      return p;
+    });
+
     const getInitials = (pid) => { const p = players.find(pl => pl.id === pid); return p ? p.name.split(' ').map(n => n[0]).join('') : "?"; };
-    const getHcp = (pid) => { const p = players.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
+    const getHcp = (pid) => { const p = historicalPlayers.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
     const isAbsent = (pid) => wkScores[`w${mr.week}_p${pid}_habsent`] === 1;
     const getStrokes = (pid, h) => getStrokesForHole({
-      pid, h, players, hcps,
+      pid, h, players: historicalPlayers, hcps,
       week: mr.week, holeScores: wkScores, t1Pids, t2Pids,
     });
     const getScore = (pid, h) => readScoreEffective({
       pid, h, week: mr.week, holeScores: wkScores,
-      t1Pids, t2Pids, pars, hcps, players,
+      t1Pids, t2Pids, pars, hcps, players: historicalPlayers,
     });
 
     // Compute hole results + running status
