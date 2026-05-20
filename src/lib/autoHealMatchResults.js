@@ -60,7 +60,7 @@
 // saveMatchResult, schedule, teams, players, seedMap.
 
 import { computeMatchResult } from "./matchCalc";
-import { getWeekSide } from "../theme";
+import { getWeekSide, getPlayerHcpAtWeek } from "../theme";
 
 /**
  * Detect drift in saved match_result docs and write corrections.
@@ -98,6 +98,15 @@ export function autoHealMatchResults({
   seedMap,
   healedIds,
   saveMatchResult,
+  // Season-wide rounds keyed by playerId, format:
+  //   { [pid]: [{ season, week, gross }, ...] (sorted oldest-first) }
+  // Required for retroactive handicap reconstruction. When absent, this
+  // function bails (no-op) rather than fall back to current handicaps,
+  // because using current handicaps on historical matches causes
+  // retroactive standings drift (the bug this entire rewrite fixes).
+  allRoundsByPid,
+  // Current season number; used to filter prior rounds.
+  season,
 }) {
   // Bail early if any required input isn't ready yet. Auto-heal is purely
   // opportunistic — if data is still loading, do nothing and the next
@@ -105,13 +114,21 @@ export function autoHealMatchResults({
   if (!course || !scoringRules || !leagueConfig || !saveMatchResult) return;
   if (!matchResults || !matchResults.length) return;
   if (!scoresByWeek) return;
+  // Critical: without season-wide rounds we can't compute retroactive
+  // handicaps. The pre-rewrite version of this function called
+  // computeMatchResult with current-day handicaps, which retroactively
+  // rewrote past match outcomes when handicaps drifted. We make that
+  // class of bug impossible by requiring the data needed to do it right.
+  if (!allRoundsByPid || !season) return;
+
+  const recentN = scoringRules?.hcpRecentCount ?? 8;
+  const bestN = scoringRules?.hcpBestCount ?? 6;
+  const frontPar = (course.frontPars || []).reduce((a, b) => a + b, 0) || 36;
 
   matchResults.forEach(r => {
     if (!r || !r.id || healedIds.has(r.id)) return;
 
     const wkScores = scoresByWeek[r.week];
-    // No scores cached for this week — caller hasn't loaded them yet.
-    // Skip silently; next effect run after a load will pick it up.
     if (!wkScores) return;
 
     const wk = schedule.find(s => s.week === r.week);
@@ -122,13 +139,47 @@ export function autoHealMatchResults({
     const hcps = side === 'front' ? course.frontHcps : course.backHcps;
     if (!pars || !hcps) return;
 
+    // Build the historical players array — same shape as `players`, but
+    // each player's handicapIndex is what they had GOING INTO this week.
+    // computeMatchResult uses handicapIndex for both the low/high pairing
+    // sort AND the per-hole stroke allocation, so this is the single
+    // input change that makes recompute produce historically-correct
+    // outcomes regardless of how handicaps have drifted since.
+    //
+    // Fallback chain (in order of preference):
+    //   1. Retroactive calc from prior rounds → fully accurate
+    //   2. p.startingHandicapIndex → commissioner-set value, used for
+    //      players with no prior rounds (week 1, mid-season joiners)
+    //   3. p.handicapIndex → today's value, used only as last resort
+    //      because it has drifted from the historical reality
+    const historicalPlayers = players.map(p => {
+      const retroHcp = getPlayerHcpAtWeek({
+        playerId: p.id,
+        week: r.week,
+        season,
+        allRoundsByPid,
+        recentN,
+        bestN,
+        frontPar,
+      });
+      if (retroHcp !== null) {
+        return { ...p, handicapIndex: retroHcp };
+      }
+      if (p.startingHandicapIndex !== undefined && p.startingHandicapIndex !== null && p.startingHandicapIndex !== "") {
+        return { ...p, handicapIndex: parseFloat(p.startingHandicapIndex) };
+      }
+      // Last resort — current handicapIndex. Best we can do without
+      // either prior rounds or a starting-hcp override on the player.
+      return p;
+    });
+
     try {
       const calc = computeMatchResult({
         match: { team1: r.team1Id, team2: r.team2Id },
         week: r.week,
         isPlayoff: wk.isPlayoff === true,
         teams,
-        players,
+        players: historicalPlayers,
         holeScores: wkScores,
         pars,
         hcps,

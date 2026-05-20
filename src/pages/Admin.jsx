@@ -266,7 +266,7 @@ export default function AdminView(props) {
 
 function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, members, saveMember, onBack }) {
   const [ed, setEd] = useState(null);
-  const [f, setF] = useState({ name: "", handicapIndex: "", teeBox: "Blue" });
+  const [f, setF] = useState({ name: "", handicapIndex: "", startingHandicapIndex: "", teeBox: "Blue" });
   const [orig, setOrig] = useState(null); // snapshot for dirty detection
   const [showInactive, setShowInactive] = useState(false);
   const [confirmModal, setConfirmModal] = useState(null);
@@ -298,12 +298,27 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
     f.name !== orig.name ||
     f.teeBox !== orig.teeBox ||
     String(f.handicapIndex ?? "") !== String(orig.handicapIndex ?? "") ||
+    String(f.startingHandicapIndex ?? "") !== String(orig.startingHandicapIndex ?? "") ||
     (ed === "new")
   );
   const save = async () => {
     if (!f.name.trim()) return;
     const id = ed === "new" ? `${LEAGUE_ID}_p${Date.now()}` : ed;
-    await savePlayer({ id, name: f.name.trim(), handicapIndex: parseFloat(f.handicapIndex) || 0, teeBox: f.teeBox, status: f.status || "active" });
+    // startingHandicapIndex is stored as a number if set, undefined otherwise
+    // so the absence-of-value case (most players for now) doesn't clutter Firestore docs.
+    // autoHealMatchResults reads this as the fallback when retroactive hcp calc
+    // returns null (player has no prior rounds — week 1 or mid-season joiner).
+    const startingHcp = f.startingHandicapIndex === "" || f.startingHandicapIndex == null
+      ? undefined
+      : parseFloat(f.startingHandicapIndex);
+    await savePlayer({
+      id,
+      name: f.name.trim(),
+      handicapIndex: parseFloat(f.handicapIndex) || 0,
+      ...(startingHcp !== undefined && !isNaN(startingHcp) ? { startingHandicapIndex: startingHcp } : {}),
+      teeBox: f.teeBox,
+      status: f.status || "active",
+    });
     setEd(null); setOrig(null);
   };
   const toggleStatus = async (p) => { await savePlayer({ ...p, status: p.status === "inactive" ? "active" : "inactive" }); };
@@ -350,6 +365,26 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
             onChange={e => setF({ ...f, handicapIndex: e.target.value })}
             onFocus={e => setTimeout(() => e.target.select(), 10)}
             placeholder="0"
+            style={{ ...inputStyle, padding: "7px 10px", fontWeight: 700, textAlign: "center", flex: 1 }}
+          />
+        </div>
+        {/* Row 1c: Starting HCP. The handicap the player had when they FIRST played
+            (or joined the league). Used by autoHealMatchResults as the fallback for
+            historical match recomputation when the player has no prior rounds —
+            i.e., for week 1 and for mid-season joiners' first played week. Unlike
+            HCP Index above, this value is not overwritten by recalcHandicaps and
+            stays sticky across the season. Leave blank if you don't need historical
+            recomputation accuracy (today's HCP Index will be used as last resort). */}
+        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+          <span style={{ fontSize: 11, color: K.t3, fontWeight: 600, letterSpacing: .8, textTransform: "uppercase", flexShrink: 0, width: 60 }}>Start HCP</span>
+          <input
+            type="number"
+            inputMode="decimal"
+            step="0.1"
+            value={f.startingHandicapIndex ?? ""}
+            onChange={e => setF({ ...f, startingHandicapIndex: e.target.value })}
+            onFocus={e => setTimeout(() => e.target.select(), 10)}
+            placeholder="Optional"
             style={{ ...inputStyle, padding: "7px 10px", fontWeight: 700, textAlign: "center", flex: 1 }}
           />
         </div>
@@ -425,7 +460,7 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
             }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.red, fontSize: 10, padding: "4px 8px", cursor: "pointer", fontWeight: 600 }}>Delete</button>
           </div>
         ) : (
-          <button onClick={() => { startEdit({ name: p.name, handicapIndex: String(p.handicapIndex ?? ""), teeBox: p.teeBox || teeBoxes[0]?.name || "White", status: p.status || "active" }); setEd(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.acc, fontSize: 10, padding: "5px 10px", cursor: "pointer", fontWeight: 600 }}>Edit</button>
+          <button onClick={() => { startEdit({ name: p.name, handicapIndex: String(p.handicapIndex ?? ""), startingHandicapIndex: String(p.startingHandicapIndex ?? ""), teeBox: p.teeBox || teeBoxes[0]?.name || "White", status: p.status || "active" }); setEd(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.acc, fontSize: 10, padding: "5px 10px", cursor: "pointer", fontWeight: 600 }}>Edit</button>
         )}
       </div>
     );
@@ -435,7 +470,7 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Players ({activePlayers.length} active)</span>
-        <button onClick={() => { startEdit({ name: "", handicapIndex: "", teeBox: defaultTeeBox, status: "active" }); setEd("new"); }} style={{ background: K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 700 }}>+ Add</button>
+        <button onClick={() => { startEdit({ name: "", handicapIndex: "", startingHandicapIndex: "", teeBox: defaultTeeBox, status: "active" }); setEd("new"); }} style={{ background: K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 700 }}>+ Add</button>
       </div>
       {ed === "new" && <EditCard isNew />}
       {/* Empty state with link to next action */}
