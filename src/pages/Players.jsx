@@ -1,6 +1,129 @@
 import { useState, useEffect, useMemo } from "react";
 import { K, EmptyState, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, CHEVRON_SIZE, calcPlayerHcp, getWeekSide, LoadingPanel, SkeletonList } from "../theme";
 
+// ── HcpTrendChart ─────────────────────────────────────────────────────
+// Inline SVG line chart of a player's handicap-over-time. Each x-axis
+// point is one round; y-axis is the handicap that player had GOING INTO
+// that round (computed retroactively from prior rounds via calcPlayerHcp,
+// same function the rest of the app uses for match-time handicaps).
+//
+// Useful as a quick visual of how a player's handicap has trended over
+// the season — climbing, falling, holding steady — without having to
+// open the full rounds list and do mental math.
+//
+// Why this lives in Players.jsx and not theme.jsx: it's small and only
+// used here. If a second consumer ever appears, promote it.
+function HcpTrendChart({ playerScores, recentN, bestN, par, currentHcp }) {
+  // Build the (round, hcp-going-into-it) series. Skip rounds where there
+  // are zero priors — calcPlayerHcp returns null and there's nothing to
+  // plot. Caller sorts playerScores oldest-first, which is the natural
+  // Firestore order from fetchAllScores.
+  const points = [];
+  for (let i = 0; i < playerScores.length; i++) {
+    const prior = playerScores.slice(0, i); // strictly before this round
+    if (prior.length === 0) continue;
+    const hcp = calcPlayerHcp(prior, recentN, bestN, par);
+    if (hcp === null) continue;
+    points.push({
+      season: playerScores[i].season,
+      week: playerScores[i].week,
+      hcp,
+    });
+  }
+
+  // Append a final point for the current handicap — what they ARE today,
+  // factoring in their most recent round. Gives the line a clean
+  // "ends-at-now" endpoint that matches the HCP shown elsewhere.
+  if (currentHcp !== undefined && currentHcp !== null && playerScores.length > 0) {
+    const lastRound = playerScores[playerScores.length - 1];
+    points.push({
+      season: lastRound.season,
+      week: lastRound.week + 1, // pseudo-week for x-positioning
+      hcp: currentHcp,
+      label: "Now",
+    });
+  }
+
+  if (points.length < 2) {
+    return (
+      <div style={{ color: K.t3, fontStyle: "italic", padding: "20px 4px", textAlign: "center", fontSize: 12 }}>
+        Not enough rounds to show a trend yet
+      </div>
+    );
+  }
+
+  // SVG dimensions and padding (in viewBox units; final size is 100%)
+  const W = 320, H = 140;
+  const padL = 26, padR = 12, padT = 12, padB = 22;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+
+  // Y-axis: handicap range. Pad by 1 above max and below min so points
+  // don't sit on the chart edges. Floor at 0 since handicaps don't go
+  // negative in this league.
+  const hcps = points.map(p => p.hcp);
+  const minH = Math.max(0, Math.min(...hcps) - 1);
+  const maxH = Math.max(...hcps) + 1;
+  const yRange = maxH - minH || 1;
+
+  // X-axis: evenly spaced points
+  const xStep = points.length === 1 ? 0 : innerW / (points.length - 1);
+  const xy = (i, hcp) => ({
+    x: padL + i * xStep,
+    y: padT + ((maxH - hcp) / yRange) * innerH,
+  });
+
+  // Build the path string and the dots
+  const pathD = points.map((p, i) => {
+    const { x, y } = xy(i, p.hcp);
+    return `${i === 0 ? "M" : "L"} ${x.toFixed(1)} ${y.toFixed(1)}`;
+  }).join(" ");
+
+  // Y-axis gridlines: 4 evenly spaced labels including min and max
+  const yLabels = [];
+  const labelStep = Math.max(1, Math.ceil(yRange / 4));
+  for (let v = Math.floor(minH); v <= Math.ceil(maxH); v += labelStep) {
+    if (v >= minH - 0.5 && v <= maxH + 0.5) {
+      yLabels.push({
+        v,
+        y: padT + ((maxH - v) / yRange) * innerH,
+      });
+    }
+  }
+
+  return (
+    <div style={{ padding: "8px 4px 0" }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}>
+        {/* Y gridlines + labels */}
+        {yLabels.map((g, i) => (
+          <g key={i}>
+            <line x1={padL} y1={g.y} x2={W - padR} y2={g.y} stroke={K.bdr} strokeWidth="1" strokeDasharray="2,3" />
+            <text x={padL - 5} y={g.y + 3} fontSize="9" fill={K.t3} textAnchor="end">{g.v}</text>
+          </g>
+        ))}
+
+        {/* The trend line */}
+        <path d={pathD} stroke={K.act} strokeWidth="2" fill="none" strokeLinejoin="round" strokeLinecap="round" />
+
+        {/* Data points */}
+        {points.map((p, i) => {
+          const { x, y } = xy(i, p.hcp);
+          const isLast = i === points.length - 1;
+          return (
+            <g key={i}>
+              <circle cx={x} cy={y} r={isLast ? 4 : 2.5} fill={isLast ? K.act : K.card} stroke={K.act} strokeWidth="1.5" />
+            </g>
+          );
+        })}
+
+        {/* X-axis label: just count of rounds + current hcp at the end. */}
+        <text x={padL} y={H - 6} fontSize="9" fill={K.t3}>{points.length} pts</text>
+        <text x={W - padR} y={H - 6} fontSize="9" fill={K.t2} textAnchor="end" fontWeight="700">Current: {currentHcp}</text>
+      </svg>
+    </div>
+  );
+}
+
 export default function PlayersView({ players, course, schedule, scoringRules, fetchAllScores, members, dataLoaded }) {
   const recentN = scoringRules.hcpRecentCount ?? 8;
   const bestN = scoringRules.hcpBestCount ?? 6;
@@ -23,6 +146,11 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
   // visible during the wait instead of hidden.
   const [allScores, setAllScores] = useState(null);
   const [expanded, setExpanded] = useState(null);
+  // Per-player view toggle: "rounds" (default — list of contributing
+  // rounds) vs "graph" (handicap-over-time line). Keyed by player id so
+  // each expanded card has its own state. Doesn't persist across
+  // expand/collapse cycles — that's fine, it's a quick visual aid.
+  const [viewModeByPid, setViewModeByPid] = useState({});
 
   const commPlayerIds = (members || []).filter(m => m.isCommissioner).map(m => m.playerId);
 
@@ -179,6 +307,57 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
                 ) : p.recentRounds.length === 0 ? (
                   <div style={{ color: K.t3, fontStyle: "italic", padding: 4 }}>No completed rounds found</div>
                 ) : (() => {
+                  const viewMode = viewModeByPid[p.id] || "rounds";
+                  const setMode = (m) => setViewModeByPid(prev => ({ ...prev, [p.id]: m }));
+
+                  // ── Toggle pill bar ─────────────────────────────────
+                  // Two-option pill, same shape as Scoring's MY MATCH /
+                  // ALL MATCHES toggle. Active option gets dark fill, the
+                  // inactive one is just outlined. Kept compact since
+                  // it sits inside an already-expanded card.
+                  const Toggle = (
+                    <div style={{
+                      display: "flex",
+                      gap: 0,
+                      background: K.inp,
+                      borderRadius: 8,
+                      padding: 3,
+                      marginBottom: 10,
+                      width: "fit-content",
+                      margin: "0 auto 10px",
+                    }}>
+                      {[
+                        { id: "rounds", label: "Rounds" },
+                        { id: "graph", label: "Trend" },
+                      ].map(opt => {
+                        const active = viewMode === opt.id;
+                        return (
+                          <button
+                            key={opt.id}
+                            onClick={() => setMode(opt.id)}
+                            style={{
+                              background: active ? K.t1 : "transparent",
+                              color: active ? K.bg : K.t2,
+                              border: "none",
+                              borderRadius: 6,
+                              padding: "5px 14px",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              letterSpacing: .5,
+                              textTransform: "uppercase",
+                              cursor: "pointer",
+                              transition: "all .15s",
+                            }}
+                          >{opt.label}</button>
+                        );
+                      })}
+                    </div>
+                  );
+
+                  if (viewMode === "graph") {
+                    return <>{Toggle}<HcpTrendChart playerScores={allScores[p.id] || []} recentN={recentN} bestN={bestN} par={course ? (course.frontPars || []).reduce((a, b) => a + b, 0) : 36} currentHcp={p.idx} /></>;
+                  }
+
                   // Resolve front/back for a given (season, week). Current season
                   // can override via schedule.side; historical seasons fall back
                   // to the default odd=front, even=back alternation — with one
@@ -263,6 +442,7 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
 
                   return (
                     <>
+                      {Toggle}
                       {recent.map((s) => {
                         const isBest = p.best.some(b =>
                           b.season === s.season && b.week === s.week && b.gross === s.gross
