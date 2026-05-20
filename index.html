@@ -3,44 +3,29 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-
+    <title>MnQ Golf</title>
     <!-- ── Favicon ─────────────────────────────────────────────────────
-         Browser walks this list in order. SVG is preferred when available
-         (best quality, scales to any size), but the PNG fallback ensures
-         the browser tab still gets an icon if favicon.svg isn't in the
-         repo — the PNG already exists because site.webmanifest requires
-         it for the PWA install icon. apple-touch-icon is the home-screen
-         icon iOS uses when adding the PWA to the home screen. -->
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="icon" type="image/png" sizes="192x192" href="/favicon/web-app-manifest-192x192.png" />
-    <link rel="icon" type="image/png" sizes="512x512" href="/favicon/web-app-manifest-512x512.png" />
-    <link rel="apple-touch-icon" href="/favicon/web-app-manifest-192x192.png" />
-
+         Browser walks this list in order. .ico is the universal fallback
+         every browser supports; the PNGs give high-res variants for the
+         retina tab icon and PWA install. apple-touch-icon is the
+         home-screen icon iOS uses when adding the PWA to the home screen.
+         The ?v=2 query string busts any cached favicon a returning visitor
+         already has — bump to v=3 next time the icon ever changes. -->
+    <link rel="icon" type="image/x-icon" href="/favicon/favicon.ico?v=2" />
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon/favicon-96x96.png?v=2" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/favicon/web-app-manifest-192x192.png?v=2" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/favicon/web-app-manifest-512x512.png?v=2" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/favicon/apple-touch-icon.png?v=2" />
     <!-- ── PWA manifest ────────────────────────────────────────────────
          Wires the app to /site.webmanifest so Chrome/Edge/Android show
          the "Install" / "Add to Home Screen" prompt. Required for push
-         notifications to work on iOS (Safari + Add to Home Screen is
-         the only path on iOS 16.4+). -->
-    <link rel="manifest" href="/site.webmanifest" />
-
-    <!-- ── iOS-specific PWA meta ──────────────────────────────────────
-         apple-mobile-web-app-capable tells iOS to launch in standalone
-         mode when installed to home screen (no Safari chrome). Without
-         this, the app opens in a regular Safari tab even when launched
-         from the home screen — and push notifications won't work.
-         Status bar style "default" gives an opaque bar that respects
-         layout boundaries (vs "black-translucent" which overlays content
-         and pushes the app under the Dynamic Island). -->
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-    <meta name="apple-mobile-web-app-title" content="MnQ Golf" />
-
-    <!-- ── Theme color ────────────────────────────────────────────────
-         Android Chrome browser chrome color. iOS uses the status bar
-         style above instead. -->
-    <meta name="theme-color" content="#0b1829" />
-
-    <title>MnQ Golf</title>
+         notifications to work on iOS (Safari + Add to Home Screen is the
+         only path on iOS 16.4+). -->
+    <link rel="manifest" href="/site.webmanifest?v=2" />
+    <meta name="theme-color" content="#f0f2f5" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700;800&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>
