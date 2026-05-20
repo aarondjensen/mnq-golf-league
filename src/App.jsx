@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
-import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
+import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
 import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, LoadingPanel } from "./theme";
 import { parseScheduleDate } from "./lib/scheduleDate";
 import { usePullToRefresh } from "./lib/usePullToRefresh";
@@ -379,7 +379,45 @@ export default function GolfLeagueApp() {
   }, [liveWeek, authUser?.uid]);
 
   // Auth actions
-  const doGoogleSignIn = async () => { try { await signInWithPopup(_auth, _googleProvider); } catch (e) { console.error(e); throw e; } };
+  // Google sign-in. Uses popup in regular browser tabs (fastest, doesn't
+  // blow away page state) and redirect in installed PWAs (popups don't
+  // work in iOS PWA standalone mode — they open briefly but can't
+  // postMessage back to the parent, so they vanish without signing in).
+  // Detection: iOS exposes navigator.standalone; other platforms expose
+  // display-mode: standalone via matchMedia.
+  const doGoogleSignIn = async () => {
+    try {
+      const isStandalone =
+        window.navigator.standalone === true ||
+        window.matchMedia?.("(display-mode: standalone)").matches === true;
+      if (isStandalone) {
+        // Redirect navigates the whole window away to Google's sign-in
+        // page, then comes back to the app with an auth code in the URL.
+        // The getRedirectResult handler below picks it up on next mount.
+        await signInWithRedirect(_auth, _googleProvider);
+      } else {
+        await signInWithPopup(_auth, _googleProvider);
+      }
+    } catch (e) {
+      console.error("Google sign-in failed:", e);
+      throw e;
+    }
+  };
+
+  // Handle the redirect result on app mount. When a user comes back from
+  // signInWithRedirect, this picks up the auth result and Firebase
+  // completes the sign-in. onAuthStateChanged then fires normally,
+  // routing them into the app. Failure to call this means a successful
+  // Google redirect would land back on the app's sign-in screen instead
+  // of actually being signed in. Safe to call unconditionally — returns
+  // null if no redirect is pending.
+  useEffect(() => {
+    getRedirectResult(_auth).catch(e => {
+      // Common case: no redirect was pending → resolves null, no error.
+      // Real errors (popup_closed_by_user, network) get logged for debug.
+      console.warn("getRedirectResult:", e?.message || e);
+    });
+  }, []);
   const doEmailSignIn = async (email, pw) => {
     // Email/password sign-in with an auto-create fallback for first-time
     // users (so the UI doesn't need a separate "Sign Up" form).
