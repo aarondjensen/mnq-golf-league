@@ -1220,7 +1220,23 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   const [expanded, setExpanded] = useState(null);
   const [expandedResult, setExpandedResult] = useState(null);
   const [weekScores, setWeekScores] = useState({});
+  // Season-wide rounds keyed by playerId — used by renderMiniScorecard
+  // and by autoHeal for retroactive handicap reconstruction. Populated
+  // once on mount via fetchAllScores (which is cached App-side, so this
+  // is cheap). Null while loading; renderMiniScorecard falls back to
+  // startingHandicapIndex / current hcp until it populates.
+  const [allRounds, setAllRounds] = useState(null);
   const expandedRef = useRef(null);
+
+  useEffect(() => {
+    if (!fetchAllScores) return;
+    let cancelled = false;
+    fetchAllScores().then(hist => {
+      if (cancelled) return;
+      setAllRounds(hist);
+    });
+    return () => { cancelled = true; };
+  }, [fetchAllScores]);
 
   // Determine if playoffs have started (any playoff week has matches)
   const playoffsStarted = useMemo(() =>
