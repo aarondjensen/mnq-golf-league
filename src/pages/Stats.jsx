@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
-import { K, EmptyState, SubLabel, LIST_GAP, CARD_RADIUS, getWeekSide, LoadingPanel } from "../theme";
+import { K, EmptyState, SubLabel, LIST_GAP, CARD_RADIUS, getWeekSide, LoadingPanel, getPlayerHcpAtWeek } from "../theme";
 import { buildStrokesMap } from "../lib/matchCalc";
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -18,8 +18,9 @@ import { buildStrokesMap } from "../lib/matchCalc";
 //
 // Performance: O(players × weeks × 9) per recompute. For 20 players over
 // 16 weeks that's ~3000 iterations — well within useMemo budget.
-export default function StatsView({ players, course, schedule, scoringRules, fetchSeasonScores }) {
+export default function StatsView({ players, course, schedule, scoringRules, fetchSeasonScores, fetchAllScores, leagueConfig }) {
   const [scores, setScores] = useState({});
+  const [allRounds, setAllRounds] = useState(null);
   const [loading, setLoading] = useState(true);
   const [mode, setMode] = useState("gross");  // "gross" | "net"
   // Sticky-toggle compaction. The sentinel is a 1px div placed just above
@@ -51,6 +52,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
   // their actual rate, not raw attendance.
   const [parsAgg,    setParsAgg]    = useState("total");
   const [birdiesAgg, setBirdiesAgg] = useState("total");
+  const [eaglesAgg,  setEaglesAgg]  = useState("total");
 
   useEffect(() => {
     if (!fetchSeasonScores) return;
@@ -63,6 +65,23 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
     }).catch(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [fetchSeasonScores]);
+
+  // Season-wide rounds for retroactive handicap reconstruction. Stats
+  // boards in "net" mode need each round's net to be computed using the
+  // handicap the player had GOING INTO that round, not their current
+  // handicap. Without this, a player who improved during the season
+  // (e.g., went from hcp 8 to hcp 3) would have their early-season net
+  // scores under-counted today because we'd be subtracting only 3 strokes
+  // per round instead of the 8 they actually got. Symmetric to the
+  // Standings fix for the same root cause.
+  useEffect(() => {
+    if (!fetchAllScores) return;
+    let cancelled = false;
+    fetchAllScores().then(hist => {
+      if (!cancelled) setAllRounds(hist);
+    });
+    return () => { cancelled = true; };
+  }, [fetchAllScores]);
 
   // ──────────────────────────────────────────────────────────────────────
   //  Build per-player aggregate stats from current-season hole_scores.
@@ -80,14 +99,46 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
 
     const sortedWeeks = [...(schedule || [])].sort((a, b) => a.week - b.week);
 
+    // Settings for retroactive handicap calc — same defaults the rest of
+    // the app uses. recentN and bestN come from scoringRules; frontPar
+    // is computed from the course's front-9 par list. season is read off
+    // leagueConfig so multi-season-aware (matches autoHeal + Standings).
+    const recentN = scoringRules?.hcpRecentCount ?? 8;
+    const bestN = scoringRules?.hcpBestCount ?? 6;
+    const frontPar = frontPars.reduce((a, b) => a + b, 0) || 36;
+    const currentSeason = leagueConfig?.year || new Date().getFullYear();
+
     return players.map(p => {
-      const hcp = Math.round(p.handicapIndex || 0);
+      // Resolves the handicap this player had GOING INTO a given week.
+      // Order of preference:
+      //   1. Retroactive calc from prior rounds (deterministic, accurate)
+      //   2. startingHandicapIndex (commissioner-set, sticky)
+      //   3. Current handicapIndex (today's value, last resort — used
+      //      automatically until allRounds fetch resolves on initial load)
+      // Closed over p so the call site stays terse.
+      const hcpForWeek = (week) => {
+        if (allRounds) {
+          const retro = getPlayerHcpAtWeek({
+            playerId: p.id,
+            week,
+            season: currentSeason,
+            allRoundsByPid: allRounds,
+            recentN, bestN, frontPar,
+          });
+          if (retro !== null) return retro;
+        }
+        if (p.startingHandicapIndex !== undefined && p.startingHandicapIndex !== null && p.startingHandicapIndex !== "") {
+          return Math.round(parseFloat(p.startingHandicapIndex));
+        }
+        return Math.round(p.handicapIndex || 0);
+      };
       const rounds = [];                   // [{ week, side, gross, net, sidePar }]
       const holeSequence = [];             // [{ par, gross, net, played }] in time order
 
       // Aggregate counters
       let totalParsGross = 0,    totalParsNet = 0;
       let totalBirdiesGross = 0, totalBirdiesNet = 0;
+      let totalEaglesGross = 0,  totalEaglesNet = 0;
 
       // Specialist sums + counts. Par-3 and par-5 now track both gross
       // and net since high-handicap players get strokes on the harder
@@ -107,7 +158,13 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         const hcps = side === 'front' ? frontHcps : backHcps;
         if (!pars.length || !hcps.length) continue;
 
-        const strokes = buildStrokesMap(hcp, hcps);
+        // Handicap as of this specific week — see hcpForWeek above for
+        // the resolution chain. Critical that this is INSIDE the week
+        // loop, not outside; using a single hcp value for all of a
+        // player's rounds (the original bug) gives wrong net scores for
+        // any player whose handicap shifted during the season.
+        const weekHcp = hcpForWeek(wk.week);
+        const strokes = buildStrokesMap(weekHcp, hcps);
 
         // Per-side hardest/easiest hole indices — rank the 9 holes by their
         // hcp values and grab the bottom 3 (hardest, lowest hcp number) and
@@ -137,6 +194,14 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
             if (s === par - 1)       totalBirdiesGross++;
             if (netHole === par - 1) totalBirdiesNet++;
 
+            // Eagles (two under par). Rare on a 9-hole front/back at this
+            // par-36 layout — most often a par-5 reached in two and a
+            // long putt, or driving a par-4. Tracked separately rather
+            // than rolled into birdies so the boards show the standout
+            // moments without diluting the more common birdies count.
+            if (s === par - 2)       totalEaglesGross++;
+            if (netHole === par - 2) totalEaglesNet++;
+
             // Specialist — par-type. Both gross and net tracked so
             // each board can toggle independently of the par segmentation.
             if (par === 3) { par3SumGross += s; par3SumNet += netHole; par3Count++; }
@@ -157,7 +222,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         }
 
         if (holesPlayed === 9) {
-          const net = gross - hcp;
+          const net = gross - weekHcp;
           rounds.push({ week: wk.week, side, gross, net });
         }
       }
@@ -190,10 +255,13 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         // Birdies boards can switch without recomputing.
         totalParsGross,    totalParsNet,
         totalBirdiesGross, totalBirdiesNet,
+        totalEaglesGross,  totalEaglesNet,
         avgParsGross:    totalParsGross    / rounds.length,
         avgParsNet:      totalParsNet      / rounds.length,
         avgBirdiesGross: totalBirdiesGross / rounds.length,
         avgBirdiesNet:   totalBirdiesNet   / rounds.length,
+        avgEaglesGross:  totalEaglesGross  / rounds.length,
+        avgEaglesNet:    totalEaglesNet    / rounds.length,
         // Streaks
         maxStreakGross: maxG,
         maxStreakNet:   maxN,
@@ -208,7 +276,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         easyAvgNet:      easyCount > 0 ? easySumNet   / easyCount : null,
       };
     }).filter(Boolean);
-  }, [players, course, schedule, scores]);
+  }, [players, course, schedule, scores, allRounds, leagueConfig, scoringRules]);
 
   if (loading) return <LoadingPanel />;
   if (!course) return <EmptyState icon="barChart" title="Course not configured" subtitle="Stats unlock once the commissioner sets up the course." />;
@@ -453,6 +521,17 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         sortDir: 'desc',
         valueFmt: v => birdiesAgg === "avg" ? v.toFixed(1) : v,
         playerAnnotation: s => birdiesAgg === "avg" ? `${s.rounds}r` : null,
+      })}
+      {board({
+        title: `Eagles — ${modeLabel}`,
+        headerToggle: <MiniToggle value={eaglesAgg} onChange={setEaglesAgg} options={totalAvgOptions} />,
+        valueFn: s => {
+          if (eaglesAgg === "avg") return isNet ? s.avgEaglesNet : s.avgEaglesGross;
+          return isNet ? s.totalEaglesNet : s.totalEaglesGross;
+        },
+        sortDir: 'desc',
+        valueFmt: v => eaglesAgg === "avg" ? v.toFixed(2) : v,
+        playerAnnotation: s => eaglesAgg === "avg" ? `${s.rounds}r` : null,
       })}
       {board({
         title: `Longest Par-or-Better Streak — ${modeLabel}`,

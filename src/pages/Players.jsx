@@ -117,7 +117,7 @@ function HcpTrendChart({ playerScores, recentN, bestN, par, currentHcp }) {
         })}
 
         {/* X-axis label: just count of rounds + current hcp at the end. */}
-        <text x={padL} y={H - 6} fontSize="9" fill={K.t3}>{points.length} pts</text>
+        <text x={padL} y={H - 6} fontSize="9" fill={K.t3}>{points.length} rounds</text>
         <text x={W - padR} y={H - 6} fontSize="9" fill={K.t2} textAnchor="end" fontWeight="700">Current: {currentHcp}</text>
       </svg>
     </div>
