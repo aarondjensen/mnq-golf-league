@@ -48,6 +48,28 @@ export function calcPlayerHcp(rounds, recentN, bestN, par) {
   return Math.round(avg - par);
 }
 
+// ── Retroactive handicap: what was this player's HCP at the start of week W? ──
+// Used wherever a historical match needs to be recomputed (autoHeal,
+// individual leaderboard, week-comparison views, etc.). Filters
+// allRoundsByPid to rounds played strictly before (season, week), then
+// runs the same calcPlayerHcp routine that recalcHandicaps uses live.
+// Returns null if the player has no prior rounds — callers should fall
+// back to the player's current handicapIndex in that case.
+//
+// Critical correctness property: match outcomes computed using this
+// retroactive HCP will match the outcomes that were active when the
+// match was originally played, regardless of how handicaps drift later.
+// This is what makes locked-week results stable even as new weeks are
+// played and current handicaps shift.
+export function getPlayerHcpAtWeek({ playerId, week, season, allRoundsByPid, recentN, bestN, frontPar }) {
+  if (!allRoundsByPid || !playerId) return null;
+  const playerRounds = allRoundsByPid[playerId] || [];
+  const priorRounds = playerRounds.filter(r =>
+    r.season < season || (r.season === season && r.week < week)
+  );
+  return calcPlayerHcp(priorRounds, recentN, bestN, frontPar);
+}
+
 // ── Shared utility: extract last names from team name ──
 export function lastNamesOnly(teamName) {
   if (!teamName) return "";
@@ -373,27 +395,15 @@ export const getCSS = (k) => `
   input[type=number] { -moz-appearance: textfield; }
   .hole-input:focus { outline: 2px solid ${k.act}; outline-offset: -1px; background: ${k.cardHi} !important; }
   .app-shell { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: ${k.bg}; color: ${k.t1}; font-family: 'League Spartan', sans-serif; display: flex; flex-direction: column; font-size: 15px; letter-spacing: 0.8px; overflow: hidden; text-transform: uppercase; }
-  .app-header { padding: 12px 20px; padding-top: calc(12px + env(safe-area-inset-top, 0px)); background: ${k.bg}; display: flex; justify-content: center; align-items: center; position: relative; }
+  .app-header { padding: 12px 20px; background: ${k.bg}; display: flex; justify-content: center; align-items: center; position: relative; }
   .app-body { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior-y: none; min-height: 0; background: ${k.bg}; }
   .main-content { padding: 12px 14px; padding-bottom: 24px; max-width: 900px; width: 100%; margin: 0 auto; box-sizing: border-box; min-height: 100%; background: ${k.bg}; }
-  .bottom-nav { background: ${k.card}f0; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid ${k.bdr}; display: flex; justify-content: space-around; padding: 8px 0 10px; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); z-index: 200; max-width: 900px; width: 100%; flex-shrink: 0; }
+  .bottom-nav { background: ${k.card}f0; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid ${k.bdr}; display: flex; justify-content: space-around; padding: 10px 0 26px; padding-bottom: calc(26px + env(safe-area-inset-bottom, 0px)); z-index: 200; max-width: 900px; width: 100%; flex-shrink: 0; }
   .admin-grid { display: flex; flex-direction: column; gap: 6px; }
   .admin-sections-grid { display: flex; flex-direction: column; gap: 6px; }
   .players-grid { display: flex; flex-direction: column; gap: 6px; }
   .scoring-grid { display: flex; flex-direction: column; gap: 10px; }
   .schedule-weeks { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
-  /* Score-cell text centering. Both the border (circle/square) and the
-     score text use translate(-50%, -50%) to center against the same
-     geometric anchor. The additional translateY(1px) is a visual nudge
-     to compensate for League Spartan's slightly-high-sitting numeral
-     glyphs within their line box — without it scores appear to "float"
-     above the square's center.
-     Same value used on desktop AND mobile to keep score numbers
-     row-aligned with the player initials column (which has no translateY).
-     A larger mobile-specific value would better center scores within
-     bogey squares but at the cost of visibly dropping below the initials
-     baseline, which is the more noticeable visual problem of the two. */
-  .scorecell-text { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%) translateY(1px); z-index: 1; line-height: 1; }
   .standings-grid { display: flex; flex-direction: column; gap: 6px; }
   @media (min-width: 768px) {
     .main-content { padding: 24px 32px; padding-bottom: 20px; margin: 0 auto; }
@@ -423,7 +433,6 @@ export const I = {
   key: (s = 18, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.3 9.3"/><path d="M18.5 5.5 21 3"/></svg>,
   arrowLeft: (s = 14, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>,
   ellipsis: (s = 18, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1" fill={c}/><circle cx="5" cy="12" r="1" fill={c}/><circle cx="19" cy="12" r="1" fill={c}/></svg>,
-  bell: (s = 18, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>,
 };
 
 // ── Shared UI components ──
