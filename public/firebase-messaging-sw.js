@@ -118,7 +118,7 @@ messaging.onBackgroundMessage(async (payload) => {
     return self.registration.showNotification(title, {
       body,
       icon: "/favicon/web-app-manifest-192x192.png",
-      badge: "/favicon/web-app-manifest-192x192.png",
+      badge: "/favicon/notification-badge.png",
       data,
       tag: data.type || "default",
       renotify: true,
@@ -128,6 +128,8 @@ messaging.onBackgroundMessage(async (payload) => {
     try {
       return self.registration.showNotification("MnQ Golf", {
         body: "A new update — open the app for details.",
+        icon: "/favicon/web-app-manifest-192x192.png",
+        badge: "/favicon/notification-badge.png",
       });
     } catch { /* truly hopeless */ }
   }

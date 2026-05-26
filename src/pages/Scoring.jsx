@@ -985,7 +985,27 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               // When signed-but-not-yet-fully-attested, leave the center strip clean —
               // the N/M ATTEST counter lives in the attesters row below now.
             } else if (thru > 0) {
-              if (dispCum > 0) { centerText = dispCum + "UP"; centerColor = K.t1; }
+              // Match-play clinch awareness: a match ends when a team's lead
+              // exceeds the holes remaining. Past that point, additional net
+              // hole wins don't change the result — but the raw dispCum tally
+              // keeps counting them, which inflated a clinched 4&3 match into
+              // a displayed "5UP". Run the same clinch detection the per-hole
+              // MATCH row uses and prefer its result when the match has been
+              // decided. amGetStrokes/effectiveScore are the same inputs used
+              // to build dispCum, so the two stay consistent.
+              const cs = computeMatchStatus(
+                mT1Pids, mT2Pids,
+                (pid, h) => effectiveScore(pid, h),
+                (pid, h) => amGetStrokes(pid, h),
+                pars
+              );
+              if (cs.clinchText && cs.clinchHole !== null && cs.clinchText !== "TIED") {
+                // Match decided early (e.g., "4&3") — show that, not the
+                // inflated running cumulative. centerColor stays neutral
+                // dark since there IS a winner.
+                centerText = cs.clinchText;
+                centerColor = K.t1;
+              } else if (dispCum > 0) { centerText = dispCum + "UP"; centerColor = K.t1; }
               else if (dispCum < 0) { centerText = Math.abs(dispCum) + "UP"; centerColor = K.t1; }
               else { centerText = "AS"; centerColor = K.t3; }
               progressLabel = "Thru " + thru;
@@ -1027,22 +1047,21 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             // while the match is pending. Outside the PENDING state — match
             // is final/signed/in-progress, or hasn't started — every name
             // renders normally.
-            const isPending = centerText === "PENDING";
-            const isCardIncomplete = (pid) => {
-              if (!pid) return false;
-              for (let h = 0; h < 9; h++) {
-                if ((holeScores[`w${week}_p${pid}_h${h}`] || 0) <= 0) return true;
-              }
-              return false;
-            };
             // Name color resolves in priority order:
-            //   1. Attendance "makeup" → K.act gold (explicit announcement)
-            //   2. Attendance "absent" → K.red (explicit announcement)
-            //   3. Live PENDING with incomplete card → K.act gold (waiting on)
-            //   4. Default → K.t1
-            // Attendance flags beat the live-pending signal because they
-            // carry more information ("this player won't be here today")
-            // vs the generic "scoring not complete yet."
+            //   1. Attendance "makeup" → K.act gold (this player is making
+            //      up their round later — the match waits on them)
+            //   2. Attendance "absent" → K.red (this player isn't here)
+            //   3. Default → K.t1
+            //
+            // Deliberately does NOT gold players merely for having an
+            // incomplete card. During normal live play every player has an
+            // incomplete card until their last hole is entered — that's not
+            // a "needs attention" state. The earlier version golded any
+            // incomplete player while the match was PENDING, which wrongly
+            // flagged actively-playing players whenever their OPPONENTS were
+            // making up (the whole match goes PENDING, but only the makeup
+            // players should be gold). Attendance status is per-player, so
+            // it cleanly separates "making up" from "still on the course."
             //
             // Color-token gotcha: K.act = maize gold (#deab12, brand color),
             // K.acc = light gray. Easy to confuse — makeup should be K.act.
@@ -1050,7 +1069,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               const attnStatus = attendance?.[`w${week}_p${pid}`]?.status;
               if (attnStatus === "makeup") return K.act;
               if (attnStatus === "absent") return K.red;
-              if (isPending && isCardIncomplete(pid)) return K.act;
               return K.t1;
             };
 
