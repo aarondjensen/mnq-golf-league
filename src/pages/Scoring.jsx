@@ -39,8 +39,25 @@ function computeMatchStatus(t1Pids, t2Pids, getScore, getStrokes, pars) {
     if (ok1 && ok2) holeResults.push(n1 < n2 ? 1 : n2 < n1 ? -1 : 0);
     else holeResults.push(null);
   }
-  const runningStatus = []; let cum = 0;
-  holeResults.forEach(r => { if (r !== null) cum += r; runningStatus.push(r !== null ? cum : null); });
+  // Running cumulative match status. Match-play integrity rule: the
+  // cumulative is only meaningful when every prior hole is resolved. A
+  // single incomplete hole (null) makes the running total indeterminate
+  // for that hole AND all holes after it — you can't know the cumulative
+  // standing when an earlier hole's win/loss/halve is unknown. So once we
+  // hit a null, every subsequent entry is null too. (Downstream MatchRow
+  // shows ⚠️ on null holes with partial activity, blank on untouched ones.)
+  const runningStatus = [];
+  let cum = 0;
+  let sequenceBroken = false;
+  holeResults.forEach(r => {
+    if (sequenceBroken || r === null) {
+      sequenceBroken = true;
+      runningStatus.push(null);
+    } else {
+      cum += r;
+      runningStatus.push(cum);
+    }
+  });
 
   let clinchHole = null, clinchText = null;
   for (let h = 0; h < 9; h++) {
@@ -513,6 +530,25 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   };
   const allComplete = allP.length > 0 && allP.every(pid => { for (let h = 0; h < 9; h++) if (getS(pid, h) <= 0) return false; return true; });
   const holeComplete = allP.length > 0 && allP.every(pid => getS(pid, curHole) > 0);
+
+  // Detect players with a PARTIALLY filled card — at least one hole scored
+  // but not all 9. This is the actionable "you forgot a hole" state: the
+  // scorer has clearly been entering this player's scores, so a gap is a
+  // mistake worth flagging (vs a player who hasn't started at all, who's
+  // either making up or just hasn't teed off). Returns the missing hole
+  // NUMBERS (1-indexed for display) per player so the alert can name them.
+  const missingScores = allP.map(pid => {
+    let started = false;
+    const missing = [];
+    for (let h = 0; h < 9; h++) {
+      if (getS(pid, h) > 0) started = true;
+      else missing.push(h + 1);
+    }
+    if (!started || missing.length === 0) return null; // not started, or complete
+    const pl = players.find(p => p.id === pid);
+    const initials = pl ? pl.name.split(' ').map(n => n[0]).join('') : "?";
+    return { pid, initials, holes: missing };
+  }).filter(Boolean);
 
   const existingResult = (t1 && t2) ? matchResults.find(r => r.week === week && r.team1Id === t1.id && r.team2Id === t2.id) : null;
   const isAlreadyFinalized = !!existingResult;
@@ -1065,9 +1101,25 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             //
             // Color-token gotcha: K.act = maize gold (#deab12, brand color),
             // K.acc = light gray. Easy to confuse — makeup should be K.act.
+            // Helper: has this player entered ANY score this week?
+            // The gold "making up — we're waiting on them" flag should only
+            // apply to players who haven't started. A player actively
+            // playing (even if not yet finished — e.g. THRU 8) has scores
+            // entered and should render normally, not gold. A making-up
+            // player with zero scores is the genuine pending case.
+            const hasStartedScoring = (pid) => {
+              for (let h = 0; h < 9; h++) {
+                if ((holeScores[`w${week}_p${pid}_h${h}`] || 0) > 0) return true;
+              }
+              return false;
+            };
             const nameColor = (pid) => {
               const attnStatus = attendance?.[`w${week}_p${pid}`]?.status;
-              if (attnStatus === "makeup") return K.act;
+              // Makeup gold only while the player hasn't entered any scores
+              // yet — once they start playing/making up their round, the
+              // name renders normally. This keeps actively-playing players
+              // (who have scores) from ever showing gold.
+              if (attnStatus === "makeup" && !hasStartedScoring(pid)) return K.act;
               if (attnStatus === "absent") return K.red;
               return K.t1;
             };
@@ -2308,6 +2360,24 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.hcpBlue + "15", border: `1.5px solid ${K.hcpBlue}50`, color: K.hcpBlue, fontSize: 15, fontWeight: 700 }}>
           All Holes Complete — Sign Scorecard
         </button>
+      )}
+
+      {/* Missing-scores alert — shown when the card can't be signed because
+          a player who HAS started scoring is missing one or more holes.
+          Tells the scorer exactly who and which holes, so they can fix the
+          gap. Without this the Sign button just silently doesn't appear and
+          the scorer may not know why. Only fires for started-but-incomplete
+          players; players who haven't started (making up / not teed off) are
+          an expected state, not an error. */}
+      {!allComplete && missingScores.length > 0 && !showFinalize && !isAlreadyFinalized && (
+        <div style={{ width: "100%", padding: "10px 12px", borderRadius: 10, marginTop: 8, background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 13, fontWeight: 700, boxSizing: "border-box" }}>
+          <div style={{ marginBottom: missingScores.length ? 4 : 0 }}>⚠️ Missing scores — can't sign yet</div>
+          {missingScores.map(m => (
+            <div key={m.pid} style={{ fontSize: 12, fontWeight: 600, opacity: .9 }}>
+              {m.initials}: hole{m.holes.length > 1 ? "s" : ""} {m.holes.join(", ")}
+            </div>
+          ))}
+        </div>
       )}
 
       {/* ═══ Finalize Popup ═══ */}
