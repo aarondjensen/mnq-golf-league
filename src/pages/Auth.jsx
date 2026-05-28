@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { LEAGUE_ID } from "../firebase";
 import { K } from "../theme";
+import { parseScheduleDate } from "../lib/scheduleDate";
 
 // NOTE: Font is loaded once via index.html's <link> + preconnect — the prior
 // per-screen <link href={FONTS}> injections here were redundant duplicates and
@@ -131,7 +132,7 @@ export function AuthScreen({ onGoogle, onEmail, onPasswordReset }) {
 }
 
 
-export function JoinScreen({ authUser, members, players, saveMember, doSignOut, leagueConfig }) {
+export function JoinScreen({ authUser, members, players, saveMember, doSignOut, leagueConfig, schedule }) {
   const [selectedPlayer, setSelectedPlayer] = useState("");
   const [inviteCode, setInviteCode] = useState("");
   const [codeError, setCodeError] = useState(false);
@@ -141,6 +142,39 @@ export function JoinScreen({ authUser, members, players, saveMember, doSignOut, 
   const assigned = members.map(m => m.playerId).filter(Boolean);
   const needsLink = existingMember && !existingMember.playerId && players.length > 0;
   const storedCode = leagueConfig?.inviteCode || "";
+
+  // ── Next-match display (1.10E) ───────────────────────────────────
+  // Surface the league's cadence on the join screen so a returning
+  // member who just signed in sees at a glance "ok, next match is
+  // Tuesday at 4:28 PM" without having to complete the join flow
+  // first. Falls back to nothing if schedule hasn't loaded yet or
+  // there's no playable upcoming week — graceful, never a blank
+  // "next match: —" row that draws the eye to nothing.
+  const nextMatch = useMemo(() => {
+    if (!schedule || !Array.isArray(schedule) || schedule.length === 0) return null;
+    const now = new Date();
+    const year = leagueConfig?.year || now.getFullYear();
+    // Walk in week order; the first non-rained-out non-locked week
+    // with matches IS the next one. Same heuristic the rest of the
+    // app uses for "current/next playable" via currentWeek.
+    for (const wk of schedule) {
+      if (wk.rainedOut || wk.locked) continue;
+      if (!wk.matches || wk.matches.length === 0) continue;
+      // Date may be unparseable for older test data — skip silently
+      // rather than throwing.
+      const wkDate = wk.date ? parseScheduleDate(wk.date, year) : null;
+      if (!wkDate) continue;
+      // Only show future dates; today's match is still "next" until
+      // play actually concludes.
+      if (wkDate.getTime() < now.setHours(0, 0, 0, 0)) continue;
+      const dayLabel = wkDate.toLocaleDateString("en-US", {
+        weekday: "long", month: "short", day: "numeric",
+      });
+      const startTime = leagueConfig?.startTime || "4:28 PM";
+      return { dayLabel, startTime, week: wk.week };
+    }
+    return null;
+  }, [schedule, leagueConfig]);
 
   const handleJoin = async (asCommissioner = false) => {
     // Check invite code (skip for first user/commissioner setup, or if already a member needing to link)
@@ -174,6 +208,26 @@ export function JoinScreen({ authUser, members, players, saveMember, doSignOut, 
         <div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 24, color: K.acc, letterSpacing: 1, marginBottom: 4 }}>{title}</div>
         <div style={{ color: K.t3, fontSize: 12, marginBottom: 6 }}>Signed in as <span style={{ color: K.t2, fontWeight: 600 }}>{authUser.email}</span></div>
         <div style={{ color: K.t2, fontSize: 13, marginBottom: 16, lineHeight: 1.5, padding: "0 12px" }}>{subtitle}</div>
+
+        {/* Next-match strip — shown only when we have schedule data and
+            an upcoming playable week. Sits above the join action so the
+            league's cadence is visible before any tap. */}
+        {nextMatch && (
+          <div style={{
+            background: K.card, border: `1px solid ${K.matchGrn}40`,
+            borderRadius: 10, padding: "10px 12px", marginBottom: 16,
+            display: "flex", alignItems: "center", gap: 10,
+          }}>
+            <div style={{
+              fontSize: 9, fontWeight: 800, color: K.matchGrn,
+              letterSpacing: 1, textTransform: "uppercase", flexShrink: 0,
+            }}>Next Match</div>
+            <div style={{ flex: 1, textAlign: "right", lineHeight: 1.2 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: K.t1 }}>{nextMatch.dayLabel}</div>
+              <div style={{ fontSize: 11, fontWeight: 600, color: K.t2 }}>{nextMatch.startTime} · Week {nextMatch.week}</div>
+            </div>
+          </div>
+        )}
 
         {isFirstUser ? (
           <button onClick={() => handleJoin(true)} disabled={busy} style={{ width: "100%", padding: "14px", borderRadius: 12, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: busy ? .6 : 1 }}>Create League as Commissioner</button>

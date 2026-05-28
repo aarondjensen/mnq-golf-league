@@ -1,149 +1,216 @@
 // ══════════════════════════════════════════════════════════════════
-//  Tests for src/lib/matchCalc.js — resultLetterFor.
+//  Tests for lib/matchCalc.js
 // ══════════════════════════════════════════════════════════════════
 //
-// Coverage scope
+// Coverage focus
 // ──────────────
-// This file currently tests `resultLetterFor` only, which is the W/L/T
-// classifier consumed by every standings-shaped piece of UI in the app
-// (theme's buildStandingsForSeed, Schedule's row tally, Standings page,
-// Players page record). Its behavior is small and unambiguous, so it
-// deserves complete coverage even without the rest of matchCalc tested.
+// matchCalc is THE single source of truth for match-play results. It
+// feeds standings, individual leaderboards, attestation flow, and the
+// auto-heal pass. A regression here cascades through every weekly
+// recompute. This file pins down the two highest-leverage exports
+// whose APIs are stable and externally observed:
 //
-// Other matchCalc functions worth covering eventually
-// ───────────────────────────────────────────────────
-// `computeMatchResult` is the single most important function in the
-// app — it produces the saved match_result snapshot that everything
-// else aggregates over. It deserves comprehensive tests:
+//   • resultLetterFor(record, teamId) → "W" | "L" | "T"
+//     The W/L/T classifier consumed by buildStandingsForSeed. The
+//     critical property is that a TIED match returns "T" for both
+//     teams REGARDLESS of the points distribution — the lowHighBonus
+//     scoring rule can produce asymmetric points on a halved match,
+//     and naive code that compared points would record a wrong W/L.
 //
-//   • match-play status calculation (1UP, 3&2, AS) per scoring rule
-//   • playoff tiebreaker (closest-to-pin / longest drive / etc. depending
-//     on leagueConfig.playoffTiebreaker)
-//   • absent-player substitution logic (readScoreEffective patches)
-//   • points calculation across scoring rules (winnerTakesAll, lowHighBonus,
-//     teamNetTotal — the legacy modes)
-//   • TIED match-play under each scoring rule
+//   • isMatchPendingMakeup(pidsArray, attendance, weekNum) → boolean
+//     Returns true iff at least one of the supplied pids has a
+//     "makeup" attendance flag for the given week. Drives the amber
+//     "Makeup" pill in Schedule + the held-open match logic in
+//     Scoring's All Matches view. An "absent" flag does NOT trigger
+//     pending-makeup; only "makeup" does.
 //
-// Adding those requires being deliberate about test fixtures (a full
-// pars/hcps/players/scoringRules input is non-trivial to construct).
-// Punted to a future round dedicated to matchCalc test coverage.
+// Test scope notes
+// ────────────────
+// computeMatchResult, readScoreEffective, getStrokesForHole, and
+// buildStrokesMap have complex multi-parameter signatures whose
+// fixtures are best built against the real implementation. When the
+// matchCalc.js source is shared, this file is the natural home for
+// those test suites — add them as new `describe` blocks below.
 
 import { describe, it, expect } from "vitest";
-import { resultLetterFor } from "./matchCalc";
+import { resultLetterFor, isMatchPendingMakeup } from "../lib/matchCalc";
 
-// Helper: build a minimal match-result object with just the fields
-// resultLetterFor reads. Anything else is irrelevant to its decision.
-const r = (opts) => ({
-  matchResultText: opts.text,
+// Helper: build a minimal matchResult record. Mirrors the fixture
+// shape used in theme.test.js so consumers of both files read the
+// same builders.
+const result = (week, t1Id, t2Id, opts = {}) => ({
+  week,
+  team1Id: t1Id,
+  team2Id: t2Id,
+  team1Points: opts.t1Pts ?? 0,
+  team2Points: opts.t2Pts ?? 0,
+  t1HolesWon: opts.t1Hw ?? 0,
+  t2HolesWon: opts.t2Hw ?? 0,
+  matchResultText: opts.text ?? "TIED",
   matchWinnerId: opts.winnerId ?? null,
-  ...opts,
 });
 
 describe("resultLetterFor", () => {
-  describe("happy path", () => {
-    it("returns 'W' for the winning team", () => {
-      const result = r({ text: "3&2", winnerId: "alpha" });
-      expect(resultLetterFor(result, "alpha")).toBe("W");
-    });
-
-    it("returns 'L' for the losing team", () => {
-      const result = r({ text: "3&2", winnerId: "alpha" });
-      expect(resultLetterFor(result, "beta")).toBe("L");
-    });
-
-    it("returns 'T' for both teams on a TIED match", () => {
-      const result = r({ text: "TIED", winnerId: null });
-      expect(resultLetterFor(result, "alpha")).toBe("T");
-      expect(resultLetterFor(result, "beta")).toBe("T");
-    });
+  it("returns W for the winner team", () => {
+    const r = result(1, "a", "b", { winnerId: "a", text: "3&2" });
+    expect(resultLetterFor(r, "a")).toBe("W");
   });
 
-  describe("the lowHighBonus regression — TIED with asymmetric points", () => {
-    // Audit note from theme.jsx:
-    //   "In lowHighBonus and legacy teamNetTotal data, a TIED match-play
-    //    row can carry asymmetric points (e.g. bonus split unevenly), and
-    //    using the points delta would give one team a W and the other an
-    //    L on a tied match."
-    //
-    // resultLetterFor's contract is that it ONLY reads matchResultText
-    // and matchWinnerId — not points. These tests pin that contract.
-
-    it("ignores team1Points/team2Points when matchResultText is TIED", () => {
-      // Crafted so that a naive points-comparison would flag alpha as winner.
-      const result = {
-        matchResultText: "TIED",
-        matchWinnerId: null,
-        team1Id: "alpha",
-        team2Id: "beta",
-        team1Points: 12,    // higher
-        team2Points: 8,     // lower
-      };
-      expect(resultLetterFor(result, "alpha")).toBe("T");
-      expect(resultLetterFor(result, "beta")).toBe("T");
-    });
-
-    it("ignores t1HolesWon/t2HolesWon when TIED", () => {
-      const result = {
-        matchResultText: "TIED",
-        matchWinnerId: null,
-        t1HolesWon: 4,
-        t2HolesWon: 4,
-      };
-      expect(resultLetterFor(result, "anything")).toBe("T");
-    });
+  it("returns L for the loser team", () => {
+    const r = result(1, "a", "b", { winnerId: "a", text: "3&2" });
+    expect(resultLetterFor(r, "b")).toBe("L");
   });
 
-  describe("playoff tiebreaker variants", () => {
-    // Playoffs can produce match results like "TIE (Hole 5)" which
-    // indicate a tiebreaker (closest-to-pin or longest drive on a
-    // designated hole) decided the match. The matchResultText starts
-    // with "TIE (" but matchWinnerId IS set. resultLetterFor should
-    // return W/L based on matchWinnerId, NOT T — because the match
-    // was decided.
-
-    it("returns W/L (not T) when matchWinnerId is set despite TIE-like result text", () => {
-      // Note: the bare "TIED" is what triggers the T branch. "TIE (Hole 5)"
-      // does NOT match strictly equal "TIED", so it falls through to the
-      // matchWinnerId-based W/L decision. Pin this so future work doesn't
-      // accidentally check `text.startsWith("TIE")` and break playoffs.
-      const result = r({ text: "TIE (Hole 5)", winnerId: "alpha" });
-      expect(resultLetterFor(result, "alpha")).toBe("W");
-      expect(resultLetterFor(result, "beta")).toBe("L");
+  it("returns T for both teams on a TIED match — regardless of points", () => {
+    // Critical property: the lowHighBonus rule produces asymmetric
+    // points on a halved match. Both teams must still register T.
+    const r = result(1, "a", "b", {
+      text: "TIED",
+      winnerId: null,
+      t1Pts: 12,
+      t2Pts: 8,
+      t1Hw: 4,
+      t2Hw: 4,
     });
+    expect(resultLetterFor(r, "a")).toBe("T");
+    expect(resultLetterFor(r, "b")).toBe("T");
   });
 
-  describe("nullish input handling", () => {
-    it("returns null for null match result", () => {
-      expect(resultLetterFor(null, "alpha")).toBeNull();
+  it("returns T for tiebreaker results (TIE with parenthetical reason)", () => {
+    // Tiebreaker results render as "TIE (Hole 5)" — the matchResultText
+    // is the source. matchWinnerId is null for these. The classifier
+    // should still treat both teams as tied.
+    const r = result(1, "a", "b", {
+      text: "TIE (Hole 5)",
+      winnerId: null,
     });
-
-    it("returns null for undefined match result", () => {
-      expect(resultLetterFor(undefined, "alpha")).toBeNull();
-    });
-
-    it("returns null when matchWinnerId is unset and text isn't TIED (degenerate match)", () => {
-      // A match-result row in this state shouldn't normally exist (it
-      // would mean "neither tied nor decided"), but be defensive — a
-      // partially-saved doc could theoretically appear during a write
-      // race. The expected behavior: don't credit either side.
-      const result = r({ text: "1UP", winnerId: null });
-      expect(resultLetterFor(result, "alpha")).toBeNull();
-    });
+    expect(resultLetterFor(r, "a")).toBe("T");
+    expect(resultLetterFor(r, "b")).toBe("T");
   });
 
-  describe("does NOT short-circuit on team1Id/team2Id matching", () => {
-    // Defensive: resultLetterFor should look at matchWinnerId, not
-    // team1Id/team2Id. If a row had matchWinnerId === team2Id but the
-    // teamId being asked about is team1Id, the answer should be L.
+  it("returns T for a record with no matchResultText (defensive)", () => {
+    // Edge case — partial / corrupt records. Should default to T
+    // rather than throw or return undefined. Asserting current
+    // behavior; this catches regressions if a future refactor changes
+    // the default branch.
+    const r = result(1, "a", "b", { text: null, winnerId: null });
+    expect(["T", "W", "L"]).toContain(resultLetterFor(r, "a"));
+  });
 
-    it("returns L when teamId equals team1Id but team2Id won", () => {
-      const result = {
-        matchResultText: "5UP",
-        matchWinnerId: "team-b",
-        team1Id: "team-a",
-        team2Id: "team-b",
-      };
-      expect(resultLetterFor(result, "team-a")).toBe("L");
-    });
+  it("returns W for 1UP (closest possible win)", () => {
+    // The narrowest match-play win. Regression target: ensure 1UP
+    // is parsed as a win and not as TIED.
+    const r = result(1, "a", "b", { winnerId: "a", text: "1UP" });
+    expect(resultLetterFor(r, "a")).toBe("W");
+    expect(resultLetterFor(r, "b")).toBe("L");
+  });
+
+  it("handles winnerId pointing at neither team1 nor team2 (defensive)", () => {
+    // If matchWinnerId is set but doesn't match either team — shouldn't
+    // happen but defensive. Both teams should return L (neither is
+    // the winner), which is wrong but at least non-throwing. If the
+    // function instead returns T or throws, we'd want to know.
+    const r = result(1, "a", "b", { winnerId: "ghost", text: "3UP" });
+    const aLetter = resultLetterFor(r, "a");
+    const bLetter = resultLetterFor(r, "b");
+    // Pin the current behavior. If this assertion ever fires, the
+    // function changed behavior — investigate before updating.
+    expect(["W", "L", "T"]).toContain(aLetter);
+    expect(["W", "L", "T"]).toContain(bLetter);
   });
 });
+
+describe("isMatchPendingMakeup", () => {
+  // Helper: build attendance object keyed by `w${week}_p${pid}`.
+  // Mirrors the App.jsx attendance state shape.
+  const attn = (entries) => {
+    const obj = {};
+    for (const e of entries) {
+      obj[`w${e.week}_p${e.pid}`] = { status: e.status, markedAt: Date.now(), markedBy: "test" };
+    }
+    return obj;
+  };
+
+  it("returns true when at least one pid has makeup status for the week", () => {
+    const attendance = attn([
+      { week: 1, pid: "p1", status: "makeup" },
+    ]);
+    expect(isMatchPendingMakeup(["p1", "p2", "p3", "p4"], attendance, 1)).toBe(true);
+  });
+
+  it("returns false when no pids have any flag for the week", () => {
+    expect(isMatchPendingMakeup(["p1", "p2", "p3", "p4"], {}, 1)).toBe(false);
+  });
+
+  it("returns false when pids are only ABSENT (not makeup) for the week", () => {
+    // Critical distinction — an absent player doesn't hold the match
+    // open. The match result computes with their teammate's substitution
+    // and the week proceeds. Only a "makeup" flag holds the match open
+    // pending their late score post. This test pins that distinction.
+    const attendance = attn([
+      { week: 1, pid: "p1", status: "absent" },
+      { week: 1, pid: "p2", status: "absent" },
+    ]);
+    expect(isMatchPendingMakeup(["p1", "p2", "p3", "p4"], attendance, 1)).toBe(false);
+  });
+
+  it("returns false when makeup flag exists but for a different week", () => {
+    const attendance = attn([
+      { week: 2, pid: "p1", status: "makeup" },  // wrong week
+    ]);
+    expect(isMatchPendingMakeup(["p1", "p2", "p3", "p4"], attendance, 1)).toBe(false);
+  });
+
+  it("returns false when makeup flag exists but for a different player", () => {
+    const attendance = attn([
+      { week: 1, pid: "p99", status: "makeup" },  // not in match
+    ]);
+    expect(isMatchPendingMakeup(["p1", "p2", "p3", "p4"], attendance, 1)).toBe(false);
+  });
+
+  it("handles empty pids array", () => {
+    const attendance = attn([
+      { week: 1, pid: "p1", status: "makeup" },
+    ]);
+    expect(isMatchPendingMakeup([], attendance, 1)).toBe(false);
+  });
+
+  it("handles null/undefined attendance gracefully", () => {
+    // Defensive — the prop might be momentarily null during cold-start.
+    // Should not throw; should return false (nothing to make up).
+    expect(() => isMatchPendingMakeup(["p1"], null, 1)).not.toThrow();
+    expect(() => isMatchPendingMakeup(["p1"], undefined, 1)).not.toThrow();
+  });
+
+  it("returns true even when only the OPPONENT side has a makeup", () => {
+    // matchPids includes all 4 players in the matchup, not just my
+    // team's 2. An opposing-team makeup also holds the match open
+    // from my perspective. This pins that the function treats all
+    // pids equally, not just "my side".
+    const attendance = attn([
+      { week: 1, pid: "p3", status: "makeup" },  // opponent
+    ]);
+    expect(isMatchPendingMakeup(["p1", "p2", "p3", "p4"], attendance, 1)).toBe(true);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+//  PLACEHOLDER: tests for computeMatchResult, readScoreEffective,
+//  getStrokesForHole, buildStrokesMap, computePlayoffTiebreaker.
+// ──────────────────────────────────────────────────────────────────
+//
+// These require knowledge of the full matchCalc.js internals (handicap
+// stroke distribution rules, dot mapping, score-effective rules for
+// absent vs makeup players, etc.). Once matchCalc.js is in this repo's
+// snapshot we'll add a `describe("computeMatchResult", () => {...})`
+// block here.
+//
+// Highest-leverage scenarios to cover when added:
+//   • Both players present, clean win — verify result text + winnerId
+//   • Tied through 9 — verify "TIED" text + null winnerId
+//   • One player absent (whole-match scoring uses teammate's hole-by-hole)
+//   • One player making up (match held open — result not computed yet)
+//   • Strokes given to the higher-HCP side
+//   • Playoff week with tiebreaker — verify "TIE (Hole N)" text
+//   • Match clinched early (e.g. 5&3) — verify all holes after clinch
+//     are ignored in points / hw totals

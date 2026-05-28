@@ -124,7 +124,7 @@ function HcpTrendChart({ playerScores, recentN, bestN, par, currentHcp }) {
   );
 }
 
-export default function PlayersView({ players, course, schedule, scoringRules, fetchAllScores, members, dataLoaded }) {
+export default function PlayersView({ players, course, schedule, scoringRules, fetchAllScores, members, dataLoaded, leagueConfig }) {
   const recentN = scoringRules.hcpRecentCount ?? 8;
   const bestN = scoringRules.hcpBestCount ?? 6;
   // ── Background-loaded detail data ──
@@ -154,7 +154,17 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
 
   const commPlayerIds = (members || []).filter(m => m.isCommissioner).map(m => m.playerId);
 
-  const seasonStarts = { 2023: "2023-04-25", 2024: "2024-04-23", 2025: "2025-04-22", 2026: "2026-04-21" };
+  // Season start dates — used to label historical rounds with their
+  // approximate calendar date (start date + (week-1) * 7 days). Sourced
+  // from leagueConfig.seasonStarts so new seasons can be added without
+  // a code change. Falls back to the historical hard-coded values when
+  // a season is missing from config — keeps the audit-recommended
+  // migration backward-compatible for existing leagues that haven't yet
+  // populated the seasonStarts field. When adding a new season, edit
+  // Admin → Config → Season Starts and ship a single Firestore write
+  // instead of a code release.
+  const HISTORICAL_SEASON_STARTS = { 2023: "2023-04-25", 2024: "2024-04-23", 2025: "2025-04-22", 2026: "2026-04-21" };
+  const seasonStarts = { ...HISTORICAL_SEASON_STARTS, ...(leagueConfig?.seasonStarts || {}) };
   const getRoundDate = (season, week) => {
     const start = seasonStarts[season];
     if (!start) return `${season}`;
@@ -311,20 +321,19 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
                   const setMode = (m) => setViewModeByPid(prev => ({ ...prev, [p.id]: m }));
 
                   // ── Toggle pill bar ─────────────────────────────────
-                  // Two-option pill, same shape as Scoring's MY MATCH /
-                  // ALL MATCHES toggle. Active option gets dark fill, the
-                  // inactive one is just outlined. Kept compact since
-                  // it sits inside an already-expanded card.
+                  // Two-option pill, segmented style matching Stats's
+                  // page-level Gross/Net toggle: K.inp track, K.acc fill
+                  // on the active option, K.t3 on inactive. Stretches
+                  // full-width across the expanded card (the previous
+                  // centered fit-content version was visually inconsistent
+                  // with the rest of the app's toggle pattern).
                   const Toggle = (
                     <div style={{
                       display: "flex",
-                      gap: 0,
                       background: K.inp,
                       borderRadius: 8,
-                      padding: 3,
+                      padding: 2,
                       marginBottom: 10,
-                      width: "fit-content",
-                      margin: "0 auto 10px",
                     }}>
                       {[
                         { id: "rounds", label: "Rounds" },
@@ -336,14 +345,15 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
                             key={opt.id}
                             onClick={() => setMode(opt.id)}
                             style={{
-                              background: active ? K.t1 : "transparent",
-                              color: active ? K.bg : K.t2,
+                              flex: 1,
+                              background: active ? K.acc : "transparent",
+                              color: active ? K.bg : K.t3,
                               border: "none",
                               borderRadius: 6,
-                              padding: "5px 14px",
+                              padding: "6px 0",
                               fontSize: 11,
                               fontWeight: 700,
-                              letterSpacing: .5,
+                              letterSpacing: .8,
                               textTransform: "uppercase",
                               cursor: "pointer",
                               transition: "all .15s",
@@ -454,12 +464,28 @@ export default function PlayersView({ players, course, schedule, scoringRules, f
                         );
                       })}
 
-                      {/* Divider — only renders when there are dropped rounds to show */}
+                      {/* Divider — only renders when there are dropped rounds to show.
+                          A small uppercase chip floats over the dashed line so the
+                          "what is this divider?" question answers itself. */}
                       {dropped.length > 0 && (
                         <div style={{
-                          margin: "10px 4px 8px",
+                          margin: "16px 4px 10px",
+                          position: "relative",
                           borderTop: `1px dashed ${K.bdr}`,
-                        }} />
+                          height: 0,
+                        }}>
+                          <div style={{
+                            position: "absolute",
+                            top: -7, left: "50%",
+                            transform: "translateX(-50%)",
+                            background: K.inp,
+                            padding: "0 8px",
+                            fontSize: 9, fontWeight: 800,
+                            color: K.t3, letterSpacing: 1.2,
+                            textTransform: "uppercase",
+                            whiteSpace: "nowrap",
+                          }}>↓ Dropped from calc</div>
+                        </div>
                       )}
 
                       {dropped.map((s) => (

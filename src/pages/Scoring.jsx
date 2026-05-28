@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef, memo } from "react";
 import { K, I, BackBtn, Card, EmptyState,
   getWeekSide,
   formatTeeTime as fmtTeeTimeUtil, LIST_GAP,
@@ -9,6 +9,21 @@ import { parseScheduleDate } from "../lib/scheduleDate";
 import { parseTiebreakerResult, TeamMatchupCard } from "../TeamMatchupCard";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { Popup, ConfirmModal } from "../components/Popup";
+
+// ═══════════════════════════════════════════════════════════════
+//  Haptic feedback helpers (1.1A)
+// ═══════════════════════════════════════════════════════════════
+// PWAs on Android + recent iOS support navigator.vibrate. On unsupported
+// browsers vibrate is undefined and the helper no-ops. Tap pattern feels
+// native and is critical UX on a course (gloves, sun, motion). Three
+// intensities used throughout this view:
+//   • tapScore     — single 10ms blip for entering a hole score
+//   • tapNudge     — 8ms blip for +/− nudge buttons (lighter than score)
+//   • tapBigAction — three-pulse pattern for big moments (sign card, attest, finalize)
+function tapScore()     { if (typeof navigator !== "undefined" && navigator.vibrate) try { navigator.vibrate(10); } catch {} }
+function tapNudge()     { if (typeof navigator !== "undefined" && navigator.vibrate) try { navigator.vibrate(8); } catch {} }
+function tapBigAction() { if (typeof navigator !== "undefined" && navigator.vibrate) try { navigator.vibrate([20, 40, 20]); } catch {} }
+
 
 // ═══════════════════════════════════════════════════════════════
 //  Helper: compute strokes map for a given handicap
@@ -1348,6 +1363,32 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           })}
         </div>
 
+        {/* CTP shortcut (1.3C) — once the week is locked, expose a
+            one-tap path to the CTP results for this week. Without this,
+            the user has to nav to More → CTP, which is 2 taps deeper.
+            Visible only when there's actually CTP data for this week
+            (the par-3 holes have been recorded) — otherwise the button
+            would lead to an empty view. Uses hash routing for nav
+            consistency with the rest of the app. */}
+        {isWeekLocked && ctpData.some(c => c.week === week && c.playerId) && (
+          <button
+            onClick={() => { window.location.hash = "ctp"; }}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              width: "100%", marginTop: 10,
+              padding: "10px 14px", borderRadius: 10,
+              background: K.card, border: `1px solid ${K.act}40`,
+              color: K.act, fontSize: 12, fontWeight: 800,
+              letterSpacing: 1, textTransform: "uppercase",
+              cursor: "pointer",
+            }}
+          >
+            <span>🏌️</span>
+            <span>View CTP Results for Week {week}</span>
+            <span style={{ fontSize: 14 }}>›</span>
+          </button>
+        )}
+
         {isComm && (
           <div style={{ marginTop: 12 }}>
             {/* Rain Out button — only visible when commish toggle is on */}
@@ -1487,6 +1528,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           const allPlayersSorted = [...players].sort((a, b) => a.name.localeCompare(b.name));
 
           const handleFinalize = async () => {
+            tapBigAction();
             // Save CTP selections
             for (const holeNum of par3Holes) {
               const sel = ctpSelections[holeNum];
@@ -1829,6 +1871,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   };
 
   const finalizeMatch = async () => {
+    tapBigAction();
     const isPlayoffWeek = weekSch?.isPlayoff === true;
 
     // Single source of truth: compute all match-result fields via matchCalc.
@@ -1875,6 +1918,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   const attestMatch = async () => {
     if (!existingResult) return;
+    tapBigAction();
     const newAttestedBy = [...new Set([...attestedBy, leagueUser.playerId])];
     const allDone = nonSignerPids.every(pid => newAttestedBy.includes(pid));
     await saveMatchResult({
@@ -1957,7 +2001,24 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     <div style={{ maxWidth: 420, margin: "0 auto" }}>
       {activeMatch && (
         <div style={{ marginBottom: 8 }}>
-          <BackBtn onClick={() => { setActiveMatch(null); }} />
+          {/* Explicit destination label (1.1H). The shared BackBtn just
+              says "Back" — in this context "Back to All Matches" tells
+              the user exactly where they're going, which matters
+              especially for a commish drilling into someone else's
+              match by mistake. */}
+          <button
+            onClick={() => { setActiveMatch(null); }}
+            style={{
+              background: K.inp, border: `1px solid ${K.bdr}`,
+              borderRadius: 6, color: K.t2,
+              fontSize: 13, padding: "7px 14px",
+              cursor: "pointer", fontWeight: 500,
+              display: "flex", alignItems: "center", gap: 6,
+              letterSpacing: .8,
+            }}
+          >
+            {I.arrowLeft(13, K.t2)} Back to All Matches
+          </button>
         </div>
       )}
       {!activeMatch && <ViewToggle />}
@@ -1969,10 +2030,17 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         </div>
       )}
       {!isAlreadyFinalized && (
-      <div style={{ display: "flex", gap: 3, marginBottom: 2 }}>
+      <div style={{ display: "flex", gap: 4, marginBottom: 2 }}>
         {Array.from({ length: 9 }, (_, i) => {
           const cur = i === curHole; const done = allP.every(pid => getS(pid, i) > 0);
-          return <button key={i} onClick={() => { setCurHole(i); setEditing(i < currentHoleIdx); }} style={{ flex: 1, height: 32, borderRadius: done || cur ? 8 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 15, fontWeight: 700, cursor: "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{side === 'front' ? i + 1 : i + 10}</button>;
+          // Height bumped 32 → 40 (1.1E) so each cell hits the iOS HIG
+          // 44pt minimum within reach (with vertical padding around
+          // the row, the effective hit-target is larger than the
+          // visible height). gap 3→4 gives a hair more visual
+          // breathing room on iPhone SE where 9 cells across 320px is
+          // tight. Current-hole cell gets a small scale bump so the
+          // "you are scoring this hole" cue is unmistakable.
+          return <button key={i} onClick={() => { tapNudge(); setCurHole(i); setEditing(i < currentHoleIdx); }} style={{ flex: 1, height: 40, borderRadius: done || cur ? 8 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 16, fontWeight: 800, cursor: "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1, transform: cur ? "scale(1.06)" : "none", transition: "transform .15s, background .15s" }}>{side === 'front' ? i + 1 : i + 10}</button>;
         })}
       </div>
       )}
@@ -2167,6 +2235,24 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       </>)}
       {!isAlreadyFinalized && (<>
 
+      {/* Missing-scores alert — moved here (1.1D) above the player
+          cards so the actionable list of who's missing what is visible
+          without scrolling past the entire match. Original placement
+          was below the cards which hid it on iPhone SE while scoring
+          the lower players. Only fires for started-but-incomplete
+          players; players who haven't started (making up / not teed
+          off) are an expected state, not an error. */}
+      {!allComplete && missingScores.length > 0 && !showFinalize && (
+        <div style={{ width: "100%", padding: "8px 10px", borderRadius: 10, marginBottom: 6, background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 12, fontWeight: 700, boxSizing: "border-box" }}>
+          <div style={{ marginBottom: missingScores.length ? 3 : 0 }}>⚠️ Missing scores — can't sign yet</div>
+          {missingScores.map(m => (
+            <div key={m.pid} style={{ fontSize: 11, fontWeight: 600, opacity: .9 }}>
+              {m.initials}: hole{m.holes.length > 1 ? "s" : ""} {m.holes.join(", ")}
+            </div>
+          ))}
+        </div>
+      )}
+
       {allP.map(pid => {
         const pl = playerMap[pid]; if (!pl) return null;
         const absent = isPlayerAbsent(pid);
@@ -2190,7 +2276,6 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               onClick={() => {
                 setConfirmModal({
                   title: `Mark ${pl.name} as making up?`,
-                  message: `${pl.name} will post their score later. The match stays open until then.`,
                   onConfirm: () => { markMakeup(pid); setConfirmModal(null); },
                 });
               }}
@@ -2232,7 +2317,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const makingUp = isPlayerMakingUp(pid);
         return <div key={pid}>
           {absent ? (
-            <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.red}40`, padding: "12px 14px", marginBottom: 6, opacity: 0.6 }}>
+            <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.red}40`, borderLeft: `4px solid ${K.red}`, padding: "12px 14px", marginBottom: 6, opacity: 0.6 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <div style={{ fontSize: 16, fontWeight: 700, color: K.t1 }}>{pl.name}</div>
@@ -2261,7 +2346,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                Color-token gotcha: K.act is the maize brand gold (#deab12),
                K.acc is a light gray. Easy to confuse — makeup should be
                K.act everywhere it appears. */
-            <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.act}40`, padding: "12px 14px", marginBottom: 6, opacity: 0.6 }}>
+            <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.act}40`, borderLeft: `4px solid ${K.act}`, padding: "12px 14px", marginBottom: 6, opacity: 0.6 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
                   <div style={{ fontSize: 16, fontWeight: 700, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{pl.name}</div>
@@ -2357,28 +2442,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       })()}
       {/* Finalize / Show Match Details buttons */}
       {allComplete && !showFinalize && !isAlreadyFinalized && (
-        <button onClick={() => setShowFinalize(true)} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.hcpBlue + "15", border: `1.5px solid ${K.hcpBlue}50`, color: K.hcpBlue, fontSize: 15, fontWeight: 700 }}>
+        <button onClick={() => { tapBigAction(); setShowFinalize(true); }} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.hcpBlue + "15", border: `1.5px solid ${K.hcpBlue}50`, color: K.hcpBlue, fontSize: 15, fontWeight: 700 }}>
           All Holes Complete — Sign Scorecard
         </button>
       )}
 
-      {/* Missing-scores alert — shown when the card can't be signed because
-          a player who HAS started scoring is missing one or more holes.
-          Tells the scorer exactly who and which holes, so they can fix the
-          gap. Without this the Sign button just silently doesn't appear and
-          the scorer may not know why. Only fires for started-but-incomplete
-          players; players who haven't started (making up / not teed off) are
-          an expected state, not an error. */}
-      {!allComplete && missingScores.length > 0 && !showFinalize && !isAlreadyFinalized && (
-        <div style={{ width: "100%", padding: "10px 12px", borderRadius: 10, marginTop: 8, background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 13, fontWeight: 700, boxSizing: "border-box" }}>
-          <div style={{ marginBottom: missingScores.length ? 4 : 0 }}>⚠️ Missing scores — can't sign yet</div>
-          {missingScores.map(m => (
-            <div key={m.pid} style={{ fontSize: 12, fontWeight: 600, opacity: .9 }}>
-              {m.initials}: hole{m.holes.length > 1 ? "s" : ""} {m.holes.join(", ")}
-            </div>
-          ))}
-        </div>
-      )}
+      {/* (Missing-scores alert moved above the player cards — 1.1D.) */}
 
       {/* ═══ Finalize Popup ═══ */}
       {showFinalize && (!isAlreadyFinalized || isComm) && (() => {
@@ -2548,8 +2617,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 // longer line up with the shifted numbers — see `showLabels` below.
 const SCORE_LABELS = ["Birdie", "Par", "Bogey", "Double", "Triple"];
 
-function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, pid, week, curHole, saveScore, K, absentBtn }) {
+const PlayerScoreCard = memo(function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, pid, week, curHole, saveScore, K, absentBtn }) {
   const handleScore = (val) => {
+    tapScore();
+    saveScore(week, pid, curHole, val);
+  };
+  const handleNudge = (val) => {
+    tapNudge();
     saveScore(week, pid, curHole, val);
   };
   const maxBtn = defaultBtns[defaultBtns.length - 1];
@@ -2617,8 +2691,10 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
       <div style={{ display: "flex", gap: 4, alignItems: "flex-start" }}>
         {/* − nudge button moved to the FAR LEFT so the par button sits
             dead center of the 7-button row. Symmetric with the + on the
-            far right. */}
-        <button onClick={() => handleScore(Math.max(1, (score || par) - 1))} style={{ width: 30, height: 44, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>−</button>
+            far right. Width bumped 30→36 (1.1B) to land closer to the
+            HIG 44pt minimum — with gloves on a bumpy cart the previous
+            30px coin-flip target was too small. */}
+        <button onClick={() => handleNudge(Math.max(1, (score || par) - 1))} style={{ width: 36, height: 44, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>−</button>
         {btns.map((btn, idx) => {
           const isCur = btn === score; const sd = btn - par;
           const boxSize = 32;
@@ -2664,8 +2740,8 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
             </div>
           );
         })}
-        <button onClick={() => handleScore((score || par) + 1)} style={{ width: 30, height: 44, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>+</button>
+        <button onClick={() => handleNudge((score || par) + 1)} style={{ width: 36, height: 44, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>+</button>
       </div>
     </Card>
   );
-}
+});

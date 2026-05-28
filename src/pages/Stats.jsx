@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, memo } from "react";
 import { K, EmptyState, SubLabel, LIST_GAP, CARD_RADIUS, getWeekSide, LoadingPanel, getPlayerHcpAtWeek } from "../theme";
 import { buildStrokesMap } from "../lib/matchCalc";
 
@@ -18,7 +18,7 @@ import { buildStrokesMap } from "../lib/matchCalc";
 //
 // Performance: O(players × weeks × 9) per recompute. For 20 players over
 // 16 weeks that's ~3000 iterations — well within useMemo budget.
-export default function StatsView({ players, course, schedule, scoringRules, fetchSeasonScores, fetchAllScores, leagueConfig }) {
+export default function StatsView({ players, course, schedule, scoringRules, fetchSeasonScores, fetchAllScores, leagueConfig, leagueUser }) {
   const [scores, setScores] = useState({});
   const [allRounds, setAllRounds] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -278,6 +278,37 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
     }).filter(Boolean);
   }, [players, course, schedule, scores, allRounds, leagueConfig, scoringRules]);
 
+  // Section refs — scroll targets for the sticky section nav (1.6A).
+  // Each Section component below carries a `sectionId` that resolves
+  // to one of these refs. handleSectionTap scrolls the target to just
+  // below the sticky toggle so the heading lines up under the pinned
+  // pill instead of disappearing under it.
+  const sectionRefs = {
+    rounds:      useRef(null),
+    holes:       useRef(null),
+    specialists: useRef(null),
+  };
+  const handleSectionTap = (id) => {
+    const el = sectionRefs[id]?.current;
+    if (!el) return;
+    // Scroll so the section title sits ~60px from the viewport top —
+    // far enough below the sticky toggle (which is ~38-50px tall when
+    // stuck) that the title is fully visible. block:"start" + a negative
+    // offset is the cleanest cross-browser way to express this.
+    const top = el.getBoundingClientRect().top + window.scrollY - 60;
+    // scrollIntoView would respect the sticky offset on some browsers
+    // but not Safari; window.scrollTo is portable.
+    // Pull-to-refresh hook reads scrollTop from .app-body, so we scroll
+    // that container instead of window when present.
+    const appBody = document.querySelector(".app-body");
+    if (appBody) {
+      const elTop = el.getBoundingClientRect().top - appBody.getBoundingClientRect().top + appBody.scrollTop;
+      appBody.scrollTo({ top: elTop - 60, behavior: "smooth" });
+    } else {
+      window.scrollTo({ top, behavior: "smooth" });
+    }
+  };
+
   if (loading) return <LoadingPanel />;
   if (!course) return <EmptyState icon="barChart" title="Course not configured" subtitle="Stats unlock once the commissioner sets up the course." />;
   if (!stats.length) return <EmptyState icon="barChart" title="No completed rounds yet" subtitle="Stats appear here as players post 9-hole rounds." />;
@@ -300,6 +331,26 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
     const collapsedCount = 5;
     const hasMore = allSorted.length > collapsedCount;
     const shown = isExpanded ? allSorted : allSorted.slice(0, collapsedCount);
+
+    // ── Jump-to-self affordance (1.6C) ───────────────────────────────
+    // If the viewer is on this board AND outside the top-5 collapsed
+    // view, render a "▼ You're 12th" pill between rank 5 and the
+    // Show All button. Tapping expands the board AND scrolls the
+    // viewer's row into view. Without this, a player on a 20-row
+    // board has to expand and then hunt — the pill collapses that
+    // to one tap.
+    const myPid = leagueUser?.playerId;
+    const myIdx = myPid ? allSorted.findIndex(s => s.playerId === myPid) : -1;
+    const myRank = myIdx >= 0 ? myIdx + 1 : null;
+    const showJumpToSelf = !isExpanded && myRank !== null && myRank > collapsedCount;
+    const ordinal = (n) => {
+      // "1st / 2nd / 3rd / 4th..." for the jump label. Standard English
+      // ordinals — covers the edge cases (11th/12th/13th vs 21st/22nd).
+      const s = ["th", "st", "nd", "rd"];
+      const v = n % 100;
+      return n + (s[(v - 20) % 10] || s[v] || s[0]);
+    };
+
     return (
       <div style={{ marginBottom: 16 }}>
         {/* Header row — title left, optional mini-toggle right. The mini
@@ -309,60 +360,81 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
           <SubLabel>{title}</SubLabel>
           {headerToggle}
         </div>
-        {subtitle && <div style={{ fontSize: 10, color: K.t3, marginTop: -4, marginBottom: 6 }}>{subtitle}</div>}
+        {subtitle && <div className="mnq-prose" style={{ fontSize: 10, color: K.t3, marginTop: -4, marginBottom: 6 }}>{subtitle}</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
           {shown.map((s, i) => {
             const annotation = playerAnnotation ? playerAnnotation(s) : null;
+            const isMe = myPid && s.playerId === myPid;
             return (
-              <div key={s.playerId} style={{
-                display: "flex", alignItems: "center", padding: "8px 12px",
-                background: K.card, borderRadius: CARD_RADIUS,
-                border: `1px solid ${i === 0 ? K.act + "30" : K.bdr}`,
-              }}>
-                <div style={{
-                  width: 22, height: 22, borderRadius: 5,
-                  background: i === 0 ? K.act + "20" : K.inp,
-                  color: i === 0 ? K.act : K.t3,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 11, fontWeight: 800, flexShrink: 0,
-                }}>{i + 1}</div>
-                <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: K.t1, marginLeft: 10, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                  {s.name}
-                </div>
-                {annotation && (
-                  <div style={{
-                    fontSize: 9, fontWeight: 700, color: K.t3,
-                    letterSpacing: .5, textTransform: "uppercase",
-                    background: K.inp, padding: "2px 6px", borderRadius: 4,
-                    marginLeft: 6, flexShrink: 0,
-                  }}>
-                    {annotation}
-                  </div>
-                )}
-                <div style={{ fontSize: 16, fontWeight: 800, color: K.t1, marginLeft: 8 }}>
-                  {valueFmt ? valueFmt(valueFn(s)) : valueFn(s)}
-                </div>
-              </div>
+              <BoardRow
+                key={s.playerId}
+                rowKey={`${title}__${s.playerId}`}
+                rank={i + 1}
+                name={s.name}
+                annotation={annotation}
+                value={valueFmt ? valueFmt(valueFn(s)) : valueFn(s)}
+                isFirst={i === 0}
+                isMe={isMe}
+              />
             );
           })}
         </div>
-        {/* Show all / Show less affordance — only renders if there are
-            more than 5 qualifying players. Toggles the title-keyed entry
-            in expandedBoards; functional setState avoids stale-closure
-            issues when the user mashes the button. */}
-        {hasMore && (
+        {/* Jump-to-self pill — only when viewer is on this board AND outside
+            the visible top 5. Expanding scrolls to the row after the layout
+            updates (a 0ms timeout is enough — React flushes synchronously
+            for state updates within click handlers in practice). */}
+        {showJumpToSelf && (
           <button
-            onClick={() => setExpandedBoards(prev => ({ ...prev, [title]: !prev[title] }))}
+            onClick={() => {
+              setExpandedBoards(prev => ({ ...prev, [title]: true }));
+              setTimeout(() => {
+                const el = document.querySelector(`[data-stat-row="${title}__${myPid}"]`);
+                if (!el) return;
+                const appBody = document.querySelector(".app-body");
+                if (appBody) {
+                  const elTop = el.getBoundingClientRect().top - appBody.getBoundingClientRect().top + appBody.scrollTop;
+                  appBody.scrollTo({ top: elTop - 80, behavior: "smooth" });
+                } else {
+                  el.scrollIntoView({ behavior: "smooth", block: "center" });
+                }
+              }, 50);
+            }}
             style={{
-              display: "block", width: "100%", marginTop: 6,
-              padding: "6px 12px", borderRadius: CARD_RADIUS,
-              background: "transparent", border: `1px dashed ${K.bdr}`,
-              color: K.t3, fontSize: 11, fontWeight: 700,
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              width: "100%", marginTop: 6,
+              padding: "8px 12px", borderRadius: CARD_RADIUS,
+              background: K.acc + "10", border: `1px solid ${K.acc}40`,
+              color: K.acc, fontSize: 11, fontWeight: 800,
               letterSpacing: 1, textTransform: "uppercase",
               cursor: "pointer",
             }}
           >
-            {isExpanded ? "Show less" : `Show all (${allSorted.length})`}
+            <span>▼</span>
+            <span>You're {ordinal(myRank)}</span>
+          </button>
+        )}
+        {/* Show all / Show less affordance — only renders if there are
+            more than 5 qualifying players. Toggles the title-keyed entry
+            in expandedBoards; functional setState avoids stale-closure
+            issues when the user mashes the button.
+            Visual weight bumped (#1.6B) — was a low-opacity dashed pill
+            that read as disabled; now a solid 1px border with stronger
+            text color + an explicit chevron so the affordance is clear. */}
+        {hasMore && (
+          <button
+            onClick={() => setExpandedBoards(prev => ({ ...prev, [title]: !prev[title] }))}
+            style={{
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+              width: "100%", marginTop: showJumpToSelf ? 6 : 6,
+              padding: "8px 12px", borderRadius: CARD_RADIUS,
+              background: K.inp, border: `1px solid ${K.bdr}`,
+              color: K.t2, fontSize: 11, fontWeight: 700,
+              letterSpacing: 1, textTransform: "uppercase",
+              cursor: "pointer",
+            }}
+          >
+            <span>{isExpanded ? "Show less" : `Show all (${allSorted.length})`}</span>
+            <span style={{ fontSize: 9, transition: "transform .15s", transform: isExpanded ? "rotate(180deg)" : "none" }}>▾</span>
           </button>
         )}
       </div>
@@ -464,13 +536,56 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
   const modeLabel = isNet ? "Net" : "Gross";
 
   // Section header — visual separator between Rounds / Holes / Specialists.
-  const Section = ({ title }) => (
+  // The `id` prop attaches a ref so the section nav pills can scroll to it.
+  // The label keeps its uppercase styling; the wrapper holds the ref so
+  // measurements include any leading margin.
+  const Section = ({ title, refKey }) => (
+    <div ref={refKey ? sectionRefs[refKey] : undefined}>
+      <div style={{
+        fontSize: 9, fontWeight: 800, color: K.t3,
+        letterSpacing: 2, textTransform: "uppercase",
+        margin: "8px 0 10px", paddingBottom: 6,
+        borderBottom: `1px solid ${K.bdr}40`,
+      }}>{title}</div>
+    </div>
+  );
+
+  // ── Section nav pills (1.6A) ─────────────────────────────────────
+  // Three-pill row that jumps to Rounds / Holes / Specialists. Sits
+  // between the sticky Gross/Net toggle and the first board. NOT
+  // sticky itself — only the Gross/Net toggle needs to stay pinned;
+  // the section nav is a one-tap convenience used at the top of the
+  // page. If users want it sticky too, easy to add later. Keeping it
+  // unsticky now means the Stats page doesn't have two pinned bars
+  // eating vertical space.
+  const SectionNav = (
     <div style={{
-      fontSize: 9, fontWeight: 800, color: K.t3,
-      letterSpacing: 2, textTransform: "uppercase",
-      margin: "8px 0 10px", paddingBottom: 6,
-      borderBottom: `1px solid ${K.bdr}40`,
-    }}>{title}</div>
+      display: "flex", gap: 6,
+      marginBottom: 14, marginTop: 2,
+    }}>
+      {[
+        { id: "rounds", label: "Rounds" },
+        { id: "holes", label: "Holes" },
+        { id: "specialists", label: "Specialists" },
+      ].map(s => (
+        <button
+          key={s.id}
+          onClick={() => handleSectionTap(s.id)}
+          style={{
+            flex: 1,
+            padding: "6px 8px",
+            borderRadius: 6,
+            background: K.card,
+            border: `1px solid ${K.bdr}`,
+            color: K.t2, fontSize: 10, fontWeight: 800,
+            letterSpacing: 1, textTransform: "uppercase",
+            cursor: "pointer",
+          }}
+        >
+          {s.label}
+        </button>
+      ))}
+    </div>
   );
 
   // Total/Avg toggle for the two hole-count boards. Same shape passed to
@@ -483,8 +598,9 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
   return (
     <div>
       {Toggle}
+      {SectionNav}
 
-      <Section title="Rounds" />
+      <Section title="Rounds" refKey="rounds" />
       {board({
         title: `Round Average — ${modeLabel}`,
         valueFn: s => isNet ? s.avgNet : s.avgGross,
@@ -497,7 +613,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         sortDir: 'asc',
       })}
 
-      <Section title="Holes" />
+      <Section title="Holes" refKey="holes" />
       {board({
         title: `Pars — ${modeLabel}`,
         headerToggle: <MiniToggle value={parsAgg} onChange={setParsAgg} options={totalAvgOptions} />,
@@ -540,7 +656,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         valueFmt: v => v > 0 ? `${v}` : "—",
       })}
 
-      <Section title="Specialists" />
+      <Section title="Specialists" refKey="specialists" />
       {board({
         title: `Par-3 Specialist — ${modeLabel}`,
         valueFn: s => isNet ? s.par3AvgNet : s.par3AvgGross,
@@ -570,3 +686,56 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
     </div>
   );
 }
+
+// ──────────────────────────────────────────────────────────────────────
+//  BoardRow — single row on a leaderboard. Memoized so the 10 boards on
+//  this page don't all re-reconcile when the page-level toggle (which
+//  changes hundreds of rows) fires. Props are all primitives so shallow
+//  compare is sufficient. data-stat-row carries `${board}__${pid}` so
+//  the jump-to-self button can find this row in the DOM and scroll to it.
+// ──────────────────────────────────────────────────────────────────────
+const BoardRow = memo(function BoardRow({ rank, name, annotation, value, isFirst, isMe, rowKey }) {
+  return (
+    <div
+      data-stat-row={rowKey /* set by parent when known; safe to be undefined */}
+      style={{
+        display: "flex", alignItems: "center", padding: "8px 12px",
+        background: isMe ? K.acc + "12" : K.card,
+        borderRadius: CARD_RADIUS,
+        border: `1px solid ${
+          isMe ? K.acc + "55" :
+          isFirst ? K.gold + "30" :
+          K.bdr
+        }`,
+      }}
+    >
+      <div style={{
+        width: 22, height: 22, borderRadius: 5,
+        background: isFirst ? K.gold + "20" : K.inp,
+        color: isFirst ? K.gold : K.t3,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontSize: 11, fontWeight: 800, flexShrink: 0,
+      }}>{rank}</div>
+      <div style={{
+        flex: 1, fontSize: 13, fontWeight: isMe ? 800 : 600,
+        color: K.t1, marginLeft: 10,
+        whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+      }}>
+        {name}
+      </div>
+      {annotation && (
+        <div style={{
+          fontSize: 9, fontWeight: 700, color: K.t3,
+          letterSpacing: .5, textTransform: "uppercase",
+          background: K.inp, padding: "2px 6px", borderRadius: 4,
+          marginLeft: 6, flexShrink: 0,
+        }}>
+          {annotation}
+        </div>
+      )}
+      <div style={{ fontSize: 16, fontWeight: 800, color: K.t1, marginLeft: 8 }}>
+        {value}
+      </div>
+    </div>
+  );
+});

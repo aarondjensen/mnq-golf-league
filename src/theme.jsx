@@ -371,10 +371,40 @@ export const getTheme = (mode = "dark") => {
 
 const _savedMode = (() => { try { return typeof window !== 'undefined' && localStorage.getItem("mnq_theme") === "dark" ? "dark" : "light"; } catch { return "light"; } })();
 export const K = { ...getTheme(_savedMode) };
+
+// ── K.maize / K.gray aliases ───────────────────────────────────────
+// Aliases for K.act and K.acc so new code can use semantically clear
+// names while existing code keeps working. The historical K.act/K.acc
+// pair has been a recurring source of confusion — K.act ("active",
+// maize gold #deab12) and K.acc ("accent", light gray) read nearly
+// identically when typing fast, and a single character typo silently
+// swaps a brand-gold UI element to gray (or vice versa). Renaming all
+// existing call sites is a separate, larger refactor (touches every
+// file); this aliasing step is a no-risk first move that lets new
+// code use K.maize and K.gray immediately.
+//
+// Why not K.gold? K.gold is already taken — it's part of the medal
+// palette (K.gold / K.silver / K.bronze) used on leaderboard rank-1
+// styling and is a different shade (#d97706 / #fbbf24) than K.act
+// (#deab12 maize). Reusing the name would cause two distinct tokens
+// to collapse. K.maize cleanly names what K.act actually is — the
+// brand maize gold.
+//
+// Define as getters so applyTheme() rebuilds them when the user
+// toggles dark mode (otherwise K.maize would freeze at the value K.act
+// had at module-load time and drift after a theme switch).
+Object.defineProperty(K, "maize", { get() { return K.act; }, configurable: true, enumerable: true });
+Object.defineProperty(K, "gray",  { get() { return K.acc; }, configurable: true, enumerable: true });
+
 export function applyTheme(mode) {
   const next = getTheme(mode);
   for (const key in next) K[key] = next[key];
-  for (const key in K) { if (!(key in next)) delete K[key]; }
+  // Preserve the alias getters across theme swaps. The for-in/delete pass
+  // below would otherwise strip them because next doesn't include them.
+  for (const key in K) {
+    if (key === "maize" || key === "gray") continue;
+    if (!(key in next)) delete K[key];
+  }
 }
 
 export const getCSS = (k) => `
@@ -383,6 +413,18 @@ export const getCSS = (k) => `
   input, select, textarea { text-transform: uppercase; }
   input, select, textarea, button { font-family: 'League Spartan', sans-serif; letter-spacing: 0.8px; font-size: 15px; text-transform: uppercase; }
   ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: ${k.bdr}; border-radius: 4px; }
+  /* .mnq-prose — explicit opt-out from the global uppercase + heavy
+     letter-spacing for long-form content. The brand calls for uppercase
+     everywhere as a design statement, but long sentences in modal
+     bodies, error messages, and helper text read poorly that way —
+     letter-spacing piles up to make even short paragraphs feel
+     shouted. Add className="mnq-prose" to a wrapper element to
+     normalize letter-spacing and case for everything inside. Use
+     sparingly: stamp it on the BODY of a modal/popup/long message, not
+     on the title or buttons (those should stay uppercase to match the
+     rest of the app). */
+  .mnq-prose, .mnq-prose * { text-transform: none; letter-spacing: 0; }
+  .mnq-prose { line-height: 1.45; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
   @keyframes mnqSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }

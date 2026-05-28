@@ -6,7 +6,7 @@ import { usePullToRefresh } from "./lib/usePullToRefresh";
 import { autoSeedIfReady as autoSeedIfReadyLib } from "./lib/scheduleAutoSeed";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
 import ErrorBoundary from "./ErrorBoundary";
-import { Popup } from "./components/Popup";
+import { Popup, ConfirmModal } from "./components/Popup";
 
 // Fix #2: Lazy-load page components — Vite will code-split each into its own chunk.
 // Only the active tab's code is downloaded and parsed on navigation.
@@ -161,6 +161,60 @@ export default function GolfLeagueApp() {
   }, []);
 
   const [showMore, setShowMore] = useState(false);
+  const [showSignOutConfirm, setShowSignOutConfirm] = useState(false);
+
+  // ── One-time notification-enable prompt (1.8) ──────────────────────
+  // Existing members already signed up before push was added; offering
+  // a soft prompt on next login boosts attestation-flow adoption
+  // materially (the More → Notifications path is 3 taps and easy to
+  // miss). Conditions to render: (a) the user has signed in and is
+  // linked to a player, (b) the browser supports notifications,
+  // (c) permission is still "default" (not granted, not denied —
+  // re-prompting denied users is hostile; the browser blocks it
+  // anyway), and (d) the user hasn't dismissed/seen the prompt before
+  // (localStorage flag). Dismissed via "Not now" or by enabling. The
+  // version suffix (v1) lets us re-prompt in a future season if we
+  // ever change what notifications cover; bumping the key gives every
+  // user a fresh chance to see the new prompt.
+  const NOTIF_PROMPT_KEY = "mnq_notif_prompt_v1";
+  const [showNotifPrompt, setShowNotifPrompt] = useState(false);
+  const [notifBusy, setNotifBusy] = useState(false);
+  useEffect(() => {
+    // Defer until membership is loaded — checking before that races
+    // and can show the banner momentarily on the JoinScreen.
+    if (!leagueUser?.playerId) return;
+    try {
+      if (localStorage.getItem(NOTIF_PROMPT_KEY) === "1") return;
+    } catch { /* private mode / quota; treat as "show it" */ }
+    if (typeof Notification === "undefined") { try { localStorage.setItem(NOTIF_PROMPT_KEY, "1"); } catch {} return; }
+    if (Notification.permission !== "default") { try { localStorage.setItem(NOTIF_PROMPT_KEY, "1"); } catch {} return; }
+    setShowNotifPrompt(true);
+  }, [leagueUser?.playerId]);
+
+  const dismissNotifPrompt = () => {
+    setShowNotifPrompt(false);
+    try { localStorage.setItem(NOTIF_PROMPT_KEY, "1"); } catch {}
+  };
+  const handleEnableNotif = async () => {
+    if (!leagueUser?.playerId) { dismissNotifPrompt(); return; }
+    setNotifBusy(true);
+    try {
+      const mod = await import("./lib/notifications");
+      const result = await mod.registerForPush(leagueUser.playerId);
+      if (result?.success) {
+        appToast("Notifications enabled — you'll hear about new attestations", "info", 3000);
+      } else if (result?.state === "denied" || result?.state === "unsupported") {
+        // Quiet — the user can re-try later from More → Notifications.
+      } else {
+        appToast("Couldn't enable notifications — try again from Notifications settings", "error", 3000);
+      }
+    } catch (e) {
+      console.warn("notif prompt enable failed:", e);
+    }
+    setNotifBusy(false);
+    dismissNotifPrompt();
+  };
+
   const [impersonating, setImpersonating] = useState(null);
   const [commMode, setCommMode] = useState(false);
   const [showPlayerPicker, setShowPlayerPicker] = useState(false);
@@ -361,6 +415,40 @@ export default function GolfLeagueApp() {
   useEffect(() => {
     if (liveWeek === null || !authUser) return;
     const weekFilters = [...LF, { field: "season", op: "==", value: 2026 }, { field: "week", op: "==", value: liveWeek }];
+
+    // ── One-shot prefetch (audit 2.7) ─────────────────────────────────
+    // Subscription fires asynchronously — typically 200-500ms before the
+    // first snapshot lands. Without this, opening the Scoring tab when
+    // the user was previously on another tab (so liveWeek was null) shows
+    // empty player cards for ~400ms, then "pops" with scores when the
+    // snapshot arrives. Looks like "did my scores get cleared?" panic.
+    // Prefetch via fetchWeekScores writes into the same holeScores state
+    // immediately, so the cards render populated from frame 1. The
+    // subscription then catches up; if the prefetch returned newer data
+    // than the snapshot will (rare race), the subscription's per-change
+    // merge in setHoleScores just overwrites identical values. Wrapped
+    // in cancelled guard so a fast tab-switch doesn't drop stale data
+    // into state for the wrong week.
+    let cancelled = false;
+    (async () => {
+      try {
+        const records = await db.get("league_hole_scores", weekFilters);
+        if (cancelled) return;
+        setHoleScores(prev => {
+          const next = { ...prev };
+          for (const r of records) {
+            const key = `w${r.week}_p${r.player_id}_h${r.hole}`;
+            next[key] = r.score;
+          }
+          return next;
+        });
+      } catch (e) {
+        // Prefetch is a perf optimization — failure just means the
+        // subscription handles its normal flow. Log and continue.
+        console.warn("[liveWeek prefetch] skipped:", e?.message || e);
+      }
+    })();
+
     const unsub = db.subscribe("league_hole_scores", weekFilters, (docs, changes) => {
       setSyncing(true);
       setHoleScores(prev => {
@@ -375,7 +463,7 @@ export default function GolfLeagueApp() {
       });
       setTimeout(() => setSyncing(false), 500);
     });
-    return () => unsub();
+    return () => { cancelled = true; unsub(); };
   }, [liveWeek, authUser?.uid]);
 
   // Auth actions
@@ -524,6 +612,14 @@ export default function GolfLeagueApp() {
 
   const allScoresCacheRef = useRef(null);
 
+  // Ref-mirror of recalcHandicaps so clearWeekData (whose useCallback
+  // has empty deps for prop-identity stability) can invoke the latest
+  // recalc function without itself being rebuilt on every render. The
+  // ref is populated by a useEffect after recalcHandicaps is defined
+  // below. clearWeekData reads .current at call time, sidestepping the
+  // useCallback dep chain.
+  const recalcHandicapsRef = useRef(null);
+
   const saveScore = useCallback(async (week, playerId, hole, score) => {
     const id = `${LEAGUE_ID}_s${CURRENT_SEASON}_w${week}_p${playerId}_h${hole}`;
     setHoleScores(prev => ({ ...prev, [`w${week}_p${playerId}_h${hole}`]: score }));
@@ -622,6 +718,20 @@ export default function GolfLeagueApp() {
     // odd one out, easy to miss because it's only called from rain-out
     // and reset-week flows that don't immediately recompute handicaps.
     allScoresCacheRef.current = null;
+    // Auto-recalc handicaps after a week-clear (audit #2.6). Previously
+    // callers had to remember to invoke recalcHandicaps themselves after
+    // a rain-out or reset; in practice that was missed, leaving subtly
+    // stale handicaps until the next finalize-week. Doing it here makes
+    // clear-week and finalize-week behave symmetrically — both end with
+    // handicaps fully consistent with the live scores. Wrapped in a
+    // try/catch because recalc shouldn't block a successful clear: if
+    // the recalc fails we log and continue; the user still has a clean
+    // week.
+    try {
+      if (recalcHandicapsRef.current) await recalcHandicapsRef.current();
+    } catch (e) {
+      console.warn("[clearWeekData] recalc skipped:", e?.message || e);
+    }
   }, []);
 
   // ── Auto-seed wrapper ──
@@ -719,6 +829,11 @@ export default function GolfLeagueApp() {
     return updated;
   }, [players, courseData, scoringRules, fetchAllScores, appToast]);
 
+  // Keep ref in sync so clearWeekData (and any future caller with a
+  // stable-identity constraint) can read the latest function via
+  // .current at call time. See recalcHandicapsRef declaration above.
+  useEffect(() => { recalcHandicapsRef.current = recalcHandicaps; }, [recalcHandicaps]);
+
   const saveCourseData = useCallback(async (c) => {
     const data = { ...c, id: `${LEAGUE_ID}_course`, league_id: LEAGUE_ID };
     await db.upsert("league_course", data);
@@ -734,27 +849,30 @@ export default function GolfLeagueApp() {
     const data = { ...c, id: `${LEAGUE_ID}_config`, league_id: LEAGUE_ID };
     await db.upsert("league_config", data);
     setLeagueConfig(data);
-    // Stable deep-equality: JSON.stringify with a sorted-keys replacer
-    // produces a canonical form that's invariant to key insertion order
-    // for objects nested anywhere in the tree. Plain JSON.stringify
-    // would return false-positives "changed" when a nested object's
-    // keys were written in a different order on the prev vs. data side
-    // — even though the underlying values were identical. Today's data
-    // shapes happen to be order-stable by construction, but a future
-    // refactor that builds these via spread/destructure could silently
-    // break the comparison. Belt-and-suspenders: works regardless of
-    // construction discipline. The performance cost (one extra walk
-    // per save) is negligible for these small objects.
-    const stableStringify = (obj) => JSON.stringify(obj, (_k, v) => {
-      if (v && typeof v === "object" && !Array.isArray(v)) {
-        const sorted = {};
-        Object.keys(v).sort().forEach(k => { sorted[k] = v[k]; });
-        return sorted;
+    // Deep structural equality. The previous implementation built a
+    // sorted-keys stringify to compare prev vs data; this is a small
+    // recursive walk that does the same job without serializing —
+    // O(n) on tree size, no allocation per call beyond the recursion
+    // stack. Same semantics: key-order-independent for objects,
+    // index-order-sensitive for arrays (intentional — playoffRounds
+    // and customSeedWeeks are ordered lists).
+    const deepEqual = (a, b) => {
+      if (a === b) return true;
+      if (a == null || b == null) return a === b;
+      if (typeof a !== "object" || typeof b !== "object") return false;
+      if (Array.isArray(a) !== Array.isArray(b)) return false;
+      if (Array.isArray(a)) {
+        if (a.length !== b.length) return false;
+        for (let i = 0; i < a.length; i++) if (!deepEqual(a[i], b[i])) return false;
+        return true;
       }
-      return v;
-    });
-    const playoffChanged = stableStringify(prev?.playoffRounds || []) !== stableStringify(data.playoffRounds || []);
-    const customSeedChanged = stableStringify(prev?.customSeedWeeks || null) !== stableStringify(data.customSeedWeeks || null);
+      const ak = Object.keys(a), bk = Object.keys(b);
+      if (ak.length !== bk.length) return false;
+      for (const k of ak) if (!deepEqual(a[k], b[k])) return false;
+      return true;
+    };
+    const playoffChanged = !deepEqual(prev?.playoffRounds || [], data.playoffRounds || []);
+    const customSeedChanged = !deepEqual(prev?.customSeedWeeks || null, data.customSeedWeeks || null);
     const standingsMethodChanged = (prev?.standingsMethod || "") !== (data.standingsMethod || "");
     if (playoffChanged || customSeedChanged || standingsMethodChanged) {
       setTimeout(() => { autoSeedIfReady(0); }, 0);
@@ -900,7 +1018,7 @@ export default function GolfLeagueApp() {
   if (authLoading) return <LoadingScreen />;
   if (!authUser) return <AuthScreen onGoogle={doGoogleSignIn} onEmail={doEmailSignIn} onPasswordReset={doPasswordReset} />;
   if (!membersLoaded) return <LoadingScreen />;
-  if (!leagueUser || !leagueUser.playerId) return <JoinScreen authUser={authUser} members={members} players={activePlayers} saveMember={saveMember} doSignOut={doSignOut} leagueConfig={leagueConfig} />;
+  if (!leagueUser || !leagueUser.playerId) return <JoinScreen authUser={authUser} members={members} players={activePlayers} saveMember={saveMember} doSignOut={doSignOut} leagueConfig={leagueConfig} schedule={schedule} />;
 
   const tabs = [
     { id: "players", label: "Players", icon: "users" },
@@ -1064,12 +1182,66 @@ export default function GolfLeagueApp() {
 
       <div className="app-body" ref={appBodyRef}>
         <div style={{ maxWidth: 900, width: "100%", margin: "0 auto" }}>
+          {/* ── One-time notification-enable prompt (1.8) ─────────────────
+              Shown on standings/schedule only — avoids interrupting the
+              live scoring flow. Bell icon + concise CTA. Two actions:
+              Enable (calls registerForPush + dismisses) and Not now
+              (just dismisses). Either way the localStorage flag is set
+              so the prompt never reappears for this user. */}
+          {showNotifPrompt && (tab === "standings" || tab === "schedule") && (
+            <div style={{
+              background: K.card, border: `1px solid ${K.hcpBlue}40`,
+              borderRadius: 10, margin: "6px 14px", padding: "10px 14px",
+              display: "flex", alignItems: "center", gap: 10,
+            }}>
+              <div style={{
+                display: "flex", alignItems: "center", justifyContent: "center",
+                width: 32, height: 32, borderRadius: 8,
+                background: K.hcpBlue + "18", color: K.hcpBlue, flexShrink: 0,
+              }}>{I.bell(18, K.hcpBlue)}</div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: K.t1, lineHeight: 1.25 }}>
+                  Get notified when matches are ready to attest
+                </div>
+                <div className="mnq-prose" style={{ fontSize: 10, fontWeight: 500, color: K.t3, marginTop: 1 }}>
+                  Tap Enable to allow notifications.
+                </div>
+              </div>
+              <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+                <button
+                  onClick={dismissNotifPrompt}
+                  disabled={notifBusy}
+                  style={{
+                    background: "transparent", border: `1px solid ${K.bdr}`,
+                    color: K.t3, fontSize: 10, fontWeight: 700,
+                    padding: "5px 9px", borderRadius: 6,
+                    cursor: notifBusy ? "default" : "pointer",
+                    letterSpacing: .5,
+                  }}
+                >Not now</button>
+                <button
+                  onClick={handleEnableNotif}
+                  disabled={notifBusy}
+                  style={{
+                    background: K.hcpBlue, border: "none",
+                    color: "#fff", fontSize: 10, fontWeight: 800,
+                    padding: "5px 11px", borderRadius: 6,
+                    cursor: notifBusy ? "default" : "pointer",
+                    letterSpacing: .5, opacity: notifBusy ? 0.6 : 1,
+                  }}
+                >{notifBusy ? "..." : "Enable"}</button>
+              </div>
+            </div>
+          )}
           {/* upcomingBanner only renders on Standings + Schedule. Showing it on
               Players, Stats, CTP, Admin felt out of context — the user is doing
               an unrelated task, and the "your next match" banner clutters the
               top of every page. Scoring already excludes itself because the
-              live scoring view IS the next-match context. */}
-          {upcomingBanner && (tab === "standings" || tab === "schedule") && (() => {
+              live scoring view IS the next-match context.
+              Also suppressed (1.3D) when `weekToFinalize` is set, since the
+              gold "Finalize Week N" banner above is already showing the same
+              week's context — two banners pointing at one week is noise. */}
+          {upcomingBanner && !weekToFinalize && (tab === "standings" || tab === "schedule") && (() => {
             return (
               <div style={{ background: K.card, border: `1.5px solid ${bannerGrn}`, borderRadius: 10, margin: "6px 14px", padding: "10px 16px", display: "flex", alignItems: "center" }}>
                 <div style={{ width: 80, flexShrink: 0, textAlign: "left", lineHeight: 1.3, padding: "6px 0" }}>
@@ -1093,8 +1265,8 @@ export default function GolfLeagueApp() {
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} fetchAllScores={fetchAllScores} saveMatchResult={saveMatchResult} dataLoaded={dataLoaded} />}
           {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} deleteMatchResult={deleteMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} commMode={commMode} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} openFinalize={openFinalize} onFinalizeOpened={() => setOpenFinalize(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} recalcHandicaps={recalcHandicaps} clearWeekData={clearWeekData} autoSeedIfReady={autoSeedIfReady} attendance={attendance} saveAttendance={saveAttendance} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} isComm={isComm} saveScore={saveScore} saveMatchResult={saveMatchResult} setPopupOpen={setPopupOpen} appToast={appToast} dataLoaded={dataLoaded} attendance={attendance} saveAttendance={saveAttendance} />}
-          {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} dataLoaded={dataLoaded} />}
-          {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} leagueConfig={leagueConfig} />}
+          {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} dataLoaded={dataLoaded} leagueConfig={leagueConfig} />}
+          {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} leagueConfig={leagueConfig} leagueUser={effectiveUser} />}
           {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} isComm={isComm} saveCtp={saveCtp} />}
           {tab === "notifications" && <NotificationsSettings leagueUser={effectiveUser} appToast={appToast} />}
           {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} saveMatchResult={saveMatchResult} resetSeasonData={resetSeasonData} importHistoricalScores={importHistoricalScores} recalcHandicaps={recalcHandicaps} autoSeedIfReady={autoSeedIfReady} clearWeekData={clearWeekData} />}
@@ -1120,6 +1292,20 @@ export default function GolfLeagueApp() {
           }}>{appToastMsg.msg}</div>
         </>
       )}
+
+      {/* Sign-out confirmation (1.3A). Adjacent positioning of Admin /
+          Dark Mode / Sign Out in the More menu makes accidental
+          sign-outs easy; routing through ConfirmModal matches the rest
+          of the app and gives the user a clean cancel path. */}
+      <ConfirmModal modal={showSignOutConfirm ? {
+        title: "Sign out?",
+        message: "You'll need to sign in again to use the app.",
+        confirmLabel: "Sign Out",
+        cancelLabel: "Cancel",
+        destructive: true,
+        onConfirm: async () => { setShowSignOutConfirm(false); await doSignOut(); },
+        onCancel: () => setShowSignOutConfirm(false),
+      } : null} />
 
       {showMore && (
         <div onClick={() => setShowMore(false)} style={{ position: "fixed", inset: 0, zIndex: 150 }} />
@@ -1182,9 +1368,16 @@ export default function GolfLeagueApp() {
           const showBadge = t.id === "scoring" && pendingAttestCount > 0;
           const badgeLabel = pendingAttestCount > 9 ? "9+" : String(pendingAttestCount);
           return (
-            <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }} style={{ flex: 1, background: active ? K.acc + "10" : "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: active ? 1 : .4, transition: "all .2s", padding: "4px 0", borderRadius: 8 }}>
+            // Labels visible only on the active tab (1.3B). Inactive tabs
+            // are icon-only with a reserved-height slot below the icon so
+            // the row height doesn't shift when a tab is selected. Active
+            // label bumps to 11pt + bold (above iOS HIG's 11pt minimum)
+            // so the "you are here" cue reads cleanly even on small
+            // screens. The icon color also brightens for the active tab,
+            // doubling up the affordance.
+            <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }} style={{ flex: 1, background: active ? K.acc + "10" : "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: active ? 1 : .5, transition: "all .2s", padding: "4px 0", borderRadius: 8 }}>
               <span style={{ display: "flex", position: "relative" }}>
-                {I[t.icon](18, active ? K.acc : K.t2)}
+                {I[t.icon](20, active ? K.acc : K.t2)}
                 {showBadge && (
                   <span style={{
                     position: "absolute", top: -4, right: -8,
@@ -1197,14 +1390,17 @@ export default function GolfLeagueApp() {
                   }}>{badgeLabel}</span>
                 )}
               </span>
-              <span style={{ fontSize: 9, fontWeight: active ? 600 : 400, color: active ? K.acc : K.t2 }}>{t.label}</span>
+              {/* Reserved-height label slot. Active tab renders the
+                  label; inactive renders an empty span of the same
+                  height so the row doesn't reflow on tab change. */}
+              <span style={{ fontSize: 11, fontWeight: 700, color: K.acc, height: 13, lineHeight: "13px", visibility: active ? "visible" : "hidden" }}>{t.label}</span>
             </button>
           );
         })}
         <div style={{ flex: 1, position: "relative", display: "flex", justifyContent: "center" }}>
-          <button onClick={() => setShowMore(!showMore)} style={{ width: "100%", background: showMore || moreItems.some(m => m.id === tab) ? K.acc + "10" : "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: showMore || moreItems.some(m => m.id === tab) ? 1 : .4, transition: "all .2s", padding: "4px 0", borderRadius: 8 }}>
-            <span style={{ display: "flex" }}>{I.ellipsis(18, showMore || moreItems.some(m => m.id === tab) ? K.acc : K.t2)}</span>
-            <span style={{ fontSize: 9, fontWeight: showMore || moreItems.some(m => m.id === tab) ? 600 : 400, color: showMore || moreItems.some(m => m.id === tab) ? K.acc : K.t2 }}>More</span>
+          <button onClick={() => setShowMore(!showMore)} style={{ width: "100%", background: showMore || moreItems.some(m => m.id === tab) ? K.acc + "10" : "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: showMore || moreItems.some(m => m.id === tab) ? 1 : .5, transition: "all .2s", padding: "4px 0", borderRadius: 8 }}>
+            <span style={{ display: "flex" }}>{I.ellipsis(20, showMore || moreItems.some(m => m.id === tab) ? K.acc : K.t2)}</span>
+            <span style={{ fontSize: 11, fontWeight: 700, color: K.acc, height: 13, lineHeight: "13px", visibility: (showMore || moreItems.some(m => m.id === tab)) ? "visible" : "hidden" }}>More</span>
           </button>
           {showMore && (
             <div style={{ position: "fixed", bottom: `calc(42px + env(safe-area-inset-bottom, 0px))`, right: 14, background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 12, padding: "6px 0", zIndex: 300, minWidth: 180, boxShadow: "0 -4px 20px rgba(0,0,0,.4)" }}>
@@ -1235,7 +1431,7 @@ export default function GolfLeagueApp() {
                       <div style={{ borderTop: `1px solid ${K.bdr}`, margin: "4px 0" }} />
                     </>)}
                     <button onClick={() => {
-                      if (isSignOut) { doSignOut(); }
+                      if (isSignOut) { setShowSignOutConfirm(true); setShowMore(false); }
                       else { setTab(item.id); }
                       setShowMore(false);
                     }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 16px", background: active && !isSignOut ? K.acc + "12" : "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>

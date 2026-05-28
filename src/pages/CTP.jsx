@@ -66,7 +66,7 @@ export default function CTPView({ ctpData, players, isComm, saveCtp }) {
 
   const toggleBtnStyle = (active) => ({
     flex: "1 1 auto", minWidth: 0,
-    padding: "8px 10px", borderRadius: 6,
+    padding: "10px 10px", borderRadius: 6,
     background: active ? K.card : "transparent",
     border: active ? `1px solid ${K.bdr}` : "1px solid transparent",
     color: active ? K.t1 : K.t3,
@@ -122,10 +122,10 @@ export default function CTPView({ ctpData, players, isComm, saveCtp }) {
                         width: RANK_BADGE_SIZE, height: RANK_BADGE_SIZE, borderRadius: RANK_BADGE_RADIUS,
                         background: i === 0 ? K.gold + "20" : K.inp,
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: RANK_BADGE_FONT, fontWeight: 800,
+                        fontSize: i === 0 ? 14 : RANK_BADGE_FONT, fontWeight: 800,
                         color: i === 0 ? K.gold : K.t3,
                         flexShrink: 0,
-                      }}>{i + 1}</div>
+                      }}>{i === 0 ? "🏆" : (i + 1)}</div>
                       <span style={{ flex: 1, fontSize: NAME_SIZE, fontWeight: NAME_WEIGHT, color: K.t1 }}>
                         {e.p.name}
                       </span>
