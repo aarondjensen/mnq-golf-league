@@ -1368,14 +1368,19 @@ export default function GolfLeagueApp() {
           const showBadge = t.id === "scoring" && pendingAttestCount > 0;
           const badgeLabel = pendingAttestCount > 9 ? "9+" : String(pendingAttestCount);
           return (
-            // Labels visible only on the active tab (1.3B). Inactive tabs
-            // are icon-only with a reserved-height slot below the icon so
-            // the row height doesn't shift when a tab is selected. Active
-            // label bumps to 11pt + bold (above iOS HIG's 11pt minimum)
-            // so the "you are here" cue reads cleanly even on small
-            // screens. The icon color also brightens for the active tab,
-            // doubling up the affordance.
-            <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }} style={{ flex: 1, background: active ? K.acc + "10" : "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: active ? 1 : .5, transition: "all .2s", padding: "4px 0", borderRadius: 8 }}>
+            // All tab labels visible at all times (audit 1.3B revised).
+            // The original audit suggested labels-only-on-active to free
+            // vertical space, but in practice that made the bar feel
+            // empty under the inactive tabs — visible padding band below
+            // icons with no anchoring text. Reverted to always-visible.
+            // The audit's OTHER concern — 9pt was below iOS HIG's 11pt
+            // minimum — is still addressed: inactive labels are 10pt
+            // (close to HIG, still subtle), active labels are 11pt bold
+            // and tinted with K.acc. Active tab gets a soft background
+            // tint + 100% opacity vs inactive's 60%, so "you are here"
+            // reads via three reinforcing cues (background, opacity,
+            // label weight) without any layout shift between tabs.
+            <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }} style={{ flex: 1, background: active ? K.acc + "10" : "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: active ? 1 : .6, transition: "all .2s", padding: "4px 0", borderRadius: 8 }}>
               <span style={{ display: "flex", position: "relative" }}>
                 {I[t.icon](20, active ? K.acc : K.t2)}
                 {showBadge && (
@@ -1390,20 +1395,17 @@ export default function GolfLeagueApp() {
                   }}>{badgeLabel}</span>
                 )}
               </span>
-              {/* Reserved-height label slot. Active tab renders the
-                  label; inactive renders an empty span of the same
-                  height so the row doesn't reflow on tab change. */}
-              <span style={{ fontSize: 11, fontWeight: 700, color: K.acc, height: 13, lineHeight: "13px", visibility: active ? "visible" : "hidden" }}>{t.label}</span>
+              <span style={{ fontSize: active ? 11 : 10, fontWeight: active ? 700 : 600, color: active ? K.acc : K.t2, lineHeight: "13px" }}>{t.label}</span>
             </button>
           );
         })}
         <div style={{ flex: 1, position: "relative", display: "flex", justifyContent: "center" }}>
-          <button onClick={() => setShowMore(!showMore)} style={{ width: "100%", background: showMore || moreItems.some(m => m.id === tab) ? K.acc + "10" : "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: showMore || moreItems.some(m => m.id === tab) ? 1 : .5, transition: "all .2s", padding: "4px 0", borderRadius: 8 }}>
+          <button onClick={() => setShowMore(!showMore)} style={{ width: "100%", background: showMore || moreItems.some(m => m.id === tab) ? K.acc + "10" : "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: showMore || moreItems.some(m => m.id === tab) ? 1 : .6, transition: "all .2s", padding: "4px 0", borderRadius: 8 }}>
             <span style={{ display: "flex" }}>{I.ellipsis(20, showMore || moreItems.some(m => m.id === tab) ? K.acc : K.t2)}</span>
-            <span style={{ fontSize: 11, fontWeight: 700, color: K.acc, height: 13, lineHeight: "13px", visibility: (showMore || moreItems.some(m => m.id === tab)) ? "visible" : "hidden" }}>More</span>
+            <span style={{ fontSize: (showMore || moreItems.some(m => m.id === tab)) ? 11 : 10, fontWeight: (showMore || moreItems.some(m => m.id === tab)) ? 700 : 600, color: (showMore || moreItems.some(m => m.id === tab)) ? K.acc : K.t2, lineHeight: "13px" }}>More</span>
           </button>
           {showMore && (
-            <div style={{ position: "fixed", bottom: `calc(42px + env(safe-area-inset-bottom, 0px))`, right: 14, background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 12, padding: "6px 0", zIndex: 300, minWidth: 180, boxShadow: "0 -4px 20px rgba(0,0,0,.4)" }}>
+            <div style={{ position: "fixed", bottom: `calc(50px + env(safe-area-inset-bottom, 0px))`, right: 14, background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 12, padding: "6px 0", zIndex: 300, minWidth: 180, boxShadow: "0 -4px 20px rgba(0,0,0,.4)" }}>
               {moreItems.map((item) => {
                 const active = tab === item.id;
                 const isSignOut = item.id === "signout";
