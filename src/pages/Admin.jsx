@@ -1039,9 +1039,9 @@ function AdminCourse({ course, saveCourseData, onBack }) {
     return (
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 11, color: K.t3, fontWeight: 600, marginBottom: 6 }}>{label}</div>
-        <div style={{ display: "flex", gap: 6 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(9, 1fr)", gap: 4 }}>
           {Array.from({ length: 9 }, (_, i) => (
-            <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
+            <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, minWidth: 0 }}>
               <div style={{ fontSize: 10, color: K.t3, fontWeight: 600 }}>{offset + i + 1}</div>
               <input
                 ref={el => { getRef(dataKey, i).current = el; }}
@@ -1051,7 +1051,7 @@ function AdminCourse({ course, saveCourseData, onBack }) {
                 inputMode="numeric"
                 maxLength={2}
                 className="hole-input"
-                style={{ width: 42, height: 40, padding: "4px 2px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 16, textAlign: "center", fontWeight: 600 }}
+                style={{ width: "100%", minWidth: 0, height: 40, padding: "4px 0", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 16, textAlign: "center", fontWeight: 600 }}
               />
             </div>
           ))}
