@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, doc, setDoc, getDocs, query, where, writeBatch, onSnapshot, deleteDoc } from "firebase/firestore";
 import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, onAuthStateChanged, signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
+import { getFunctions, httpsCallable } from "firebase/functions";
 
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDW3tTWxOlrPoKiflmlh_6JPLe8vbvVEUE",
@@ -17,6 +18,19 @@ const _app = initializeApp(FIREBASE_CONFIG);
 const _db = getFirestore(_app);
 export const _auth = getAuth(_app);
 export const _googleProvider = new GoogleAuthProvider();
+
+// ─── Callable Cloud Functions ───────────────────────────────────────────
+// Default region (us-central1) — matches the v2 functions in functions/
+// index.js, none of which pin a region. `callFunction` is a thin wrapper so
+// callers get the unwrapped `.data` payload and a single place to evolve
+// error handling. (The notifications lib wires its own callable for the
+// test push; this is the general-purpose helper for everything else.)
+const _functions = getFunctions(_app);
+export const callFunction = async (name, payload = {}) => {
+  const fn = httpsCallable(_functions, name);
+  const res = await fn(payload);
+  return res.data;
+};
 
 // ─── Firebase Cloud Messaging (lazy-loaded) ─────────────────────────────
 // Messaging only exists in environments with a Service Worker + Push API

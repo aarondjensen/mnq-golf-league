@@ -450,4 +450,71 @@ exports.sendTestPush = onCall(async (request) => {
   }
 });
 
+// ═════════════════════════════════════════════════════════════════════════
+//  revokeUserSession — commissioner-gated hard logout
+// ═════════════════════════════════════════════════════════════════════════
+// Invalidates a user's Firebase Auth refresh tokens so they must sign in
+// again. Used by Admin → Accounts → "Reset login" to support the
+// switch-Google-account flow: revoke here (server-only, needs Admin SDK),
+// then the client deletes the league_members doc to free the player name.
+// All league data is keyed to playerId, not uid, so nothing the user cares
+// about is touched — only the auth session.
+//
+// CAVEAT: revokeRefreshTokens does not kill an already-issued ID token
+// immediately; the old session can remain valid until its next refresh
+// (up to ~1 hour) unless the client forces a refresh. Fine for the
+// cooperative account-switch case.
+//
+// Gating: caller must be authenticated AND have a league_members doc with
+// isCommissioner === true. We resolve the caller's member doc by uid rather
+// than trusting any client-supplied claim.
+exports.revokeUserSession = onCall(async (request) => {
+  try {
+    if (!request.auth || !request.auth.uid) {
+      throw new HttpsError("unauthenticated", "Sign-in required.");
+    }
+    const callerUid = request.auth.uid;
+
+    let callerSnap;
+    try {
+      callerSnap = await db.collection("league_members")
+        .where("league_id", "==", LEAGUE_ID)
+        .where("uid", "==", callerUid)
+        .limit(1)
+        .get();
+    } catch (err) {
+      logger.error("revokeUserSession: caller lookup failed", { callerUid, err: err?.message });
+      throw new HttpsError("internal", "Could not verify permissions.");
+    }
+    const callerMember = callerSnap.empty ? null : callerSnap.docs[0].data();
+    if (!callerMember || callerMember.isCommissioner !== true) {
+      throw new HttpsError("permission-denied", "Commissioner access required.");
+    }
+
+    const { targetUid } = request.data || {};
+    if (!targetUid || typeof targetUid !== "string") {
+      throw new HttpsError("invalid-argument", "targetUid required.");
+    }
+
+    await admin.auth().revokeRefreshTokens(targetUid);
+    logger.info("revokeUserSession complete", { callerUid, targetUid });
+    return { ok: true, targetUid };
+  } catch (err) {
+    if (err instanceof HttpsError) throw err;
+    // auth/user-not-found means the uid has no Auth record (e.g. already
+    // deleted, or a legacy member doc with a stale uid). Treat as success-ish
+    // for the caller's purposes — there's no live session to kill.
+    if (err?.code === "auth/user-not-found") {
+      logger.warn("revokeUserSession: no auth user for uid", { code: err.code });
+      return { ok: true, note: "no_auth_user" };
+    }
+    logger.error("revokeUserSession unexpected error", {
+      message: err?.message,
+      code: err?.code,
+      stack: err?.stack?.slice(0, 500),
+    });
+    throw new HttpsError("internal", `Unexpected: ${err?.message || String(err)}`);
+  }
+});
+
 exports.__sendToPlayer = sendToPlayer;

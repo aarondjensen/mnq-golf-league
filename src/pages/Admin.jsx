@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { LEAGUE_ID, db } from "../firebase";
+import { LEAGUE_ID, db, callFunction } from "../firebase";
 import { K, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   getWeekSide, formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, lastNamesOnly,
   buildStandingsForSeed as sharedBuildStandingsForSeed, buildSeedMap,
@@ -1039,9 +1039,9 @@ function AdminCourse({ course, saveCourseData, onBack }) {
     return (
       <div style={{ marginBottom: 12 }}>
         <div style={{ fontSize: 11, color: K.t3, fontWeight: 600, marginBottom: 6 }}>{label}</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(9, 1fr)", gap: 4 }}>
+        <div style={{ display: "flex", gap: 6 }}>
           {Array.from({ length: 9 }, (_, i) => (
-            <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, minWidth: 0 }}>
+            <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
               <div style={{ fontSize: 10, color: K.t3, fontWeight: 600 }}>{offset + i + 1}</div>
               <input
                 ref={el => { getRef(dataKey, i).current = el; }}
@@ -1051,7 +1051,7 @@ function AdminCourse({ course, saveCourseData, onBack }) {
                 inputMode="numeric"
                 maxLength={2}
                 className="hole-input"
-                style={{ width: "100%", minWidth: 0, height: 40, padding: "4px 0", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 16, textAlign: "center", fontWeight: 600 }}
+                style={{ width: 42, height: 40, padding: "4px 2px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 16, textAlign: "center", fontWeight: 600 }}
               />
             </div>
           ))}
@@ -3704,6 +3704,12 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
   const [drafts, setDrafts] = useState({}); // { [memberId]: { playerId, isCommissioner } }
   const [confirmModal, setConfirmModal] = useState(null);
   const [saving, setSaving] = useState(false);
+  // "Reset login" runs an async revoke + delete; busyId disables that row's
+  // controls while it's in flight, and notice surfaces the outcome inline
+  // (this admin surface has no toast plumbed in — same pattern AdminConfig
+  // uses for its reset/recalc result text).
+  const [resetBusyId, setResetBusyId] = useState(null);
+  const [notice, setNotice] = useState(null); // { type: "success" | "error", text }
 
   // Resolve the effective value for a member — draft takes precedence over stored.
   const eff = (m, field) => (drafts[m.id] && field in drafts[m.id]) ? drafts[m.id][field] : m[field];
@@ -3779,6 +3785,45 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
     });
   };
 
+  // Reset login (Option A): one confirmed action that (1) revokes the
+  // member's Firebase Auth session via the commissioner-gated
+  // revokeUserSession callable, then (2) deletes their league_members doc to
+  // free the player name. Order matters — revoke first so the old account
+  // can't re-grab the freed name; if the revoke fails we abort before
+  // deleting. Their player profile and all scores are keyed to playerId and
+  // are untouched. After this they sign in with the desired account, pick
+  // their (now-available) name on the Join screen, and you re-grant Comm if
+  // they had it. A missing uid (legacy doc) means there's no session to
+  // revoke, so we skip straight to freeing the name.
+  const handleResetLogin = (m) => {
+    const playerName = (players.find(p => p.id === m.playerId)?.name) || m.name || "this player";
+    setConfirmModal({
+      title: `Reset login for ${m.name}?`,
+      message: `Signs ${m.name} out everywhere and frees up "${playerName}" so they can sign in again with a different Google account. Their scores and profile are kept. They'll re-select their name on the sign-in screen${m.isCommissioner ? ", and you'll need to re-grant Commissioner after" : ""}.`,
+      confirmLabel: "Reset login",
+      destructive: true,
+      onConfirm: async () => {
+        setConfirmModal(null);
+        setNotice(null);
+        setResetBusyId(m.id);
+        try {
+          if (m.uid) {
+            await callFunction("revokeUserSession", { targetUid: m.uid });
+          }
+          const ok = await deleteMember(m.id);
+          if (ok === null) throw new Error("Couldn't free the player name (delete failed)");
+          setNotice({ type: "success", text: `${m.name} has been signed out and "${playerName}" is free to claim.` });
+        } catch (err) {
+          // Revoke failed → we never deleted, so nothing is half-done.
+          setNotice({ type: "error", text: `Reset failed: ${err?.message || err}. No changes were made.` });
+        } finally {
+          setResetBusyId(null);
+        }
+      },
+      onCancel: () => setConfirmModal(null),
+    });
+  };
+
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
@@ -3802,6 +3847,21 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
         Members sign in via Google or email and link to a player profile. Commissioner
         access is granted here.
       </div>
+
+      {notice && (
+        <div
+          onClick={() => setNotice(null)}
+          style={{
+            background: notice.type === "success" ? K.grn + "18" : K.red + "18",
+            border: `1px solid ${(notice.type === "success" ? K.grn : K.red)}55`,
+            borderRadius: 10, padding: "10px 12px", marginBottom: 12, cursor: "pointer",
+            fontSize: 12, lineHeight: 1.5, color: notice.type === "success" ? K.grn : K.red,
+          }}
+        >
+          {notice.text}
+          <span style={{ color: K.t3, marginLeft: 6, fontSize: 11 }}>(tap to dismiss)</span>
+        </div>
+      )}
 
       {members.length === 0 && (
         <div style={{ background: K.card, border: `1px dashed ${K.bdr}`, borderRadius: 10, padding: "24px 16px", textAlign: "center" }}>
@@ -3861,6 +3921,24 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
                   }}
                 >
                   {effectiveComm ? "Revoke" : "Make Comm"}
+                </button>
+              </div>
+              {/* Reset login (hard logout + free the name) — deliberate,
+                  low-frequency action, so it sits on its own subtle row
+                  rather than crowding the link/comm controls above. */}
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+                <button
+                  onClick={() => handleResetLogin(m)}
+                  disabled={resetBusyId === m.id}
+                  style={{
+                    background: "transparent", border: `1px solid ${K.bdr}`,
+                    borderRadius: 6, color: resetBusyId === m.id ? K.t3 : K.hcpBlue,
+                    fontSize: 10, fontWeight: 700, letterSpacing: .3,
+                    padding: "4px 10px", cursor: resetBusyId === m.id ? "default" : "pointer",
+                    opacity: resetBusyId === m.id ? .6 : 1, whiteSpace: "nowrap",
+                  }}
+                >
+                  {resetBusyId === m.id ? "Resetting…" : "Reset login"}
                 </button>
               </div>
             </Card>
