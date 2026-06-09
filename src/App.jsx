@@ -798,14 +798,19 @@ export default function GolfLeagueApp() {
     return () => clearInterval(id);
   }, []);
 
-  // Live Scoring button appears from 30 minutes before the FIRST tee time of the
-  // day through 4 hours after — enough window to cover pre-round setup and a
-  // full 9-hole round with finalization. Anchored to league Eastern Time.
+  // Live play window — opens 30 minutes before the FIRST tee time of the day
+  // and runs through 4 hours after (covers pre-round setup, a full 9-hole
+  // round, and finalization). Anchored to league Eastern Time.
+  //
+  // Returns { active, weekKey }. `active` drives the red dot on the Scoring
+  // tab; `weekKey` uniquely identifies the day's live session so the
+  // "seen" dismissal can be scoped to it (see liveDotSeenKey below).
   //
   // Uses parseScheduleDate (not raw new Date()) so the date format is the single
   // source of truth and stays in sync with the rest of the app.
-  const showLiveBtn = useMemo(() => {
-    if (!schedule.length) return false;
+  const liveWindow = useMemo(() => {
+    const inactive = { active: false, weekKey: null };
+    if (!schedule.length) return inactive;
     const now = new Date();
     const et = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
     const year = leagueConfig?.year || new Date().getFullYear();
@@ -817,7 +822,7 @@ export default function GolfLeagueApp() {
       if (!wkDate) return false;
       return wkDate.toLocaleDateString("en-US", { month: "short", day: "numeric" }) === todayStr;
     });
-    if (!todayWk) return false;
+    if (!todayWk) return inactive;
 
     const startTime = leagueConfig?.startTime || "4:28 PM";
     const [timePart, ampm] = startTime.split(' ');
@@ -828,9 +833,69 @@ export default function GolfLeagueApp() {
     const firstTeeMins = hour24 * 60 + (m || 0);
 
     const nowMins = et.getHours() * 60 + et.getMinutes();
-
-    return nowMins >= firstTeeMins - 30 && nowMins <= firstTeeMins + 240;
+    const active = nowMins >= firstTeeMins - 30 && nowMins <= firstTeeMins + 240;
+    // Key the session by season + week (falls back to the ET date) so a
+    // dismissal applies only to today's window, not next week's.
+    const weekKey = `${year}_w${todayWk.week ?? todayStr}`;
+    return { active, weekKey, week: typeof todayWk.week === "number" ? todayWk.week : null };
   }, [schedule, leagueConfig, minuteTick]);
+
+  // Persisted "seen" flag for the live dot. Once the user opens the Scoring
+  // tab during an active window, we record that window's weekKey here (and in
+  // localStorage so it survives reloads / pull-to-refresh). The dot then stays
+  // hidden for the rest of that window but reappears for the next week's
+  // session. Mirrors the mnq_notif_banner_dismissed localStorage pattern.
+  const [liveDotSeenKey, setLiveDotSeenKey] = useState(() => {
+    try { return localStorage.getItem("mnq_live_dot_seen"); } catch { return null; }
+  });
+  useEffect(() => {
+    if (tab === "scoring" && liveWindow.active && liveWindow.weekKey
+        && liveDotSeenKey !== liveWindow.weekKey) {
+      try { localStorage.setItem("mnq_live_dot_seen", liveWindow.weekKey); } catch { /* ignore */ }
+      setLiveDotSeenKey(liveWindow.weekKey);
+    }
+  }, [tab, liveWindow.active, liveWindow.weekKey, liveDotSeenKey]);
+
+  // While the live window is open, ensure the day's hole scores are
+  // subscribed even if the user never opens the Scoring tab. liveWeek
+  // drives the hole_scores subscription (see effect above); the Scoring
+  // view normally sets it, but a player who only watches the dot would
+  // otherwise have no score data loaded, so we couldn't tell when the
+  // round is complete. Only seed it when nothing else has (liveWeek null)
+  // to avoid fighting the Scoring view when it's viewing another week.
+  useEffect(() => {
+    if (liveWindow.active && liveWindow.week != null && liveWeek === null) {
+      setLiveWeek(liveWindow.week);
+    }
+  }, [liveWindow.active, liveWindow.week, liveWeek]);
+
+  // The live window is "effectively over" once any player has a full
+  // 9-hole scorecard entered for the week — at that point a round is done
+  // and the reminder dot is moot. A hole counts as entered when its score
+  // is a real number > 0 (0/absent sentinels and _habsent flags don't
+  // count). Key format: w{week}_p{pid}_h{hole}, holes 0..8.
+  const liveWeekComplete = useMemo(() => {
+    const wk = liveWindow.week;
+    if (!liveWindow.active || wk == null) return false;
+    const holesByPid = {};
+    for (const key in holeScores) {
+      const m = key.match(/^w(\d+)_p(.+)_h([0-8])$/);
+      if (!m || Number(m[1]) !== wk) continue;
+      const val = holeScores[key];
+      if (typeof val === "number" && val > 0) {
+        const pid = m[2];
+        if (!holesByPid[pid]) holesByPid[pid] = new Set();
+        holesByPid[pid].add(m[3]);
+      }
+    }
+    return Object.values(holesByPid).some(s => s.size === 9);
+  }, [holeScores, liveWindow.active, liveWindow.week]);
+
+  // Dot shows during the live window until either the Scoring tab has been
+  // opened for that window OR any player has finished a full scorecard.
+  const showLiveDotForScoring = liveWindow.active && liveWindow.weekKey
+    && liveDotSeenKey !== liveWindow.weekKey
+    && !liveWeekComplete;
 
   useEffect(() => { if (!commMode) setImpersonating(null); }, [commMode]);
 
@@ -1121,20 +1186,8 @@ export default function GolfLeagueApp() {
             )}
           </div>
           <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
-          {/* Right: Live Scoring button — only on match days during the play window */}
-          <div style={{ position: "absolute", right: 14, display: "flex", alignItems: "center" }}>
-            {showLiveBtn && (
-            <button onClick={() => setTab("scoring")} style={{
-              background: tab === "scoring" ? bannerGrn : "transparent",
-              border: `1.5px solid ${tab === "scoring" ? bannerGrn : bannerGrn + "50"}`,
-              borderRadius: 8, padding: "6px 10px", cursor: "pointer",
-              color: tab === "scoring" ? "#fff" : bannerGrn, fontSize: 13, fontWeight: 800,
-              textTransform: "uppercase", letterSpacing: .5, lineHeight: 1.3,
-            }}>
-              Live<br/>Scoring
-            </button>
-            )}
-          </div>
+          {/* Right: live-window now surfaces as a red dot on the Scoring tab
+              in the bottom nav (see showLiveDot below) instead of a header button. */}
         </div>
       </div>
 
@@ -1328,6 +1381,11 @@ export default function GolfLeagueApp() {
           // top-right corner so it doesn't widen the nav button.
           const showBadge = t.id === "scoring" && pendingAttestCount > 0;
           const badgeLabel = pendingAttestCount > 9 ? "9+" : String(pendingAttestCount);
+          // During the live play window (formerly the green header button),
+          // surface a plain red dot on the Scoring tab until the user opens
+          // Scoring for that window. The attestation count badge is more
+          // informative, so it wins when both apply.
+          const showLiveDot = t.id === "scoring" && showLiveDotForScoring && !showBadge;
           return (
             <button key={t.id} onClick={() => { setTab(t.id); setShowMore(false); }} style={{ flex: 1, background: active ? K.acc + "10" : "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: active ? 1 : .4, transition: "all .2s", padding: "4px 0", borderRadius: 8 }}>
               <span style={{ display: "flex", position: "relative" }}>
@@ -1342,6 +1400,14 @@ export default function GolfLeagueApp() {
                     alignItems: "center", justifyContent: "center",
                     boxSizing: "border-box",
                   }}>{badgeLabel}</span>
+                )}
+                {showLiveDot && (
+                  <span style={{
+                    position: "absolute", top: -2, right: -5,
+                    background: K.red,
+                    width: 9, height: 9, borderRadius: 5,
+                    boxSizing: "border-box",
+                  }} />
                 )}
               </span>
               <span style={{ fontSize: 9, fontWeight: active ? 600 : 400, color: active ? K.acc : K.t2 }}>{t.label}</span>
