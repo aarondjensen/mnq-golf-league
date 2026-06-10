@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE, buildSeedMap, LoadingPanel, SkeletonList } from "../theme";
+import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE, buildSeedMap, LoadingPanel, SkeletonList, buildHistoricalPlayers } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { Popup } from "../components/Popup";
@@ -26,33 +26,7 @@ const MY_SCHEDULE_COLS = {
   status: 80,  // Stacked Absent / Making Up buttons, or active status pill
 };
 
-// ── Module-level style constants (audit 2.1) ──────────────────────
-// Schedule renders 16-18 week rows on a typical page, each with many
-// nested inline-style blocks. The previous pattern re-allocated all of
-// those style objects on every parent state change (toggling myOnly,
-// scrolling, opening the markingWeek popup, etc.), forcing React to
-// diff/re-diff identical objects. Pulling the high-traffic, stable
-// styles to module scope hands React the same object reference each
-// render, letting the diff short-circuit. Styles that depend on row
-// state (isComplete, isCurrent, K palette) stay inline by necessity;
-// what's hoisted here is the genuinely-constant subset. Caller cost:
-// none — these are just frozen literal objects.
-const ROW_STATUS_COL_BASE = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  position: "relative",
-  zIndex: 1,
-  flexShrink: 0,
-};
-const STACK_GAP_3 = { display: "flex", flexDirection: "column", gap: 3, width: "100%" };
-const TEXT_ELLIPSIS = { overflow: "hidden", textOverflow: "ellipsis" };
-const WEEK_PILL_BASE = {
-  fontSize: 11, fontWeight: 800,
-  letterSpacing: .5, textTransform: "uppercase",
-};
-
-export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen, appToast, dataLoaded, attendance, saveAttendance }) {
+export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, fetchAllScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen, appToast, dataLoaded, attendance, saveAttendance }) {
   const [showAll, setShowAll] = useState(false);
   const [myOnly, setMyOnly] = useState(true);
   const [expandedWeeks, setExpandedWeeks] = useState({});
@@ -85,6 +59,22 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
   const [pendingEdits, setPendingEdits] = useState(null);
   const [saving, setSaving] = useState(false);
 
+  // Round history (by player) for retroactive handicaps. Fetched once via the
+  // App-cached fetchAllScores (the same source Standings uses), so a historical
+  // scorecard renders each player with the handicap they carried INTO that week
+  // rather than their current one. Without this, the expanded scorecard's NET
+  // totals + MATCH row drift away from Standings/Scoring as handicaps change.
+  // null = not loaded yet; buildHistoricalPlayers falls back gracefully.
+  const [allRounds, setAllRounds] = useState(null);
+  useEffect(() => {
+    if (!fetchAllScores) return;
+    let alive = true;
+    fetchAllScores().then(hist => {
+      if (alive) setAllRounds(hist);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [fetchAllScores]);
+
   // Toast feedback for save flows comes from the parent now (App.jsx's
   // appToast). Previously Schedule had its own local toast state with its
   // own animation styling — added in audit issue #2 when the save-failure
@@ -98,26 +88,6 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     if (typeof appToast === "function") appToast(msg, kind, 3000);
     else console.log(`[Schedule toast ${kind}] ${msg}`);
   }, [appToast]);
-
-  // ── Lookup maps (audit 2.3) ────────────────────────────────────────
-  // Replaces dozens of `players.find(p => p.id === pid)` calls
-  // scattered through the row renderer with O(1) lookups. With 20
-  // players and 16 weeks the find()s were cheap individually, but
-  // the row renderer is called many times per state change (scroll,
-  // toggle, popup) and the cumulative cost was visible in profiling.
-  // Memoized on identity so the maps only rebuild when the source
-  // arrays actually change. Team map similarly removes `teams.find()`
-  // in the pendingMakeup calculation.
-  const playerMap = useMemo(() => {
-    const m = {};
-    for (const p of players || []) m[p.id] = p;
-    return m;
-  }, [players]);
-  const teamMap = useMemo(() => {
-    const m = {};
-    for (const t of teams || []) m[t.id] = t;
-    return m;
-  }, [teams]);
 
   // Notify parent when edit popup is open
   useEffect(() => {
@@ -172,8 +142,15 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       seedMap,
       healedIds: healedRef.current,
       saveMatchResult,
+      // Pass season-wide rounds + current season so autoHeal recomputes each
+      // player's handicap AS OF the historical week. Without these the
+      // function bails by design (running it with current handicaps caused the
+      // retroactive-standings bug) — meaning this call used to be a silent
+      // no-op. Now it heals consistently with Standings.
+      allRoundsByPid: allRounds,
+      season: leagueConfig?.year || new Date().getFullYear(),
     });
-  }, [matchResults, matchScores, course, scoringRules, leagueConfig, saveMatchResult, schedule, teams, players, seedMap]);
+  }, [matchResults, matchScores, course, scoringRules, leagueConfig, saveMatchResult, schedule, teams, players, seedMap, allRounds]);
 
   // ── Commissioner score editing ──
   // Stripped the bounding-rect anchor calculation that the previous fix used —
@@ -252,12 +229,26 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     // Single source of truth: compute via matchCalc.js. Same calculation
     // Scoring.jsx uses on Sign Scorecard, so a commissioner-edit and a fresh
     // sign produce identical match_results given identical scores.
+    //
+    // Handicaps must be the ones the players carried INTO this week (via the
+    // shared buildHistoricalPlayers builder), not today's — otherwise editing
+    // a single hole of a past week would silently re-handicap the whole match
+    // to current numbers and flip a result that hasn't actually changed. This
+    // mirrors the displayed scorecard and how autoHeal recomputes.
+    const histPlayers = buildHistoricalPlayers({
+      players,
+      week: weekNum,
+      season: leagueConfig?.year || new Date().getFullYear(),
+      allRoundsByPid: allRounds,
+      scoringRules,
+      course,
+    });
     const calc = computeMatchResult({
       match: m,
       week: weekNum,
       isPlayoff: wk.isPlayoff === true,
       teams,
-      players,
+      players: histPlayers,
       holeScores: holeScoresForCalc,
       pars,
       hcps,
@@ -766,13 +757,11 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     // also surface — useful to me as the player since the match result
     // I'd be waiting on depends on them too. Only relevant when the match
     // isn't already complete and isn't rained out.
-    // Audit 2.3: replaced three nested teams.find() calls with one
-    // teamMap[] lookup for the opposing team. Same semantics, O(1)
-    // instead of O(n) per lookup, and reads cleaner.
-    const oppTeamId = myMatch ? (myMatch.team1 === myTeam?.id ? myMatch.team2 : myMatch.team1) : null;
-    const oppTeam = oppTeamId ? teamMap[oppTeamId] : null;
     const matchPids = myMatch
-      ? [myTeam?.player1, myTeam?.player2, oppTeam?.player1, oppTeam?.player2].filter(Boolean)
+      ? [myTeam?.player1, myTeam?.player2, ...(teams.find(t => t.id === (myMatch.team1 === myTeam?.id ? myMatch.team2 : myMatch.team1))
+          ? [teams.find(t => t.id === (myMatch.team1 === myTeam?.id ? myMatch.team2 : myMatch.team1)).player1,
+             teams.find(t => t.id === (myMatch.team1 === myTeam?.id ? myMatch.team2 : myMatch.team1)).player2]
+          : [])].filter(Boolean)
       : [];
     const pendingMakeup = !isComplete && !isRainedOut && matchPids.length > 0
       && isMatchPendingMakeup(matchPids, attendance, wk.week);
@@ -894,11 +883,11 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                     record is missing, then to "TBD" if neither resolved. */}
                 {opp1Name || opp2Name ? (
                   <>
-                    <span style={TEXT_ELLIPSIS}>{opp1Name || "—"}</span>
-                    <span style={TEXT_ELLIPSIS}>{opp2Name || "—"}</span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{opp1Name || "—"}</span>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{opp2Name || "—"}</span>
                   </>
                 ) : (
-                  <span style={TEXT_ELLIPSIS}>{oppName}</span>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{oppName}</span>
                 )}
                 {/* Teammate attendance tag — its own row below the names
                     so it doesn't compete for horizontal space. Color-coded
@@ -914,7 +903,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                     alignSelf: "flex-start",
                     marginTop: 2,
                   }}>
-                    {lastNamesOnly(playerMap[teammatePid]?.name || "")}: {teammateAttn.status === "makeup" ? "Making Up" : "Absent"}
+                    {lastNamesOnly(players.find(p => p.id === teammatePid)?.name || "")}: {teammateAttn.status === "makeup" ? "Making Up" : "Absent"}
                   </span>
                 )}
               </div>
@@ -922,11 +911,9 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           </div>
           {/* Chevron for completed match rows — sits between opponent
               column and the status column so it doesn't displace the
-              status column's alignment with its header. Bumped 9→13pt
-              (1.2D) so it's easier to spot as the "this row is
-              expandable" affordance. */}
+              status column's alignment with its header. */}
           {isComplete && res && (
-            <div style={{ flexShrink: 0, color: K.t3, fontSize: 13, lineHeight: 1, marginLeft: 4 }}>{expandedMatchKey === `${wk.week}_0` ? "▾" : "›"}</div>
+            <div style={{ flexShrink: 0, color: K.t3, fontSize: 9 }}>{expandedMatchKey === `${wk.week}_0` ? "▾" : "›"}</div>
           )}
           {/* Status column — fixed-width to align with the "Status" header.
               Three states:
@@ -937,7 +924,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 (c) Past or rained-out: empty cell (preserves alignment).
               Inner buttons stopPropagation so they don't trigger the
               row-level expand handler. */}
-          <div style={{ width: MY_SCHEDULE_COLS.status, ...ROW_STATUS_COL_BASE }}>
+          <div style={{ width: MY_SCHEDULE_COLS.status, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", position: "relative", zIndex: 1 }}>
             {myAttn ? (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
                 <span style={{
@@ -961,16 +948,12 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 >✕ Clear</button>
               </div>
             ) : showMarkOut ? (
-              <div style={STACK_GAP_3}>
-                {/* Absent (1.2B) — faint red tint matches the
-                    confirm popup's red border + Confirm button. Font
-                    bumped 9→10 (1.2A) to land closer to iOS HIG's
-                    11pt minimum without overflowing the 80px column. */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 3, width: "100%" }}>
                 <button
                   onClick={(e) => { e.stopPropagation(); setMarkingWeek({ wk, status: "absent" }); }}
                   style={{
-                    background: K.red + "08", border: `1px solid ${K.red}40`,
-                    color: K.red, fontSize: 10, fontWeight: 800,
+                    background: "transparent", border: `1px solid ${K.bdr}`,
+                    color: K.t3, fontSize: 9, fontWeight: 700,
                     letterSpacing: .6, textTransform: "uppercase",
                     padding: "4px 4px", borderRadius: 6,
                     cursor: "pointer",
@@ -978,16 +961,11 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 >
                   Absent
                 </button>
-                {/* Making Up — faint gold tint, matches the maize
-                    accent used across the app for "pending makeup"
-                    state. Players can tell the two buttons apart at
-                    a glance now, instead of reading text on two
-                    identical pills. */}
                 <button
                   onClick={(e) => { e.stopPropagation(); setMarkingWeek({ wk, status: "makeup" }); }}
                   style={{
-                    background: K.act + "08", border: `1px solid ${K.act}40`,
-                    color: K.act, fontSize: 10, fontWeight: 800,
+                    background: "transparent", border: `1px solid ${K.bdr}`,
+                    color: K.t3, fontSize: 9, fontWeight: 700,
                     letterSpacing: .6, textTransform: "uppercase",
                     padding: "4px 4px", borderRadius: 6,
                     cursor: "pointer",
@@ -1027,16 +1005,31 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     // every view (Live Scoring, Schedule, Standings). The only locals kept are
     // utility wrappers that bind the component's pars/hcps/players closures so
     // the call sites stay readable.
+    //
+    // historicalPlayers rewinds each handicap to its going-into-week value via
+    // the shared theme.buildHistoricalPlayers builder — the exact same source
+    // Standings uses. Feeding it (not the current `players`) into getStrokes /
+    // getScore / getHcp is what keeps this scorecard's NET totals, stroke dots,
+    // hcp pills, and MATCH row identical to Standings for any past week.
+    const currentSeason = leagueConfig?.year || new Date().getFullYear();
+    const historicalPlayers = buildHistoricalPlayers({
+      players,
+      week: wk.week,
+      season: currentSeason,
+      allRoundsByPid: allRounds,
+      scoringRules,
+      course,
+    });
     const getInitials = (pid) => { const p = players.find(pl => pl.id === pid); return p ? p.name.split(' ').map(n => n[0]).join('') : "?"; };
-    const getHcp = (pid) => { const p = players.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
+    const getHcp = (pid) => { const p = historicalPlayers.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
     const isAbsent = (pid) => wkScores[`w${wk.week}_p${pid}_habsent`] === 1;
     const getStrokes = (pid, h) => getStrokesForHole({
-      pid, h, players, hcps,
+      pid, h, players: historicalPlayers, hcps,
       week: wk.week, holeScores: wkScores, t1Pids, t2Pids,
     });
     const getScore = (pid, h) => readScoreEffective({
       pid, h, week: wk.week, holeScores: wkScores,
-      t1Pids, t2Pids, pars, hcps, players,
+      t1Pids, t2Pids, pars, hcps, players: historicalPlayers,
     });
 
     // Compute hole results + running status
@@ -1342,14 +1335,13 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
         {myOnly && (
           <button onClick={addAllToCalendar} style={{
-            display: "flex", alignItems: "center", gap: 5,
-            padding: "7px 12px", borderRadius: 6, cursor: "pointer",
-            background: K.act + "15", border: `1px solid ${K.act}50`, color: K.act,
-            fontSize: 11, fontWeight: 800, whiteSpace: "nowrap", marginLeft: "auto",
-            letterSpacing: .5,
+            display: "flex", alignItems: "center", gap: 3,
+            padding: "6px 8px", borderRadius: 6, cursor: "pointer",
+            background: K.act + "12", border: `1px solid ${K.act}30`, color: K.act,
+            fontSize: 10, fontWeight: 600, whiteSpace: "nowrap", marginLeft: "auto",
           }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-            Add to Calendar
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+            Add All
           </button>
         )}
       </div>
@@ -1462,7 +1454,18 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         const allPids = [...t1Pids, ...t2Pids];
         const getName = (pid) => { const p = players.find(pl => pl.id === pid); return p ? p.name.split(' ').pop() : "?"; };
         const getInitials = (pid) => { const p = players.find(pl => pl.id === pid); return p ? p.name.split(' ').map(n => n[0]).join('').toUpperCase() : "?"; };
-        const getHcp = (pid) => { const p = players.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
+        // Stroke dots reflect the handicaps the players carried INTO this week,
+        // via the same shared builder the scorecard + Standings use — so editing
+        // a past week shows the dots that actually applied, not today's.
+        const editHistPlayers = buildHistoricalPlayers({
+          players,
+          week: wk.week,
+          season: leagueConfig?.year || new Date().getFullYear(),
+          allRoundsByPid: allRounds,
+          scoringRules,
+          course,
+        });
+        const getHcp = (pid) => { const p = editHistPlayers.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
         const setS = (pid, h, val) => setEditScores(prev => ({ ...prev, [`${pid}_${h}`]: val }));
         const getS = (pid, h) => editScores[`${pid}_${h}`] || 0;
         const isAbs = (pid) => !!editAbsent[pid];

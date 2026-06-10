@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, calcPlayerHcp, buildSeedMap, buildStandingsForSeed, LoadingPanel, SkeletonList, getPlayerHcpAtWeek } from "../theme";
+import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, calcPlayerHcp, buildSeedMap, buildStandingsForSeed, LoadingPanel, SkeletonList, buildHistoricalPlayers } from "../theme";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/matchCalc";
 import { isScheduleDateAtOrPast } from "../lib/scheduleDate";
@@ -1238,50 +1238,11 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     return () => { cancelled = true; };
   }, [fetchAllScores]);
 
-  // ── Lookup maps (audit 2.3) ────────────────────────────────────────
-  // Replaces multiple players.find(p => p.id === pid) lookups in the
-  // expanded-team rendering (which iterates per result, per player on
-  // each open team card). With 20 players the find() is cheap, but
-  // every Firestore snapshot fires this render across all 10 teams;
-  // O(1) is the right shape.
-  const playerMap = useMemo(() => {
-    const m = {};
-    for (const p of players || []) m[p.id] = p;
-    return m;
-  }, [players]);
-
   // Determine if playoffs have started (any playoff week has matches)
   const playoffsStarted = useMemo(() =>
     schedule.some(wk => wk.isPlayoff === true && wk.matches?.length > 0 && !wk.rainedOut),
     [schedule]
   );
-
-  // ── LIVE indicator for team standings (1.4A) ────────────────────────
-  // True when this week likely has scores entering — any matchResult
-  // for the current/most-recent unlocked week that is signed but not
-  // fully attested. Mirrors the IndividualEvent leaderboard's LIVE pill
-  // behavior so players checking standings during live play see "yes,
-  // this is updating in real time" rather than wondering whether the
-  // page they're looking at is stale. Conservative: only fires when
-  // there's a concrete signal of activity for an unlocked week, never
-  // on a fully-locked past week.
-  const isTeamStandingsLive = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    for (const wk of schedule || []) {
-      if (wk.locked || wk.rainedOut) continue;
-      if (!wk.date) continue;
-      const wkDate = (() => {
-        try { return new Date(wk.date); } catch { return null; }
-      })();
-      if (!wkDate || isNaN(wkDate.getTime())) continue;
-      if (wkDate.getTime() > today.getTime()) continue;
-      const wkResults = (matchResults || []).filter(r => r.week === wk.week);
-      if (wkResults.some(r => r.signedBy && !r.attested)) return true;
-    }
-    return false;
-  }, [schedule, matchResults]);
-
 
   // Determine whether playoffs are configured at all — used to gate the
   // Playoffs tab pill (audit issue #19). During an early-season period
@@ -1532,28 +1493,18 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     // are just thin closures binding the component's pars/hcps/players.
     //
     // Build a per-match historicalPlayers array where each player's handicapIndex
-    // reflects what they had GOING INTO this week, using the same fallback chain
-    // as autoHealMatchResults (retroactive calc → startingHandicapIndex →
-    // current). This is what makes the displayed scorecard agree with the
-    // recomputed match result — using today's handicaps in the render shows
+    // reflects what they had GOING INTO this week. Single source of truth lives
+    // in theme.buildHistoricalPlayers so Schedule and Stats produce identical
+    // scorecards/match statuses — using today's handicaps in the render shows
     // wrong stroke dots and wrong hcp labels for any historical match.
-    const recentN = scoringRules?.hcpRecentCount ?? 8;
-    const bestN = scoringRules?.hcpBestCount ?? 6;
-    const frontPar = (course.frontPars || []).reduce((a, b) => a + b, 0) || 36;
     const currentSeason = leagueConfig?.year || new Date().getFullYear();
-    const historicalPlayers = players.map(p => {
-      const retroHcp = allRounds ? getPlayerHcpAtWeek({
-        playerId: p.id,
-        week: mr.week,
-        season: currentSeason,
-        allRoundsByPid: allRounds,
-        recentN, bestN, frontPar,
-      }) : null;
-      if (retroHcp !== null) return { ...p, handicapIndex: retroHcp };
-      if (p.startingHandicapIndex !== undefined && p.startingHandicapIndex !== null && p.startingHandicapIndex !== "") {
-        return { ...p, handicapIndex: parseFloat(p.startingHandicapIndex) };
-      }
-      return p;
+    const historicalPlayers = buildHistoricalPlayers({
+      players,
+      week: mr.week,
+      season: currentSeason,
+      allRoundsByPid: allRounds,
+      scoringRules,
+      course,
     });
 
     const getInitials = (pid) => { const p = players.find(pl => pl.id === pid); return p ? p.name.split(' ').map(n => n[0]).join('') : "?"; };
@@ -1689,32 +1640,6 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
       {/* Regular standings */}
       {view === "standings" && (
         <div className="standings-grid" style={{ gap: LIST_GAP }}>
-          {/* LIVE indicator (1.4A) — pulses when this week has signed-
-              but-not-attested match activity. Same pattern as the
-              IndividualEvent leaderboard so the cue reads consistently
-              across both views. Sits flush left so it doesn't shift
-              the table layout; uses the keyframes already defined
-              elsewhere in this file, locally scoped via <style>. */}
-          {isTeamStandingsLive && (
-            <>
-              <style>{`
-                @keyframes mnqLivePulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
-              `}</style>
-              <div style={{
-                display: "inline-flex", alignItems: "center", gap: 4,
-                padding: "2px 7px", borderRadius: 10,
-                background: K.red + "18", border: `1px solid ${K.red}40`,
-                alignSelf: "flex-start", marginBottom: 2,
-              }}>
-                <div style={{
-                  width: 6, height: 6, borderRadius: "50%", background: K.red,
-                  animation: "mnqLivePulse 1.5s ease-in-out infinite",
-                }} />
-                <span style={{ fontSize: 9, fontWeight: 800, color: K.red, letterSpacing: .8 }}>LIVE — Updating</span>
-              </div>
-            </>
-          )}
-
           {/* Slim column header — matches the row layout below.
               Widths: Pos 36 · Change 22 · Team flex · W-L-T 66 · final col
               40 (Holes Won, label wraps onto two lines) or 30 (Pts).
@@ -1784,8 +1709,8 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                       team's player IDs don't resolve. */}
                   <div style={{ flex: 1, textAlign: "left", lineHeight: 1.2, minWidth: 0 }}>
                     {(() => {
-                      const p1 = playerMap[team.player1];
-                      const p2 = playerMap[team.player2];
+                      const p1 = players.find(pl => pl.id === team.player1);
+                      const p2 = players.find(pl => pl.id === team.player2);
                       const lastOf = (p) => p ? p.name.split(/\s+/).slice(-1)[0] : null;
                       const l1 = lastOf(p1);
                       const l2 = lastOf(p2);

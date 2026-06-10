@@ -70,6 +70,42 @@ export function getPlayerHcpAtWeek({ playerId, week, season, allRoundsByPid, rec
   return calcPlayerHcp(priorRounds, recentN, bestN, frontPar);
 }
 
+// ── Single source of truth: players rewound to their GOING-INTO-WEEK hcps ──
+// Returns a copy of `players` where each player's handicapIndex is replaced
+// with the value they carried into `week` of `season`. This is THE shared
+// builder every historical scorecard / match-status renderer (Schedule,
+// Standings, Stats) must use so they all agree with the result that was
+// signed live — current handicaps drift as later weeks are played, which is
+// why rendering a past match with today's hcps shows wrong stroke dots, hcp
+// pills, NET totals, and a desynced MATCH row.
+//
+// Fallback chain (identical to autoHealMatchResults):
+//   retroactive calc (getPlayerHcpAtWeek) → startingHandicapIndex → current.
+// recentN/bestN/frontPar are derived from scoringRules/course so callers
+// don't each re-derive them. Pass allRoundsByPid === null while round
+// history is still loading; the retro calc is skipped and players fall back
+// to startingHandicapIndex (or current), matching prior behavior.
+export function buildHistoricalPlayers({ players, week, season, allRoundsByPid, scoringRules, course }) {
+  if (!players) return players;
+  const recentN = scoringRules?.hcpRecentCount ?? 8;
+  const bestN = scoringRules?.hcpBestCount ?? 6;
+  const frontPar = (course?.frontPars || []).reduce((a, b) => a + b, 0) || 36;
+  return players.map(p => {
+    const retroHcp = allRoundsByPid ? getPlayerHcpAtWeek({
+      playerId: p.id,
+      week,
+      season,
+      allRoundsByPid,
+      recentN, bestN, frontPar,
+    }) : null;
+    if (retroHcp !== null) return { ...p, handicapIndex: retroHcp };
+    if (p.startingHandicapIndex !== undefined && p.startingHandicapIndex !== null && p.startingHandicapIndex !== "") {
+      return { ...p, handicapIndex: parseFloat(p.startingHandicapIndex) };
+    }
+    return p;
+  });
+}
+
 // ── Shared utility: extract last names from team name ──
 export function lastNamesOnly(teamName) {
   if (!teamName) return "";
@@ -371,40 +407,10 @@ export const getTheme = (mode = "dark") => {
 
 const _savedMode = (() => { try { return typeof window !== 'undefined' && localStorage.getItem("mnq_theme") === "dark" ? "dark" : "light"; } catch { return "light"; } })();
 export const K = { ...getTheme(_savedMode) };
-
-// ── K.maize / K.gray aliases ───────────────────────────────────────
-// Aliases for K.act and K.acc so new code can use semantically clear
-// names while existing code keeps working. The historical K.act/K.acc
-// pair has been a recurring source of confusion — K.act ("active",
-// maize gold #deab12) and K.acc ("accent", light gray) read nearly
-// identically when typing fast, and a single character typo silently
-// swaps a brand-gold UI element to gray (or vice versa). Renaming all
-// existing call sites is a separate, larger refactor (touches every
-// file); this aliasing step is a no-risk first move that lets new
-// code use K.maize and K.gray immediately.
-//
-// Why not K.gold? K.gold is already taken — it's part of the medal
-// palette (K.gold / K.silver / K.bronze) used on leaderboard rank-1
-// styling and is a different shade (#d97706 / #fbbf24) than K.act
-// (#deab12 maize). Reusing the name would cause two distinct tokens
-// to collapse. K.maize cleanly names what K.act actually is — the
-// brand maize gold.
-//
-// Define as getters so applyTheme() rebuilds them when the user
-// toggles dark mode (otherwise K.maize would freeze at the value K.act
-// had at module-load time and drift after a theme switch).
-Object.defineProperty(K, "maize", { get() { return K.act; }, configurable: true, enumerable: true });
-Object.defineProperty(K, "gray",  { get() { return K.acc; }, configurable: true, enumerable: true });
-
 export function applyTheme(mode) {
   const next = getTheme(mode);
   for (const key in next) K[key] = next[key];
-  // Preserve the alias getters across theme swaps. The for-in/delete pass
-  // below would otherwise strip them because next doesn't include them.
-  for (const key in K) {
-    if (key === "maize" || key === "gray") continue;
-    if (!(key in next)) delete K[key];
-  }
+  for (const key in K) { if (!(key in next)) delete K[key]; }
 }
 
 export const getCSS = (k) => `
@@ -413,18 +419,6 @@ export const getCSS = (k) => `
   input, select, textarea { text-transform: uppercase; }
   input, select, textarea, button { font-family: 'League Spartan', sans-serif; letter-spacing: 0.8px; font-size: 15px; text-transform: uppercase; }
   ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: ${k.bdr}; border-radius: 4px; }
-  /* .mnq-prose — explicit opt-out from the global uppercase + heavy
-     letter-spacing for long-form content. The brand calls for uppercase
-     everywhere as a design statement, but long sentences in modal
-     bodies, error messages, and helper text read poorly that way —
-     letter-spacing piles up to make even short paragraphs feel
-     shouted. Add className="mnq-prose" to a wrapper element to
-     normalize letter-spacing and case for everything inside. Use
-     sparingly: stamp it on the BODY of a modal/popup/long message, not
-     on the title or buttons (those should stay uppercase to match the
-     rest of the app). */
-  .mnq-prose, .mnq-prose * { text-transform: none; letter-spacing: 0; }
-  .mnq-prose { line-height: 1.45; }
   @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
   @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
   @keyframes mnqSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
@@ -440,7 +434,7 @@ export const getCSS = (k) => `
   .app-header { padding: 12px 20px; background: ${k.bg}; display: flex; justify-content: center; align-items: center; position: relative; }
   .app-body { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior-y: none; min-height: 0; background: ${k.bg}; }
   .main-content { padding: 12px 14px; padding-bottom: 24px; max-width: 900px; width: 100%; margin: 0 auto; box-sizing: border-box; min-height: 100%; background: ${k.bg}; }
-  .bottom-nav { background: ${k.card}f0; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid ${k.bdr}; display: flex; justify-content: space-around; padding: 6px 0 6px; padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)); z-index: 200; max-width: 900px; width: 100%; flex-shrink: 0; }
+  .bottom-nav { background: ${k.card}f0; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid ${k.bdr}; display: flex; justify-content: space-around; padding: 10px 0 26px; padding-bottom: calc(26px + env(safe-area-inset-bottom, 0px)); z-index: 200; max-width: 900px; width: 100%; flex-shrink: 0; }
   .admin-grid { display: flex; flex-direction: column; gap: 6px; }
   .admin-sections-grid { display: flex; flex-direction: column; gap: 6px; }
   .players-grid { display: flex; flex-direction: column; gap: 6px; }
