@@ -444,7 +444,7 @@ export const getCSS = (k) => `
   .app-header { padding: 12px 20px; background: ${k.bg}; display: flex; justify-content: center; align-items: center; position: relative; }
   .app-body { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior-y: none; min-height: 0; background: ${k.bg}; }
   .main-content { padding: 12px 14px; padding-bottom: 24px; max-width: 900px; width: 100%; margin: 0 auto; box-sizing: border-box; min-height: 100%; background: ${k.bg}; }
-  .bottom-nav { background: ${k.card}f0; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid ${k.bdr}; display: flex; justify-content: space-around; padding: 10px 0 26px; padding-bottom: calc(26px + env(safe-area-inset-bottom, 0px)); z-index: 200; max-width: 900px; width: 100%; flex-shrink: 0; }
+  .bottom-nav { background: ${k.card}f0; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid ${k.bdr}; display: flex; justify-content: space-around; padding: 10px 0 8px; padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px)); z-index: 200; max-width: 900px; width: 100%; flex-shrink: 0; }
   .admin-grid { display: flex; flex-direction: column; gap: 6px; }
   .admin-sections-grid { display: flex; flex-direction: column; gap: 6px; }
   .players-grid { display: flex; flex-direction: column; gap: 6px; }
