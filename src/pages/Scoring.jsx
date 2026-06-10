@@ -531,20 +531,30 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const allComplete = allP.length > 0 && allP.every(pid => { for (let h = 0; h < 9; h++) if (getS(pid, h) <= 0) return false; return true; });
   const holeComplete = allP.length > 0 && allP.every(pid => getS(pid, curHole) > 0);
 
-  // Detect players with a PARTIALLY filled card — at least one hole scored
-  // but not all 9. This is the actionable "you forgot a hole" state: the
-  // scorer has clearly been entering this player's scores, so a gap is a
-  // mistake worth flagging (vs a player who hasn't started at all, who's
-  // either making up or just hasn't teed off). Returns the missing hole
-  // NUMBERS (1-indexed for display) per player so the alert can name them.
+  // Detect players missing a score on a hole the match has ACTUALLY REACHED.
+  // A hole counts as "played" once any player in the match has a score on it
+  // — the exact same per-hole activity test the match-status row uses to
+  // decide ⚠️ vs blank (see holeHasActivity below). This deliberately does
+  // NOT flag every empty hole the moment a player starts: holes the group
+  // hasn't teed off yet are an expected blank, not a "you forgot a hole"
+  // error. We only surface gaps on holes that were reached but left blank.
+  // Returns the missing hole NUMBERS (1-indexed) per player so the alert
+  // can name them.
+  const holePlayed = Array.from({ length: 9 }, (_, h) =>
+    [...t1Players, ...t2Players].some(pid => pid && getS(pid, h) > 0));
   const missingScores = allP.map(pid => {
-    let started = false;
+    // Excluded, matching the match-status row's exclusions:
+    //   - absent players: getS substitutes the teammate/imputed score, so a
+    //     blank here isn't a real gap.
+    //   - making-up players: legitimately have no scores yet; their match
+    //     stays open until the commissioner enters the makeup, so a blank is
+    //     expected, not a forgotten hole.
+    if (isPlayerAbsent(pid) || isPlayerMakingUp(pid)) return null;
     const missing = [];
     for (let h = 0; h < 9; h++) {
-      if (getS(pid, h) > 0) started = true;
-      else missing.push(h + 1);
+      if (holePlayed[h] && getS(pid, h) <= 0) missing.push(h + 1);
     }
-    if (!started || missing.length === 0) return null; // not started, or complete
+    if (missing.length === 0) return null;
     const pl = players.find(p => p.id === pid);
     const initials = pl ? pl.name.split(' ').map(n => n[0]).join('') : "?";
     return { pid, initials, holes: missing };
