@@ -552,7 +552,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     if (isPlayerAbsent(pid) || isPlayerMakingUp(pid)) return null;
     const missing = [];
     for (let h = 0; h < 9; h++) {
-      if (holePlayed[h] && getS(pid, h) <= 0) missing.push(h + 1);
+      // Display the actual course hole number: Front 9 → 1–9, Back 9 → 10–18,
+      // matching the hole-selector strip (i + 10) and the rest of the UI.
+      if (holePlayed[h] && getS(pid, h) <= 0) missing.push(side === 'front' ? h + 1 : h + 10);
     }
     if (missing.length === 0) return null;
     const pl = players.find(p => p.id === pid);
