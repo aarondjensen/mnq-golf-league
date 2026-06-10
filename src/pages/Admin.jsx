@@ -2580,6 +2580,27 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     // Determine playoff round by counting playoff weeks up to and including this one
     const playoffRound = isPlayoff ? schedule.filter(s => s.isPlayoff === true && s.week <= wk.week).length : 0;
 
+    // ── Tee-group reordering (up / down / move-to-last) ──
+    // Tee time is purely positional: startTime + matchIndex * teeInterval. So
+    // changing a group's tee slot is nothing more than moving that match within
+    // wk.matches. Match-result lookups key on team IDs (not array index), so a
+    // reorder can never orphan a saved result or break the .ics export (whose
+    // UID is team + week, not tee time). We only allow it on weeks that haven't
+    // been finalized — once results exist or the week is locked, the tee order
+    // is a historical record and shouldn't change. We follow EditWeek's normal
+    // dirty + Save flow (the team drag-swap marks dirty the same way); the top
+    // "Save" button commits via saveWeekSchedule. Tee times in the list redraw
+    // live on each move because they're computed off the map index.
+    const canReorder = !isFinalized;
+    const reorderTeeGroup = (from, to) => {
+      if (!wk.matches || to < 0 || to >= wk.matches.length || from === to) return;
+      const next = wk.matches.map(mm => ({ ...mm }));
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      setLocalWk({ ...wk, matches: next });
+      setWeekDirty(true);
+    };
+
     // Build current standings for seeding
     const buildStandingsForSeed = () => sharedBuildStandingsForSeed(teams, matchResults, schedule, leagueConfig?.standingsMethod);
 
@@ -3467,12 +3488,39 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                   );
                 };
 
+                const lastIdx = wk.matches.length - 1;
                 return (
-                  <div key={mi} style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, userSelect: "none" }}>
-                    <div style={{ flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700 }}>{formatTeeTime(cfg.startTime ?? "4:28 PM", mi).replace(/\s*(AM|PM)$/i, '')}</div>
-                    {renderTeamCard(m.team1, seed1, "team1")}
-                    <div style={{ fontSize: 10, color: K.t3, fontWeight: 800, flexShrink: 0 }}>VS</div>
-                    {renderTeamCard(m.team2, seed2, "team2")}
+                  <div key={mi} style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8, userSelect: "none" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <div style={{ flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700 }}>{formatTeeTime(cfg.startTime ?? "4:28 PM", mi).replace(/\s*(AM|PM)$/i, '')}</div>
+                      {renderTeamCard(m.team1, seed1, "team1")}
+                      <div style={{ fontSize: 10, color: K.t3, fontWeight: 800, flexShrink: 0 }}>VS</div>
+                      {renderTeamCard(m.team2, seed2, "team2")}
+                    </div>
+                    {canReorder && wk.matches.length > 1 && (
+                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, borderTop: `1px solid ${K.bdr}`, paddingTop: 8 }}>
+                        {[
+                          { label: "Earlier", to: mi - 1, disabled: mi === 0, aria: "Move group to an earlier tee time" },
+                          { label: "Later", to: mi + 1, disabled: mi === lastIdx, aria: "Move group to a later tee time" },
+                          { label: "Move to last", to: lastIdx, disabled: mi === lastIdx, aria: "Move group to the last tee time", strong: true },
+                        ].map(b => (
+                          <button
+                            key={b.label}
+                            onClick={() => { if (!b.disabled) reorderTeeGroup(mi, b.to); }}
+                            disabled={b.disabled}
+                            aria-label={b.aria}
+                            style={{
+                              padding: "6px 10px", borderRadius: 7, fontSize: 11, fontWeight: 700,
+                              background: b.disabled ? K.inp : b.strong ? K.act + "18" : K.inp,
+                              border: `1px solid ${b.disabled ? K.bdr : b.strong ? K.act + "55" : K.bdr}`,
+                              color: b.disabled ? K.t3 : b.strong ? K.act : K.t2,
+                              cursor: b.disabled ? "default" : "pointer",
+                              opacity: b.disabled ? 0.5 : 1,
+                            }}
+                          >{b.label}</button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 );
               });

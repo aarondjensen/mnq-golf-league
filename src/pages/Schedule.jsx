@@ -750,7 +750,13 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     // weeks render as before with no Mark Out affordance at all.
     const myAttn = !isComplete && !isRainedOut ? getAttendance(wk.week, myPlayerId) : null;
     const teammateAttn = !isComplete && !isRainedOut && teammatePid ? getAttendance(wk.week, teammatePid) : null;
-    const markable = !isComplete && !isRainedOut && !isSeeded && myPlayerId;
+    // Markable on ANY upcoming week, including seeded/playoff weeks whose
+    // matchups aren't set yet. A player who already knows they'll miss a
+    // future playoff/seeded week should be able to flag it in advance; the
+    // attendance doc is keyed by (week, pid), not by a generated match, so it
+    // works fine before matchups exist. (Previously gated to round-robin weeks
+    // via !isSeeded.)
+    const markable = !isComplete && !isRainedOut && myPlayerId;
     const showMarkOut = markable && !myAttn;
     // Pending-makeup signal for the result column. Resolved against the
     // 4 pids in myMatch (not just me/teammate) so opponent-side makeups
@@ -928,11 +934,12 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
             {myAttn ? (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
                 <span style={{
-                  fontSize: 9, fontWeight: 800, letterSpacing: .8,
+                  fontSize: 9, fontWeight: 700, letterSpacing: .8,
                   textTransform: "uppercase",
                   padding: "3px 7px", borderRadius: 5,
-                  background: myAttn.status === "makeup" ? K.act : K.red,
-                  color: K.bg,
+                  background: (myAttn.status === "makeup" ? K.act : K.red) + "22",
+                  color: myAttn.status === "makeup" ? K.act : K.red,
+                  border: `1px solid ${(myAttn.status === "makeup" ? K.act : K.red) + "55"}`,
                   whiteSpace: "nowrap",
                 }}>
                   {myAttn.status === "makeup" ? "Making Up" : "Absent"}
@@ -1425,8 +1432,8 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 onClick={() => markOut(markingWeek.wk.week, markingWeek.status)}
                 style={{
                   flex: 1, padding: 11, borderRadius: 8,
-                  background: accent, border: "none",
-                  color: K.bg, fontSize: 13, fontWeight: 800, cursor: "pointer",
+                  background: accent + "22", border: `1px solid ${accent + "66"}`,
+                  color: accent, fontSize: 13, fontWeight: 700, cursor: "pointer",
                   letterSpacing: .5,
                 }}
               >
