@@ -72,20 +72,35 @@ export function ScoreCell({ score, par, strokes, size = 13, color: colorOverride
 
   const diff = score - par;
 
+  // Optical-center correction for the birdie/bogey borders.
+  // The border boxes below are geometrically centered on the sh×sh cell
+  // (translate(-50%,-50%)), but the score DIGIT is not centered within its
+  // own line box — League Spartan's lining figures sit ~0.088em above the
+  // line-box center. (The font sets USE_TYPO_METRICS, so every modern
+  // browser — incl. iOS Safari and Chrome — resolves `line-height: normal`
+  // to the same symmetric typo metrics, making this offset stable across
+  // platforms.) Without correction the ring/square reads ~1.3px low relative
+  // to the number. Shift the borders UP by the same amount so they center on
+  // the glyph's optical center, not the box center. The number itself is left
+  // untouched — it stays aligned with the player initials in the label cell.
+  // Scales with size: ~1.3px at the 15px cells, ~1.1px at the 13px cells.
+  const yNudge = s * 0.088;
+  const ringPos = { position: "absolute", top: "50%", left: "50%", transform: `translate(-50%, calc(-50% - ${yNudge}px))` };
+
   let border = null;
   if (diff <= -2) {
     border = (
-      <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ ...ringPos, width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ width: sh - 6, height: sh - 6, borderRadius: "50%", border: `1px solid ${bc}` }} />
       </div>
     );
   } else if (diff === -1) {
-    border = <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}` }} />;
+    border = <div style={{ ...ringPos, width: sh, height: sh, borderRadius: "50%", border: `1.5px solid ${bc}` }} />;
   } else if (diff === 1) {
-    border = <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}` }} />;
+    border = <div style={{ ...ringPos, width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}` }} />;
   } else if (diff >= 2) {
     border = (
-      <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)", width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      <div style={{ ...ringPos, width: sh, height: sh, borderRadius: 3, border: `1.5px solid ${bc}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <div style={{ width: sh - 6, height: sh - 6, borderRadius: 2, border: `1px solid ${bc}` }} />
       </div>
     );
