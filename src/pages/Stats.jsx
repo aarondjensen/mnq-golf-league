@@ -264,6 +264,32 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
     }).filter(Boolean);
   }, [players, course, schedule, scores, allRounds, leagueConfig, scoringRules]);
 
+  // Hole numbers behind the Hardest/Easiest specialist boards, derived from
+  // the course hcp arrays so the subtitle always matches what's actually
+  // averaged. Mirrors the per-side slice logic in the stats build above:
+  // slice(0,3) of holes ranked by ascending hcp = the 3 hardest (hardest
+  // first); slice(-3) = the 3 easiest (easiest last). Front holes are
+  // numbered 1-9, back holes 10-18. Config-driven — if the course's hcp
+  // layout changes, these labels follow automatically.
+  const specialistHoles = useMemo(() => {
+    if (!course) return null;
+    const sideHoles = (hcps, offset) => {
+      const ranked = (hcps || []).map((h, i) => ({ h, i })).sort((a, b) => a.h - b.h);
+      if (ranked.length < 3) return { hard: [], easy: [] };
+      return {
+        hard: ranked.slice(0, 3).map(x => x.i + offset),
+        easy: ranked.slice(-3).map(x => x.i + offset),
+      };
+    };
+    const front = sideHoles(course.frontHcps, 1);
+    const back  = sideHoles(course.backHcps, 10);
+    if (!front.hard.length || !back.hard.length) return null;
+    return {
+      hard: `${front.hard.join(",")} & ${back.hard.join(",")}`,
+      easy: `${front.easy.join(",")} & ${back.easy.join(",")}`,
+    };
+  }, [course]);
+
   // Section refs — scroll targets for the sticky section nav (1.6A).
   // Each Section component below carries a `sectionId` that resolves
   // to one of these refs. handleSectionTap scrolls the target to just
@@ -657,14 +683,14 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
       })}
       {board({
         title: `Hardest Holes Specialist — ${modeLabel}`,
-        subtitle: "Average on the 3 hardest handicap holes each 9",
+        subtitle: `Average on the 3 hardest handicap holes each 9${specialistHoles ? ` (${specialistHoles.hard})` : ""}`,
         valueFn: s => isNet ? s.hardestAvgNet : s.hardestAvgGross,
         sortDir: 'asc',
         valueFmt: v => v.toFixed(2),
       })}
       {board({
         title: `Easy Holes Specialist — ${modeLabel}`,
-        subtitle: "Average on the 3 easiest handicap holes each 9",
+        subtitle: `Average on the 3 easiest handicap holes each 9${specialistHoles ? ` (${specialistHoles.easy})` : ""}`,
         valueFn: s => isNet ? s.easyAvgNet : s.easyAvgGross,
         sortDir: 'asc',
         valueFmt: v => v.toFixed(2),
