@@ -5,7 +5,18 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDW3tTWxOlrPoKiflmlh_6JPLe8vbvVEUE",
-  authDomain: "mnq-golf-leage.firebaseapp.com",
+  // authDomain points at our OWN app domain (not the default
+  // mnq-golf-leage.firebaseapp.com) so the signInWithRedirect flow stays
+  // first-party. Vercel reverse-proxies /__/auth/* and /__/firebase/* to
+  // mnq-golf-leage.firebaseapp.com (see vercel.json), and the redirect URI
+  // https://www.mnqgolf.com/__/auth/handler is authorized on the OAuth client.
+  // This is what makes Google sign-in work inside the installed iOS PWA,
+  // where iOS storage partitioning otherwise breaks the cross-origin
+  // redirect round-trip. If the installed PWA actually serves from a
+  // different host, this value MUST match it exactly. The apex mnqgolf.com
+  // 307-redirects to www.mnqgolf.com (the canonical production host the PWA
+  // installs from), so www is the correct authDomain here.
+  authDomain: "www.mnqgolf.com",
   projectId: "mnq-golf-leage",
   storageBucket: "mnq-golf-leage.firebasestorage.app",
   messagingSenderId: "367374056990",
