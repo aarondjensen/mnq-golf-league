@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, memo } from "react";
-import { K, EmptyState, SubLabel, LIST_GAP, CARD_RADIUS, getWeekSide, LoadingPanel, getPlayerHcpAtWeek } from "../theme";
+import { K, EmptyState, SubLabel, LIST_GAP, CARD_RADIUS, getWeekSide, LoadingPanel, resolvePlayerHcpForWeek } from "../theme";
 import { buildStrokesMap } from "../lib/matchCalc";
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -99,39 +99,25 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
 
     const sortedWeeks = [...(schedule || [])].sort((a, b) => a.week - b.week);
 
-    // Settings for retroactive handicap calc — same defaults the rest of
-    // the app uses. recentN and bestN come from scoringRules; frontPar
-    // is computed from the course's front-9 par list. season is read off
-    // leagueConfig so multi-season-aware (matches autoHeal + Standings).
-    const recentN = scoringRules?.hcpRecentCount ?? 8;
-    const bestN = scoringRules?.hcpBestCount ?? 6;
-    const frontPar = frontPars.reduce((a, b) => a + b, 0) || 36;
+    // Season read off leagueConfig so the retroactive handicap calc is
+    // multi-season-aware (matches autoHeal + Standings).
     const currentSeason = leagueConfig?.year || new Date().getFullYear();
 
     return players.map(p => {
-      // Resolves the handicap this player had GOING INTO a given week.
-      // Order of preference:
-      //   1. Retroactive calc from prior rounds (deterministic, accurate)
-      //   2. startingHandicapIndex (commissioner-set, sticky)
-      //   3. Current handicapIndex (today's value, last resort — used
-      //      automatically until allRounds fetch resolves on initial load)
+      // Resolves the handicap this player had GOING INTO a given week via the
+      // shared single-source-of-truth chain in theme.resolvePlayerHcpForWeek:
+      //   retroactive calc → startingHandicapIndex → current handicapIndex.
+      // Math.round here keeps stat boards integer-valued as before; the shared
+      // resolver returns a raw number so scorecard renderers can stroke off it.
       // Closed over p so the call site stays terse.
-      const hcpForWeek = (week) => {
-        if (allRounds) {
-          const retro = getPlayerHcpAtWeek({
-            playerId: p.id,
-            week,
-            season: currentSeason,
-            allRoundsByPid: allRounds,
-            recentN, bestN, frontPar,
-          });
-          if (retro !== null) return retro;
-        }
-        if (p.startingHandicapIndex !== undefined && p.startingHandicapIndex !== null && p.startingHandicapIndex !== "") {
-          return Math.round(parseFloat(p.startingHandicapIndex));
-        }
-        return Math.round(p.handicapIndex || 0);
-      };
+      const hcpForWeek = (week) => Math.round(resolvePlayerHcpForWeek({
+        player: p,
+        week,
+        season: currentSeason,
+        allRoundsByPid: allRounds,
+        scoringRules,
+        course,
+      }));
       const rounds = [];                   // [{ week, side, gross, net, sidePar }]
       const holeSequence = [];             // [{ par, gross, net, played }] in time order
 
@@ -277,32 +263,6 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
       };
     }).filter(Boolean);
   }, [players, course, schedule, scores, allRounds, leagueConfig, scoringRules]);
-
-  // Hole numbers behind the Hardest/Easiest specialist boards, derived from
-  // the course hcp arrays so the subtitle always matches what's actually
-  // averaged. Mirrors the per-side slice logic in the stats build above:
-  // slice(0,3) of holes ranked by ascending hcp = the 3 hardest (hardest
-  // first); slice(-3) = the 3 easiest (easiest last). Front holes are
-  // numbered 1-9, back holes 10-18. Config-driven — if the course's hcp
-  // layout changes, these labels follow automatically.
-  const specialistHoles = useMemo(() => {
-    if (!course) return null;
-    const sideHoles = (hcps, offset) => {
-      const ranked = (hcps || []).map((h, i) => ({ h, i })).sort((a, b) => a.h - b.h);
-      if (ranked.length < 3) return { hard: [], easy: [] };
-      return {
-        hard: ranked.slice(0, 3).map(x => x.i + offset),
-        easy: ranked.slice(-3).map(x => x.i + offset),
-      };
-    };
-    const front = sideHoles(course.frontHcps, 1);
-    const back  = sideHoles(course.backHcps, 10);
-    if (!front.hard.length || !back.hard.length) return null;
-    return {
-      hard: `${front.hard.join(",")} & ${back.hard.join(",")}`,
-      easy: `${front.easy.join(",")} & ${back.easy.join(",")}`,
-    };
-  }, [course]);
 
   // Section refs — scroll targets for the sticky section nav (1.6A).
   // Each Section component below carries a `sectionId` that resolves
@@ -697,14 +657,14 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
       })}
       {board({
         title: `Hardest Holes Specialist — ${modeLabel}`,
-        subtitle: `Average on the 3 hardest handicap holes each 9${specialistHoles ? ` (${specialistHoles.hard})` : ""}`,
+        subtitle: "Average on the 3 hardest handicap holes each 9",
         valueFn: s => isNet ? s.hardestAvgNet : s.hardestAvgGross,
         sortDir: 'asc',
         valueFmt: v => v.toFixed(2),
       })}
       {board({
         title: `Easy Holes Specialist — ${modeLabel}`,
-        subtitle: `Average on the 3 easiest handicap holes each 9${specialistHoles ? ` (${specialistHoles.easy})` : ""}`,
+        subtitle: "Average on the 3 easiest handicap holes each 9",
         valueFn: s => isNet ? s.easyAvgNet : s.easyAvgGross,
         sortDir: 'asc',
         valueFmt: v => v.toFixed(2),

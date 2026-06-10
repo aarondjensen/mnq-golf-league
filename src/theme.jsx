@@ -70,40 +70,50 @@ export function getPlayerHcpAtWeek({ playerId, week, season, allRoundsByPid, rec
   return calcPlayerHcp(priorRounds, recentN, bestN, frontPar);
 }
 
-// ── Single source of truth: players rewound to their GOING-INTO-WEEK hcps ──
-// Returns a copy of `players` where each player's handicapIndex is replaced
-// with the value they carried into `week` of `season`. This is THE shared
-// builder every historical scorecard / match-status renderer (Schedule,
-// Standings, Stats) must use so they all agree with the result that was
-// signed live — current handicaps drift as later weeks are played, which is
-// why rendering a past match with today's hcps shows wrong stroke dots, hcp
-// pills, NET totals, and a desynced MATCH row.
-//
-// Fallback chain (identical to autoHealMatchResults):
-//   retroactive calc (getPlayerHcpAtWeek) → startingHandicapIndex → current.
-// recentN/bestN/frontPar are derived from scoringRules/course so callers
-// don't each re-derive them. Pass allRoundsByPid === null while round
-// history is still loading; the retro calc is skipped and players fall back
-// to startingHandicapIndex (or current), matching prior behavior.
-export function buildHistoricalPlayers({ players, week, season, allRoundsByPid, scoringRules, course }) {
-  if (!players) return players;
+// ── Single source of truth: one player's hcp GOING INTO a given week ──
+// The shared fallback chain used everywhere a historical handicap is needed
+// (scorecards, match recompute, stat boards): retroactive calc → sticky
+// startingHandicapIndex → current handicapIndex. Returns a raw (unrounded)
+// number; callers that display integers apply their own Math.round. Pass
+// allRoundsByPid === null while round history is loading — the retro calc is
+// skipped and the next fallback applies.
+export function resolvePlayerHcpForWeek({ player, week, season, allRoundsByPid, scoringRules, course }) {
+  if (!player) return 0;
   const recentN = scoringRules?.hcpRecentCount ?? 8;
   const bestN = scoringRules?.hcpBestCount ?? 6;
   const frontPar = (course?.frontPars || []).reduce((a, b) => a + b, 0) || 36;
-  return players.map(p => {
-    const retroHcp = allRoundsByPid ? getPlayerHcpAtWeek({
-      playerId: p.id,
-      week,
-      season,
-      allRoundsByPid,
-      recentN, bestN, frontPar,
-    }) : null;
-    if (retroHcp !== null) return { ...p, handicapIndex: retroHcp };
-    if (p.startingHandicapIndex !== undefined && p.startingHandicapIndex !== null && p.startingHandicapIndex !== "") {
-      return { ...p, handicapIndex: parseFloat(p.startingHandicapIndex) };
-    }
-    return p;
-  });
+  const retro = allRoundsByPid ? getPlayerHcpAtWeek({
+    playerId: player.id,
+    week,
+    season,
+    allRoundsByPid,
+    recentN, bestN, frontPar,
+  }) : null;
+  if (retro !== null) return retro;
+  if (player.startingHandicapIndex !== undefined && player.startingHandicapIndex !== null && player.startingHandicapIndex !== "") {
+    return parseFloat(player.startingHandicapIndex);
+  }
+  return player.handicapIndex ?? 0;
+}
+
+// ── Single source of truth: players rewound to their GOING-INTO-WEEK hcps ──
+// Returns a copy of `players` where each player's handicapIndex is replaced
+// with the value they carried into `week` of `season` (via the shared
+// resolvePlayerHcpForWeek chain). This is THE shared builder every historical
+// scorecard / match-status renderer (Schedule, Standings) must use so they
+// all agree with the result that was signed live — current handicaps drift as
+// later weeks are played, which is why rendering a past match with today's
+// hcps shows wrong stroke dots, hcp pills, NET totals, and a desynced MATCH
+// row. Pass allRoundsByPid === null while round history is still loading; the
+// retro calc is skipped and players fall back to startingHandicapIndex (or
+// current), matching prior behavior. Stats.jsx uses the per-player
+// resolvePlayerHcpForWeek directly since it needs many weeks for one player.
+export function buildHistoricalPlayers({ players, week, season, allRoundsByPid, scoringRules, course }) {
+  if (!players) return players;
+  return players.map(p => ({
+    ...p,
+    handicapIndex: resolvePlayerHcpForWeek({ player: p, week, season, allRoundsByPid, scoringRules, course }),
+  }));
 }
 
 // ── Shared utility: extract last names from team name ──
