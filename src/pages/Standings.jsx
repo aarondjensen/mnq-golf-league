@@ -1245,13 +1245,12 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   );
 
   // Determine whether playoffs are configured at all — used to gate the
-  // Playoffs tab pill (audit issue #19). During an early-season period
-  // when no playoff weeks have been added to the schedule yet, showing
-  // a Playoffs tab is just a dead-end click. Hide it entirely. Once the
-  // commissioner configures playoff weeks (Admin → Schedule), the tab
-  // appears. This also incidentally collapses the toggle pills bar to
-  // a single "Season" tab when there's nothing else, and the existing
-  // `tabs.length > 1` gate hides the bar entirely.
+  // Postseason primary toggle (audit issue #19). During an early-season
+  // period when no playoff weeks have been added to the schedule yet,
+  // showing a Postseason toggle is just a dead-end click. Hide it entirely
+  // (the page renders standings with no toggle bar). Once the commissioner
+  // configures playoff weeks (Admin → Schedule), the Regular Season /
+  // Postseason toggle appears (gated below by `showPostseason`).
   const hasPlayoffs = useMemo(() =>
     schedule.some(wk => wk.isPlayoff === true && !wk.rainedOut),
     [schedule]
@@ -1293,12 +1292,26 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   }, [defaultView]);
   const pickTab = (id) => { userPickedTab.current = true; setView(id); };
 
-  // Safety guard: if `view` ends up pointing at a tab that no longer
-  // exists (e.g., user picked Playoffs, then commissioner removed all
-  // playoff weeks), bounce to "standings". Otherwise the page renders
-  // an empty branch with no nav back to a valid view.
+  // Remember which Postseason sub-view ("bracket" | "individual") the user
+  // last looked at, so toggling Regular Season → Postseason restores their
+  // prior sub-selection instead of always snapping back to Team Bracket.
+  // Defaults to "bracket" (Team Bracket is the primary postseason view).
+  const lastPostSub = useRef("bracket");
   useEffect(() => {
-    const validIds = new Set(["standings", ...(hasPlayoffs ? ["bracket"] : []), ...(hasIndividualEvent ? ["individual"] : [])]);
+    if (view === "bracket" || view === "individual") lastPostSub.current = view;
+  }, [view]);
+
+  // Safety guard: if `view` ends up pointing at a tab that no longer
+  // exists (e.g., user picked Postseason, then commissioner removed all
+  // playoff weeks), bounce to "standings". Otherwise the page renders
+  // an empty branch with no nav back to a valid view. The Individual
+  // tournament only runs alongside playoff weeks, so it's only valid
+  // when playoffs exist.
+  useEffect(() => {
+    const validIds = new Set([
+      "standings",
+      ...(hasPlayoffs ? ["bracket", ...(hasIndividualEvent ? ["individual"] : [])] : []),
+    ]);
     if (!validIds.has(view)) setView("standings");
   }, [view, hasPlayoffs, hasIndividualEvent]);
 
@@ -1583,34 +1596,59 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   const wltCol = { width: 18, textAlign: "center", fontFamily: "'League Spartan', sans-serif" };
   const wltDash = { width: 6, textAlign: "center", color: K.t3 };
 
-  // ── Toggle pills — always visible regardless of season phase ──
-  // Season: current standings (always meaningful).
-  // Playoffs: bracket view. During regular season this renders as a preview with seed
-  //   placeholders (#1, #2, ...); once playoff weeks populate, real team names appear.
-  // Individual: only meaningful during the individual tournament; shows a "starts Week X"
-  //   placeholder beforehand. Omitted entirely if the league doesn't run an individual event.
-  const tabs = [
-    { id: "standings", label: "Season" },
-    ...(hasPlayoffs ? [{ id: "bracket", label: "Playoffs" }] : []),
-    ...(hasIndividualEvent ? [{ id: "individual", label: "Individual" }] : []),
-  ];
+  // ── Toggle structure ──────────────────────────────────────────────
+  // PRIMARY toggle: Regular Season | Postseason.
+  //   - "Regular Season" → standings view (always meaningful).
+  //   - "Postseason"     → playoff content. Only surfaced once the league
+  //     actually has playoff weeks configured (hasPlayoffs); otherwise the
+  //     primary toggle bar collapses and only standings shows.
+  // SECONDARY toggle (Postseason only): Team Bracket | Individual. The
+  //   individual tournament runs concurrently with the team playoff bracket,
+  //   so it lives nested under Postseason rather than as a top-level tab.
+  //   Only shown when the league runs an individual event alongside playoffs.
+  const inPostseason = view === "bracket" || view === "individual";
+  const showPostseason = hasPlayoffs;                       // primary toggle gate
+  const showSubToggle = inPostseason && hasPlayoffs && hasIndividualEvent;
+
+  // Jump into Postseason, restoring the user's last sub-view (or Team Bracket
+  // by default; falls back to Individual if no bracket exists for any reason).
+  const goPostseason = () => {
+    const sub = lastPostSub.current === "individual" && hasIndividualEvent
+      ? "individual"
+      : (hasPlayoffs ? "bracket" : (hasIndividualEvent ? "individual" : "standings"));
+    pickTab(sub);
+  };
+
+  // Shared segmented-control button style. `primary` = the larger top-level
+  // toggle; secondary (sub) buttons are slightly smaller to read as nested.
+  const segBtn = (active, primary = true) => ({
+    padding: primary ? "7px 14px" : "6px 12px",
+    borderRadius: 6, border: "none", cursor: "pointer",
+    background: active ? K.card : "transparent",
+    color: active ? K.t1 : K.t3,
+    fontSize: primary ? 11 : 10, fontWeight: 700, letterSpacing: .8,
+    boxShadow: active ? `0 1px 3px ${K.bdr}40` : "none",
+    transition: "all .15s", whiteSpace: "nowrap",
+  });
 
   return (
     <div style={{ padding: "0 2px" }}>
-      {/* Toggle pills */}
-      {tabs.length > 1 && (
+      {/* PRIMARY toggle — Regular Season | Postseason */}
+      {showPostseason && (
+        <div style={{ display: "flex", justifyContent: "center", marginBottom: showSubToggle ? 8 : 14 }}>
+          <div style={{ display: "inline-flex", background: K.inp, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: 3 }}>
+            <button onClick={() => pickTab("standings")} style={segBtn(!inPostseason)}>REGULAR SEASON</button>
+            <button onClick={goPostseason} style={segBtn(inPostseason)}>POSTSEASON</button>
+          </div>
+        </div>
+      )}
+
+      {/* SECONDARY toggle — Team Bracket | Individual (Postseason only) */}
+      {showSubToggle && (
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
           <div style={{ display: "inline-flex", background: K.inp, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: 3 }}>
-            {tabs.map(t => (
-              <button key={t.id} onClick={() => pickTab(t.id)} style={{
-                padding: "7px 14px", borderRadius: 6, border: "none", cursor: "pointer",
-                background: view === t.id ? K.card : "transparent",
-                color: view === t.id ? K.t1 : K.t3,
-                fontSize: 11, fontWeight: 700, letterSpacing: .8,
-                boxShadow: view === t.id ? `0 1px 3px ${K.bdr}40` : "none",
-                transition: "all .15s",
-              }}>{t.label}</button>
-            ))}
+            <button onClick={() => pickTab("bracket")} style={segBtn(view === "bracket", false)}>TEAM BRACKET</button>
+            <button onClick={() => pickTab("individual")} style={segBtn(view === "individual", false)}>INDIVIDUAL</button>
           </div>
         </div>
       )}
