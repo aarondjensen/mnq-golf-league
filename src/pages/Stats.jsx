@@ -344,6 +344,27 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
     const hasMore = allSorted.length > collapsedCount;
     const shown = isExpanded ? allSorted : allSorted.slice(0, collapsedCount);
 
+    // ── Standard golf tie ranking ────────────────────────────────────
+    // Players sharing the same DISPLAYED value share a position, shown
+    // with a "T" prefix (e.g. T3). Uses competition "1224" ranking: a
+    // two-way tie for 3rd means the next player is 5th, not 4th. Tie
+    // detection is on the formatted value the user actually sees — two
+    // rows showing "38.4" read as tied even if their raw floats differ
+    // in a hidden decimal. Computed over allSorted (not the visible
+    // slice) so a collapsed top-5 board still shows correct positions,
+    // and shown[i] maps to rankInfo[i] since shown is a leading slice.
+    const fmtVal = (s) => (valueFmt ? valueFmt(valueFn(s)) : valueFn(s));
+    const rankInfo = [];
+    for (let i = 0; i < allSorted.length; i++) {
+      if (i > 0 && fmtVal(allSorted[i]) === fmtVal(allSorted[i - 1])) {
+        rankInfo[i] = { rank: rankInfo[i - 1].rank, tied: true };
+        rankInfo[i - 1].tied = true;   // back-mark the first of the tie group
+      } else {
+        rankInfo[i] = { rank: i + 1, tied: false };
+      }
+    }
+    const rankLabel = (info) => (info.tied ? "T" : "") + info.rank;
+
     // ── Jump-to-self affordance (1.6C) ───────────────────────────────
     // If the viewer is on this board AND outside the top-5 collapsed
     // view, render a "▼ You're 12th" pill between rank 5 and the
@@ -353,8 +374,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
     // to one tap.
     const myPid = leagueUser?.playerId;
     const myIdx = myPid ? allSorted.findIndex(s => s.playerId === myPid) : -1;
-    const myRank = myIdx >= 0 ? myIdx + 1 : null;
-    const showJumpToSelf = !isExpanded && myRank !== null && myRank > collapsedCount;
+    const showJumpToSelf = !isExpanded && myIdx >= collapsedCount;
     const ordinal = (n) => {
       // "1st / 2nd / 3rd / 4th..." for the jump label. Standard English
       // ordinals — covers the edge cases (11th/12th/13th vs 21st/22nd).
@@ -362,6 +382,12 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
       const v = n % 100;
       return n + (s[(v - 20) % 10] || s[v] || s[0]);
     };
+    // Tie-aware label for the jump pill: "T3" when tied, else an ordinal
+    // ("12th"). Mirrors the row badges so the viewer's position reads the
+    // same whether shown inline or summarized in the pill.
+    const myRankLabel = myIdx >= 0
+      ? (rankInfo[myIdx].tied ? `T${rankInfo[myIdx].rank}` : ordinal(rankInfo[myIdx].rank))
+      : null;
 
     return (
       <div style={{ marginBottom: 16 }}>
@@ -381,11 +407,11 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
               <BoardRow
                 key={s.playerId}
                 rowKey={`${title}__${s.playerId}`}
-                rank={i + 1}
+                rank={rankLabel(rankInfo[i])}
                 name={s.name}
                 annotation={annotation}
                 value={valueFmt ? valueFmt(valueFn(s)) : valueFn(s)}
-                isFirst={i === 0}
+                isFirst={rankInfo[i].rank === 1}
                 isMe={isMe}
               />
             );
@@ -422,7 +448,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
             }}
           >
             <span>▼</span>
-            <span>You're {ordinal(myRank)}</span>
+            <span>You're {myRankLabel}</span>
           </button>
         )}
         {/* Show all / Show less affordance — only renders if there are
@@ -722,7 +748,7 @@ const BoardRow = memo(function BoardRow({ rank, name, annotation, value, isFirst
       }}
     >
       <div style={{
-        width: 22, height: 22, borderRadius: 5,
+        minWidth: 22, height: 22, borderRadius: 5, padding: "0 4px",
         background: isFirst ? K.gold + "20" : K.inp,
         color: isFirst ? K.gold : K.t3,
         display: "flex", alignItems: "center", justifyContent: "center",
