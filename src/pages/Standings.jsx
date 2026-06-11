@@ -428,7 +428,7 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
         })();
 
         return (
-          <div ref={bracketScrollRef} style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 4, scrollSnapType: "x mandatory" }}>
+          <div ref={bracketScrollRef} style={{ overflowX: "auto", paddingBottom: 4, scrollSnapType: "x mandatory" }}>
             <div style={{ display: "flex", alignItems: "stretch", gap: 0, minWidth: (bracketData.length + 1) * (COL_WIDTH + COL_SPACING) }}>
               {bracketData.map((round, ri) => {
                 const matchCount = Math.max(round.matchups.length, round.config.length, 1);
