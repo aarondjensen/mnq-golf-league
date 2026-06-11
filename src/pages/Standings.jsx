@@ -32,6 +32,74 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
   // headers INSIDE the bracket can scroll their column to the left edge — helpful
   // for multi-round brackets that don't fit on one screen.
   const bracketScrollRef = useRef(null);
+  // Trailing spacer after the last bracket column. The horizontal scroll range
+  // is shorter than the full bracket width, so without trailing space the last
+  // round(s) and the podium column physically cannot reach the left edge. We
+  // size this spacer in JS (see snap effect) to exactly the gap needed so every
+  // column — including the podium — can be snapped flush-left.
+  const bracketSpacerRef = useRef(null);
+
+  // Deterministic horizontal snap. CSS scroll-snap (`mandatory`) proved
+  // unreliable on iOS here — momentum scrolling rides past the snap point and
+  // the column rests mid-round. Instead we snap in JS on scroll-end: after the
+  // user stops scrolling, ease to whichever column's left edge is nearest. This
+  // guarantees a round is always pinned to the leftmost column, never a partial.
+  useEffect(() => {
+    const el = bracketScrollRef.current;
+    if (!el || view !== "bracket") return;
+
+    // Non-spacer children of the inner flex row are the bracket columns
+    // (rounds + podium). Their live offsetLeft values are the snap targets.
+    const columns = () => {
+      const row = el.firstElementChild;
+      if (!row) return [];
+      return Array.from(row.children).filter(c => c.dataset.bracketSpacer == null);
+    };
+
+    // Size the trailing spacer so the last column can reach the left edge.
+    const sizeSpacer = () => {
+      const cols = columns();
+      const spacer = bracketSpacerRef.current;
+      if (!cols.length || !spacer) return;
+      const lastW = cols[cols.length - 1].offsetWidth;
+      spacer.style.width = Math.max(0, el.clientWidth - lastW) + "px";
+    };
+
+    const snapToNearest = () => {
+      const cols = columns();
+      if (!cols.length) return;
+      const left = el.scrollLeft;
+      const maxLeft = el.scrollWidth - el.clientWidth;
+      let target = cols[0].offsetLeft;
+      let best = Infinity;
+      for (const c of cols) {
+        const d = Math.abs(c.offsetLeft - left);
+        if (d < best) { best = d; target = c.offsetLeft; }
+      }
+      target = Math.min(target, maxLeft);
+      if (Math.abs(target - left) > 1) el.scrollTo({ left: target, behavior: "smooth" });
+    };
+
+    let settleTimer = null;
+    const onScroll = () => {
+      clearTimeout(settleTimer);
+      // Fire once scrolling (incl. iOS momentum) has settled.
+      settleTimer = setTimeout(snapToNearest, 110);
+    };
+
+    // Initial spacer sizing (after layout) + keep it correct on resize/orientation.
+    const raf = requestAnimationFrame(sizeSpacer);
+    const onResize = () => { sizeSpacer(); };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    window.addEventListener("resize", onResize);
+    return () => {
+      cancelAnimationFrame(raf);
+      clearTimeout(settleTimer);
+      el.removeEventListener("scroll", onScroll);
+      window.removeEventListener("resize", onResize);
+    };
+  }, [view, playoffRounds.length]);
+
   // Use shared buildSeedMap so bracket seed badges match Schedule / Scoring / Admin.
   // Prior implementation built its own seed map from raw points, ignoring locked status
   // and standingsMethod, so bracket seeds could disagree with everywhere else in the app.
@@ -428,7 +496,7 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
         })();
 
         return (
-          <div ref={bracketScrollRef} style={{ overflowX: "auto", paddingBottom: 4, scrollSnapType: "x mandatory" }}>
+          <div ref={bracketScrollRef} style={{ overflowX: "auto", paddingBottom: 4 }}>
             <div style={{ display: "flex", alignItems: "stretch", gap: 0, minWidth: (bracketData.length + 1) * (COL_WIDTH + COL_SPACING) }}>
               {bracketData.map((round, ri) => {
                 const matchCount = Math.max(round.matchups.length, round.config.length, 1);
@@ -438,7 +506,7 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                   <div
                     key={ri}
                     data-round-col={ri}
-                    style={{ width: COL_WIDTH, flexShrink: 0, display: "flex", flexDirection: "column", marginRight: ri < bracketData.length - 1 ? COL_SPACING : 0, scrollSnapAlign: "start" }}
+                    style={{ width: COL_WIDTH, flexShrink: 0, display: "flex", flexDirection: "column", marginRight: ri < bracketData.length - 1 ? COL_SPACING : 0 }}
                   >
                     {/* Column header — click to scroll this column to the left edge.
                         Handy on multi-round brackets that don't fit on one screen. */}
@@ -679,7 +747,7 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                 );
 
                 return (
-                  <div style={{ width: COL_WIDTH, flexShrink: 0, display: "flex", flexDirection: "column", scrollSnapAlign: "start" }}>
+                  <div style={{ width: COL_WIDTH, flexShrink: 0, display: "flex", flexDirection: "column" }}>
                     <div style={{ height: 32 + 10 /* match header + its margin */ }} />
                     <div style={{ position: "relative", height: totalHeight }}>
                       <div style={{ position: "absolute", top: firstY, left: 0, right: 0 }}>
@@ -704,6 +772,9 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                   </div>
                 );
               })()}
+              {/* Trailing spacer — width set in JS so the last column (podium)
+                  can scroll fully to the left edge. flexShrink:0 keeps it. */}
+              <div ref={bracketSpacerRef} data-bracket-spacer="" style={{ flexShrink: 0, width: 0 }} />
             </div>
           </div>
         );
