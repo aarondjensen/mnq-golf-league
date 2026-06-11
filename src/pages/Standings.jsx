@@ -56,13 +56,23 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
       return Array.from(row.children).filter(c => c.dataset.bracketSpacer == null);
     };
 
-    // Size the trailing spacer so the last column can reach the left edge.
+    // Size the trailing spacer so the final ROUND column can sit flush-left
+    // with the podium still beside it on screen. The bracket is wider than the
+    // visible scroll range, so we add trailing room = (visible width − the width
+    // of the last round + everything after it). Anchoring on the last ROUND
+    // (podium excluded) means the final rest position shows the last round and
+    // the podium together, instead of the podium alone with empty space. Bail if
+    // the container has no width yet — the ResizeObserver re-runs this once it does.
     const sizeSpacer = () => {
       const cols = columns();
       const spacer = bracketSpacerRef.current;
-      if (!cols.length || !spacer) return;
-      const lastW = cols[cols.length - 1].offsetWidth;
-      spacer.style.width = Math.max(0, el.clientWidth - lastW) + "px";
+      if (!cols.length || !spacer || !el.clientWidth) return;
+      const last = cols[cols.length - 1];                 // podium (rightmost content)
+      const rightEdge = last.offsetLeft + last.offsetWidth;
+      const roundCols = cols.filter(c => c.dataset.roundCol != null);
+      const anchor = roundCols.length ? roundCols[roundCols.length - 1] : last;
+      const trailing = rightEdge - anchor.offsetLeft;     // width from last round → end
+      spacer.style.width = Math.max(0, el.clientWidth - trailing) + "px";
     };
 
     const snapToNearest = () => {
@@ -87,16 +97,19 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
       settleTimer = setTimeout(snapToNearest, 110);
     };
 
-    // Initial spacer sizing (after layout) + keep it correct on resize/orientation.
-    const raf = requestAnimationFrame(sizeSpacer);
-    const onResize = () => { sizeSpacer(); };
+    // A ResizeObserver re-sizes the spacer whenever the container's width
+    // becomes known or changes. This covers the case where the Standings tab
+    // mounts before layout settles (clientWidth starts at 0) — a single rAF
+    // would size to 0 and never correct itself, capping the scroll short of
+    // the final rounds (the bug where Round 4 couldn't reach the left edge).
+    const ro = new ResizeObserver(() => sizeSpacer());
+    ro.observe(el);
+    sizeSpacer();
     el.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onResize);
     return () => {
-      cancelAnimationFrame(raf);
       clearTimeout(settleTimer);
+      ro.disconnect();
       el.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onResize);
     };
   }, [view, playoffRounds.length]);
 
