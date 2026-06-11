@@ -49,7 +49,8 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
     if (!el || view !== "bracket") return;
 
     // Non-spacer children of the inner flex row are the bracket columns
-    // (rounds + podium). Their live offsetLeft values are the snap targets.
+    // (rounds + podium) — the snap targets. Their flush-left scroll positions
+    // are measured via getBoundingClientRect in snapToNearest below.
     const columns = () => {
       const row = el.firstElementChild;
       if (!row) return [];
@@ -57,20 +58,19 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
     };
 
     // Size the trailing spacer so the final ROUND column can sit flush-left
-    // with the podium still beside it on screen. The bracket is wider than the
-    // visible scroll range, so we add trailing room = (visible width − the width
-    // of the last round + everything after it). Anchoring on the last ROUND
-    // (podium excluded) means the final rest position shows the last round and
-    // the podium together, instead of the podium alone with empty space. Bail if
-    // the container has no width yet — the ResizeObserver re-runs this once it does.
+    // with the podium still beside it on screen — and so the scroll CANNOT go
+    // past that point into a podium-only view. The podium is always the last
+    // column, so the last round is the second-to-last column. We give trailing
+    // room = (visible width − width of [last round → end]); the result makes
+    // maxScrollLeft land exactly on the last round's left edge. Bail until the
+    // container has a real width (ResizeObserver re-runs this when it does).
     const sizeSpacer = () => {
       const cols = columns();
       const spacer = bracketSpacerRef.current;
-      if (!cols.length || !spacer || !el.clientWidth) return;
+      if (cols.length < 2 || !spacer || !el.clientWidth) return;
       const last = cols[cols.length - 1];                 // podium (rightmost content)
+      const anchor = cols[cols.length - 2];               // last ROUND column
       const rightEdge = last.offsetLeft + last.offsetWidth;
-      const roundCols = cols.filter(c => c.dataset.roundCol != null);
-      const anchor = roundCols.length ? roundCols[roundCols.length - 1] : last;
       const trailing = rightEdge - anchor.offsetLeft;     // width from last round → end
       spacer.style.width = Math.max(0, el.clientWidth - trailing) + "px";
     };
@@ -80,13 +80,21 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
       if (!cols.length) return;
       const left = el.scrollLeft;
       const maxLeft = el.scrollWidth - el.clientWidth;
-      let target = cols[0].offsetLeft;
+      // Reference point = the container's left content edge (border + padding).
+      // Using rects rather than offsetLeft makes the target independent of the
+      // column's offsetParent and any container padding — offsetLeft carried a
+      // small constant offset that left Rounds 1–3 a few px short (Round 4 was
+      // masked by the maxLeft clamp). The scroll position that brings a column
+      // flush-left is: current scrollLeft + (column.left − reference.left).
+      const elRect = el.getBoundingClientRect();
+      const refLeft = elRect.left + el.clientLeft + (parseFloat(getComputedStyle(el).paddingLeft) || 0);
+      let target = left;
       let best = Infinity;
       for (const c of cols) {
-        const d = Math.abs(c.offsetLeft - left);
-        if (d < best) { best = d; target = c.offsetLeft; }
+        const delta = c.getBoundingClientRect().left - refLeft;
+        if (Math.abs(delta) < best) { best = Math.abs(delta); target = left + delta; }
       }
-      target = Math.min(target, maxLeft);
+      target = Math.max(0, Math.min(target, maxLeft));
       if (Math.abs(target - left) > 1) el.scrollTo({ left: target, behavior: "smooth" });
     };
 
@@ -528,7 +536,16 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                         const container = bracketScrollRef.current;
                         const col = container?.querySelector(`[data-round-col="${ri}"]`);
                         if (container && col) {
-                          container.scrollTo({ left: col.offsetLeft, behavior: "smooth" });
+                          // Match the snap math: scroll so the column's left edge
+                          // sits at the container's left content edge (rect-based,
+                          // independent of offsetParent/padding).
+                          const refLeft = container.getBoundingClientRect().left
+                            + container.clientLeft
+                            + (parseFloat(getComputedStyle(container).paddingLeft) || 0);
+                          const delta = col.getBoundingClientRect().left - refLeft;
+                          const maxLeft = container.scrollWidth - container.clientWidth;
+                          const target = Math.max(0, Math.min(container.scrollLeft + delta, maxLeft));
+                          container.scrollTo({ left: target, behavior: "smooth" });
                         }
                       }}
                       style={{
