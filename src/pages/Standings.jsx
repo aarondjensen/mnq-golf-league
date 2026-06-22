@@ -32,95 +32,6 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
   // headers INSIDE the bracket can scroll their column to the left edge — helpful
   // for multi-round brackets that don't fit on one screen.
   const bracketScrollRef = useRef(null);
-  // Trailing spacer after the last bracket column. The horizontal scroll range
-  // is shorter than the full bracket width, so without trailing space the last
-  // round(s) and the podium column physically cannot reach the left edge. We
-  // size this spacer in JS (see snap effect) to exactly the gap needed so every
-  // column — including the podium — can be snapped flush-left.
-  const bracketSpacerRef = useRef(null);
-
-  // Deterministic horizontal snap. CSS scroll-snap (`mandatory`) proved
-  // unreliable on iOS here — momentum scrolling rides past the snap point and
-  // the column rests mid-round. Instead we snap in JS on scroll-end: after the
-  // user stops scrolling, ease to whichever column's left edge is nearest. This
-  // guarantees a round is always pinned to the leftmost column, never a partial.
-  useEffect(() => {
-    const el = bracketScrollRef.current;
-    if (!el || view !== "bracket") return;
-
-    // Non-spacer children of the inner flex row are the bracket columns
-    // (rounds + podium) — the snap targets. Their flush-left scroll positions
-    // are measured via getBoundingClientRect in snapToNearest below.
-    const columns = () => {
-      const row = el.firstElementChild;
-      if (!row) return [];
-      return Array.from(row.children).filter(c => c.dataset.bracketSpacer == null);
-    };
-
-    // Size the trailing spacer so the final ROUND column can sit flush-left
-    // with the podium still beside it on screen — and so the scroll CANNOT go
-    // past that point into a podium-only view. The podium is always the last
-    // column, so the last round is the second-to-last column. We give trailing
-    // room = (visible width − width of [last round → end]); the result makes
-    // maxScrollLeft land exactly on the last round's left edge. Bail until the
-    // container has a real width (ResizeObserver re-runs this when it does).
-    const sizeSpacer = () => {
-      const cols = columns();
-      const spacer = bracketSpacerRef.current;
-      if (cols.length < 2 || !spacer || !el.clientWidth) return;
-      const last = cols[cols.length - 1];                 // podium (rightmost content)
-      const anchor = cols[cols.length - 2];               // last ROUND column
-      const rightEdge = last.offsetLeft + last.offsetWidth;
-      const trailing = rightEdge - anchor.offsetLeft;     // width from last round → end
-      spacer.style.width = Math.max(0, el.clientWidth - trailing) + "px";
-    };
-
-    const snapToNearest = () => {
-      const cols = columns();
-      if (!cols.length) return;
-      const left = el.scrollLeft;
-      const maxLeft = el.scrollWidth - el.clientWidth;
-      // Reference point = the container's left content edge (border + padding).
-      // Using rects rather than offsetLeft makes the target independent of the
-      // column's offsetParent and any container padding — offsetLeft carried a
-      // small constant offset that left Rounds 1–3 a few px short (Round 4 was
-      // masked by the maxLeft clamp). The scroll position that brings a column
-      // flush-left is: current scrollLeft + (column.left − reference.left).
-      const elRect = el.getBoundingClientRect();
-      const refLeft = elRect.left + el.clientLeft + (parseFloat(getComputedStyle(el).paddingLeft) || 0);
-      let target = left;
-      let best = Infinity;
-      for (const c of cols) {
-        const delta = c.getBoundingClientRect().left - refLeft;
-        if (Math.abs(delta) < best) { best = Math.abs(delta); target = left + delta; }
-      }
-      target = Math.max(0, Math.min(target, maxLeft));
-      if (Math.abs(target - left) > 1) el.scrollTo({ left: target, behavior: "smooth" });
-    };
-
-    let settleTimer = null;
-    const onScroll = () => {
-      clearTimeout(settleTimer);
-      // Fire once scrolling (incl. iOS momentum) has settled.
-      settleTimer = setTimeout(snapToNearest, 110);
-    };
-
-    // A ResizeObserver re-sizes the spacer whenever the container's width
-    // becomes known or changes. This covers the case where the Standings tab
-    // mounts before layout settles (clientWidth starts at 0) — a single rAF
-    // would size to 0 and never correct itself, capping the scroll short of
-    // the final rounds (the bug where Round 4 couldn't reach the left edge).
-    const ro = new ResizeObserver(() => sizeSpacer());
-    ro.observe(el);
-    sizeSpacer();
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      clearTimeout(settleTimer);
-      ro.disconnect();
-      el.removeEventListener("scroll", onScroll);
-    };
-  }, [view, playoffRounds.length]);
-
   // Use shared buildSeedMap so bracket seed badges match Schedule / Scoring / Admin.
   // Prior implementation built its own seed map from raw points, ignoring locked status
   // and standingsMethod, so bracket seeds could disagree with everywhere else in the app.
@@ -369,9 +280,10 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
         // tint on the whole card (instead of just one half) makes advancement obvious.
         const BracketCard = ({ mu, configMu }) => {
           const teamRow = (seed, name, isWinner, isLoser, isConsolation) => {
-            const badgeStyle = isConsolation
-              ? { background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, color: K.logoBright }
-              : { background: K.act, border: `1px solid ${K.act}`, color: K.logoBlue };
+            // Unified blue seed badge (Full League style) — matches the card
+            // view and the rest of the app. isConsolation no longer alters the
+            // badge color; advancement is still shown via the green winner tint.
+            const badgeStyle = { background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, color: K.logoBright };
             return (
               <div style={{
                 display: "flex", alignItems: "center", gap: 5,
@@ -517,7 +429,7 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
         })();
 
         return (
-          <div ref={bracketScrollRef} style={{ overflowX: "auto", paddingBottom: 4 }}>
+          <div ref={bracketScrollRef} style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", paddingBottom: 4, scrollSnapType: "x proximity" }}>
             <div style={{ display: "flex", alignItems: "stretch", gap: 0, minWidth: (bracketData.length + 1) * (COL_WIDTH + COL_SPACING) }}>
               {bracketData.map((round, ri) => {
                 const matchCount = Math.max(round.matchups.length, round.config.length, 1);
@@ -527,7 +439,7 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                   <div
                     key={ri}
                     data-round-col={ri}
-                    style={{ width: COL_WIDTH, flexShrink: 0, display: "flex", flexDirection: "column", marginRight: ri < bracketData.length - 1 ? COL_SPACING : 0 }}
+                    style={{ width: COL_WIDTH, flexShrink: 0, display: "flex", flexDirection: "column", marginRight: ri < bracketData.length - 1 ? COL_SPACING : 0, scrollSnapAlign: "start" }}
                   >
                     {/* Column header — click to scroll this column to the left edge.
                         Handy on multi-round brackets that don't fit on one screen. */}
@@ -536,16 +448,7 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                         const container = bracketScrollRef.current;
                         const col = container?.querySelector(`[data-round-col="${ri}"]`);
                         if (container && col) {
-                          // Match the snap math: scroll so the column's left edge
-                          // sits at the container's left content edge (rect-based,
-                          // independent of offsetParent/padding).
-                          const refLeft = container.getBoundingClientRect().left
-                            + container.clientLeft
-                            + (parseFloat(getComputedStyle(container).paddingLeft) || 0);
-                          const delta = col.getBoundingClientRect().left - refLeft;
-                          const maxLeft = container.scrollWidth - container.clientWidth;
-                          const target = Math.max(0, Math.min(container.scrollLeft + delta, maxLeft));
-                          container.scrollTo({ left: target, behavior: "smooth" });
+                          container.scrollTo({ left: col.offsetLeft, behavior: "smooth" });
                         }
                       }}
                       style={{
@@ -802,9 +705,6 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                   </div>
                 );
               })()}
-              {/* Trailing spacer — width set in JS so the last column (podium)
-                  can scroll fully to the left edge. flexShrink:0 keeps it. */}
-              <div ref={bracketSpacerRef} data-bracket-spacer="" style={{ flexShrink: 0, width: 0 }} />
             </div>
           </div>
         );
@@ -1346,12 +1246,13 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   );
 
   // Determine whether playoffs are configured at all — used to gate the
-  // Postseason primary toggle (audit issue #19). During an early-season
-  // period when no playoff weeks have been added to the schedule yet,
-  // showing a Postseason toggle is just a dead-end click. Hide it entirely
-  // (the page renders standings with no toggle bar). Once the commissioner
-  // configures playoff weeks (Admin → Schedule), the Regular Season /
-  // Postseason toggle appears (gated below by `showPostseason`).
+  // Playoffs tab pill (audit issue #19). During an early-season period
+  // when no playoff weeks have been added to the schedule yet, showing
+  // a Playoffs tab is just a dead-end click. Hide it entirely. Once the
+  // commissioner configures playoff weeks (Admin → Schedule), the tab
+  // appears. This also incidentally collapses the toggle pills bar to
+  // a single "Season" tab when there's nothing else, and the existing
+  // `tabs.length > 1` gate hides the bar entirely.
   const hasPlayoffs = useMemo(() =>
     schedule.some(wk => wk.isPlayoff === true && !wk.rainedOut),
     [schedule]
@@ -1393,26 +1294,12 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   }, [defaultView]);
   const pickTab = (id) => { userPickedTab.current = true; setView(id); };
 
-  // Remember which Postseason sub-view ("bracket" | "individual") the user
-  // last looked at, so toggling Regular Season → Postseason restores their
-  // prior sub-selection instead of always snapping back to Team Bracket.
-  // Defaults to "bracket" (Team Bracket is the primary postseason view).
-  const lastPostSub = useRef("bracket");
-  useEffect(() => {
-    if (view === "bracket" || view === "individual") lastPostSub.current = view;
-  }, [view]);
-
   // Safety guard: if `view` ends up pointing at a tab that no longer
-  // exists (e.g., user picked Postseason, then commissioner removed all
+  // exists (e.g., user picked Playoffs, then commissioner removed all
   // playoff weeks), bounce to "standings". Otherwise the page renders
-  // an empty branch with no nav back to a valid view. The Individual
-  // tournament only runs alongside playoff weeks, so it's only valid
-  // when playoffs exist.
+  // an empty branch with no nav back to a valid view.
   useEffect(() => {
-    const validIds = new Set([
-      "standings",
-      ...(hasPlayoffs ? ["bracket", ...(hasIndividualEvent ? ["individual"] : [])] : []),
-    ]);
+    const validIds = new Set(["standings", ...(hasPlayoffs ? ["bracket"] : []), ...(hasIndividualEvent ? ["individual"] : [])]);
     if (!validIds.has(view)) setView("standings");
   }, [view, hasPlayoffs, hasIndividualEvent]);
 
@@ -1697,59 +1584,34 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   const wltCol = { width: 18, textAlign: "center", fontFamily: "'League Spartan', sans-serif" };
   const wltDash = { width: 6, textAlign: "center", color: K.t3 };
 
-  // ── Toggle structure ──────────────────────────────────────────────
-  // PRIMARY toggle: Regular Season | Postseason.
-  //   - "Regular Season" → standings view (always meaningful).
-  //   - "Postseason"     → playoff content. Only surfaced once the league
-  //     actually has playoff weeks configured (hasPlayoffs); otherwise the
-  //     primary toggle bar collapses and only standings shows.
-  // SECONDARY toggle (Postseason only): Team Bracket | Individual. The
-  //   individual tournament runs concurrently with the team playoff bracket,
-  //   so it lives nested under Postseason rather than as a top-level tab.
-  //   Only shown when the league runs an individual event alongside playoffs.
-  const inPostseason = view === "bracket" || view === "individual";
-  const showPostseason = hasPlayoffs;                       // primary toggle gate
-  const showSubToggle = inPostseason && hasPlayoffs && hasIndividualEvent;
-
-  // Jump into Postseason, restoring the user's last sub-view (or Team Bracket
-  // by default; falls back to Individual if no bracket exists for any reason).
-  const goPostseason = () => {
-    const sub = lastPostSub.current === "individual" && hasIndividualEvent
-      ? "individual"
-      : (hasPlayoffs ? "bracket" : (hasIndividualEvent ? "individual" : "standings"));
-    pickTab(sub);
-  };
-
-  // Shared segmented-control button style. `primary` = the larger top-level
-  // toggle; secondary (sub) buttons are slightly smaller to read as nested.
-  const segBtn = (active, primary = true) => ({
-    padding: primary ? "7px 14px" : "6px 12px",
-    borderRadius: 6, border: "none", cursor: "pointer",
-    background: active ? K.card : "transparent",
-    color: active ? K.t1 : K.t3,
-    fontSize: primary ? 11 : 10, fontWeight: 700, letterSpacing: .8,
-    boxShadow: active ? `0 1px 3px ${K.bdr}40` : "none",
-    transition: "all .15s", whiteSpace: "nowrap",
-  });
+  // ── Toggle pills — always visible regardless of season phase ──
+  // Season: current standings (always meaningful).
+  // Playoffs: bracket view. During regular season this renders as a preview with seed
+  //   placeholders (#1, #2, ...); once playoff weeks populate, real team names appear.
+  // Individual: only meaningful during the individual tournament; shows a "starts Week X"
+  //   placeholder beforehand. Omitted entirely if the league doesn't run an individual event.
+  const tabs = [
+    { id: "standings", label: "Season" },
+    ...(hasPlayoffs ? [{ id: "bracket", label: "Playoffs" }] : []),
+    ...(hasIndividualEvent ? [{ id: "individual", label: "Individual" }] : []),
+  ];
 
   return (
     <div style={{ padding: "0 2px" }}>
-      {/* PRIMARY toggle — Regular Season | Postseason */}
-      {showPostseason && (
-        <div style={{ display: "flex", justifyContent: "center", marginBottom: showSubToggle ? 8 : 14 }}>
-          <div style={{ display: "inline-flex", background: K.inp, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: 3 }}>
-            <button onClick={() => pickTab("standings")} style={segBtn(!inPostseason)}>REGULAR SEASON</button>
-            <button onClick={goPostseason} style={segBtn(inPostseason)}>POSTSEASON</button>
-          </div>
-        </div>
-      )}
-
-      {/* SECONDARY toggle — Team Bracket | Individual (Postseason only) */}
-      {showSubToggle && (
+      {/* Toggle pills */}
+      {tabs.length > 1 && (
         <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
           <div style={{ display: "inline-flex", background: K.inp, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: 3 }}>
-            <button onClick={() => pickTab("bracket")} style={segBtn(view === "bracket", false)}>TEAM BRACKET</button>
-            <button onClick={() => pickTab("individual")} style={segBtn(view === "individual", false)}>INDIVIDUAL</button>
+            {tabs.map(t => (
+              <button key={t.id} onClick={() => pickTab(t.id)} style={{
+                padding: "7px 14px", borderRadius: 6, border: "none", cursor: "pointer",
+                background: view === t.id ? K.card : "transparent",
+                color: view === t.id ? K.t1 : K.t3,
+                fontSize: 11, fontWeight: 700, letterSpacing: .8,
+                boxShadow: view === t.id ? `0 1px 3px ${K.bdr}40` : "none",
+                transition: "all .15s",
+              }}>{t.label}</button>
+            ))}
           </div>
         </div>
       )}

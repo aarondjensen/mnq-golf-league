@@ -1,4 +1,3 @@
-import { memo } from "react";
 import { K, NAME_SIZE } from "./theme";
 
 // ══════════════════════════════════════════════════════════════════
@@ -67,24 +66,16 @@ import { K, NAME_SIZE } from "./theme";
 //   expanded               — optional JSX rendered as an expansion panel below
 //                            the card (e.g. full scorecard)
 // ══════════════════════════════════════════════════════════════════
-// Implementation kept as a separate symbol so we can wrap the public
-// export in React.memo. The card is rendered in lists 5-15 deep in
-// Schedule/Scoring/Standings, and many of those lists re-render on
-// every Firestore snapshot (matchResults, holeScores). Without memo,
-// every snapshot ticks every card in every list. With memo + stable
-// props from the caller, only the cards whose data actually changed
-// re-render. Props are all primitives or simple objects (team{1,2},
-// winnerSide, isFinal, center, etc.); the JSX in `center`/`footer`/
-// `expanded` is the main thing that needs to be referentially stable
-// for memo to take effect. Callers that build those inline still
-// avoid the inner reconciliation cost, which is the bigger half.
-function TeamMatchupCardImpl({
+export function TeamMatchupCard({
   team1, team2,
   winnerSide = null,       // "team1" | "team2" | "tie" | null
   isFinal = false,
   center,
   centerWidth,
   highlightSelf = false,
+  // Accepted for backward compatibility with existing callers; the seed
+  // badge no longer varies by this flag (all badges share one blue style).
+  // eslint-disable-next-line no-unused-vars
   isConsolation = false,
   showRecords = false,
   compact = false,
@@ -131,9 +122,11 @@ function TeamMatchupCardImpl({
   };
 
   const seedBadge = (seed) => {
-    const badgeStyle = isConsolation
-      ? { background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, color: K.logoBright }
-      : { background: K.act, border: `1px solid ${K.act}`, color: K.logoBlue };
+    // Unified seed-badge look across the app: royal-blue number on a light
+    // royal-blue tint (the "Full League" schedule style). Previously the
+    // non-consolation variant used a maize fill; that's been retired so every
+    // seed badge — schedule, scoring, standings bracket — reads identically.
+    const badgeStyle = { background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, color: K.logoBright };
     return (
       <div style={{
         width: dims.seedSize, height: dims.seedSize, borderRadius: dims.seedRadius, flexShrink: 0,
@@ -248,13 +241,6 @@ function TeamMatchupCardImpl({
     </div>
   );
 }
-
-// Memoized export. Shallow prop compare is sufficient — all callers pass
-// either primitives, stable id-keyed objects, or freshly-built JSX in
-// `center`/`footer`/`expanded` slots. The JSX itself won't be ===-equal
-// across renders, but React still skips the entire subtree's
-// reconciliation when other props are stable, which is the win.
-export const TeamMatchupCard = memo(TeamMatchupCardImpl);
 
 // ══════════════════════════════════════════════════════════════════
 //  Helper: split a "TIE (Hole 5)" result text into stacked parts

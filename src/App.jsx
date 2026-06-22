@@ -1251,7 +1251,7 @@ export default function GolfLeagueApp() {
                   {upcomingBanner.oppSeed != null && (
                     <div style={{
                       width: 20, height: 20, borderRadius: 5, flexShrink: 0,
-                      background: K.act, border: `1px solid ${K.act}`, color: K.logoBlue,
+                      background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, color: K.logoBright,
                       display: "flex", alignItems: "center", justifyContent: "center",
                       fontSize: 10, fontWeight: 800,
                     }}>{upcomingBanner.oppSeed}</div>

@@ -872,9 +872,9 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                     const oppTeam = teams.find(t => t.id === oppTeamId);
                     if (oppTeam) return (
                       <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        <span style={{ fontSize: 9, fontWeight: 800, color: K.logoBright, background: K.logoBright + "18", border: `1px solid ${K.logoBright}25`, borderRadius: 3, padding: "0 3px", lineHeight: "16px" }}>#{mySeed}</span>
+                        <span style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, color: K.logoBright, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800 }}>{mySeed}</span>
                         <span style={{ color: K.t3 }}>vs</span>
-                        <span style={{ fontSize: 9, fontWeight: 800, color: K.logoBright, background: K.logoBright + "18", border: `1px solid ${K.logoBright}25`, borderRadius: 3, padding: "0 3px", lineHeight: "16px" }}>#{oppSeed}</span>
+                        <span style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, color: K.logoBright, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800 }}>{oppSeed}</span>
                         <span>{lastNamesOnly(oppTeam.name)}</span>
                       </span>
                     );
@@ -891,7 +891,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 {oppSeed != null && (
                   <div style={{
                     width: 18, height: 18, borderRadius: 5, flexShrink: 0,
-                    background: K.act, border: `1px solid ${K.act}`, color: K.logoBlue,
+                    background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, color: K.logoBright,
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: 9, fontWeight: 800,
                   }}>{oppSeed}</div>
