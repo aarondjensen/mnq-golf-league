@@ -1247,12 +1247,19 @@ export default function GolfLeagueApp() {
                   <div style={{ fontSize: 12, color: K.t2, fontWeight: 500 }}>{upcomingBanner.date || ""}</div>
                   <div style={{ fontSize: 14, color: K.t1, fontWeight: 700 }}>Week {upcomingBanner.week}</div>
                 </div>
-                <div style={{ width: 80, flexShrink: 0, textAlign: "right", lineHeight: 1.3 }}>
+                <div style={{ minWidth: 80, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
                   {upcomingBanner.oppSeed != null && (
-                    <div style={{ fontSize: 9, fontWeight: 800, color: K.logoBright, letterSpacing: .5 }}>#{upcomingBanner.oppSeed} SEED</div>
+                    <div style={{
+                      width: 20, height: 20, borderRadius: 5, flexShrink: 0,
+                      background: K.act, border: `1px solid ${K.act}`, color: K.logoBlue,
+                      display: "flex", alignItems: "center", justifyContent: "center",
+                      fontSize: 10, fontWeight: 800,
+                    }}>{upcomingBanner.oppSeed}</div>
                   )}
-                  <div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{upcomingBanner.oppName1}</div>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{upcomingBanner.oppName2}</div>
+                  <div style={{ textAlign: "right", lineHeight: 1.3 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{upcomingBanner.oppName1}</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{upcomingBanner.oppName2}</div>
+                  </div>
                 </div>
               </div>
             );

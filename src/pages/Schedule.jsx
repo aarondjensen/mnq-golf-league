@@ -883,28 +883,35 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
               }
               return "Seeded — TBD";
             })() : (
-              <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0, lineHeight: 1.15 }}>
-                {/* Opponent seed badge — shown on seeded/playoff weeks once
-                    the matchup is assigned (the TBD preview branch above
-                    renders its own #seed). */}
+              <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                {/* Opponent seed badge — Standings-style boxed number to the
+                    left of the names, shown on seeded/playoff weeks once the
+                    matchup is assigned (the TBD preview branch above renders
+                    its own seed). */}
                 {oppSeed != null && (
-                  <span style={{ fontSize: 9, fontWeight: 800, color: K.logoBright, background: K.logoBright + "18", border: `1px solid ${K.logoBright}25`, borderRadius: 3, padding: "0 3px", lineHeight: "16px", alignSelf: "flex-start", marginBottom: 1 }}>#{oppSeed} SEED</span>
+                  <div style={{
+                    width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                    background: K.act, border: `1px solid ${K.act}`, color: K.logoBlue,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 9, fontWeight: 800,
+                  }}>{oppSeed}</div>
                 )}
-                {/* Stacked opponent names — two lines for the two-person
-                    team. Falls back to oppName (joined) if either player
-                    record is missing, then to "TBD" if neither resolved. */}
-                {opp1Name || opp2Name ? (
-                  <>
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{opp1Name || "—"}</span>
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{opp2Name || "—"}</span>
-                  </>
-                ) : (
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{oppName}</span>
-                )}
-                {/* Teammate attendance tag — its own row below the names
-                    so it doesn't compete for horizontal space. Color-coded
-                    by status (amber for makeup, grey for absent). */}
-                {teammateAttn && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0, lineHeight: 1.15 }}>
+                  {/* Stacked opponent names — two lines for the two-person
+                      team. Falls back to oppName (joined) if either player
+                      record is missing, then to "TBD" if neither resolved. */}
+                  {opp1Name || opp2Name ? (
+                    <>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{opp1Name || "—"}</span>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{opp2Name || "—"}</span>
+                    </>
+                  ) : (
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{oppName}</span>
+                  )}
+                  {/* Teammate attendance tag — its own row below the names
+                      so it doesn't compete for horizontal space. Color-coded
+                      by status (amber for makeup, grey for absent). */}
+                  {teammateAttn && (
                   <span style={{
                     fontSize: 8, fontWeight: 800, letterSpacing: .6,
                     textTransform: "uppercase",
@@ -918,6 +925,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                     {lastNamesOnly(players.find(p => p.id === teammatePid)?.name || "")}: {teammateAttn.status === "makeup" ? "Making Up" : "Absent"}
                   </span>
                 )}
+                </div>
               </div>
             )}
           </div>
