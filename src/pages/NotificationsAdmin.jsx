@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { K, Card, SubLabel } from "../theme";
+import { K, Card, SubLabel, FS, FW } from "../theme";
 import { db, LEAGUE_ID } from "../firebase";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -100,15 +100,15 @@ export default function NotificationsAdmin({ players }) {
       {/* Summary card */}
       <Card style={{ padding: "14px 16px", marginBottom: 12 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 4 }}>
-          <span style={{ fontSize: 24, fontWeight: 800, color: K.t1, lineHeight: 1 }}>
+          <span style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: K.t1, lineHeight: 1 }}>
             {loading ? "…" : enabledCount}
           </span>
-          <span style={{ fontSize: 13, color: K.t2 }}>
+          <span style={{ fontSize: FS.sm, color: K.t2 }}>
             of {totalPlayers} players enabled
           </span>
         </div>
         {iosPwaCount + iosSafariCount > 0 && (
-          <div style={{ fontSize: 11, color: K.t3, marginTop: 4 }}>
+          <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 4 }}>
             iOS PWA: {iosPwaCount}{iosSafariCount > 0 && ` · iOS Safari (won't work): ${iosSafariCount}`}
           </div>
         )}
@@ -123,7 +123,7 @@ export default function NotificationsAdmin({ players }) {
             <Card key={r.pid} style={{ padding: "10px 14px" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: r.isOrphan ? K.t3 : K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <div style={{ fontSize: FS.sm, fontWeight: FW.bold, color: r.isOrphan ? K.t3 : K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {r.name}
                   </div>
                   {/* Device chips, one per token registered. Multiple
@@ -134,7 +134,7 @@ export default function NotificationsAdmin({ players }) {
                         const dt = deviceType(t);
                         return (
                           <span key={i} style={{
-                            fontSize: 9, fontWeight: 700, letterSpacing: .5,
+                            fontSize: FS.micro, fontWeight: FW.bold, letterSpacing: .5,
                             textTransform: "uppercase",
                             padding: "2px 6px", borderRadius: 4,
                             background: dt.color + "20",
@@ -149,7 +149,7 @@ export default function NotificationsAdmin({ players }) {
                   )}
                 </div>
                 <span style={{
-                  fontSize: 10, fontWeight: 800, letterSpacing: .8,
+                  fontSize: FS.xs, fontWeight: FW.heavy, letterSpacing: .8,
                   textTransform: "uppercase",
                   padding: "3px 8px", borderRadius: 5,
                   background: enabled ? K.grn : K.t3 + "30",
@@ -164,12 +164,12 @@ export default function NotificationsAdmin({ players }) {
         })}
         {rows.length === 0 && !loading && (
           <Card style={{ padding: "14px 16px" }}>
-            <div style={{ fontSize: 12, color: K.t3 }}>No players to display.</div>
+            <div style={{ fontSize: FS.sm, color: K.t3 }}>No players to display.</div>
           </Card>
         )}
       </div>
 
-      <div style={{ fontSize: 10, color: K.t3, lineHeight: 1.5, marginTop: 12, padding: "0 4px" }}>
+      <div style={{ fontSize: FS.xs, color: K.t3, lineHeight: 1.5, marginTop: 12, padding: "0 4px" }}>
         Status updates live as players enable / disable. Stale registrations are cleaned up automatically the first time a push fails to deliver.
       </div>
     </div>

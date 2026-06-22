@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { K, Card, EmptyState, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, CHEVRON_SIZE } from "../theme";
+import { K, Card, EmptyState, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, CHEVRON_SIZE, FS, FW } from "../theme";
 
 export default function CTPView({ ctpData, players, isComm, saveCtp }) {
   const [view, setView] = useState("players"); // "players" | "weeks"
@@ -66,11 +66,11 @@ export default function CTPView({ ctpData, players, isComm, saveCtp }) {
 
   const toggleBtnStyle = (active) => ({
     flex: "1 1 auto", minWidth: 0,
-    padding: "10px 10px", borderRadius: 6,
+    padding: "8px 10px", borderRadius: 6,
     background: active ? K.card : "transparent",
     border: active ? `1px solid ${K.bdr}` : "1px solid transparent",
     color: active ? K.t1 : K.t3,
-    fontSize: 11, fontWeight: 700, letterSpacing: .6, textTransform: "uppercase",
+    fontSize: FS.xs, fontWeight: FW.bold, letterSpacing: .6, textTransform: "uppercase",
     cursor: "pointer", whiteSpace: "nowrap",
     transition: "all .15s",
   });
@@ -122,10 +122,10 @@ export default function CTPView({ ctpData, players, isComm, saveCtp }) {
                         width: RANK_BADGE_SIZE, height: RANK_BADGE_SIZE, borderRadius: RANK_BADGE_RADIUS,
                         background: i === 0 ? K.gold + "20" : K.inp,
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: i === 0 ? 14 : RANK_BADGE_FONT, fontWeight: 800,
+                        fontSize: RANK_BADGE_FONT, fontWeight: FW.heavy,
                         color: i === 0 ? K.gold : K.t3,
                         flexShrink: 0,
-                      }}>{i === 0 ? "🏆" : (i + 1)}</div>
+                      }}>{i + 1}</div>
                       <span style={{ flex: 1, fontSize: NAME_SIZE, fontWeight: NAME_WEIGHT, color: K.t1 }}>
                         {e.p.name}
                       </span>
@@ -157,17 +157,17 @@ export default function CTPView({ ctpData, players, isComm, saveCtp }) {
                               border: `1px solid ${K.bdr}`,
                               borderRadius: 6,
                               padding: "6px 10px",
-                              fontSize: 12,
+                              fontSize: FS.sm,
                               gap: 10,
                             }}>
-                              <span style={{ color: K.t3, fontWeight: 600, minWidth: 52 }}>
+                              <span style={{ color: K.t3, fontWeight: FW.semibold, minWidth: 52 }}>
                                 Wk {w.week}
                               </span>
-                              <span style={{ flex: 1, color: K.t2, fontWeight: 600 }}>
+                              <span style={{ flex: 1, color: K.t2, fontWeight: FW.semibold }}>
                                 Hole {w.holeNum}
                               </span>
                               {w.distance && (
-                                <span style={{ color: K.acc, fontWeight: 600 }}>
+                                <span style={{ color: K.acc, fontWeight: FW.semibold }}>
                                   {w.distance}
                                 </span>
                               )}
@@ -196,11 +196,11 @@ export default function CTPView({ ctpData, players, isComm, saveCtp }) {
                 if (isEd) {
                   return (
                     <div key={c.id} style={{ background: K.card, borderRadius: CARD_RADIUS, padding: "10px 12px", border: `1.5px solid ${K.act}40` }}>
-                      <div style={{ fontSize: 12, color: K.t2, marginBottom: 8 }}>Wk {c.week} · Hole {c.holeNum}</div>
+                      <div style={{ fontSize: FS.sm, color: K.t2, marginBottom: 8 }}>Wk {c.week} · Hole {c.holeNum}</div>
                       <select
                         value={editPlayer}
                         onChange={e => setEditPlayer(e.target.value)}
-                        style={{ width: "100%", padding: "8px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13, marginBottom: 6 }}
+                        style={{ width: "100%", padding: "8px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.sm, marginBottom: 6 }}
                       >
                         <option value="">No winner</option>
                         {allPlayersSorted.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -210,22 +210,22 @@ export default function CTPView({ ctpData, players, isComm, saveCtp }) {
                         placeholder="Distance"
                         value={editDistance}
                         onChange={e => setEditDistance(e.target.value)}
-                        style={{ width: "100%", padding: "8px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13, marginBottom: 8 }}
+                        style={{ width: "100%", padding: "8px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.sm, marginBottom: 8 }}
                       />
                       <div style={{ display: "flex", gap: 6 }}>
-                        <button onClick={() => saveEdit(c)} style={{ flex: 1, padding: 8, borderRadius: 6, background: K.act, border: "none", color: K.bg, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Save</button>
-                        <button onClick={() => setEditing(null)} style={{ flex: 1, padding: 8, borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Cancel</button>
+                        <button onClick={() => saveEdit(c)} style={{ flex: 1, padding: 8, borderRadius: 6, background: K.act, border: "none", color: K.bg, fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer" }}>Save</button>
+                        <button onClick={() => setEditing(null)} style={{ flex: 1, padding: 8, borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer" }}>Cancel</button>
                       </div>
                     </div>
                   );
                 }
                 return (
-                  <div key={c.id} style={{ background: K.card, borderRadius: CARD_RADIUS, padding: "7px 12px", border: `1px solid ${K.bdr}`, display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12 }}>
+                  <div key={c.id} style={{ background: K.card, borderRadius: CARD_RADIUS, padding: "7px 12px", border: `1px solid ${K.bdr}`, display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: FS.sm }}>
                     <span style={{ color: K.t2 }}>Wk {c.week} · Hole {c.holeNum}</span>
-                    <span style={{ fontWeight: 700 }}>{players.find(p => p.id === c.playerId)?.name}</span>
-                    <span style={{ color: K.acc, fontWeight: 600 }}>{c.distance}</span>
+                    <span style={{ fontWeight: FW.bold }}>{players.find(p => p.id === c.playerId)?.name}</span>
+                    <span style={{ color: K.acc, fontWeight: FW.semibold }}>{c.distance}</span>
                     {isComm && saveCtp && (
-                      <button onClick={() => startEdit(c)} style={{ background: "none", border: `1px solid ${K.bdr}`, borderRadius: 4, color: K.t3, fontSize: 10, padding: "2px 8px", cursor: "pointer", fontWeight: 600, marginLeft: 6 }}>Edit</button>
+                      <button onClick={() => startEdit(c)} style={{ background: "none", border: `1px solid ${K.bdr}`, borderRadius: 4, color: K.t3, fontSize: FS.xs, padding: "2px 8px", cursor: "pointer", fontWeight: FW.semibold, marginLeft: 6 }}>Edit</button>
                     )}
                   </div>
                 );

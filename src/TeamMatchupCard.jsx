@@ -1,4 +1,4 @@
-import { K, NAME_SIZE } from "./theme";
+import { K, NAME_SIZE, FS, FW } from "./theme";
 
 // ══════════════════════════════════════════════════════════════════
 //  TeamMatchupCard — shared visual identity for matchup cards
@@ -132,7 +132,7 @@ export function TeamMatchupCard({
         width: dims.seedSize, height: dims.seedSize, borderRadius: dims.seedRadius, flexShrink: 0,
         ...badgeStyle,
         display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: dims.seedFont, fontWeight: 800,
+        fontSize: dims.seedFont, fontWeight: FW.heavy,
       }}>{seed ?? "?"}</div>
     );
   };
@@ -172,7 +172,7 @@ export function TeamMatchupCard({
             const l1Color = (l1 && typeof l1 === "object" && l1.color) ? l1.color : K.t1;
             return (
               <div style={{
-                fontSize: dims.nameSize, fontWeight: 700, color: l1Color,
+                fontSize: dims.nameSize, fontWeight: FW.bold, color: l1Color,
                 whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                 lineHeight: 1.2, textAlign, maxWidth: "100%",
               }}>{l1Text || "—"}</div>
@@ -187,7 +187,7 @@ export function TeamMatchupCard({
             const l2Color = (typeof l2 === "object" && l2.color) ? l2.color : K.t1;
             return (
               <div style={{
-                fontSize: dims.nameSize, fontWeight: 700, color: l2Color,
+                fontSize: dims.nameSize, fontWeight: FW.bold, color: l2Color,
                 whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                 lineHeight: 1.2, textAlign, maxWidth: "100%",
               }}>{l2Text}</div>
@@ -195,7 +195,7 @@ export function TeamMatchupCard({
           })()}
           {showRecords && team?.record && (
             <div style={{
-              fontSize: 11, fontWeight: 600, color: K.t3,
+              fontSize: FS.xs, fontWeight: FW.semibold, color: K.t3,
               lineHeight: 1.2, textAlign, marginTop: 2,
             }}>{team.record}</div>
           )}
@@ -274,20 +274,20 @@ export function ResultCenter({ resultText, isTie, isExpanded }) {
     <>
       {tb.isTiebreaker ? (
         <>
-          <div style={{ fontSize: 17, fontWeight: 800, color, letterSpacing: .3, lineHeight: 1 }}>TIE</div>
-          <div style={{ fontSize: 9, fontWeight: 700, color: K.t3, letterSpacing: .5, textTransform: "uppercase", lineHeight: 1.1, marginTop: 1, whiteSpace: "nowrap" }}>
+          <div style={{ fontSize: 17, fontWeight: FW.heavy, color, letterSpacing: .3, lineHeight: 1 }}>TIE</div>
+          <div style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.t3, letterSpacing: .5, textTransform: "uppercase", lineHeight: 1.1, marginTop: 1, whiteSpace: "nowrap" }}>
             {tb.label}
           </div>
         </>
       ) : (
         <div style={{
           fontSize: resultText?.length > 5 ? 14 : resultText?.length > 3 ? 15 : 17,
-          fontWeight: 800, color, letterSpacing: .3,
+          fontWeight: FW.heavy, color, letterSpacing: .3,
           whiteSpace: "nowrap", textAlign: "center", lineHeight: 1.05,
         }}>{resultText || "—"}</div>
       )}
       {isExpanded !== undefined && (
-        <div style={{ fontSize: 11, color: K.t3, lineHeight: 1, marginTop: 2 }}>
+        <div style={{ fontSize: FS.xs, color: K.t3, lineHeight: 1, marginTop: 2 }}>
           {isExpanded ? "▴" : "▾"}
         </div>
       )}

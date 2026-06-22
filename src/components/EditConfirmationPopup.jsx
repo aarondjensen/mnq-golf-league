@@ -44,6 +44,7 @@
 
 import React from "react";
 import { Popup } from "./Popup";
+import { FS, FW } from "../theme";
 
 export function EditConfirmationPopup({
   pendingEdits,
@@ -74,12 +75,12 @@ export function EditConfirmationPopup({
         boxShadow: `0 12px 40px ${K.warn}40`,
       }}
     >
-      <div style={{ fontSize: 14, fontWeight: 800, color: K.warn, letterSpacing: .3, marginBottom: 12, paddingRight: 40 }}>
+      <div style={{ fontSize: FS.base, fontWeight: FW.heavy, color: K.warn, letterSpacing: .3, marginBottom: 12, paddingRight: 40 }}>
         Confirm Score Edit
       </div>
 
           {/* Lead-in summary */}
-          <div style={{ fontSize: 12, color: K.t2, marginBottom: 14, lineHeight: 1.5 }}>
+          <div style={{ fontSize: FS.sm, color: K.t2, marginBottom: 14, lineHeight: 1.5 }}>
             {hasResultChange
               ? "Saving these changes will update the match result. Standings and schedule will reflect the new outcome."
               : "Score values will be updated. Match result is unchanged."}
@@ -88,37 +89,37 @@ export function EditConfirmationPopup({
           {/* Match result diff */}
           {hasResultChange && (
             <div style={{ background: K.warn + "12", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "10px 12px", marginBottom: 12 }}>
-              <div style={{ fontSize: 9, fontWeight: 800, color: K.warn, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>Match result</div>
+              <div style={{ fontSize: FS.micro, fontWeight: FW.heavy, color: K.warn, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>Match result</div>
               {diff.result && (
-                <div style={{ fontSize: 12, color: K.t1, marginBottom: 4 }}>
+                <div style={{ fontSize: FS.sm, color: K.t1, marginBottom: 4 }}>
                   <span style={{ color: K.t3 }}>Result: </span>
                   <span style={{ textDecoration: "line-through", color: K.t3 }}>{diff.result.from}</span>
                   <span style={{ margin: "0 6px", color: K.t3 }}>→</span>
-                  <span style={{ fontWeight: 700 }}>{diff.result.to}</span>
+                  <span style={{ fontWeight: FW.bold }}>{diff.result.to}</span>
                 </div>
               )}
               {diff.winner && (
-                <div style={{ fontSize: 12, color: K.t1, marginBottom: 4 }}>
+                <div style={{ fontSize: FS.sm, color: K.t1, marginBottom: 4 }}>
                   <span style={{ color: K.t3 }}>Winner: </span>
                   <span style={{ textDecoration: "line-through", color: K.t3 }}>{diff.winner.from}</span>
                   <span style={{ margin: "0 6px", color: K.t3 }}>→</span>
-                  <span style={{ fontWeight: 700 }}>{diff.winner.to}</span>
+                  <span style={{ fontWeight: FW.bold }}>{diff.winner.to}</span>
                 </div>
               )}
               {diff.t1Points && (
-                <div style={{ fontSize: 12, color: K.t1, marginBottom: 4 }}>
+                <div style={{ fontSize: FS.sm, color: K.t1, marginBottom: 4 }}>
                   <span style={{ color: K.t3 }}>{lastNamesOnly(teams.find(t => t.id === pendingEdits.t1.id)?.name || "Team 1")} points: </span>
                   <span style={{ textDecoration: "line-through", color: K.t3 }}>{diff.t1Points.from}</span>
                   <span style={{ margin: "0 6px", color: K.t3 }}>→</span>
-                  <span style={{ fontWeight: 700 }}>{diff.t1Points.to}</span>
+                  <span style={{ fontWeight: FW.bold }}>{diff.t1Points.to}</span>
                 </div>
               )}
               {diff.t2Points && (
-                <div style={{ fontSize: 12, color: K.t1 }}>
+                <div style={{ fontSize: FS.sm, color: K.t1 }}>
                   <span style={{ color: K.t3 }}>{lastNamesOnly(teams.find(t => t.id === pendingEdits.t2.id)?.name || "Team 2")} points: </span>
                   <span style={{ textDecoration: "line-through", color: K.t3 }}>{diff.t2Points.from}</span>
                   <span style={{ margin: "0 6px", color: K.t3 }}>→</span>
-                  <span style={{ fontWeight: 700 }}>{diff.t2Points.to}</span>
+                  <span style={{ fontWeight: FW.bold }}>{diff.t2Points.to}</span>
                 </div>
               )}
             </div>
@@ -127,17 +128,17 @@ export function EditConfirmationPopup({
           {/* Score changes */}
           {changedScores.length > 0 && (
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 9, fontWeight: 800, color: K.t3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
+              <div style={{ fontSize: FS.micro, fontWeight: FW.heavy, color: K.t3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
                 Score changes ({changedScores.length})
               </div>
-              <div style={{ background: K.inp, borderRadius: 8, padding: "8px 10px", fontSize: 11, color: K.t2, lineHeight: 1.7 }}>
+              <div style={{ background: K.inp, borderRadius: 8, padding: "8px 10px", fontSize: FS.xs, color: K.t2, lineHeight: 1.7 }}>
                 {changedScores.map((c, i) => (
                   <div key={i}>
-                    <span style={{ color: K.t1, fontWeight: 700 }}>{c.playerName}</span>
+                    <span style={{ color: K.t1, fontWeight: FW.bold }}>{c.playerName}</span>
                     <span style={{ color: K.t3 }}> · Hole {c.hole}: </span>
                     <span style={{ textDecoration: "line-through", color: K.t3 }}>{c.oldVal || "—"}</span>
                     <span style={{ margin: "0 6px", color: K.t3 }}>→</span>
-                    <span style={{ fontWeight: 700, color: K.t1 }}>{c.newVal}</span>
+                    <span style={{ fontWeight: FW.bold, color: K.t1 }}>{c.newVal}</span>
                   </div>
                 ))}
               </div>
@@ -147,15 +148,15 @@ export function EditConfirmationPopup({
           {/* Absent flag changes */}
           {changedAbsents.length > 0 && (
             <div style={{ marginBottom: 12 }}>
-              <div style={{ fontSize: 9, fontWeight: 800, color: K.t3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
+              <div style={{ fontSize: FS.micro, fontWeight: FW.heavy, color: K.t3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
                 Attendance changes
               </div>
-              <div style={{ background: K.inp, borderRadius: 8, padding: "8px 10px", fontSize: 11, color: K.t2, lineHeight: 1.7 }}>
+              <div style={{ background: K.inp, borderRadius: 8, padding: "8px 10px", fontSize: FS.xs, color: K.t2, lineHeight: 1.7 }}>
                 {changedAbsents.map((c, i) => (
                   <div key={i}>
-                    <span style={{ color: K.t1, fontWeight: 700 }}>{c.playerName}</span>
+                    <span style={{ color: K.t1, fontWeight: FW.bold }}>{c.playerName}</span>
                     <span style={{ color: K.t3 }}> marked </span>
-                    <span style={{ fontWeight: 700, color: c.newAbsent ? K.red : K.grn }}>
+                    <span style={{ fontWeight: FW.bold, color: c.newAbsent ? K.red : K.grn }}>
                       {c.newAbsent ? "Absent" : "Present"}
                     </span>
                   </div>
@@ -175,7 +176,7 @@ export function EditConfirmationPopup({
                 background: saving ? K.inp : K.warn,
                 border: "none",
                 color: saving ? K.t3 : K.bg,
-                fontSize: 13, fontWeight: 800, letterSpacing: .3,
+                fontSize: FS.sm, fontWeight: FW.heavy, letterSpacing: .3,
                 cursor: saving ? "default" : "pointer",
               }}
             >
@@ -189,7 +190,7 @@ export function EditConfirmationPopup({
                 borderRadius: 8,
                 background: K.inp, border: `1px solid ${K.bdr}`,
                 color: K.t2,
-                fontSize: 13, fontWeight: 700,
+                fontSize: FS.sm, fontWeight: FW.bold,
                 cursor: saving ? "default" : "pointer",
               }}
             >

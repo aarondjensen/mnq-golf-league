@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, memo } from "react";
-import { K, EmptyState, SubLabel, LIST_GAP, CARD_RADIUS, getWeekSide, LoadingPanel, resolvePlayerHcpForWeek } from "../theme";
+import { K, EmptyState, SubLabel, LIST_GAP, CARD_RADIUS, getWeekSide, LoadingPanel, resolvePlayerHcpForWeek, FS, FW } from "../theme";
 import { buildStrokesMap } from "../lib/matchCalc";
 
 // ──────────────────────────────────────────────────────────────────────────
@@ -264,32 +264,6 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
     }).filter(Boolean);
   }, [players, course, schedule, scores, allRounds, leagueConfig, scoringRules]);
 
-  // Hole numbers behind the Hardest/Easiest specialist boards, derived from
-  // the course hcp arrays so the subtitle always matches what's actually
-  // averaged. Mirrors the per-side slice logic in the stats build above:
-  // slice(0,3) of holes ranked by ascending hcp = the 3 hardest (hardest
-  // first); slice(-3) = the 3 easiest (easiest last). Front holes are
-  // numbered 1-9, back holes 10-18. Config-driven — if the course's hcp
-  // layout changes, these labels follow automatically.
-  const specialistHoles = useMemo(() => {
-    if (!course) return null;
-    const sideHoles = (hcps, offset) => {
-      const ranked = (hcps || []).map((h, i) => ({ h, i })).sort((a, b) => a.h - b.h);
-      if (ranked.length < 3) return { hard: [], easy: [] };
-      return {
-        hard: ranked.slice(0, 3).map(x => x.i + offset),
-        easy: ranked.slice(-3).map(x => x.i + offset),
-      };
-    };
-    const front = sideHoles(course.frontHcps, 1);
-    const back  = sideHoles(course.backHcps, 10);
-    if (!front.hard.length || !back.hard.length) return null;
-    return {
-      hard: `${front.hard.join(",")} & ${back.hard.join(",")}`,
-      easy: `${front.easy.join(",")} & ${back.easy.join(",")}`,
-    };
-  }, [course]);
-
   // Section refs — scroll targets for the sticky section nav (1.6A).
   // Each Section component below carries a `sectionId` that resolves
   // to one of these refs. handleSectionTap scrolls the target to just
@@ -344,27 +318,6 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
     const hasMore = allSorted.length > collapsedCount;
     const shown = isExpanded ? allSorted : allSorted.slice(0, collapsedCount);
 
-    // ── Standard golf tie ranking ────────────────────────────────────
-    // Players sharing the same DISPLAYED value share a position, shown
-    // with a "T" prefix (e.g. T3). Uses competition "1224" ranking: a
-    // two-way tie for 3rd means the next player is 5th, not 4th. Tie
-    // detection is on the formatted value the user actually sees — two
-    // rows showing "38.4" read as tied even if their raw floats differ
-    // in a hidden decimal. Computed over allSorted (not the visible
-    // slice) so a collapsed top-5 board still shows correct positions,
-    // and shown[i] maps to rankInfo[i] since shown is a leading slice.
-    const fmtVal = (s) => (valueFmt ? valueFmt(valueFn(s)) : valueFn(s));
-    const rankInfo = [];
-    for (let i = 0; i < allSorted.length; i++) {
-      if (i > 0 && fmtVal(allSorted[i]) === fmtVal(allSorted[i - 1])) {
-        rankInfo[i] = { rank: rankInfo[i - 1].rank, tied: true };
-        rankInfo[i - 1].tied = true;   // back-mark the first of the tie group
-      } else {
-        rankInfo[i] = { rank: i + 1, tied: false };
-      }
-    }
-    const rankLabel = (info) => (info.tied ? "T" : "") + info.rank;
-
     // ── Jump-to-self affordance (1.6C) ───────────────────────────────
     // If the viewer is on this board AND outside the top-5 collapsed
     // view, render a "▼ You're 12th" pill between rank 5 and the
@@ -374,7 +327,8 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
     // to one tap.
     const myPid = leagueUser?.playerId;
     const myIdx = myPid ? allSorted.findIndex(s => s.playerId === myPid) : -1;
-    const showJumpToSelf = !isExpanded && myIdx >= collapsedCount;
+    const myRank = myIdx >= 0 ? myIdx + 1 : null;
+    const showJumpToSelf = !isExpanded && myRank !== null && myRank > collapsedCount;
     const ordinal = (n) => {
       // "1st / 2nd / 3rd / 4th..." for the jump label. Standard English
       // ordinals — covers the edge cases (11th/12th/13th vs 21st/22nd).
@@ -382,12 +336,6 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
       const v = n % 100;
       return n + (s[(v - 20) % 10] || s[v] || s[0]);
     };
-    // Tie-aware label for the jump pill: "T3" when tied, else an ordinal
-    // ("12th"). Mirrors the row badges so the viewer's position reads the
-    // same whether shown inline or summarized in the pill.
-    const myRankLabel = myIdx >= 0
-      ? (rankInfo[myIdx].tied ? `T${rankInfo[myIdx].rank}` : ordinal(rankInfo[myIdx].rank))
-      : null;
 
     return (
       <div style={{ marginBottom: 16 }}>
@@ -398,7 +346,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
           <SubLabel>{title}</SubLabel>
           {headerToggle}
         </div>
-        {subtitle && <div className="mnq-prose" style={{ fontSize: 10, color: K.t3, marginTop: -4, marginBottom: 6 }}>{subtitle}</div>}
+        {subtitle && <div className="mnq-prose" style={{ fontSize: FS.xs, color: K.t3, marginTop: -4, marginBottom: 6 }}>{subtitle}</div>}
         <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
           {shown.map((s, i) => {
             const annotation = playerAnnotation ? playerAnnotation(s) : null;
@@ -407,11 +355,11 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
               <BoardRow
                 key={s.playerId}
                 rowKey={`${title}__${s.playerId}`}
-                rank={rankLabel(rankInfo[i])}
+                rank={i + 1}
                 name={s.name}
                 annotation={annotation}
                 value={valueFmt ? valueFmt(valueFn(s)) : valueFn(s)}
-                isFirst={rankInfo[i].rank === 1}
+                isFirst={i === 0}
                 isMe={isMe}
               />
             );
@@ -442,13 +390,13 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
               width: "100%", marginTop: 6,
               padding: "8px 12px", borderRadius: CARD_RADIUS,
               background: K.acc + "10", border: `1px solid ${K.acc}40`,
-              color: K.acc, fontSize: 11, fontWeight: 800,
+              color: K.acc, fontSize: FS.xs, fontWeight: FW.heavy,
               letterSpacing: 1, textTransform: "uppercase",
               cursor: "pointer",
             }}
           >
             <span>▼</span>
-            <span>You're {myRankLabel}</span>
+            <span>You're {ordinal(myRank)}</span>
           </button>
         )}
         {/* Show all / Show less affordance — only renders if there are
@@ -466,13 +414,13 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
               width: "100%", marginTop: showJumpToSelf ? 6 : 6,
               padding: "8px 12px", borderRadius: CARD_RADIUS,
               background: K.inp, border: `1px solid ${K.bdr}`,
-              color: K.t2, fontSize: 11, fontWeight: 700,
+              color: K.t2, fontSize: FS.xs, fontWeight: FW.bold,
               letterSpacing: 1, textTransform: "uppercase",
               cursor: "pointer",
             }}
           >
             <span>{isExpanded ? "Show less" : `Show all (${allSorted.length})`}</span>
-            <span style={{ fontSize: 9, transition: "transform .15s", transform: isExpanded ? "rotate(180deg)" : "none" }}>▾</span>
+            <span style={{ fontSize: FS.micro, transition: "transform .15s", transform: isExpanded ? "rotate(180deg)" : "none" }}>▾</span>
           </button>
         )}
       </div>
@@ -494,7 +442,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
             padding: "3px 8px", borderRadius: 4, border: "none",
             background: value === opt.value ? K.acc : "transparent",
             color: value === opt.value ? K.bg : K.t3,
-            fontSize: 9, fontWeight: 800, cursor: "pointer",
+            fontSize: FS.micro, fontWeight: FW.heavy, cursor: "pointer",
             letterSpacing: .8, textTransform: "uppercase",
             transition: "all .15s",
           }}
@@ -556,8 +504,8 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
                 borderRadius: 6, border: "none",
                 background: mode === m ? K.acc : "transparent",
                 color: mode === m ? K.bg : K.t3,
-                fontSize: stuck ? 11 : 12,
-                fontWeight: 700, cursor: "pointer",
+                fontSize: stuck ? FS.xs : FS.sm,
+                fontWeight: FW.bold, cursor: "pointer",
                 letterSpacing: 1, textTransform: "uppercase",
                 transition: "all .15s ease",
               }}
@@ -580,7 +528,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
   const Section = ({ title, refKey }) => (
     <div ref={refKey ? sectionRefs[refKey] : undefined}>
       <div style={{
-        fontSize: 9, fontWeight: 800, color: K.t3,
+        fontSize: FS.micro, fontWeight: FW.heavy, color: K.t3,
         letterSpacing: 2, textTransform: "uppercase",
         margin: "8px 0 10px", paddingBottom: 6,
         borderBottom: `1px solid ${K.bdr}40`,
@@ -615,7 +563,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
             borderRadius: 6,
             background: K.card,
             border: `1px solid ${K.bdr}`,
-            color: K.t2, fontSize: 10, fontWeight: 800,
+            color: K.t2, fontSize: FS.xs, fontWeight: FW.heavy,
             letterSpacing: 1, textTransform: "uppercase",
             cursor: "pointer",
           }}
@@ -709,14 +657,14 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
       })}
       {board({
         title: `Hardest Holes Specialist — ${modeLabel}`,
-        subtitle: `Average on the 3 hardest handicap holes each 9${specialistHoles ? ` (${specialistHoles.hard})` : ""}`,
+        subtitle: "Average on the 3 hardest handicap holes each 9",
         valueFn: s => isNet ? s.hardestAvgNet : s.hardestAvgGross,
         sortDir: 'asc',
         valueFmt: v => v.toFixed(2),
       })}
       {board({
         title: `Easy Holes Specialist — ${modeLabel}`,
-        subtitle: `Average on the 3 easiest handicap holes each 9${specialistHoles ? ` (${specialistHoles.easy})` : ""}`,
+        subtitle: "Average on the 3 easiest handicap holes each 9",
         valueFn: s => isNet ? s.easyAvgNet : s.easyAvgGross,
         sortDir: 'asc',
         valueFmt: v => v.toFixed(2),
@@ -748,14 +696,14 @@ const BoardRow = memo(function BoardRow({ rank, name, annotation, value, isFirst
       }}
     >
       <div style={{
-        minWidth: 22, height: 22, borderRadius: 5, padding: "0 4px",
+        width: 22, height: 22, borderRadius: 5,
         background: isFirst ? K.gold + "20" : K.inp,
         color: isFirst ? K.gold : K.t3,
         display: "flex", alignItems: "center", justifyContent: "center",
-        fontSize: 11, fontWeight: 800, flexShrink: 0,
+        fontSize: FS.xs, fontWeight: FW.heavy, flexShrink: 0,
       }}>{rank}</div>
       <div style={{
-        flex: 1, fontSize: 13, fontWeight: isMe ? 800 : 600,
+        flex: 1, fontSize: FS.sm, fontWeight: isMe ? FW.heavy : FW.semibold,
         color: K.t1, marginLeft: 10,
         whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
       }}>
@@ -763,7 +711,7 @@ const BoardRow = memo(function BoardRow({ rank, name, annotation, value, isFirst
       </div>
       {annotation && (
         <div style={{
-          fontSize: 9, fontWeight: 700, color: K.t3,
+          fontSize: FS.micro, fontWeight: FW.bold, color: K.t3,
           letterSpacing: .5, textTransform: "uppercase",
           background: K.inp, padding: "2px 6px", borderRadius: 4,
           marginLeft: 6, flexShrink: 0,
@@ -771,7 +719,7 @@ const BoardRow = memo(function BoardRow({ rank, name, annotation, value, isFirst
           {annotation}
         </div>
       )}
-      <div style={{ fontSize: 16, fontWeight: 800, color: K.t1, marginLeft: 8 }}>
+      <div style={{ fontSize: FS.lg, fontWeight: FW.heavy, color: K.t1, marginLeft: 8 }}>
         {value}
       </div>
     </div>

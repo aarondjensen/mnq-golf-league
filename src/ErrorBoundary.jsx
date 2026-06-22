@@ -1,5 +1,5 @@
 import { Component } from "react";
-import { K } from "./theme";
+import { K, FS, FW } from "./theme";
 
 // ErrorBoundary catches runtime errors in any child component tree and renders a
 // friendly fallback instead of a blank white screen. Lazy-loaded pages (see App.jsx)
@@ -37,13 +37,13 @@ export default class ErrorBoundary extends Component {
       }}>
         <div style={{ fontSize: 42, marginBottom: 12, opacity: 0.5 }}>⚠</div>
         <div style={{
-          fontSize: 16, fontWeight: 700, color: K.t1,
+          fontSize: FS.lg, fontWeight: FW.bold, color: K.t1,
           letterSpacing: 0.5, marginBottom: 6,
         }}>
           Something went wrong
         </div>
         <div style={{
-          fontSize: 12, color: K.t3, maxWidth: 300,
+          fontSize: FS.sm, color: K.t3, maxWidth: 300,
           lineHeight: 1.5, marginBottom: 20,
         }}>
           This page hit an unexpected error. Try switching tabs, or reload the app.
@@ -51,7 +51,7 @@ export default class ErrorBoundary extends Component {
         <button onClick={() => window.location.reload()} style={{
           padding: "10px 20px", borderRadius: 8,
           background: K.act, border: "none",
-          color: K.bg, fontSize: 13, fontWeight: 700,
+          color: K.bg, fontSize: FS.sm, fontWeight: FW.bold,
           cursor: "pointer", letterSpacing: 0.4,
         }}>
           Reload App
@@ -62,7 +62,7 @@ export default class ErrorBoundary extends Component {
           <pre style={{
             marginTop: 20, padding: 10, background: K.card,
             border: `1px solid ${K.bdr}`, borderRadius: 6,
-            fontSize: 10, color: K.red, maxWidth: 400,
+            fontSize: FS.xs, color: K.red, maxWidth: 400,
             overflow: "auto", textAlign: "left",
             whiteSpace: "pre-wrap", fontFamily: "monospace",
             textTransform: "none", letterSpacing: 0,

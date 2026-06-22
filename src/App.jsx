@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
-import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, LoadingPanel, serializeSeedWeeks, deserializeLeagueConfig, buildSeedMap } from "./theme";
+import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, LoadingPanel, serializeSeedWeeks, deserializeLeagueConfig, buildSeedMap, FS, FW } from "./theme";
 import { parseScheduleDate } from "./lib/scheduleDate";
 import { usePullToRefresh } from "./lib/usePullToRefresh";
 import { autoSeedIfReady as autoSeedIfReadyLib } from "./lib/scheduleAutoSeed";
@@ -1122,7 +1122,7 @@ export default function GolfLeagueApp() {
           <div style={{ position: "absolute", left: 14, display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
             {isComm && (
               <>
-                <span style={{ fontSize: 8, fontWeight: 700, color: commMode ? K.act : K.t3, letterSpacing: .5, textTransform: "uppercase" }}>Commish</span>
+                <span style={{ fontSize: FS.micro, fontWeight: FW.bold, color: commMode ? K.act : K.t3, letterSpacing: .5, textTransform: "uppercase" }}>Commish</span>
                 <button onClick={() => setCommMode(!commMode)} style={{
                   width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
                   background: commMode ? K.act : K.bdr,
@@ -1148,7 +1148,7 @@ export default function GolfLeagueApp() {
               background: tab === "scoring" ? bannerGrn : "transparent",
               border: `1.5px solid ${tab === "scoring" ? bannerGrn : bannerGrn + "50"}`,
               borderRadius: 8, padding: "6px 10px", cursor: "pointer",
-              color: tab === "scoring" ? "#fff" : bannerGrn, fontSize: 13, fontWeight: 800,
+              color: tab === "scoring" ? "#fff" : bannerGrn, fontSize: FS.sm, fontWeight: FW.heavy,
               textTransform: "uppercase", letterSpacing: .5, lineHeight: 1.3,
             }}>
               Live<br/>Scoring
@@ -1172,11 +1172,11 @@ export default function GolfLeagueApp() {
           cursor: "pointer", flexShrink: 0,
           boxShadow: `0 2px 8px ${K.act}40`,
         }}>
-          <span style={{ fontSize: 11, fontWeight: 700, color: K.bg, opacity: .7, letterSpacing: 1, textTransform: "uppercase" }}>Ready</span>
-          <span style={{ fontSize: 14, fontWeight: 800, color: K.bg, letterSpacing: .3, textTransform: "uppercase" }}>
+          <span style={{ fontSize: FS.xs, fontWeight: FW.bold, color: K.bg, opacity: .7, letterSpacing: 1, textTransform: "uppercase" }}>Ready</span>
+          <span style={{ fontSize: FS.base, fontWeight: FW.heavy, color: K.bg, letterSpacing: .3, textTransform: "uppercase" }}>
             Finalize Week {weekToFinalize}
           </span>
-          <span style={{ fontSize: 16, fontWeight: 800, color: K.bg, opacity: .85 }}>›</span>
+          <span style={{ fontSize: FS.lg, fontWeight: FW.heavy, color: K.bg, opacity: .85 }}>›</span>
         </button>
       )}
 
@@ -1197,8 +1197,8 @@ export default function GolfLeagueApp() {
           }}>
             <div style={{ flexShrink: 0, display: "flex" }}>{I.bell(20, K.act)}</div>
             <div style={{ flex: 1, lineHeight: 1.3 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: K.t1 }}>Turn on notifications</div>
-              <div style={{ fontSize: 11, color: K.t2, fontWeight: 500 }}>Results, attest reminders, rainouts &amp; more</div>
+              <div style={{ fontSize: FS.sm, fontWeight: FW.heavy, color: K.t1 }}>Turn on notifications</div>
+              <div style={{ fontSize: FS.xs, color: K.t2, fontWeight: FW.medium }}>Results, attest reminders, rainouts &amp; more</div>
             </div>
             <button
               onClick={enableNotifsFromBanner}
@@ -1206,7 +1206,7 @@ export default function GolfLeagueApp() {
               style={{
                 flexShrink: 0, padding: "8px 14px", borderRadius: 8,
                 background: K.act, border: "none", color: K.bg,
-                fontSize: 12, fontWeight: 800, letterSpacing: .3,
+                fontSize: FS.sm, fontWeight: FW.heavy, letterSpacing: .3,
                 cursor: notifBannerBusy ? "default" : "pointer",
                 opacity: notifBannerBusy ? .5 : 1,
               }}
@@ -1219,7 +1219,7 @@ export default function GolfLeagueApp() {
               style={{
                 flexShrink: 0, width: 28, height: 28, borderRadius: 8,
                 background: "transparent", border: "none", color: K.t3,
-                fontSize: 18, fontWeight: 700, lineHeight: 1, cursor: "pointer",
+                fontSize: FS.lg, fontWeight: FW.bold, lineHeight: 1, cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center",
               }}
             >
@@ -1240,12 +1240,12 @@ export default function GolfLeagueApp() {
             return (
               <div style={{ background: K.card, border: `1.5px solid ${bannerGrn}`, borderRadius: 10, margin: "6px 14px", padding: "10px 16px", display: "flex", alignItems: "center" }}>
                 <div style={{ width: 80, flexShrink: 0, textAlign: "left", lineHeight: 1.3, padding: "6px 0" }}>
-                  <div style={{ fontSize: 17, fontWeight: 800, color: K.act, letterSpacing: .5 }}>{upcomingBanner.teeTime}</div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: K.logoBright, letterSpacing: .5, textTransform: "uppercase" }}>{upcomingBanner.side === 'front' ? 'FRONT 9' : 'BACK 9'}</div>
+                  <div style={{ fontSize: FS.lg, fontWeight: FW.heavy, color: K.act, letterSpacing: .5 }}>{upcomingBanner.teeTime}</div>
+                  <div style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.logoBright, letterSpacing: .5, textTransform: "uppercase" }}>{upcomingBanner.side === 'front' ? 'FRONT 9' : 'BACK 9'}</div>
                 </div>
                 <div style={{ flex: 1, textAlign: "center", lineHeight: 1.3 }}>
-                  <div style={{ fontSize: 12, color: K.t2, fontWeight: 500 }}>{upcomingBanner.date || ""}</div>
-                  <div style={{ fontSize: 14, color: K.t1, fontWeight: 700 }}>Week {upcomingBanner.week}</div>
+                  <div style={{ fontSize: FS.sm, color: K.t2, fontWeight: FW.medium }}>{upcomingBanner.date || ""}</div>
+                  <div style={{ fontSize: FS.base, color: K.t1, fontWeight: FW.bold }}>Week {upcomingBanner.week}</div>
                 </div>
                 <div style={{ minWidth: 80, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
                   {upcomingBanner.oppSeed != null && (
@@ -1253,12 +1253,12 @@ export default function GolfLeagueApp() {
                       width: 20, height: 20, borderRadius: 5, flexShrink: 0,
                       background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, color: K.logoBright,
                       display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: 10, fontWeight: 800,
+                      fontSize: FS.xs, fontWeight: FW.heavy,
                     }}>{upcomingBanner.oppSeed}</div>
                   )}
                   <div style={{ textAlign: "right", lineHeight: 1.3 }}>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{upcomingBanner.oppName1}</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>{upcomingBanner.oppName2}</div>
+                    <div style={{ fontSize: FS.base, fontWeight: FW.bold, color: K.t1 }}>{upcomingBanner.oppName1}</div>
+                    <div style={{ fontSize: FS.base, fontWeight: FW.bold, color: K.t1 }}>{upcomingBanner.oppName2}</div>
                   </div>
                 </div>
               </div>
@@ -1290,7 +1290,7 @@ export default function GolfLeagueApp() {
             position: "fixed", top: 30, left: "50%", transform: "translateX(-50%)",
             background: appToastMsg.kind === "error" ? K.red : K.act, color: K.bg,
             padding: "12px 36px", borderRadius: 12,
-            fontSize: 13, fontWeight: 700, zIndex: 1100,
+            fontSize: FS.sm, fontWeight: FW.bold, zIndex: 1100,
             whiteSpace: "nowrap", maxWidth: "90vw", textAlign: "center",
             boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
             animation: "appToastDown 0.3s ease",
@@ -1304,9 +1304,9 @@ export default function GolfLeagueApp() {
 
       {showPlayerPicker && (
         <Popup onClose={() => setShowPlayerPicker(false)} maxWidth={340}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 12, textAlign: "center" }}>Switch Player</div>
+          <div style={{ fontSize: FS.base, fontWeight: FW.bold, color: K.t1, marginBottom: 12, textAlign: "center" }}>Switch Player</div>
           {impersonating && (
-            <button onClick={() => { setImpersonating(null); setShowPlayerPicker(false); }} style={{ width: "100%", padding: "10px 14px", marginBottom: 8, borderRadius: 8, background: K.teal + "15", border: `1px solid ${K.teal}40`, color: K.teal, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+            <button onClick={() => { setImpersonating(null); setShowPlayerPicker(false); }} style={{ width: "100%", padding: "10px 14px", marginBottom: 8, borderRadius: 8, background: K.teal + "15", border: `1px solid ${K.teal}40`, color: K.teal, fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer" }}>
               Back to My Account
             </button>
           )}
@@ -1323,16 +1323,16 @@ export default function GolfLeagueApp() {
                   padding: "10px 14px", borderRadius: 8, cursor: "pointer", textAlign: "left",
                   background: isActive ? K.teal + "15" : isSelf ? K.acc + "10" : K.card,
                   border: `1px solid ${isActive ? K.teal + "40" : isSelf ? K.acc + "30" : K.bdr}`,
-                  color: K.t1, fontSize: 14, fontWeight: 600, display: "flex", justifyContent: "space-between", alignItems: "center",
+                  color: K.t1, fontSize: FS.base, fontWeight: FW.semibold, display: "flex", justifyContent: "space-between", alignItems: "center",
                 }}>
                   <span>{p.name}</span>
-                  {isSelf && <span style={{ fontSize: 10, color: K.t3, fontWeight: 500 }}>(you)</span>}
-                  {isActive && <span style={{ fontSize: 10, color: K.teal, fontWeight: 500 }}>active</span>}
+                  {isSelf && <span style={{ fontSize: FS.xs, color: K.t3, fontWeight: FW.medium }}>(you)</span>}
+                  {isActive && <span style={{ fontSize: FS.xs, color: K.teal, fontWeight: FW.medium }}>active</span>}
                 </button>
               );
             })}
           </div>
-          <button onClick={() => setShowPlayerPicker(false)} style={{ display: "block", width: "100%", margin: "12px 0 0", padding: "9px", background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.t2, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>
+          <button onClick={() => setShowPlayerPicker(false)} style={{ display: "block", width: "100%", margin: "12px 0 0", padding: "9px", background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.t2, fontSize: FS.sm, fontWeight: FW.semibold, cursor: "pointer" }}>
             Cancel
           </button>
         </Popup>
@@ -1340,12 +1340,12 @@ export default function GolfLeagueApp() {
 
       {commMode && (
         <button onClick={() => setShowPlayerPicker(true)} style={{ width: "100%", maxWidth: 900, margin: "0 auto", background: K.act, padding: "8px 14px", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, flexShrink: 0, cursor: "pointer", border: "none", zIndex: 200 }}>
-          <span style={{ fontSize: 12, color: K.bg, fontWeight: 800, letterSpacing: .5 }}>
+          <span style={{ fontSize: FS.sm, color: K.bg, fontWeight: FW.heavy, letterSpacing: .5 }}>
             {impersonating ? `Logged in as ${impersonating.name}` : "Login as"}
           </span>
-          <span style={{ fontSize: 10, color: K.bg + "90" }}>▾</span>
+          <span style={{ fontSize: FS.xs, color: K.bg + "90" }}>▾</span>
           {impersonating && (
-            <button onClick={(e) => { e.stopPropagation(); setImpersonating(null); }} style={{ background: K.bg + "25", border: "none", borderRadius: 4, color: K.bg, fontSize: 10, padding: "3px 8px", cursor: "pointer", fontWeight: 700 }}>Exit</button>
+            <button onClick={(e) => { e.stopPropagation(); setImpersonating(null); }} style={{ background: K.bg + "25", border: "none", borderRadius: 4, color: K.bg, fontSize: FS.xs, padding: "3px 8px", cursor: "pointer", fontWeight: FW.bold }}>Exit</button>
           )}
         </button>
       )}
@@ -1366,7 +1366,7 @@ export default function GolfLeagueApp() {
                   <span style={{
                     position: "absolute", top: -4, right: -8,
                     background: K.red, color: K.bg,
-                    fontSize: 9, fontWeight: 800, lineHeight: 1,
+                    fontSize: FS.micro, fontWeight: FW.heavy, lineHeight: 1,
                     minWidth: 14, height: 14, padding: "0 3px",
                     borderRadius: 7, display: "flex",
                     alignItems: "center", justifyContent: "center",
@@ -1374,14 +1374,14 @@ export default function GolfLeagueApp() {
                   }}>{badgeLabel}</span>
                 )}
               </span>
-              <span style={{ fontSize: 9, fontWeight: active ? 600 : 400, color: active ? K.acc : K.t2 }}>{t.label}</span>
+              <span style={{ fontSize: FS.micro, fontWeight: active ? FW.semibold : FW.regular, color: active ? K.acc : K.t2 }}>{t.label}</span>
             </button>
           );
         })}
         <div style={{ flex: 1, position: "relative", display: "flex", justifyContent: "center" }}>
           <button onClick={() => setShowMore(!showMore)} style={{ width: "100%", background: showMore || moreItems.some(m => m.id === tab) ? K.acc + "10" : "none", border: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, opacity: showMore || moreItems.some(m => m.id === tab) ? 1 : .4, transition: "all .2s", padding: "4px 0", borderRadius: 8 }}>
             <span style={{ display: "flex" }}>{I.ellipsis(18, showMore || moreItems.some(m => m.id === tab) ? K.acc : K.t2)}</span>
-            <span style={{ fontSize: 9, fontWeight: showMore || moreItems.some(m => m.id === tab) ? 600 : 400, color: showMore || moreItems.some(m => m.id === tab) ? K.acc : K.t2 }}>More</span>
+            <span style={{ fontSize: FS.micro, fontWeight: showMore || moreItems.some(m => m.id === tab) ? FW.semibold : FW.regular, color: showMore || moreItems.some(m => m.id === tab) ? K.acc : K.t2 }}>More</span>
           </button>
           {showMore && (
             <div style={{ position: "fixed", bottom: `calc(42px + env(safe-area-inset-bottom, 0px))`, right: 14, background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 12, padding: "6px 0", zIndex: 300, minWidth: 180, boxShadow: "0 -4px 20px rgba(0,0,0,.4)" }}>
@@ -1393,7 +1393,7 @@ export default function GolfLeagueApp() {
                     {isSignOut && (<>
                       <div style={{ borderTop: `1px solid ${K.bdr}`, margin: "4px 0" }} />
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 16px" }}>
-                        <span style={{ fontSize: 14, fontWeight: 400, color: K.t1 }}>Dark Mode</span>
+                        <span style={{ fontSize: FS.base, fontWeight: FW.regular, color: K.t1 }}>Dark Mode</span>
                         <button onClick={(e) => { e.stopPropagation(); toggleTheme(); }} style={{
                           width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
                           background: darkMode ? K.act : K.bdr,
@@ -1417,7 +1417,7 @@ export default function GolfLeagueApp() {
                       setShowMore(false);
                     }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 16px", background: active && !isSignOut ? K.acc + "12" : "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
                       <span style={{ display: "flex" }}>{I[item.icon](16, isSignOut ? K.red : active ? K.acc : K.t3)}</span>
-                      <span style={{ fontSize: 14, fontWeight: active && !isSignOut ? 600 : 400, color: isSignOut ? K.red : active ? K.acc : K.t1 }}>{item.label}</span>
+                      <span style={{ fontSize: FS.base, fontWeight: active && !isSignOut ? FW.semibold : FW.regular, color: isSignOut ? K.red : active ? K.acc : K.t1 }}>{item.label}</span>
                     </button>
                   </div>
                 );

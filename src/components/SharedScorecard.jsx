@@ -39,7 +39,7 @@
 //                                 "TIE" + "Hole 5" lines.
 // ══════════════════════════════════════════════════════════════════
 
-import { K } from "../theme";
+import { K, FS, FW } from "../theme";
 import { parseTiebreakerResult } from "../TeamMatchupCard";
 
 // ═══════════════════════════════════════════════════════════════
@@ -61,7 +61,7 @@ export function ScoreCell({ score, par, strokes, size = 13, color: colorOverride
     return (
       <div style={{ display: "flex", flexDirection: "column", alignItems: "center", height: dotH + sh, justifyContent: "flex-end" }}>
         <div style={{ height: dotH, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-          {strokes > 0 && <span style={{ color: colorOverride || K.hcpBlue, fontSize: 10, fontWeight: 900, letterSpacing: 1, lineHeight: 1 }}>{"•".repeat(strokes)}</span>}
+          {strokes > 0 && <span style={{ color: colorOverride || K.hcpBlue, fontSize: 10, fontWeight: FW.heavy, letterSpacing: 1, lineHeight: 1 }}>{"•".repeat(strokes)}</span>}
         </div>
         <div style={{ width: sh, height: sh, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <span style={{ color: K.t3 + "30", fontSize: size, lineHeight: 1 }}>·</span>
@@ -109,11 +109,11 @@ export function ScoreCell({ score, par, strokes, size = 13, color: colorOverride
   return (
     <div style={{ display: "flex", flexDirection: "column", alignItems: "center", height: dotH + sh, justifyContent: "flex-end" }}>
       <div style={{ height: dotH, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-        {strokes > 0 && <span style={{ color: colorOverride || K.hcpBlue, fontSize: 10, fontWeight: 900, letterSpacing: 1, lineHeight: 1 }}>{"•".repeat(strokes)}</span>}
+        {strokes > 0 && <span style={{ color: colorOverride || K.hcpBlue, fontSize: 10, fontWeight: FW.heavy, letterSpacing: 1, lineHeight: 1 }}>{"•".repeat(strokes)}</span>}
       </div>
       <div style={{ position: "relative", width: sh, height: sh, display: "flex", alignItems: "center", justifyContent: "center" }}>
         {border}
-        <span className="scorecell-text" style={{ fontSize: s, fontWeight: 700, ...(textColor ? { color: textColor } : {}) }}>{score}</span>
+        <span className="scorecell-text" style={{ fontSize: s, fontWeight: FW.bold, ...(textColor ? { color: textColor } : {}) }}>{score}</span>
       </div>
     </div>
   );
@@ -152,7 +152,7 @@ export function SharedScorecard({
   const gridLine = GRID_LINE_STYLE(K.bdr);
   const lw = variant === "allMatches" ? 44 : 40;
   const tw = 30;
-  const lblStyle = { width: lw, flexShrink: 0, fontSize: 9, fontWeight: 700, color: K.t3, display: "flex", alignItems: "center", paddingLeft: 4, borderRight: variant === "allMatches" ? gridLine : colBdr, textTransform: "uppercase", letterSpacing: .3 };
+  const lblStyle = { width: lw, flexShrink: 0, fontSize: FS.micro, fontWeight: FW.bold, color: K.t3, display: "flex", alignItems: "center", paddingLeft: 4, borderRight: variant === "allMatches" ? gridLine : colBdr, textTransform: "uppercase", letterSpacing: .3 };
   const totStyle = showTotals ? { width: tw, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center", borderLeft: colBdr } : null;
 
   const scoreSize = variant === "compact" ? 13 : 15;
@@ -160,21 +160,21 @@ export function SharedScorecard({
 
   const HoleRow = () => (
     <div style={{ display: "flex", background: K.acc, borderRadius: variant === "allMatches" ? "6px 6px 0 0" : "10px 10px 0 0" }}>
-      <div style={{ ...lblStyle, height: 28, color: K.bg, opacity: .8, borderRight: "none", fontWeight: 800, fontSize: 10 }}>HOLE</div>
+      <div style={{ ...lblStyle, height: 28, color: K.bg, opacity: .8, borderRight: "none", fontWeight: FW.heavy, fontSize: 10 }}>HOLE</div>
       {Array.from({ length: 9 }, (_, i) => (
         <div key={i} style={{ flex: 1, height: 28, display: "flex", alignItems: "center", justifyContent: "center" }}>
-          <span style={{ fontSize: 12, fontWeight: 800, color: K.bg }}>{side === 'front' ? i + 1 : i + 10}</span>
+          <span style={{ fontSize: 12, fontWeight: FW.heavy, color: K.bg }}>{side === 'front' ? i + 1 : i + 10}</span>
         </div>
       ))}
-      {totStyle && <div style={{ ...totStyle, height: 28, borderLeft: "none" }}><span style={{ fontSize: 10, fontWeight: 700, color: K.bg }}>TOT</span></div>}
+      {totStyle && <div style={{ ...totStyle, height: 28, borderLeft: "none" }}><span style={{ fontSize: 10, fontWeight: FW.bold, color: K.bg }}>TOT</span></div>}
     </div>
   );
 
   const ParRow = () => (
     <div style={{ display: "flex", borderBottom: gridLine, background: K.acc + "18" }}>
       <div style={{ ...lblStyle, height: variant === "allMatches" ? 26 : 22 }}>PAR</div>
-      {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 11, color: K.t2, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", height: variant === "allMatches" ? 26 : 22, borderRight: i < 8 ? gridLine : "none" }}>{p}</div>)}
-      {totStyle && <div style={{ ...totStyle, height: 22 }}><span style={{ fontSize: 11, fontWeight: 700, color: K.t3 }}>{parTotal}</span></div>}
+      {pars.map((p, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: FS.xs, color: K.t2, fontWeight: FW.semibold, display: "flex", alignItems: "center", justifyContent: "center", height: variant === "allMatches" ? 26 : 22, borderRight: i < 8 ? gridLine : "none" }}>{p}</div>)}
+      {totStyle && <div style={{ ...totStyle, height: 22 }}><span style={{ fontSize: FS.xs, fontWeight: FW.bold, color: K.t3 }}>{parTotal}</span></div>}
     </div>
   );
 
@@ -185,7 +185,7 @@ export function SharedScorecard({
   const HcpRow = () => (
     <div style={{ display: "flex", borderBottom: gridLine, background: K.inp }}>
       <div style={{ ...lblStyle, height: variant === "allMatches" ? 22 : 20 }}>HCP</div>
-      {hcps.map((h, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 10, color: K.t3, fontWeight: 600, display: "flex", alignItems: "center", justifyContent: "center", height: variant === "allMatches" ? 22 : 20, borderRight: i < 8 ? gridLine : "none" }}>{h}</div>)}
+      {hcps.map((h, i) => <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 10, color: K.t3, fontWeight: FW.semibold, display: "flex", alignItems: "center", justifyContent: "center", height: variant === "allMatches" ? 22 : 20, borderRight: i < 8 ? gridLine : "none" }}>{h}</div>)}
       {totStyle && <div style={{ ...totStyle, height: 20 }} />}
     </div>
   );
@@ -201,15 +201,15 @@ export function SharedScorecard({
     return (
       <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
         <div style={{ ...lblStyle, height: 38, paddingTop: 10 }}>
-          <span style={{ fontSize: variant === "allMatches" ? 13 : 15, fontWeight: 800, color: K.t1, width: 24, flexShrink: 0 }}>{getInitials(pid)}</span>
-          <span style={{ fontSize: variant === "allMatches" ? 10 : 11, color: K.hcpBlue, fontWeight: 700 }}>{getHcp(pid)}</span>
+          <span style={{ fontSize: variant === "allMatches" ? 13 : 15, fontWeight: FW.heavy, color: K.t1, width: 24, flexShrink: 0 }}>{getInitials(pid)}</span>
+          <span style={{ fontSize: variant === "allMatches" ? 10 : 11, color: K.hcpBlue, fontWeight: FW.bold }}>{getHcp(pid)}</span>
         </div>
         {cells.map((c, h) => (
           <div key={h} style={{ flex: 1, height: 38, display: "flex", alignItems: "center", justifyContent: "center", borderRight: h < 8 ? gridLine : "none" }}>
             <ScoreCell score={c.s} par={pars[h]} strokes={c.st} size={scoreSize} color={absent ? K.red : undefined} />
           </div>
         ))}
-        {totStyle && <div style={{ ...totStyle, height: 38, paddingTop: 10 }}><span style={{ fontSize: 14, fontWeight: 800, color: absent ? K.red : K.t1 }}>{grossTotal || ""}</span></div>}
+        {totStyle && <div style={{ ...totStyle, height: 38, paddingTop: 10 }}><span style={{ fontSize: 14, fontWeight: FW.heavy, color: absent ? K.red : K.t1 }}>{grossTotal || ""}</span></div>}
       </div>
     );
   };
@@ -219,7 +219,7 @@ export function SharedScorecard({
     const isAM = variant === "allMatches";
     return (
       <div style={{ display: "flex", ...(isAM ? { alignItems: "center", background: K.act + "0c" } : {}) }}>
-        <div style={{ ...lblStyle, height: isAM ? 28 : 38, fontSize: 9, fontWeight: 800 }}>{isAM ? "NET" : "TEAM"}</div>
+        <div style={{ ...lblStyle, height: isAM ? 28 : 38, fontSize: FS.micro, fontWeight: FW.heavy }}>{isAM ? "NET" : "TEAM"}</div>
         {Array.from({ length: 9 }, (_, h) => {
           let tNet = 0; let ok = true;
           pids.forEach(pid => { const s = getScore(pid, h); if (s <= 0) ok = false; else tNet += s - getStrokes(pid, h); });
@@ -228,7 +228,7 @@ export function SharedScorecard({
 
           if (isAM) {
             return <div key={h} style={{
-              flex: 1, textAlign: "center", fontSize: 13, fontWeight: 800,
+              flex: 1, textAlign: "center", fontSize: FS.sm, fontWeight: FW.heavy,
               color: !ok ? K.t3 + "30" : K.t1, lineHeight: "22px",
               padding: "4px 0", borderRight: won ? "none" : gridLine,
               ...(won ? { background: K.bg, border: `1.5px solid ${K.act}`, borderRadius: 3, margin: "-1px 1px", position: "relative", zIndex: 1 } : {}),
@@ -241,14 +241,14 @@ export function SharedScorecard({
           }}>
             {won ? (
               <div style={{ width: 30, height: 30, display: "flex", alignItems: "center", justifyContent: "center", borderRadius: 3, border: `1.5px solid ${K.act}`, background: K.act + "18" }}>
-                <span style={{ fontSize: scoreSize, fontWeight: 800, color: K.t1 }}>{ok ? tNet : "·"}</span>
+                <span style={{ fontSize: scoreSize, fontWeight: FW.heavy, color: K.t1 }}>{ok ? tNet : "·"}</span>
               </div>
             ) : (
-              <span style={{ fontSize: scoreSize, fontWeight: 800, color: ok ? K.t1 : K.t3 + "30" }}>{ok ? tNet : "·"}</span>
+              <span style={{ fontSize: scoreSize, fontWeight: FW.heavy, color: ok ? K.t1 : K.t3 + "30" }}>{ok ? tNet : "·"}</span>
             )}
           </div>;
         })}
-        {totStyle && <div style={{ ...totStyle, height: 38 }}><span style={{ fontSize: 14, fontWeight: 800, color: K.t1 }}>{isNaN(netTotal) ? "" : netTotal}</span></div>}
+        {totStyle && <div style={{ ...totStyle, height: 38 }}><span style={{ fontSize: 14, fontWeight: FW.heavy, color: K.t1 }}>{isNaN(netTotal) ? "" : netTotal}</span></div>}
       </div>
     );
   };
@@ -269,7 +269,7 @@ export function SharedScorecard({
     if (!name) return null;
     return (
       <div style={{
-        fontSize: 9, fontWeight: 700, color: K.acc,
+        fontSize: FS.micro, fontWeight: FW.bold, color: K.acc,
         textTransform: "uppercase", letterSpacing: 1,
         padding: "4px 4px 2px",
       }}>
@@ -284,7 +284,7 @@ export function SharedScorecard({
     const mGrn = matchGrn || K.matchGrn;
     return (
       <div style={{ display: "flex", background: K.card, border: `1px solid ${K.bdr}${variant === "allMatches" ? "40" : "60"}`, borderRadius: variant === "allMatches" ? 6 : 8, padding: "2px 0", margin: variant === "allMatches" ? "4px 0" : "4px 0" }}>
-        <div style={{ ...lblStyle, height: 28, fontSize: 8, fontWeight: 800, color: K.t2 }}>MATCH</div>
+        <div style={{ ...lblStyle, height: 28, fontSize: 8, fontWeight: FW.heavy, color: K.t2 }}>MATCH</div>
         {runningStatus.map((rs, i) => {
           const colBorderR = i < 8 ? { borderRight: gridLine } : {};
           const isClinch = clinchHole !== null && i === clinchHole;
@@ -297,15 +297,15 @@ export function SharedScorecard({
             if (tb.isTiebreaker) {
               return <div key={i} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", height: 28, ...colBorderR }}>
                 <div style={{ border: `1.5px solid ${color}`, borderRadius: 4, padding: "1px 3px", display: "flex", flexDirection: "column", alignItems: "center", lineHeight: 1, maxWidth: "100%" }}>
-                  <span style={{ fontSize: variant === "allMatches" ? 9 : 10, fontWeight: 800, color, letterSpacing: .3 }}>TIE</span>
-                  <span style={{ fontSize: variant === "allMatches" ? 6 : 7, fontWeight: 700, color, textTransform: "uppercase", letterSpacing: .3, whiteSpace: "nowrap", marginTop: 1 }}>{tb.label}</span>
+                  <span style={{ fontSize: variant === "allMatches" ? 9 : 10, fontWeight: FW.heavy, color, letterSpacing: .3 }}>TIE</span>
+                  <span style={{ fontSize: variant === "allMatches" ? 6 : 7, fontWeight: FW.bold, color, textTransform: "uppercase", letterSpacing: .3, whiteSpace: "nowrap", marginTop: 1 }}>{tb.label}</span>
                 </div>
               </div>;
             }
             // Regular clinch ("3&2", "2UP", plain "TIED"): single centered token.
             return <div key={i} style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", height: 28, ...colBorderR }}>
               <div style={{ border: `1.5px solid ${color}`, borderRadius: 4, padding: "0 3px", lineHeight: "22px", maxWidth: "100%" }}>
-                <span style={{ fontSize: variant === "allMatches" ? 12 : 14, fontWeight: 800, color, whiteSpace: "nowrap" }}>{clinchText}</span>
+                <span style={{ fontSize: variant === "allMatches" ? 12 : 14, fontWeight: FW.heavy, color, whiteSpace: "nowrap" }}>{clinchText}</span>
               </div>
             </div>;
           }
@@ -333,8 +333,8 @@ export function SharedScorecard({
             }
             return <div key={i} style={{ flex: 1, height: 28, ...colBorderR }} />;
           }
-          return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: variant === "allMatches" ? 12 : 14, fontWeight: 800, color, lineHeight: "28px", ...colBorderR }}>
-            {rs > 0 ? <><span style={{ fontSize: variant === "allMatches" ? 12 : 14 }}>▲</span>{rs}</> : rs < 0 ? <><span style={{ fontSize: variant === "allMatches" ? 12 : 14 }}>▼</span>{Math.abs(rs)}</> : <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: .5 }}>TIED</span>}
+          return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: variant === "allMatches" ? 12 : 14, fontWeight: FW.heavy, color, lineHeight: "28px", ...colBorderR }}>
+            {rs > 0 ? <><span style={{ fontSize: variant === "allMatches" ? 12 : 14 }}>▲</span>{rs}</> : rs < 0 ? <><span style={{ fontSize: variant === "allMatches" ? 12 : 14 }}>▼</span>{Math.abs(rs)}</> : <span style={{ fontSize: 8, fontWeight: FW.bold, letterSpacing: .5 }}>TIED</span>}
           </div>;
         })}
         {totStyle && <div style={{ width: tw, flexShrink: 0, height: 28 }} />}
