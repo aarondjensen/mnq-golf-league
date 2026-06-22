@@ -613,11 +613,33 @@ export const SkeletonList = ({ count = 6, height = 56, gap = LIST_GAP, style }) 
 // ── Shared style constants for consistency ──
 export const LIST_GAP = 6;        // gap between list cards
 export const CARD_RADIUS = 10;    // border-radius for all list cards
-export const NAME_SIZE = 15;      // font-size for player/team names in lists
+
+// ── Type scale ───────────────────────────────────────────────────────
+// Single source of truth for font sizes. The app had ~18 distinct inline
+// pixel sizes that drifted into near-duplicates (11/12/13/14/15 all used
+// for "body-ish" text, 16/17/18 for headings, 20/22/24/26 for big numbers).
+// FS collapses those into intentional steps. Each step lists the legacy
+// sizes it absorbs so the file-by-file migration knows where each number
+// rounds to. The two bespoke display sizes (42, 52px) are deliberate
+// one-offs and stay explicit at their call sites.
+export const FS = {
+  micro: 9,   // eyebrows, tiny uppercase labels, seed badges   (← 7, 8, 9)
+  xs: 11,     // sub-labels, captions, pills                    (← 10, 11)
+  sm: 13,     // secondary body text, compact rows              (← 12, 13)
+  base: 15,   // player/team names, primary body                (← 14, 15)
+  lg: 18,     // section titles, emphasis                       (← 16, 17, 18)
+  xl: 20,     // hero / stat numbers                            (← 20, 22)
+  xxl: 26,    // large display stats                            (← 24, 26)
+};
+
+export const NAME_SIZE = FS.base;       // 15 — player/team names in lists
 export const NAME_WEIGHT = 700;   // font-weight for names
-export const HERO_NUM_SIZE = 20;  // font-size for large stat numbers (points, CTP count, etc.)
+export const HERO_NUM_SIZE = FS.xl;     // 20 — large stat numbers (points, CTP count, etc.)
 export const HERO_NUM_WEIGHT = 800;
 export const RANK_BADGE_SIZE = 28; // width/height for rank badges
 export const RANK_BADGE_RADIUS = 7;
-export const RANK_BADGE_FONT = 13;
+export const RANK_BADGE_FONT = FS.sm;   // 13 — number inside rank badges
+// Chevron is a glyph, not text; at 14 it sits between sm (13) and base (15).
+// Kept explicit at 14 for now so Phase 1 changes nothing on screen — it
+// folds to FS.base during the file migration as a deliberate 1px decision.
 export const CHEVRON_SIZE = 14;   // font-size for expand/collapse chevron
