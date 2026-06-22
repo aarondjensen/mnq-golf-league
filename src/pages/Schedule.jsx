@@ -841,8 +841,9 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
               <span style={{ fontSize: 14, fontWeight: 700 }}>{teeTimeShort}</span>
             )}
             {/* Front/Back sub-line — same column, matches banner style.
-                Omitted for rained-out weeks (the "—" speaks for itself). */}
-            {!isRainedOut && (
+                Omitted for rained-out weeks (the "—" speaks for itself) and
+                for completed weeks (the W/L result is what matters there). */}
+            {!isRainedOut && !isComplete && (
               <span style={{ fontSize: 9, fontWeight: 700, color: K.logoBright, letterSpacing: .5, textTransform: "uppercase" }}>
                 {side === 'front' ? 'Front 9' : 'Back 9'}
               </span>
