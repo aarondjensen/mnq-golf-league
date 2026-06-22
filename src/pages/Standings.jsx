@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, calcPlayerHcp, buildSeedMap, buildStandingsForSeed, LoadingPanel, SkeletonList, buildHistoricalPlayers } from "../theme";
+import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, FS, FW, calcPlayerHcp, buildSeedMap, buildStandingsForSeed, LoadingPanel, SkeletonList, buildHistoricalPlayers } from "../theme";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/matchCalc";
 import { isScheduleDateAtOrPast } from "../lib/scheduleDate";
@@ -149,7 +149,7 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
     // modes — a compact 9pt uppercase glyph in K.t3.
     const vsCenter = (
       <span style={{
-        fontSize: 9, fontWeight: 700, color: K.t3,
+        fontSize: FS.micro, fontWeight: FW.bold, color: K.t3,
         letterSpacing: 1, whiteSpace: "nowrap",
       }}>VS</span>
     );
@@ -239,7 +239,7 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                 background: isActive ? K.card : "transparent",
                 border: isActive ? `1px solid ${K.bdr}` : "1px solid transparent",
                 color: isActive ? K.t1 : K.t3,
-                fontSize: 11, fontWeight: 700, letterSpacing: .4, textTransform: "uppercase",
+                fontSize: FS.xs, fontWeight: FW.bold, letterSpacing: .4, textTransform: "uppercase",
                 cursor: "pointer", whiteSpace: "nowrap",
                 overflow: "hidden", textOverflow: "ellipsis",
                 transition: "all .15s",
@@ -261,7 +261,7 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
             background: view === "bracket" ? K.card : "transparent",
             border: view === "bracket" ? `1px solid ${K.bdr}` : "1px solid transparent",
             color: view === "bracket" ? K.t1 : K.t3,
-            fontSize: 11, fontWeight: 700, letterSpacing: .4, textTransform: "uppercase",
+            fontSize: FS.xs, fontWeight: FW.bold, letterSpacing: .4, textTransform: "uppercase",
             cursor: "pointer", whiteSpace: "nowrap",
             overflow: "hidden", textOverflow: "ellipsis",
             transition: "all .15s",
@@ -296,10 +296,10 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                   width: 16, height: 16, borderRadius: 4, flexShrink: 0,
                   ...badgeStyle,
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 8, fontWeight: 800,
+                  fontSize: FS.micro, fontWeight: FW.heavy,
                 }}>{seed}</div>
                 <div style={{
-                  flex: 1, minWidth: 0, fontSize: 11, fontWeight: 700, color: K.t1,
+                  flex: 1, minWidth: 0, fontSize: FS.xs, fontWeight: FW.bold, color: K.t1,
                   overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                 }}>{name}</div>
               </div>
@@ -309,11 +309,11 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
           if (!mu && configMu) {
             return (
               <div style={{ background: K.card, borderRadius: 6, border: `1px solid ${K.bdr}`, overflow: "hidden" }}>
-                <div style={{ padding: "6px 7px", fontSize: 11, color: K.t3, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ padding: "6px 7px", fontSize: FS.xs, color: K.t3, fontWeight: FW.semibold, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {slotLabel(configMu, "s1")}
                 </div>
                 <div style={{ height: 1, background: K.bdr + "40" }} />
-                <div style={{ padding: "6px 7px", fontSize: 11, color: K.t3, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ padding: "6px 7px", fontSize: FS.xs, color: K.t3, fontWeight: FW.semibold, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {slotLabel(configMu, "s2")}
                 </div>
               </div>
@@ -457,11 +457,11 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                         display: "block", width: "100%",
                       }}
                     >
-                      <div style={{ fontSize: 10, fontWeight: 700, color: K.warn, letterSpacing: .8, textTransform: "uppercase" }}>
+                      <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: K.warn, letterSpacing: .8, textTransform: "uppercase" }}>
                         {round.name}
                       </div>
                       {round.weekNum && (
-                        <div style={{ fontSize: 9, color: K.t3, marginTop: 2 }}>
+                        <div style={{ fontSize: FS.micro, color: K.t3, marginTop: 2 }}>
                           Wk {round.weekNum}{round.date ? ` · ${round.date}` : ""}
                         </div>
                       )}
@@ -650,9 +650,9 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                     display: "flex", alignItems: "center", gap: 6,
                     overflow: "hidden",
                   }}>
-                    <span style={{ fontSize: 12, lineHeight: 1, flexShrink: 0 }}>{emoji}</span>
+                    <span style={{ fontSize: FS.sm, lineHeight: 1, flexShrink: 0 }}>{emoji}</span>
                     <span style={{
-                      fontSize: 9, fontWeight: 800, color: filled ? accent : K.t3,
+                      fontSize: FS.micro, fontWeight: FW.heavy, color: filled ? accent : K.t3,
                       letterSpacing: .8, flexShrink: 0, textTransform: "uppercase",
                     }}>{label}</span>
                     {filled ? (
@@ -661,18 +661,18 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                           width: 14, height: 14, borderRadius: 3, flexShrink: 0,
                           background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`,
                           display: "flex", alignItems: "center", justifyContent: "center",
-                          fontSize: 7, fontWeight: 800, color: K.logoBright,
+                          fontSize: FS.micro, fontWeight: FW.heavy, color: K.logoBright,
                           marginLeft: "auto",
                         }}>{getSeed(teamId)}</div>
                         <span style={{
-                          fontSize: 11, fontWeight: 700, color: K.t1,
+                          fontSize: FS.xs, fontWeight: FW.bold, color: K.t1,
                           overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                           minWidth: 0, flexShrink: 1,
                         }}>{gn(teamId)}</span>
                       </>
                     ) : (
                       <span style={{
-                        fontSize: 10, color: K.t3, fontWeight: 600,
+                        fontSize: FS.xs, color: K.t3, fontWeight: FW.semibold,
                         marginLeft: "auto", letterSpacing: .5,
                       }}>TBD</span>
                     )}
@@ -722,17 +722,17 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
               marginBottom: 8, paddingBottom: 6,
               borderBottom: `1px solid ${K.bdr}`,
             }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: K.warn, letterSpacing: 1, textTransform: "uppercase" }}>
+              <span style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.warn, letterSpacing: 1, textTransform: "uppercase" }}>
                 {round.name}
               </span>
               {round.weekNum && (
-                <span style={{ fontSize: 10, color: K.t3 }}>
+                <span style={{ fontSize: FS.xs, color: K.t3 }}>
                   Wk {round.weekNum}{round.date ? ` · ${round.date}` : ""}
                 </span>
               )}
               {round.isLocked && (
                 <span style={{ marginLeft: "auto" }}>
-                  <Pill color={K.grn} style={{ fontSize: 7 }}>FINAL</Pill>
+                  <Pill color={K.grn} style={{ fontSize: FS.micro }}>FINAL</Pill>
                 </span>
               )}
             </div>
@@ -749,7 +749,7 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
             {round.consolationMatchups.length > 0 && (
               <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px dashed ${K.bdr}` }}>
                 <div style={{
-                  fontSize: 10, fontWeight: 700, color: K.t3,
+                  fontSize: FS.xs, fontWeight: FW.bold, color: K.t3,
                   letterSpacing: 1.2, textTransform: "uppercase",
                   marginBottom: 8,
                 }}>
@@ -1097,7 +1097,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
     <div style={{ padding: "0 2px" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 10 }}>
-        <div style={{ fontSize: 11, color: K.t3 }}>
+        <div style={{ fontSize: FS.xs, color: K.t3 }}>
           Net stroke play · {totalRounds} round{totalRounds !== 1 ? "s" : ""} · All players
         </div>
         {isFinalRoundLive && (
@@ -1114,7 +1114,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
                 width: 6, height: 6, borderRadius: "50%", background: K.red,
                 animation: "mnqLivePulse 1.5s ease-in-out infinite",
               }} />
-              <span style={{ fontSize: 9, fontWeight: 800, color: K.red, letterSpacing: .8 }}>LIVE</span>
+              <span style={{ fontSize: FS.micro, fontWeight: FW.heavy, color: K.red, letterSpacing: .8 }}>LIVE</span>
             </div>
           </>
         )}
@@ -1123,7 +1123,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
       {/* Leaderboard */}
       <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
         {/* Column header */}
-        <div style={{ display: "flex", padding: "0 14px", fontSize: 9, fontWeight: 700, color: K.logoBright, textTransform: "uppercase", letterSpacing: .8 }}>
+        <div style={{ display: "flex", padding: "0 14px", fontSize: FS.micro, fontWeight: FW.bold, color: K.logoBright, textTransform: "uppercase", letterSpacing: .8 }}>
           <div style={{ width: 28 }} />
           <div style={{ flex: 1 }}>Player</div>
           <div style={{ width: 36, textAlign: "center" }}>HCP</div>
@@ -1155,7 +1155,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
                     width: 22, height: 22, borderRadius: 6,
                     background: i < 3 ? mc + "20" : K.logoBright + "20",
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 11, fontWeight: 800, color: mc,
+                    fontSize: FS.xs, fontWeight: FW.heavy, color: mc,
                     border: i < 3 ? `1.5px solid ${mc}40` : `1.5px solid ${K.logoBright}30`,
                   }}>{i + 1}</div>
                 )}
@@ -1163,7 +1163,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
 
               {/* Name */}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: K.t1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <div style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.t1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {p.displayName}
                 </div>
               </div>
@@ -1171,7 +1171,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
               {/* Handicap — shown as the player's starting handicap (what they had going
                   into Round 1). Per-round handicaps are reflected in each R# column's net
                   score, but showing a single stable number keeps the leaderboard readable. */}
-              <div style={{ width: 36, textAlign: "center", fontSize: 11, color: K.t3 }}>{p.startNineHcp}</div>
+              <div style={{ width: 36, textAlign: "center", fontSize: FS.xs, color: K.t3 }}>{p.startNineHcp}</div>
 
               {/* Round scores — one cell per CONFIGURED round, so the columns stay
                   aligned with the header even before later rounds are seeded. An
@@ -1185,8 +1185,8 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
                 const isWDRound = isWD && wk && wk.week === p.wdRound;
                 return (
                   <div key={wi} style={{
-                    width: 36, textAlign: "center", fontSize: 12,
-                    fontWeight: isWDRound ? 800 : 600,
+                    width: 36, textAlign: "center", fontSize: FS.sm,
+                    fontWeight: isWDRound ? FW.heavy : FW.semibold,
                     color: isWDRound ? K.red : round ? K.t1 : K.t3 + "40",
                   }}>
                     {isWDRound ? "WD" : round ? round.net : "–"}
@@ -1607,7 +1607,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                 padding: "7px 14px", borderRadius: 6, border: "none", cursor: "pointer",
                 background: view === t.id ? K.card : "transparent",
                 color: view === t.id ? K.t1 : K.t3,
-                fontSize: 11, fontWeight: 700, letterSpacing: .8,
+                fontSize: FS.xs, fontWeight: FW.bold, letterSpacing: .8,
                 boxShadow: view === t.id ? `0 1px 3px ${K.bdr}40` : "none",
                 transition: "all .15s",
               }}>{t.label}</button>
@@ -1651,7 +1651,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
           <div style={{
             display: "flex", alignItems: "center", width: "100%",
             padding: "4px 10px", marginBottom: -2,
-            fontSize: 9, fontWeight: 700, color: K.t3,
+            fontSize: FS.micro, fontWeight: FW.bold, color: K.t3,
             letterSpacing: 1, textTransform: "uppercase",
           }}>
             <div style={{ width: 36, flexShrink: 0, textAlign: "center" }}>Pos</div>
@@ -1688,7 +1688,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                       width: RANK_BADGE_SIZE, height: RANK_BADGE_SIZE, borderRadius: RANK_BADGE_RADIUS,
                       background: i < 3 ? mc + "20" : K.logoBright + "20",
                       display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: RANK_BADGE_FONT, fontWeight: 800, color: mc,
+                      fontSize: RANK_BADGE_FONT, fontWeight: FW.heavy, color: mc,
                       border: i < 3 ? `1.5px solid ${mc}40` : `1.5px solid ${K.logoBright}30`,
                     }}>{curPos}</div>
                   </div>
@@ -1697,8 +1697,8 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                       so team names line up cleanly across all rows. */}
                   <div style={{ width: 22, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-start" }}>
                     {posChange !== null && posChange !== 0 && (
-                      <div style={{ fontSize: 10, fontWeight: 700, color: posChange > 0 ? K.matchGrn : K.red, display: "flex", alignItems: "baseline", gap: 1, lineHeight: 1 }}>
-                        <span style={{ fontSize: 7, lineHeight: 1 }}>{posChange > 0 ? "▲" : "▼"}</span>
+                      <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: posChange > 0 ? K.matchGrn : K.red, display: "flex", alignItems: "baseline", gap: 1, lineHeight: 1 }}>
+                        <span style={{ fontSize: FS.micro, lineHeight: 1 }}>{posChange > 0 ? "▲" : "▼"}</span>
                         <span style={{ lineHeight: 1 }}>{Math.abs(posChange)}</span>
                       </div>
                     )}
@@ -1726,18 +1726,18 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                   </div>
                   <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 0 }}>
                     {isRecord ? (<>
-                      <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.w}</div>
-                      <div style={{ ...wltDash, fontSize: NAME_SIZE, fontWeight: 800 }}>-</div>
-                      <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.l}</div>
-                      <div style={{ ...wltDash, fontSize: NAME_SIZE, fontWeight: 800 }}>-</div>
-                      <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: 800, color: K.t1 }}>{s.t}</div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: K.hcpBlue, minWidth: 40, textAlign: "center", marginLeft: 6 }}>{s.hw}</div>
+                      <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: FW.heavy, color: K.t1 }}>{s.w}</div>
+                      <div style={{ ...wltDash, fontSize: NAME_SIZE, fontWeight: FW.heavy }}>-</div>
+                      <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: FW.heavy, color: K.t1 }}>{s.l}</div>
+                      <div style={{ ...wltDash, fontSize: NAME_SIZE, fontWeight: FW.heavy }}>-</div>
+                      <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: FW.heavy, color: K.t1 }}>{s.t}</div>
+                      <div style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.hcpBlue, minWidth: 40, textAlign: "center", marginLeft: 6 }}>{s.hw}</div>
                     </>) : (<>
-                      <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.w}</div>
-                      <div style={{ ...wltDash, fontSize: 11, color: K.t3 }}>-</div>
-                      <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.l}</div>
-                      <div style={{ ...wltDash, fontSize: 11, color: K.t3 }}>-</div>
-                      <div style={{ ...wltCol, fontSize: 11, fontWeight: 500, color: K.t3 }}>{s.t}</div>
+                      <div style={{ ...wltCol, fontSize: FS.xs, fontWeight: FW.medium, color: K.t3 }}>{s.w}</div>
+                      <div style={{ ...wltDash, fontSize: FS.xs, color: K.t3 }}>-</div>
+                      <div style={{ ...wltCol, fontSize: FS.xs, fontWeight: FW.medium, color: K.t3 }}>{s.l}</div>
+                      <div style={{ ...wltDash, fontSize: FS.xs, color: K.t3 }}>-</div>
+                      <div style={{ ...wltCol, fontSize: FS.xs, fontWeight: FW.medium, color: K.t3 }}>{s.t}</div>
                       <div style={{ fontSize: HERO_NUM_SIZE, fontWeight: HERO_NUM_WEIGHT, color: K.t1, fontFamily: "'League Spartan', sans-serif", minWidth: 30, textAlign: "center", marginLeft: 6 }}>{s.points}</div>
                     </>)}
                   </div>
@@ -1748,7 +1748,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
 
                 {isExp && (
                   <div ref={expandedRef} style={{ background: K.inp, border: `1px solid ${i === 0 ? K.act + '30' : K.bdr}`, borderTop: "none", borderRadius: `0 0 ${CARD_RADIUS}px ${CARD_RADIUS}px`, padding: "8px 10px" }}>
-                    <div style={{ display: "flex", padding: "5px 8px", fontSize: 9, color: K.logoBright, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8 }}>
+                    <div style={{ display: "flex", padding: "5px 8px", fontSize: FS.micro, color: K.logoBright, fontWeight: FW.bold, textTransform: "uppercase", letterSpacing: .8 }}>
                       <div style={{ width: 14, flexShrink: 0 }} />
                       <div style={{ width: 24, flexShrink: 0 }}>Wk</div>
                       <div style={{ width: 48, flexShrink: 0 }}>Date</div>
@@ -1757,15 +1757,15 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                       <div style={{ width: 28, flexShrink: 0, textAlign: "right" }}>HW</div>
                     </div>
                     {results.length === 0 ? (
-                      <div style={{ padding: "10px 8px", fontSize: 12, color: K.t3, fontStyle: "italic" }}>No matches played yet</div>
+                      <div style={{ padding: "10px 8px", fontSize: FS.sm, color: K.t3, fontStyle: "italic" }}>No matches played yet</div>
                     ) : results.map((r, ri) => {
                       if (r.rainedOut) {
                         return (
-                          <div key={ri} style={{ display: "flex", alignItems: "center", padding: "7px 8px", borderTop: `1px solid ${K.bdr}30`, fontSize: 12, opacity: 0.5 }}>
+                          <div key={ri} style={{ display: "flex", alignItems: "center", padding: "7px 8px", borderTop: `1px solid ${K.bdr}30`, fontSize: FS.sm, opacity: 0.5 }}>
                             <div style={{ width: 14, flexShrink: 0 }} />
-                            <div style={{ width: 24, flexShrink: 0, color: K.t3, fontSize: 11 }}>{r.week}</div>
-                            <div style={{ width: 48, flexShrink: 0, color: K.t3, fontSize: 11 }}>{r.date || "—"}</div>
-                            <div style={{ flex: 1, color: K.warn, fontWeight: 600 }}>RAIN OUT</div>
+                            <div style={{ width: 24, flexShrink: 0, color: K.t3, fontSize: FS.xs }}>{r.week}</div>
+                            <div style={{ width: 48, flexShrink: 0, color: K.t3, fontSize: FS.xs }}>{r.date || "—"}</div>
+                            <div style={{ flex: 1, color: K.warn, fontWeight: FW.semibold }}>RAIN OUT</div>
                             <div style={{ width: 58, flexShrink: 0 }} />
                             <div style={{ width: 28, flexShrink: 0 }} />
                           </div>
@@ -1775,12 +1775,12 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                       const isResExp = expandedResult === resKey;
                       return (
                         <div key={ri}>
-                          <button onClick={() => toggleResultExpand(s.teamId, r.week)} style={{ display: "flex", alignItems: "center", padding: "7px 8px", fontSize: 12, width: "100%", background: "transparent", border: "none", borderTop: `1px solid ${K.bdr}30`, cursor: "pointer", textAlign: "left" }}>
-                            <div style={{ width: 14, flexShrink: 0, color: K.t3, fontSize: 9 }}>{isResExp ? "▾" : "›"}</div>
-                            <div style={{ width: 24, flexShrink: 0, color: K.t3, fontSize: 11 }}>{r.week}</div>
-                            <div style={{ width: 48, flexShrink: 0, color: K.t3, fontSize: 11 }}>{r.date || "—"}</div>
-                            <div style={{ flex: 1, color: K.t2, fontWeight: 500 }}>{r.oppName}</div>
-                            <div style={{ width: 58, flexShrink: 0, display: "flex", justifyContent: "flex-end", alignItems: "center", fontWeight: 700, fontSize: 11, color: r.result === "W" ? K.matchGrn : r.result === "L" ? K.red : K.t2 }}>
+                          <button onClick={() => toggleResultExpand(s.teamId, r.week)} style={{ display: "flex", alignItems: "center", padding: "7px 8px", fontSize: FS.sm, width: "100%", background: "transparent", border: "none", borderTop: `1px solid ${K.bdr}30`, cursor: "pointer", textAlign: "left" }}>
+                            <div style={{ width: 14, flexShrink: 0, color: K.t3, fontSize: FS.micro }}>{isResExp ? "▾" : "›"}</div>
+                            <div style={{ width: 24, flexShrink: 0, color: K.t3, fontSize: FS.xs }}>{r.week}</div>
+                            <div style={{ width: 48, flexShrink: 0, color: K.t3, fontSize: FS.xs }}>{r.date || "—"}</div>
+                            <div style={{ flex: 1, color: K.t2, fontWeight: FW.medium }}>{r.oppName}</div>
+                            <div style={{ width: 58, flexShrink: 0, display: "flex", justifyContent: "flex-end", alignItems: "center", fontWeight: FW.bold, fontSize: FS.xs, color: r.result === "W" ? K.matchGrn : r.result === "L" ? K.red : K.t2 }}>
                               {r.result === "T" || r.rainedOut ? (
                                 <span>{r.resultDisplay}</span>
                               ) : (
@@ -1790,7 +1790,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                                 </>
                               )}
                             </div>
-                            <div style={{ width: 28, flexShrink: 0, textAlign: "right", color: K.hcpBlue, fontWeight: 700 }}>{r.holesWon}</div>
+                            <div style={{ width: 28, flexShrink: 0, textAlign: "right", color: K.hcpBlue, fontWeight: FW.bold }}>{r.holesWon}</div>
                           </button>
                           {isResExp && (
                             <div style={{ padding: "2px 4px 10px" }}>

@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { K, I, BackBtn, Card, EmptyState,
   getWeekSide,
   formatTeeTime as fmtTeeTimeUtil, LIST_GAP,
-  buildSeedMap } from "../theme";
+  buildSeedMap, FS, FW } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 import { computeMatchResult, resultLetterFor, readScoreEffective, readStrokesEffectiveExt, computePlayoffTiebreaker, isMatchPendingMakeup } from "../lib/matchCalc";
 import { parseScheduleDate } from "../lib/scheduleDate";
@@ -254,9 +254,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
       fontSize: 12, color: K.t2,
     }}>
-      <span style={{ fontSize: 10, fontWeight: 700, color: K.t3, letterSpacing: 1, textTransform: "uppercase" }}>Waiting</span>
+      <span style={{ fontSize: 10, fontWeight: FW.bold, color: K.t3, letterSpacing: 1, textTransform: "uppercase" }}>Waiting</span>
       <span style={{ color: K.bdr }}>·</span>
-      <span style={{ fontWeight: 600 }}>
+      <span style={{ fontWeight: FW.semibold }}>
         {attestedCount} of {matchCount} match{matchCount === 1 ? "" : "es"} attested
       </span>
     </div>
@@ -531,32 +531,20 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const allComplete = allP.length > 0 && allP.every(pid => { for (let h = 0; h < 9; h++) if (getS(pid, h) <= 0) return false; return true; });
   const holeComplete = allP.length > 0 && allP.every(pid => getS(pid, curHole) > 0);
 
-  // Detect players missing a score on a hole the match has ACTUALLY REACHED.
-  // A hole counts as "played" once any player in the match has a score on it
-  // — the exact same per-hole activity test the match-status row uses to
-  // decide ⚠️ vs blank (see holeHasActivity below). This deliberately does
-  // NOT flag every empty hole the moment a player starts: holes the group
-  // hasn't teed off yet are an expected blank, not a "you forgot a hole"
-  // error. We only surface gaps on holes that were reached but left blank.
-  // Returns the missing hole NUMBERS (1-indexed) per player so the alert
-  // can name them.
-  const holePlayed = Array.from({ length: 9 }, (_, h) =>
-    [...t1Players, ...t2Players].some(pid => pid && getS(pid, h) > 0));
+  // Detect players with a PARTIALLY filled card — at least one hole scored
+  // but not all 9. This is the actionable "you forgot a hole" state: the
+  // scorer has clearly been entering this player's scores, so a gap is a
+  // mistake worth flagging (vs a player who hasn't started at all, who's
+  // either making up or just hasn't teed off). Returns the missing hole
+  // NUMBERS (1-indexed for display) per player so the alert can name them.
   const missingScores = allP.map(pid => {
-    // Excluded, matching the match-status row's exclusions:
-    //   - absent players: getS substitutes the teammate/imputed score, so a
-    //     blank here isn't a real gap.
-    //   - making-up players: legitimately have no scores yet; their match
-    //     stays open until the commissioner enters the makeup, so a blank is
-    //     expected, not a forgotten hole.
-    if (isPlayerAbsent(pid) || isPlayerMakingUp(pid)) return null;
+    let started = false;
     const missing = [];
     for (let h = 0; h < 9; h++) {
-      // Display the actual course hole number: Front 9 → 1–9, Back 9 → 10–18,
-      // matching the hole-selector strip (i + 10) and the rest of the UI.
-      if (holePlayed[h] && getS(pid, h) <= 0) missing.push(side === 'front' ? h + 1 : h + 10);
+      if (getS(pid, h) > 0) started = true;
+      else missing.push(h + 1);
     }
-    if (missing.length === 0) return null;
+    if (!started || missing.length === 0) return null; // not started, or complete
     const pl = players.find(p => p.id === pid);
     const initials = pl ? pl.name.split(' ').map(n => n[0]).join('') : "?";
     return { pid, initials, holes: missing };
@@ -870,7 +858,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             <button key={opt.id} onClick={() => { if (!isActive) setView(opt.id); }} style={{
               padding: "6px 14px", borderRadius: 17,
               cursor: isActive ? "default" : "pointer",
-              fontSize: 12, fontWeight: 700, border: "none",
+              fontSize: 12, fontWeight: FW.bold, border: "none",
               background: isActive ? K.acc : "transparent",
               color: isActive ? K.bg : K.t3,
               transition: "all .2s",
@@ -1195,13 +1183,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 <div style={{ position: "relative", display: "inline-block" }}>
                   {arrowFlankL}
                   <div style={{
-                    fontSize: centerText.length > 5 ? 14 : centerText.length > 3 ? 15 : 17, fontWeight: 800,
+                    fontSize: centerText.length > 5 ? 14 : centerText.length > 3 ? 15 : 17, fontWeight: FW.heavy,
                     color: centerColor, letterSpacing: .3,
                     whiteSpace: "nowrap", textAlign: "center", lineHeight: 1.05,
                   }}>{centerText}</div>
                   {arrowFlankR}
                 </div>
-                <div style={{ fontSize: 11, color: K.t3, lineHeight: 1, marginTop: 2 }}>
+                <div style={{ fontSize: FS.xs, color: K.t3, lineHeight: 1, marginTop: 2 }}>
                   {isExp ? "▴" : "▾"}
                 </div>
               </>
@@ -1237,7 +1225,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   border: `1.5px solid ${K.t2}`,
                   color: filled ? "#fff" : K.t2,
                   display: "flex", alignItems: "center", justifyContent: "center",
-                  fontSize: 8, fontWeight: 800, letterSpacing: -.2,
+                  fontSize: 8, fontWeight: FW.heavy, letterSpacing: -.2,
                 }}>{pid ? initialsOf(pid) : ""}</div>
               );
 
@@ -1250,14 +1238,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   position: "relative",
                 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9 }}>Signed</span>
+                    <span style={{ fontWeight: FW.semibold, letterSpacing: .3, textTransform: "uppercase", fontSize: FS.micro }}>Signed</span>
                     <Badge pid={signer?.id} filled={!!signer} />
                   </div>
                   {progressLabel && (
                     <div style={{
                       position: "absolute", left: "50%", top: "50%",
                       transform: "translate(-50%, -50%)",
-                      fontSize: 9, fontWeight: 700, color: progressColor,
+                      fontSize: FS.micro, fontWeight: FW.bold, color: progressColor,
                       textTransform: "uppercase", letterSpacing: .8,
                       whiteSpace: "nowrap",
                       pointerEvents: "none",
@@ -1265,7 +1253,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   )}
                   {attesterList.length > 0 && (
                     <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      <span style={{ fontWeight: 600, letterSpacing: .3, textTransform: "uppercase", fontSize: 9, marginRight: 2 }}>Attested</span>
+                      <span style={{ fontWeight: FW.semibold, letterSpacing: .3, textTransform: "uppercase", fontSize: FS.micro, marginRight: 2 }}>Attested</span>
                       {attesterList.map((pid, i) => (
                         <Badge
                           key={`att-${pid || i}`}
@@ -1475,14 +1463,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     setTimeout(() => { setToast(null); setShowAllMatches(false); }, 2000);
                   },
                 });
-              }} style={{ width: "100%", padding: 12, borderRadius: 10, marginBottom: 8, cursor: "pointer", background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 13, fontWeight: 700 }}>
+              }} style={{ width: "100%", padding: 12, borderRadius: 10, marginBottom: 8, cursor: "pointer", background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: FS.sm, fontWeight: FW.bold }}>
                 Rain Out Week {week}
               </button>
             )}
             {/* Attest All Signed — force-attest pending match results for this week.
                 Only visible when the commish toggle is on (matches Rain Out gate). */}
             {commMode && !isWeekLocked && weekSignedUnattestedCount > 0 && (
-              <button onClick={handleAttestAllWeek} style={{ width: "100%", padding: 12, borderRadius: 10, marginBottom: 8, cursor: "pointer", background: K.hcpBlue + "15", border: `1.5px solid ${K.hcpBlue}50`, color: K.hcpBlue, fontSize: 13, fontWeight: 700 }}>
+              <button onClick={handleAttestAllWeek} style={{ width: "100%", padding: 12, borderRadius: 10, marginBottom: 8, cursor: "pointer", background: K.hcpBlue + "15", border: `1.5px solid ${K.hcpBlue}50`, color: K.hcpBlue, fontSize: FS.sm, fontWeight: FW.bold }}>
                 Attest All Signed ({weekSignedUnattestedCount})
               </button>
             )}
@@ -1546,18 +1534,18 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
           return (
             <Popup onClose={() => setShowCtpPopup(false)} maxWidth={360} padding={20}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>Finalize Week {week}</div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 14, textTransform: "uppercase", letterSpacing: 1 }}>Closest to the Pin</div>
+              <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>Finalize Week {week}</div>
+              <div style={{ fontSize: FS.base, fontWeight: FW.bold, color: K.t1, marginBottom: 14, textTransform: "uppercase", letterSpacing: 1 }}>Closest to the Pin</div>
 
               {par3Holes.map(holeNum => {
                 const sel = ctpSelections[holeNum] || {};
                 return (
                   <div key={holeNum} style={{ marginBottom: 14, background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 10, padding: "12px" }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: K.t1, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Hole {holeNum}</div>
+                    <div style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.t1, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Hole {holeNum}</div>
                     <select
                       value={sel.playerId || ""}
                       onChange={e => setCtpSelections(prev => ({ ...prev, [holeNum]: { ...prev[holeNum], playerId: e.target.value } }))}
-                      style={{ width: "100%", padding: "10px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13, marginBottom: 6 }}
+                      style={{ width: "100%", padding: "10px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.sm, marginBottom: 6 }}
                     >
                       <option value="">No winner</option>
                       {allPlayersSorted.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -1568,7 +1556,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                         placeholder="Distance (e.g. 4'6&quot;)"
                         value={sel.distance || ""}
                         onChange={e => setCtpSelections(prev => ({ ...prev, [holeNum]: { ...prev[holeNum], distance: e.target.value } }))}
-                        style={{ width: "100%", padding: "8px 10px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13 }}
+                        style={{ width: "100%", padding: "8px 10px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.sm }}
                       />
                     )}
                   </div>
@@ -1576,14 +1564,14 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               })}
 
               {par3Holes.length === 0 && (
-                <div style={{ fontSize: 13, color: K.t3, padding: "8px 0" }}>No par 3 holes this side</div>
+                <div style={{ fontSize: FS.sm, color: K.t3, padding: "8px 0" }}>No par 3 holes this side</div>
               )}
 
               <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-                <button onClick={handleFinalize} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                <button onClick={handleFinalize} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: FW.bold, cursor: "pointer" }}>
                   Finalize Week
                 </button>
-                <button onClick={() => setShowCtpPopup(false)} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
+                <button onClick={() => setShowCtpPopup(false)} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 14, fontWeight: FW.bold, cursor: "pointer" }}>
                   Cancel
                 </button>
               </div>
@@ -1592,7 +1580,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         })()}
 
         {toast && (
-          <div style={{ position: "fixed", top: 30, left: "50%", transform: "translateX(-50%)", background: K.act, color: K.bg, padding: "12px 48px", borderRadius: 12, fontSize: 13, fontWeight: 700, zIndex: 1000, whiteSpace: "nowrap", minWidth: 240, textAlign: "center", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
+          <div style={{ position: "fixed", top: 30, left: "50%", transform: "translateX(-50%)", background: K.act, color: K.bg, padding: "12px 48px", borderRadius: 12, fontSize: FS.sm, fontWeight: FW.bold, zIndex: 1000, whiteSpace: "nowrap", minWidth: 240, textAlign: "center", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }}>
             {toast}
           </div>
         )}
@@ -1683,7 +1671,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     // Header cell style helper — sortable headers are visually interactive
     const headerCellStyle = (isActive) => ({
       cursor: "pointer",
-      fontWeight: isActive ? 900 : 800,
+      // Active state is shown via opacity + the underline below. The original
+      // `isActive ? 900 : 800` never actually changed weight — League Spartan
+      // isn't loaded at 900, so it rendered as 800 in both states. Resolved to
+      // FW.heavy; add a real cue here if stronger active emphasis is wanted.
+      fontWeight: FW.heavy,
       opacity: isActive ? 1 : 0.8,
       textDecoration: "none",
       borderBottom: isActive ? `2px solid ${K.bg}` : "2px solid transparent",
@@ -1700,7 +1692,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         {FinalizeBanner}
 
         {/* Table header — Net and Gross are tappable to sort; tapping the active column flips direction */}
-        <div style={{ display: "flex", alignItems: "center", padding: "6px 10px", background: K.acc, borderRadius: "8px 8px 0 0", color: K.bg, fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: .5 }}>
+        <div style={{ display: "flex", alignItems: "center", padding: "6px 10px", background: K.acc, borderRadius: "8px 8px 0 0", color: K.bg, fontSize: 10, fontWeight: FW.heavy, textTransform: "uppercase", letterSpacing: .5 }}>
           <div style={{ width: 22, flexShrink: 0, textAlign: "center", opacity: .8 }}>#</div>
           <div style={{ flex: 1, minWidth: 0, paddingLeft: 8 }}>Player</div>
           <div style={{ width: 36, flexShrink: 0, textAlign: "center", opacity: .8 }}>Hcp</div>
@@ -1752,21 +1744,21 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   borderBottom: isLast ? "none" : `1px solid ${K.bdr}30`,
                   background: isMe ? K.acc + "12" : "transparent",
                 }}>
-                  <div style={{ width: 22, flexShrink: 0, textAlign: "center", fontSize: 12, fontWeight: 700, color: isLeader ? K.matchGrn : K.t3 }}>
+                  <div style={{ width: 22, flexShrink: 0, textAlign: "center", fontSize: 12, fontWeight: FW.bold, color: isLeader ? K.matchGrn : K.t3 }}>
                     {showRank ? (isTied ? "T" : "") + rank : "—"}
                   </div>
-                  <div style={{ flex: 1, minWidth: 0, paddingLeft: 8, fontSize: 13, fontWeight: isMe ? 700 : 600, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  <div style={{ flex: 1, minWidth: 0, paddingLeft: 8, fontSize: FS.sm, fontWeight: isMe ? FW.bold : FW.semibold, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {r.name}
-                    {r.isAbsent && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: 700, color: K.red, background: K.red + "15", padding: "1px 4px", borderRadius: 3 }}>ABS</span>}
+                    {r.isAbsent && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: FW.bold, color: K.red, background: K.red + "15", padding: "1px 4px", borderRadius: 3 }}>ABS</span>}
                   </div>
-                  <div style={{ width: 36, flexShrink: 0, textAlign: "center", fontSize: 11, fontWeight: 700, color: K.hcpBlue }}>{r.hcp}</div>
-                  <div style={{ width: 44, flexShrink: 0, textAlign: "center", fontSize: 13, fontWeight: 800, color: r.toPar === null ? K.t3 + "60" : r.toPar < 0 ? K.red : r.toPar === 0 ? K.t2 : K.t1 }}>
+                  <div style={{ width: 36, flexShrink: 0, textAlign: "center", fontSize: FS.xs, fontWeight: FW.bold, color: K.hcpBlue }}>{r.hcp}</div>
+                  <div style={{ width: 44, flexShrink: 0, textAlign: "center", fontSize: FS.sm, fontWeight: FW.heavy, color: r.toPar === null ? K.t3 + "60" : r.toPar < 0 ? K.red : r.toPar === 0 ? K.t2 : K.t1 }}>
                     {fmtToPar(r.toPar)}
                   </div>
-                  <div style={{ width: 48, flexShrink: 0, textAlign: "center", fontSize: netIsActive ? 14 : 13, fontWeight: netIsActive ? 800 : 600, color: r.net === null ? K.t3 + "60" : (netIsActive && isLeader) ? K.matchGrn : netIsActive ? K.t1 : K.t2 }}>
+                  <div style={{ width: 48, flexShrink: 0, textAlign: "center", fontSize: netIsActive ? 14 : 13, fontWeight: netIsActive ? FW.heavy : FW.semibold, color: r.net === null ? K.t3 + "60" : (netIsActive && isLeader) ? K.matchGrn : netIsActive ? K.t1 : K.t2 }}>
                     {r.net ?? "—"}
                   </div>
-                  <div style={{ width: 56, flexShrink: 0, textAlign: "center", fontSize: grossIsActive ? 14 : 12, fontWeight: grossIsActive ? 800 : 600, color: r.gross === null ? K.t3 + "60" : (grossIsActive && isLeader) ? K.matchGrn : grossIsActive ? K.t1 : K.t2 }}>
+                  <div style={{ width: 56, flexShrink: 0, textAlign: "center", fontSize: grossIsActive ? 14 : 12, fontWeight: grossIsActive ? FW.heavy : FW.semibold, color: r.gross === null ? K.t3 + "60" : (grossIsActive && isLeader) ? K.matchGrn : grossIsActive ? K.t1 : K.t2 }}>
                     {r.gross ?? "—"}
                   </div>
                 </div>
@@ -1790,7 +1782,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       <div>
         <EmptyState icon="flag" title="No match found" subtitle="You don't have a match scheduled this week." />
         <div style={{ textAlign: "center", marginTop: 16 }}>
-          <button onClick={() => setShowAllMatches(true)} style={{ padding: "10px 20px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 13, fontWeight: 600, cursor: "pointer" }}>See All Matches</button>
+          <button onClick={() => setShowAllMatches(true)} style={{ padding: "10px 20px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: FS.sm, fontWeight: FW.semibold, cursor: "pointer" }}>See All Matches</button>
         </div>
       </div>
     );
@@ -1976,7 +1968,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       {!activeMatch && FinalizeBanner}
       {/* Status banners */}
       {isWeekLocked && (
-        <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 4, fontSize: 13, color: K.warn, fontWeight: 700, textAlign: "center" }}>
+        <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 4, fontSize: FS.sm, color: K.warn, fontWeight: FW.bold, textAlign: "center" }}>
           Week {week} is locked — scores are read-only
         </div>
       )}
@@ -1984,7 +1976,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       <div style={{ display: "flex", gap: 3, marginBottom: 2 }}>
         {Array.from({ length: 9 }, (_, i) => {
           const cur = i === curHole; const done = allP.every(pid => getS(pid, i) > 0);
-          return <button key={i} onClick={() => { setCurHole(i); setEditing(i < currentHoleIdx); }} style={{ flex: 1, height: 32, borderRadius: done || cur ? 8 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: 15, fontWeight: 700, cursor: "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{side === 'front' ? i + 1 : i + 10}</button>;
+          return <button key={i} onClick={() => { setCurHole(i); setEditing(i < currentHoleIdx); }} style={{ flex: 1, height: 32, borderRadius: done || cur ? 8 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: FS.base, fontWeight: FW.bold, cursor: "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{side === 'front' ? i + 1 : i + 10}</button>;
         })}
       </div>
       )}
@@ -2028,7 +2020,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               const colBorderR = i < 8 ? { borderRight: `1px solid ${K.bdr}30` } : {};
               if (matchClinchHole !== null && i === matchClinchHole) {
                 const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-                return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, color, fontWeight: 800, lineHeight: "24px", ...colBorderR }}>{clinchScoreText}</div>;
+                return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, color, fontWeight: FW.heavy, lineHeight: "24px", ...colBorderR }}>{clinchScoreText}</div>;
               }
               if (matchClinchHole !== null && i > matchClinchHole) return <div key={i} style={{ flex: 1, height: 24, ...colBorderR }} />;
               // null status: distinguish "untouched future hole" from "this hole
@@ -2059,7 +2051,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 return <div key={i} style={{ flex: 1, height: 24, ...colBorderR }} />;
               }
               const color = st > 0 ? matchGrn : st < 0 ? K.red : K.t3;
-              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: 800, color, lineHeight: "24px", ...colBorderR }}>{st > 0 ? <><span style={{ fontSize: 14 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 14 }}>▼</span>{Math.abs(st)}</> : <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: .5 }}>TIED</span>}</div>;
+              return <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 14, fontWeight: FW.heavy, color, lineHeight: "24px", ...colBorderR }}>{st > 0 ? <><span style={{ fontSize: 14 }}>▲</span>{st}</> : st < 0 ? <><span style={{ fontSize: 14 }}>▼</span>{Math.abs(st)}</> : <span style={{ fontSize: 8, fontWeight: FW.bold, letterSpacing: .5 }}>TIED</span>}</div>;
             })}
           </div>
         </>);
@@ -2073,7 +2065,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           <div style={{ marginBottom: 6, position: "relative" }}>
             {isFullyAttested && (
               <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", pointerEvents: "none", zIndex: 2, overflow: "hidden" }}>
-                <div style={{ fontSize: "clamp(70px, 22vw, 120px)", fontWeight: 900, color: K.t3 + "20", letterSpacing: "clamp(12px, 4vw, 24px)", textTransform: "uppercase", userSelect: "none", whiteSpace: "nowrap", transform: "rotate(-18deg)" }}>FINAL</div>
+                <div style={{ fontSize: "clamp(70px, 22vw, 120px)", fontWeight: FW.heavy, color: K.t3 + "20", letterSpacing: "clamp(12px, 4vw, 24px)", textTransform: "uppercase", userSelect: "none", whiteSpace: "nowrap", transform: "rotate(-18deg)" }}>FINAL</div>
               </div>
             )}
 
@@ -2109,24 +2101,24 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       const done = attestedBy.includes(pid);
                       const lastName = pl ? pl.name.split(' ').pop() : "?";
                       return (
-                        <div key={pid} style={{ fontSize: 10, fontWeight: 600, padding: "3px 8px", borderRadius: 4, background: done ? K.grn + "18" : K.inp, border: `1px solid ${done ? K.grn + "40" : K.bdr}`, color: done ? K.grn : K.t3 }}>
+                        <div key={pid} style={{ fontSize: 10, fontWeight: FW.semibold, padding: "3px 8px", borderRadius: 4, background: done ? K.grn + "18" : K.inp, border: `1px solid ${done ? K.grn + "40" : K.bdr}`, color: done ? K.grn : K.t3 }}>
                           {done ? "✓ " : ""}{lastName}
                         </div>
                       );
                     })}
                   </div>
-                  <div style={{ textAlign: "center", fontSize: 11, color: K.warn, fontWeight: 600, marginBottom: 6 }}>
+                  <div style={{ textAlign: "center", fontSize: FS.xs, color: K.warn, fontWeight: FW.semibold, marginBottom: 6 }}>
                     {statusText}
                   </div>
 
                   {/* Attest button — for non-signers who haven't attested yet */}
                   {needsAttestation && (
                     <>
-                      <button onClick={attestMatch} style={{ width: "100%", padding: "12px", borderRadius: 10, background: K.hcpBlue, border: "none", color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>
+                      <button onClick={attestMatch} style={{ width: "100%", padding: "12px", borderRadius: 10, background: K.hcpBlue, border: "none", color: "#fff", fontSize: 14, fontWeight: FW.heavy, cursor: "pointer" }}>
                         Attest Scorecard
                       </button>
                       {signedByPlayerId && playerMap[signedByPlayerId] && (
-                        <div style={{ textAlign: "center", marginTop: 5, fontSize: 11, color: K.t3, fontWeight: 600 }}>
+                        <div style={{ textAlign: "center", marginTop: 5, fontSize: FS.xs, color: K.t3, fontWeight: FW.semibold }}>
                           Signed by {playerMap[signedByPlayerId].name}
                         </div>
                       )}
@@ -2135,7 +2127,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
                   {/* Already attested but waiting for others */}
                   {iHaveAttested && !isFullyAttested && (
-                    <div style={{ textAlign: "center", fontSize: 12, color: K.t3, fontWeight: 600, padding: "6px 0" }}>
+                    <div style={{ textAlign: "center", fontSize: 12, color: K.t3, fontWeight: FW.semibold, padding: "6px 0" }}>
                       You attested — waiting for others
                     </div>
                   )}
@@ -2151,7 +2143,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                           setConfirmModal(null);
                         },
                       });
-                    }} style={{ width: "100%", padding: "7px 0", borderRadius: 8, marginTop: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                    }} style={{ width: "100%", padding: "7px 0", borderRadius: 8, marginTop: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: FS.xs, fontWeight: FW.bold, cursor: "pointer" }}>
                       Unsign & Edit
                     </button>
                   )}
@@ -2171,18 +2163,18 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           popup instead of the read-only scorecard popup. Same button,
           two jobs — avoids a second redundant button below the cards. */}
       <button onClick={() => { if (allComplete) setShowFinalize(true); else setShowScorecard(true); }} style={ allComplete
-          ? { width: "100%", padding: 10, borderRadius: 10, marginBottom: 4, cursor: "pointer", background: K.hcpBlue + "15", border: `1.5px solid ${K.hcpBlue}50`, color: K.hcpBlue, fontSize: 15, fontWeight: 700, letterSpacing: .3 }
-          : { width: "100%", padding: "5px 0", borderRadius: 8, marginBottom: 4, cursor: "pointer", background: K.card, border: `1px solid ${K.bdr}60`, color: K.t2, fontSize: 11, fontWeight: 700, letterSpacing: .5 } }>
+          ? { width: "100%", padding: 10, borderRadius: 10, marginBottom: 4, cursor: "pointer", background: K.hcpBlue + "15", border: `1.5px solid ${K.hcpBlue}50`, color: K.hcpBlue, fontSize: FS.base, fontWeight: FW.bold, letterSpacing: .3 }
+          : { width: "100%", padding: "5px 0", borderRadius: 8, marginBottom: 4, cursor: "pointer", background: K.card, border: `1px solid ${K.bdr}60`, color: K.t2, fontSize: FS.xs, fontWeight: FW.bold, letterSpacing: .5 } }>
         {allComplete ? "Complete — Sign Scorecard" : "Full Scorecard"}
       </button>
       <div style={{ background: K.acc, borderRadius: 10, padding: "4px 8px", marginBottom: 4, display: "flex", alignItems: "center" }}>
-        <button onClick={() => { const prev = Math.max(0, curHole - 1); setCurHole(prev); setEditing(prev < currentHoleIdx); }} disabled={curHole === 0} style={{ width: 28, height: 36, borderRadius: 8, background: "none", border: "none", cursor: curHole === 0 ? "default" : "pointer", color: curHole === 0 ? K.bg + "40" : K.bg, fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
+        <button onClick={() => { const prev = Math.max(0, curHole - 1); setCurHole(prev); setEditing(prev < currentHoleIdx); }} disabled={curHole === 0} style={{ width: 28, height: 36, borderRadius: 8, background: "none", border: "none", cursor: curHole === 0 ? "default" : "pointer", color: curHole === 0 ? K.bg + "40" : K.bg, fontSize: FS.lg, fontWeight: FW.bold, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
         <div style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 8px" }}>
-          <div style={{ textAlign: "center", minWidth: 32 }}><div style={{ fontSize: 8, color: K.bg, fontWeight: 600, opacity: 0.7 }}>Par</div><div style={{ fontSize: 15, fontWeight: 800, color: K.bg }}>{par}</div></div>
-          <div style={{ textAlign: "center" }}><div style={{ fontSize: 8, color: K.bg, fontWeight: 600, textTransform: "uppercase", letterSpacing: 1, opacity: 0.7 }}>Hole</div><div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 26, fontWeight: 700, color: K.bg, lineHeight: 1 }}>{side === 'front' ? curHole + 1 : curHole + 10}</div></div>
-          <div style={{ textAlign: "center", minWidth: 32 }}><div style={{ fontSize: 8, color: K.bg, fontWeight: 600, opacity: 0.7 }}>HCP</div><div style={{ fontSize: 15, fontWeight: 800, color: K.bg }}>{hcp}</div></div>
+          <div style={{ textAlign: "center", minWidth: 32 }}><div style={{ fontSize: 8, color: K.bg, fontWeight: FW.semibold, opacity: 0.7 }}>Par</div><div style={{ fontSize: FS.base, fontWeight: FW.heavy, color: K.bg }}>{par}</div></div>
+          <div style={{ textAlign: "center" }}><div style={{ fontSize: 8, color: K.bg, fontWeight: FW.semibold, textTransform: "uppercase", letterSpacing: 1, opacity: 0.7 }}>Hole</div><div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: FS.xxl, fontWeight: FW.bold, color: K.bg, lineHeight: 1 }}>{side === 'front' ? curHole + 1 : curHole + 10}</div></div>
+          <div style={{ textAlign: "center", minWidth: 32 }}><div style={{ fontSize: 8, color: K.bg, fontWeight: FW.semibold, opacity: 0.7 }}>HCP</div><div style={{ fontSize: FS.base, fontWeight: FW.heavy, color: K.bg }}>{hcp}</div></div>
         </div>
-        <button onClick={() => { const next = Math.min(8, curHole + 1); setCurHole(next); setEditing(next < currentHoleIdx); }} disabled={curHole === 8} style={{ width: 28, height: 36, borderRadius: 8, background: "none", border: "none", cursor: curHole === 8 ? "default" : "pointer", color: curHole === 8 ? K.bg + "40" : K.bg, fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
+        <button onClick={() => { const next = Math.min(8, curHole + 1); setCurHole(next); setEditing(next < currentHoleIdx); }} disabled={curHole === 8} style={{ width: 28, height: 36, borderRadius: 8, background: "none", border: "none", cursor: curHole === 8 ? "default" : "pointer", color: curHole === 8 ? K.bg + "40" : K.bg, fontSize: FS.lg, fontWeight: FW.bold, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
       </div>
       </>)}
       {!isAlreadyFinalized && (<>
@@ -2215,7 +2207,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 });
               }}
               style={{
-                fontSize: 11, fontWeight: 600, color: K.t3, background: "none",
+                fontSize: FS.xs, fontWeight: FW.semibold, color: K.t3, background: "none",
                 border: `1px solid ${K.bdr}`, borderRadius: 6,
                 padding: "3px 8px", cursor: "pointer", flexShrink: 0,
               }}
@@ -2239,7 +2231,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 });
               }}
               style={{
-                fontSize: 11, fontWeight: 600, color: absentLocked ? K.t3 + "50" : K.t3, background: "none",
+                fontSize: FS.xs, fontWeight: FW.semibold, color: absentLocked ? K.t3 + "50" : K.t3, background: "none",
                 border: `1px solid ${absentLocked ? K.bdr + "30" : K.bdr}`, borderRadius: 6,
                 padding: "3px 8px", cursor: absentLocked ? "default" : "pointer",
                 opacity: absentLocked ? 0.4 : 1, flexShrink: 0,
@@ -2255,16 +2247,16 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.red}40`, padding: "12px 14px", marginBottom: 6, opacity: 0.6 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: K.t1 }}>{pl.name}</div>
-                  <span style={{ fontSize: 10, color: K.red, fontWeight: 700, background: K.red + "15", padding: "2px 6px", borderRadius: 4 }}>ABSENT</span>
+                  <div style={{ fontSize: 16, fontWeight: FW.bold, color: K.t1 }}>{pl.name}</div>
+                  <span style={{ fontSize: 10, color: K.red, fontWeight: FW.bold, background: K.red + "15", padding: "2px 6px", borderRadius: 4 }}>ABSENT</span>
                 </div>
                 {!isAlreadyFinalized && (
-                  <button onClick={() => { setConfirmModal({ title: `Mark ${pl.name} as present?`, message: `${pl.name} will play their own scores.`, onConfirm: () => { toggleAbsent(pid); setConfirmModal(null); } }); }} style={{ fontSize: 11, fontWeight: 700, color: K.hcpBlue, background: "none", border: `1px solid ${K.hcpBlue}40`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>
+                  <button onClick={() => { setConfirmModal({ title: `Mark ${pl.name} as present?`, message: `${pl.name} will play their own scores.`, onConfirm: () => { toggleAbsent(pid); setConfirmModal(null); } }); }} style={{ fontSize: FS.xs, fontWeight: FW.bold, color: K.hcpBlue, background: "none", border: `1px solid ${K.hcpBlue}40`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}>
                     Undo
                   </button>
                 )}
               </div>
-              <div style={{ fontSize: 11, color: K.t3, marginTop: 4 }}>
+              <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 4 }}>
                 {isBothAbsent(pid)
                   ? "Net bogey on each hole (does not count for handicap/stats)"
                   : "Teammate's scores used for match calculations"}
@@ -2284,8 +2276,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.act}40`, padding: "12px 14px", marginBottom: 6, opacity: 0.6 }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{pl.name}</div>
-                  <span style={{ fontSize: 10, color: K.act, fontWeight: 700, background: K.act + "15", padding: "2px 6px", borderRadius: 4, flexShrink: 0 }}>MAKING UP</span>
+                  <div style={{ fontSize: 16, fontWeight: FW.bold, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{pl.name}</div>
+                  <span style={{ fontSize: 10, color: K.act, fontWeight: FW.bold, background: K.act + "15", padding: "2px 6px", borderRadius: 4, flexShrink: 0 }}>MAKING UP</span>
                 </div>
                 {!isAlreadyFinalized && saveAttendance && (
                   <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
@@ -2300,7 +2292,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                           },
                         });
                       }}
-                      style={{ fontSize: 11, fontWeight: 700, color: K.hcpBlue, background: "none", border: `1px solid ${K.hcpBlue}40`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}
+                      style={{ fontSize: FS.xs, fontWeight: FW.bold, color: K.hcpBlue, background: "none", border: `1px solid ${K.hcpBlue}40`, borderRadius: 6, padding: "4px 10px", cursor: "pointer" }}
                     >
                       Undo
                     </button>
@@ -2313,7 +2305,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       onClick={async () => {
                         await saveAttendance(week, pid, null);
                       }}
-                      style={{ fontSize: 11, fontWeight: 800, color: K.bg, background: K.grn, border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", letterSpacing: .5 }}
+                      style={{ fontSize: FS.xs, fontWeight: FW.heavy, color: K.bg, background: K.grn, border: "none", borderRadius: 6, padding: "4px 10px", cursor: "pointer", letterSpacing: .5 }}
                     >
                       PLAY
                     </button>
@@ -2327,7 +2319,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         </div>;
       })}
       {editing && (
-        <button onClick={() => { setCurHole(currentHoleIdx); setEditing(false); }} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.warn, border: "none", color: K.bg, fontSize: 13, fontWeight: 800 }}>
+        <button onClick={() => { setCurHole(currentHoleIdx); setEditing(false); }} style={{ width: "100%", padding: 10, borderRadius: 10, marginTop: 8, cursor: "pointer", background: K.warn, border: "none", color: K.bg, fontSize: FS.sm, fontWeight: FW.heavy }}>
           Back to Hole {side === 'front' ? currentHoleIdx + 1 : currentHoleIdx + 10} →
         </button>
       )}
@@ -2369,7 +2361,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <sc.TeamNetRow pids={scOppPids} isTeam1Side={false} />
             </div>
 
-            <button onClick={() => setShowScorecard(false)} style={{ display: "block", width: "calc(100% - 20px)", margin: "10px auto 0", padding: "9px", background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.t2, fontSize: 13, fontWeight: 600, cursor: "pointer", letterSpacing: .4 }}>
+            <button onClick={() => setShowScorecard(false)} style={{ display: "block", width: "calc(100% - 20px)", margin: "10px auto 0", padding: "9px", background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.t2, fontSize: FS.sm, fontWeight: FW.semibold, cursor: "pointer", letterSpacing: .4 }}>
               Close
             </button>
           </Popup>
@@ -2387,10 +2379,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           players; players who haven't started (making up / not teed off) are
           an expected state, not an error. */}
       {!allComplete && missingScores.length > 0 && !showFinalize && !isAlreadyFinalized && (
-        <div style={{ width: "100%", padding: "10px 12px", borderRadius: 10, marginTop: 8, background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 13, fontWeight: 700, boxSizing: "border-box" }}>
+        <div style={{ width: "100%", padding: "10px 12px", borderRadius: 10, marginTop: 8, background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: FS.sm, fontWeight: FW.bold, boxSizing: "border-box" }}>
           <div style={{ marginBottom: missingScores.length ? 4 : 0 }}>⚠️ Missing scores — can't sign yet</div>
           {missingScores.map(m => (
-            <div key={m.pid} style={{ fontSize: 12, fontWeight: 600, opacity: .9 }}>
+            <div key={m.pid} style={{ fontSize: 12, fontWeight: FW.semibold, opacity: .9 }}>
               {m.initials}: hole{m.holes.length > 1 ? "s" : ""} {m.holes.join(", ")}
             </div>
           ))}
@@ -2434,10 +2426,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
                     const pl = playerMap[effectivePid];
                     const last = pl?.name?.split(' ').slice(1).join(' ') || pl?.name || "?";
-                    return <div key={pid} style={{ fontSize: 20, fontWeight: 800, color: sc.matchResult === "WIN" ? K.matchGrn : K.t1, lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{last}</div>;
+                    return <div key={pid} style={{ fontSize: FS.xl, fontWeight: FW.heavy, color: sc.matchResult === "WIN" ? K.matchGrn : K.t1, lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{last}</div>;
                   })}
                 </div>
-                {sc.matchResult === "WIN" && <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>}
+                {sc.matchResult === "WIN" && <div style={{ color: K.matchGrn, fontSize: FS.base, fontWeight: FW.heavy, flexShrink: 0, lineHeight: 1, transform: "rotate(-90deg)" }}>▲</div>}
                 {/* Center result block.
                     For a tiebreaker-resolved match, the clinchText is "TIE (HCP losses)"
                     or similar. We split it: the word "TIE" on top in big type, and the
@@ -2450,24 +2442,24 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     if (tb.isTiebreaker) {
                       return (
                         <>
-                          <div style={{ fontSize: 24, fontWeight: 800, color: K.matchGrn, lineHeight: 1 }}>TIE</div>
-                          <div style={{ fontSize: 9, fontWeight: 700, color: K.t3, letterSpacing: .5, textTransform: "uppercase", marginTop: 3, lineHeight: 1.15, whiteSpace: "normal", wordBreak: "break-word" }}>{tb.label}</div>
+                          <div style={{ fontSize: 24, fontWeight: FW.heavy, color: K.matchGrn, lineHeight: 1 }}>TIE</div>
+                          <div style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.t3, letterSpacing: .5, textTransform: "uppercase", marginTop: 3, lineHeight: 1.15, whiteSpace: "normal", wordBreak: "break-word" }}>{tb.label}</div>
                         </>
                       );
                     }
                     // Regular result (e.g. "3&2", "2UP", or plain "TIED" for non-playoff)
                     return (
-                      <div style={{ fontSize: 26, fontWeight: 800, color: sc.matchResult === "TIE" ? K.t2 : K.matchGrn, lineHeight: 1, whiteSpace: "nowrap" }}>{raw}</div>
+                      <div style={{ fontSize: FS.xxl, fontWeight: FW.heavy, color: sc.matchResult === "TIE" ? K.t2 : K.matchGrn, lineHeight: 1, whiteSpace: "nowrap" }}>{raw}</div>
                     );
                   })()}
                 </div>
-                {sc.matchResult === "LOSS" && <div style={{ color: K.matchGrn, fontSize: 15, fontWeight: 800, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>}
+                {sc.matchResult === "LOSS" && <div style={{ color: K.matchGrn, fontSize: FS.base, fontWeight: FW.heavy, flexShrink: 0, lineHeight: 1, transform: "rotate(90deg)" }}>▲</div>}
                 <div style={{ flex: 1, textAlign: "left", minWidth: 0 }}>
                   {sc.oppPidsSorted.map(pid => {
                     const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
                     const pl = playerMap[effectivePid];
                     const last = pl?.name?.split(' ').slice(1).join(' ') || pl?.name || "?";
-                    return <div key={pid} style={{ fontSize: 20, fontWeight: 800, color: sc.matchResult === "LOSS" ? K.matchGrn : K.t1, lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{last}</div>;
+                    return <div key={pid} style={{ fontSize: FS.xl, fontWeight: FW.heavy, color: sc.matchResult === "LOSS" ? K.matchGrn : K.t1, lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{last}</div>;
                   })}
                 </div>
               </div>
@@ -2497,7 +2489,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               <div style={{ marginTop: 16 }}>
                 {!isAlreadyFinalized && (
                   <>
-                    <button disabled={justSigned} onClick={async () => { setJustSigned(true); await finalizeMatch(); }} style={{ width: "100%", padding: "14px", borderRadius: 12, background: justSigned ? K.t3 : K.hcpBlue, border: "none", color: "#fff", fontSize: 15, fontWeight: 800, cursor: justSigned ? "default" : "pointer", opacity: justSigned ? 0.7 : 1 }}>
+                    <button disabled={justSigned} onClick={async () => { setJustSigned(true); await finalizeMatch(); }} style={{ width: "100%", padding: "14px", borderRadius: 12, background: justSigned ? K.t3 : K.hcpBlue, border: "none", color: "#fff", fontSize: FS.base, fontWeight: FW.heavy, cursor: justSigned ? "default" : "pointer", opacity: justSigned ? 0.7 : 1 }}>
                       {justSigned ? "Signing..." : "Sign Scorecard"}
                     </button>
                     {!justSigned && (
@@ -2510,18 +2502,18 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 {isAlreadyFinalized && (
                   <>
                     {isComm && !showEditConfirm && (
-                      <button onClick={() => setShowEditConfirm(true)} style={{ width: "100%", padding: "12px", borderRadius: 12, background: K.warn, border: "none", color: K.bg, fontSize: 14, fontWeight: 800, cursor: "pointer", marginBottom: 6 }}>
+                      <button onClick={() => setShowEditConfirm(true)} style={{ width: "100%", padding: "12px", borderRadius: 12, background: K.warn, border: "none", color: K.bg, fontSize: 14, fontWeight: FW.heavy, cursor: "pointer", marginBottom: 6 }}>
                         Edit Scores
                       </button>
                     )}
                     {isComm && showEditConfirm && (
                       <div style={{ background: K.warn + "15", border: `1px solid ${K.warn}40`, borderRadius: 10, padding: 12, marginBottom: 6 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: K.t1, marginBottom: 10 }}>This will allow score edits. Continue?</div>
+                        <div style={{ fontSize: FS.sm, fontWeight: FW.semibold, color: K.t1, marginBottom: 10 }}>This will allow score edits. Continue?</div>
                         <div style={{ display: "flex", gap: 8 }}>
-                          <button onClick={() => { setShowEditConfirm(false); setShowFinalize(false); }} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.warn, border: "none", color: K.bg, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                          <button onClick={() => { setShowEditConfirm(false); setShowFinalize(false); }} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.warn, border: "none", color: K.bg, fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer" }}>
                             Yes
                           </button>
-                          <button onClick={() => setShowEditConfirm(false)} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                          <button onClick={() => setShowEditConfirm(false)} style={{ flex: 1, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer" }}>
                             No
                           </button>
                         </div>
@@ -2546,7 +2538,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       {/* Toast */}
       {toast && (<>
         <style>{`@keyframes toastDown { 0% { transform: translateX(-50%) translateY(-20px); opacity: 0; } 100% { transform: translateX(-50%) translateY(0); opacity: 1; } }`}</style>
-        <div style={{ position: "fixed", top: 30, left: "50%", transform: "translateX(-50%)", background: K.act, color: K.bg, padding: "12px 48px", borderRadius: 12, fontSize: 13, fontWeight: 700, zIndex: 1000, whiteSpace: "nowrap", minWidth: 240, textAlign: "center", boxShadow: "0 8px 32px rgba(0,0,0,0.4)", animation: "toastDown 0.3s ease" }}>
+        <div style={{ position: "fixed", top: 30, left: "50%", transform: "translateX(-50%)", background: K.act, color: K.bg, padding: "12px 48px", borderRadius: 12, fontSize: FS.sm, fontWeight: FW.bold, zIndex: 1000, whiteSpace: "nowrap", minWidth: 240, textAlign: "center", boxShadow: "0 8px 32px rgba(0,0,0,0.4)", animation: "toastDown 0.3s ease" }}>
           {toast}
         </div>
       </>)}
@@ -2607,8 +2599,8 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
           color matches stroke dots (K.hcpBlue) so the whole stroke-
           allocation context reads as a single unit. */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2, minWidth: 0 }}>
-        <span style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{displayName}</span>
-        <span style={{ fontSize: 11, fontWeight: 700, flexShrink: 0 }}>
+        <span style={{ fontSize: 14, fontWeight: FW.bold, lineHeight: 1.15, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", minWidth: 0 }}>{displayName}</span>
+        <span style={{ fontSize: FS.xs, fontWeight: FW.bold, flexShrink: 0 }}>
           (<span style={{ color: K.hcpBlue }}>{nh}</span>)
         </span>
         {strokes > 0 && <span style={{ color: K.hcpBlue, fontSize: 12, letterSpacing: 1, flexShrink: 0, lineHeight: 1 }}>{"●".repeat(strokes)}</span>}
@@ -2621,7 +2613,7 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
           jump on first score entry. */}
       <div style={{ fontSize: 10, color: K.t3, marginBottom: 3, lineHeight: 1.1, minHeight: 10 }}>
         {run.thru > 0 && (
-          <>Net <strong style={{ color: run.netVsPar < 0 ? K.red : run.netVsPar === 0 ? K.t3 : K.t1, fontWeight: 700 }}>{run.netVsPar > 0 ? "+" + run.netVsPar : run.netVsPar === 0 ? "E" : run.netVsPar}</strong> thru {run.thru}</>
+          <>Net <strong style={{ color: run.netVsPar < 0 ? K.red : run.netVsPar === 0 ? K.t3 : K.t1, fontWeight: FW.bold }}>{run.netVsPar > 0 ? "+" + run.netVsPar : run.netVsPar === 0 ? "E" : run.netVsPar}</strong> thru {run.thru}</>
         )}
       </div>
       {/* Score-button row — 5 par-relative buttons at 44px tall (Apple HIG
@@ -2635,7 +2627,7 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
         {/* − nudge button moved to the FAR LEFT so the par button sits
             dead center of the 7-button row. Symmetric with the + on the
             far right. */}
-        <button onClick={() => handleScore(Math.max(1, (score || par) - 1))} style={{ width: 30, height: 44, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>−</button>
+        <button onClick={() => handleScore(Math.max(1, (score || par) - 1))} style={{ width: 30, height: 44, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: FW.bold, cursor: "pointer", flexShrink: 0 }}>−</button>
         {btns.map((btn, idx) => {
           const isCur = btn === score; const sd = btn - par;
           const boxSize = 32;
@@ -2651,7 +2643,7 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
           const showParAnchor = isPar && !isCur;
           return (
             <div key={btn} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 4, minWidth: 0 }}>
-              <button onClick={() => handleScore(isCur ? 0 : btn)} style={{ width: "100%", height: 44, borderRadius: 8, cursor: "pointer", fontSize: 15, fontWeight: 800, border: "none", background: isCur ? K.acc : K.inp, color: isCur ? K.bg : K.t2, position: "relative", transition: "all .15s", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <button onClick={() => handleScore(isCur ? 0 : btn)} style={{ width: "100%", height: 44, borderRadius: 8, cursor: "pointer", fontSize: FS.base, fontWeight: FW.heavy, border: "none", background: isCur ? K.acc : K.inp, color: isCur ? K.bg : K.t2, position: "relative", transition: "all .15s", display: "flex", alignItems: "center", justifyContent: "center" }}>
                 {/* SELECTED-STATE rings: solid red circles for under-par
                     (single for birdie, double for eagle), solid bg-color
                     squares for over-par (single for bogey, double for
@@ -2675,13 +2667,13 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
                   button. Both cues fire from the same `showParAnchor`
                   flag so the anchor disappears together when par is
                   selected. */}
-              <div style={{ fontSize: 9, color: showParAnchor ? K.t2 : K.t3, fontWeight: showParAnchor ? 700 : 600, letterSpacing: 0.4, lineHeight: 1, height: 12 }}>
+              <div style={{ fontSize: FS.micro, color: showParAnchor ? K.t2 : K.t3, fontWeight: showParAnchor ? FW.bold : FW.semibold, letterSpacing: 0.4, lineHeight: 1, height: 12 }}>
                 {showLabels ? SCORE_LABELS[idx] : ""}
               </div>
             </div>
           );
         })}
-        <button onClick={() => handleScore((score || par) + 1)} style={{ width: 30, height: 44, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>+</button>
+        <button onClick={() => handleScore((score || par) + 1)} style={{ width: 30, height: 44, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: FW.bold, cursor: "pointer", flexShrink: 0 }}>+</button>
       </div>
     </Card>
   );
