@@ -701,6 +701,11 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     // still used to build the joined fallback for any code path that
     // needs the inline form.
     let opp1Name = null, opp2Name = null;
+    // Opponent seed badge for the assigned-opponent state of seeded
+    // regular-season and playoff weeks (the pre-assignment preview branch
+    // below renders its own #seed). Null on round-robin weeks so the badge
+    // only appears where a seed is meaningful.
+    let oppSeed = null;
     if (myMatch) {
       const oppId = myMatch.team1 === myTeam.id ? myMatch.team2 : myMatch.team1;
       const oppTeam = teams.find(t => t.id === oppId);
@@ -710,6 +715,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         const p2 = players.find(p => p.id === oppTeam.player2);
         opp1Name = p1 ? p1.name.split(' ').pop() : null;
         opp2Name = p2 ? p2.name.split(' ').pop() : null;
+        if (wk.seeded === true || isPlayoff) oppSeed = seedMap[oppId] || null;
       }
     }
 
@@ -750,13 +756,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     // weeks render as before with no Mark Out affordance at all.
     const myAttn = !isComplete && !isRainedOut ? getAttendance(wk.week, myPlayerId) : null;
     const teammateAttn = !isComplete && !isRainedOut && teammatePid ? getAttendance(wk.week, teammatePid) : null;
-    // Markable on ANY upcoming week, including seeded/playoff weeks whose
-    // matchups aren't set yet. A player who already knows they'll miss a
-    // future playoff/seeded week should be able to flag it in advance; the
-    // attendance doc is keyed by (week, pid), not by a generated match, so it
-    // works fine before matchups exist. (Previously gated to round-robin weeks
-    // via !isSeeded.)
-    const markable = !isComplete && !isRainedOut && myPlayerId;
+    const markable = !isComplete && !isRainedOut && !isSeeded && myPlayerId;
     const showMarkOut = markable && !myAttn;
     // Pending-makeup signal for the result column. Resolved against the
     // 4 pids in myMatch (not just me/teammate) so opponent-side makeups
@@ -884,6 +884,12 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
               return "Seeded — TBD";
             })() : (
               <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0, lineHeight: 1.15 }}>
+                {/* Opponent seed badge — shown on seeded/playoff weeks once
+                    the matchup is assigned (the TBD preview branch above
+                    renders its own #seed). */}
+                {oppSeed != null && (
+                  <span style={{ fontSize: 9, fontWeight: 800, color: K.logoBright, background: K.logoBright + "18", border: `1px solid ${K.logoBright}25`, borderRadius: 3, padding: "0 3px", lineHeight: "16px", alignSelf: "flex-start", marginBottom: 1 }}>#{oppSeed} SEED</span>
+                )}
                 {/* Stacked opponent names — two lines for the two-person
                     team. Falls back to oppName (joined) if either player
                     record is missing, then to "TBD" if neither resolved. */}
@@ -934,12 +940,11 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
             {myAttn ? (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
                 <span style={{
-                  fontSize: 9, fontWeight: 700, letterSpacing: .8,
+                  fontSize: 9, fontWeight: 800, letterSpacing: .8,
                   textTransform: "uppercase",
                   padding: "3px 7px", borderRadius: 5,
-                  background: (myAttn.status === "makeup" ? K.act : K.red) + "22",
-                  color: myAttn.status === "makeup" ? K.act : K.red,
-                  border: `1px solid ${(myAttn.status === "makeup" ? K.act : K.red) + "55"}`,
+                  background: myAttn.status === "makeup" ? K.act : K.red,
+                  color: K.bg,
                   whiteSpace: "nowrap",
                 }}>
                   {myAttn.status === "makeup" ? "Making Up" : "Absent"}
@@ -1432,8 +1437,8 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 onClick={() => markOut(markingWeek.wk.week, markingWeek.status)}
                 style={{
                   flex: 1, padding: 11, borderRadius: 8,
-                  background: accent + "22", border: `1px solid ${accent + "66"}`,
-                  color: accent, fontSize: 13, fontWeight: 700, cursor: "pointer",
+                  background: accent, border: "none",
+                  color: K.bg, fontSize: 13, fontWeight: 800, cursor: "pointer",
                   letterSpacing: .5,
                 }}
               >
