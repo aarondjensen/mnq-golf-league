@@ -3,7 +3,7 @@ import { LEAGUE_ID, db, callFunction } from "../firebase";
 import { K, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   getWeekSide, formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, lastNamesOnly,
   buildStandingsForSeed as sharedBuildStandingsForSeed, buildSeedMap,
-  pairNonBracketTeams, collectPriorMatchups } from "../theme";
+  pairNonBracketTeams, collectPriorMatchups, FS, FW } from "../theme";
 import { ConfirmModal } from "../components/Popup";
 import NotificationsAdmin from "./NotificationsAdmin";
 
@@ -201,13 +201,13 @@ export default function AdminView(props) {
             }}>
               <div style={{ display: "flex", color: K.matchGrn }}>{I.calendar(18, K.matchGrn)}</div>
               <div style={{ flex: 1 }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: K.matchGrn, letterSpacing: 1, textTransform: "uppercase" }}>Current Week</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: K.t1 }}>
+                <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: K.matchGrn, letterSpacing: 1, textTransform: "uppercase" }}>Current Week</div>
+                <div style={{ fontSize: FS.base, fontWeight: FW.bold, color: K.t1 }}>
                   Week {currentWeek.week}{currentWeek.date ? ` · ${currentWeek.date}` : ""}
-                  {currentWeek.side && <span style={{ marginLeft: 8, fontSize: 11, color: K.t3, fontWeight: 500 }}>{currentWeek.side === "front" ? "Front 9" : "Back 9"}</span>}
+                  {currentWeek.side && <span style={{ marginLeft: 8, fontSize: FS.xs, color: K.t3, fontWeight: FW.medium }}>{currentWeek.side === "front" ? "Front 9" : "Back 9"}</span>}
                 </div>
               </div>
-              <div style={{ color: K.t3, fontSize: 16 }}>›</div>
+              <div style={{ color: K.t3, fontSize: FS.lg }}>›</div>
             </button>
           )}
           {issues.map((issue, i) => (
@@ -220,8 +220,8 @@ export default function AdminView(props) {
                 width: 8, height: 8, borderRadius: "50%",
                 background: levelColor(issue.level), flexShrink: 0,
               }} />
-              <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: K.t1 }}>{issue.text}</div>
-              <div style={{ color: K.t3, fontSize: 13 }}>›</div>
+              <div style={{ flex: 1, fontSize: FS.sm, fontWeight: FW.semibold, color: K.t1 }}>{issue.text}</div>
+              <div style={{ color: K.t3, fontSize: FS.sm }}>›</div>
             </button>
           ))}
         </div>
@@ -241,18 +241,18 @@ export default function AdminView(props) {
                 }}>
                   <div style={{ display: "flex", color: K.t3 }}>{I[s.icon](20, K.t3)}</div>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 14, fontWeight: 600, color: K.t1 }}>{s.label}</div>
-                    <div style={{ fontSize: 11, color: K.t3 }}>{s.desc}</div>
+                    <div style={{ fontSize: FS.base, fontWeight: FW.semibold, color: K.t1 }}>{s.label}</div>
+                    <div style={{ fontSize: FS.xs, color: K.t3 }}>{s.desc}</div>
                   </div>
                   {s.badge && (
                     <div style={{
                       minWidth: 22, height: 22, borderRadius: 11, padding: "0 7px",
                       background: s.badge.color + "22", border: `1px solid ${s.badge.color}60`,
-                      color: s.badge.color, fontSize: 11, fontWeight: 800,
+                      color: s.badge.color, fontSize: FS.xs, fontWeight: FW.heavy,
                       display: "flex", alignItems: "center", justifyContent: "center",
                     }}>{s.badge.count}</div>
                   )}
-                  <div style={{ color: K.t3, fontSize: 16 }}>›</div>
+                  <div style={{ color: K.t3, fontSize: FS.lg }}>›</div>
                 </button>
               ))}
             </div>
@@ -328,7 +328,7 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
   const inactivePlayers = players.filter(p => p.status === "inactive").sort((a, b) => a.name.localeCompare(b.name));
 
   const rowStyle = { display: "flex", alignItems: "center", background: K.card, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: "8px 10px", gap: 8 };
-  const inputStyle = { padding: "8px 10px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 16, width: "100%" };
+  const inputStyle = { padding: "8px 10px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.lg, width: "100%" };
 
   // Per-player missing-data flags. Used to render the red dot on the row and to decide
   // whether the row needs visual attention. Keep this in sync with the dashboard's
@@ -349,14 +349,14 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
       <Card style={{ padding: "10px 12px", marginBottom: 8 }}>
         {/* Row 1: Name input + close */}
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-          <input ref={nameRef} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Player name" style={{ ...inputStyle, padding: "7px 10px", fontWeight: 600 }} />
-          <button onClick={() => { setEd(null); setOrig(null); }} style={{ background: "none", border: "none", color: K.t3, fontSize: 15, cursor: "pointer", padding: "2px 4px", lineHeight: 1, flexShrink: 0 }}>✕</button>
+          <input ref={nameRef} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Player name" style={{ ...inputStyle, padding: "7px 10px", fontWeight: FW.semibold }} />
+          <button onClick={() => { setEd(null); setOrig(null); }} style={{ background: "none", border: "none", color: K.t3, fontSize: FS.base, cursor: "pointer", padding: "2px 4px", lineHeight: 1, flexShrink: 0 }}>✕</button>
         </div>
         {/* Row 1b: Handicap index manual override. Normally recalculated automatically when
             a week is locked; this input lets the commissioner set a starting HCP for a mid-
             season joiner or correct a miscalculated value. */}
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-          <span style={{ fontSize: 11, color: K.t3, fontWeight: 600, letterSpacing: .8, textTransform: "uppercase", flexShrink: 0, width: 60 }}>HCP Index</span>
+          <span style={{ fontSize: FS.xs, color: K.t3, fontWeight: FW.semibold, letterSpacing: .8, textTransform: "uppercase", flexShrink: 0, width: 60 }}>HCP Index</span>
           <input
             type="number"
             inputMode="decimal"
@@ -365,7 +365,7 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
             onChange={e => setF({ ...f, handicapIndex: e.target.value })}
             onFocus={e => setTimeout(() => e.target.select(), 10)}
             placeholder="0"
-            style={{ ...inputStyle, padding: "7px 10px", fontWeight: 700, textAlign: "center", flex: 1 }}
+            style={{ ...inputStyle, padding: "7px 10px", fontWeight: FW.bold, textAlign: "center", flex: 1 }}
           />
         </div>
         {/* Row 1c: Starting HCP. The handicap the player had when they FIRST played
@@ -376,7 +376,7 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
             stays sticky across the season. Leave blank if you don't need historical
             recomputation accuracy (today's HCP Index will be used as last resort). */}
         <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-          <span style={{ fontSize: 11, color: K.t3, fontWeight: 600, letterSpacing: .8, textTransform: "uppercase", flexShrink: 0, width: 60 }}>Start HCP</span>
+          <span style={{ fontSize: FS.xs, color: K.t3, fontWeight: FW.semibold, letterSpacing: .8, textTransform: "uppercase", flexShrink: 0, width: 60 }}>Start HCP</span>
           <input
             type="number"
             inputMode="decimal"
@@ -385,7 +385,7 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
             onChange={e => setF({ ...f, startingHandicapIndex: e.target.value })}
             onFocus={e => setTimeout(() => e.target.select(), 10)}
             placeholder="Optional"
-            style={{ ...inputStyle, padding: "7px 10px", fontWeight: 700, textAlign: "center", flex: 1 }}
+            style={{ ...inputStyle, padding: "7px 10px", fontWeight: FW.bold, textAlign: "center", flex: 1 }}
           />
         </div>
         {/* Row 2: Tee box selection + Deactivate */}
@@ -395,7 +395,7 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
               const sel = f.teeBox === t.name;
               const white = isWhiteTee(t.name);
               return (
-                <button key={t.name} onClick={() => setF({ ...f, teeBox: t.name })} style={{ flex: 1, padding: "6px 0", borderRadius: 6, fontSize: 11, fontWeight: 600, cursor: "pointer", border: sel ? `1.5px solid ${white ? K.t3 : t.color}` : `1px solid ${K.bdr}`, background: sel ? (white ? K.t3 + "30" : t.color + "20") : K.inp, color: sel ? (white ? "#fff" : t.color) : K.t2 }}>{t.name}</button>
+                <button key={t.name} onClick={() => setF({ ...f, teeBox: t.name })} style={{ flex: 1, padding: "6px 0", borderRadius: 6, fontSize: FS.xs, fontWeight: FW.semibold, cursor: "pointer", border: sel ? `1.5px solid ${white ? K.t3 : t.color}` : `1px solid ${K.bdr}`, background: sel ? (white ? K.t3 + "30" : t.color + "20") : K.inp, color: sel ? (white ? "#fff" : t.color) : K.t2 }}>{t.name}</button>
               );
             })}
           </div>
@@ -412,11 +412,11 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
                 },
                 onCancel: () => setConfirmModal(null),
               });
-            }} style={{ padding: "5px 8px", borderRadius: 6, border: `1px solid ${K.red}30`, background: K.red + "10", color: K.red, fontSize: 9, fontWeight: 700, cursor: "pointer", flexShrink: 0 }}>Deactivate</button>
+            }} style={{ padding: "5px 8px", borderRadius: 6, border: `1px solid ${K.red}30`, background: K.red + "10", color: K.red, fontSize: FS.micro, fontWeight: FW.bold, cursor: "pointer", flexShrink: 0 }}>Deactivate</button>
           )}
         </div>
         {/* Row 3: Save */}
-        <button onClick={isDirty ? save : undefined} style={{ width: "100%", padding: "8px 0", borderRadius: 6, background: isDirty ? K.act : K.inp, border: isDirty ? "none" : `1px solid ${K.bdr}`, color: isDirty ? K.bg : K.t3, fontSize: 12, fontWeight: 700, cursor: isDirty ? "pointer" : "default", letterSpacing: .5, transition: "all .2s" }}>{isDirty ? "Save" : "Saved"}</button>
+        <button onClick={isDirty ? save : undefined} style={{ width: "100%", padding: "8px 0", borderRadius: 6, background: isDirty ? K.act : K.inp, border: isDirty ? "none" : `1px solid ${K.bdr}`, color: isDirty ? K.bg : K.t3, fontSize: FS.sm, fontWeight: FW.bold, cursor: isDirty ? "pointer" : "default", letterSpacing: .5, transition: "all .2s" }}>{isDirty ? "Save" : "Saved"}</button>
       </Card>
     );
   };
@@ -433,21 +433,21 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
           }} />
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 5 }}>
+          <div style={{ fontSize: FS.base, fontWeight: FW.semibold, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", display: "flex", alignItems: "center", gap: 5 }}>
             {p.name}
-            {!inactive && isComm(p.id) && <span style={{ fontSize: 8, fontWeight: 700, color: K.warn, background: K.warn + "18", padding: "1px 5px", borderRadius: 3, textTransform: "uppercase", letterSpacing: .5, flexShrink: 0 }}>Comm</span>}
+            {!inactive && isComm(p.id) && <span style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.warn, background: K.warn + "18", padding: "1px 5px", borderRadius: 3, textTransform: "uppercase", letterSpacing: .5, flexShrink: 0 }}>Comm</span>}
           </div>
           {/* Team-name subtitle so finding a player's team doesn't require leaving this page */}
           {team && (
-            <div style={{ fontSize: 10, color: K.t3, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {team.name || "Team"}
             </div>
           )}
         </div>
-        <div style={{ width: 34, textAlign: "center", fontSize: 14, fontWeight: 700, color: K.t2 }}>{p.handicapIndex}</div>
+        <div style={{ width: 34, textAlign: "center", fontSize: FS.base, fontWeight: FW.bold, color: K.t2 }}>{p.handicapIndex}</div>
         {inactive ? (
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-            <button onClick={() => toggleStatus(p)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.grn, fontSize: 10, padding: "4px 8px", cursor: "pointer", fontWeight: 600 }}>Reactivate</button>
+            <button onClick={() => toggleStatus(p)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.grn, fontSize: FS.xs, padding: "4px 8px", cursor: "pointer", fontWeight: FW.semibold }}>Reactivate</button>
             <button onClick={() => {
               setConfirmModal({
                 title: `Delete ${p.name}?`,
@@ -457,10 +457,10 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
                 onConfirm: () => { setConfirmModal(null); deletePlayer(p.id); },
                 onCancel: () => setConfirmModal(null),
               });
-            }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.red, fontSize: 10, padding: "4px 8px", cursor: "pointer", fontWeight: 600 }}>Delete</button>
+            }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.red, fontSize: FS.xs, padding: "4px 8px", cursor: "pointer", fontWeight: FW.semibold }}>Delete</button>
           </div>
         ) : (
-          <button onClick={() => { startEdit({ name: p.name, handicapIndex: String(p.handicapIndex ?? ""), startingHandicapIndex: String(p.startingHandicapIndex ?? ""), teeBox: p.teeBox || teeBoxes[0]?.name || "White", status: p.status || "active" }); setEd(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.acc, fontSize: 10, padding: "5px 10px", cursor: "pointer", fontWeight: 600 }}>Edit</button>
+          <button onClick={() => { startEdit({ name: p.name, handicapIndex: String(p.handicapIndex ?? ""), startingHandicapIndex: String(p.startingHandicapIndex ?? ""), teeBox: p.teeBox || teeBoxes[0]?.name || "White", status: p.status || "active" }); setEd(p.id); }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.acc, fontSize: FS.xs, padding: "5px 10px", cursor: "pointer", fontWeight: FW.semibold }}>Edit</button>
         )}
       </div>
     );
@@ -469,21 +469,21 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
   return (
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-        <BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Players ({activePlayers.length} active)</span>
-        <button onClick={() => { startEdit({ name: "", handicapIndex: "", startingHandicapIndex: "", teeBox: defaultTeeBox, status: "active" }); setEd("new"); }} style={{ background: K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 700 }}>+ Add</button>
+        <BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: FS.lg, color: K.t1 }}>Players ({activePlayers.length} active)</span>
+        <button onClick={() => { startEdit({ name: "", handicapIndex: "", startingHandicapIndex: "", teeBox: defaultTeeBox, status: "active" }); setEd("new"); }} style={{ background: K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: FS.xs, padding: "6px 12px", cursor: "pointer", fontWeight: FW.bold }}>+ Add</button>
       </div>
       {ed === "new" && <EditCard isNew />}
       {/* Empty state with link to next action */}
       {activePlayers.length === 0 && ed !== "new" && (
         <div style={{ background: K.card, border: `1px dashed ${K.bdr}`, borderRadius: 10, padding: "24px 16px", textAlign: "center" }}>
-          <div style={{ fontSize: 13, color: K.t2, marginBottom: 8 }}>No players yet.</div>
-          <div style={{ fontSize: 11, color: K.t3 }}>Tap <strong style={{ color: K.acc }}>+ Add</strong> in the top right to create your first player.</div>
+          <div style={{ fontSize: FS.sm, color: K.t2, marginBottom: 8 }}>No players yet.</div>
+          <div style={{ fontSize: FS.xs, color: K.t3 }}>Tap <strong style={{ color: K.acc }}>+ Add</strong> in the top right to create your first player.</div>
         </div>
       )}
       {activePlayers.length > 0 && (
         <>
           {/* Column header */}
-          <div style={{ display: "flex", padding: "0 10px 4px", gap: 8, fontSize: 10, fontWeight: 600, color: K.t3, textTransform: "uppercase", letterSpacing: 1 }}>
+          <div style={{ display: "flex", padding: "0 10px 4px", gap: 8, fontSize: FS.xs, fontWeight: FW.semibold, color: K.t3, textTransform: "uppercase", letterSpacing: 1 }}>
             <div style={{ flex: 1 }}>Name</div>
             <div style={{ width: 34, textAlign: "center" }}>HCP</div>
             <div style={{ width: 42 }} />
@@ -500,7 +500,7 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
       )}
       {inactivePlayers.length > 0 && (
         <div style={{ marginTop: 20 }}>
-          <button onClick={() => setShowInactive(!showInactive)} style={{ background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", fontWeight: 500 }}>
+          <button onClick={() => setShowInactive(!showInactive)} style={{ background: "none", border: "none", color: K.t3, fontSize: FS.sm, cursor: "pointer", fontWeight: FW.medium }}>
             {showInactive ? "▾" : "▸"} Inactive Players ({inactivePlayers.length})
           </button>
           {showInactive && (
@@ -720,7 +720,7 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
           background: isSelected ? K.act + "30" : isDragging ? K.act + "20" : K.card,
           border: `1px solid ${isSelected ? K.act : isDragging ? K.act : K.bdr}`,
           boxShadow: isSelected ? `0 0 0 2px ${K.act}40` : "none",
-          fontSize: 12, fontWeight: 600, color: K.t1,
+          fontSize: FS.sm, fontWeight: FW.semibold, color: K.t1,
           cursor: "pointer", userSelect: "none",
           opacity: isDragging ? .5 : 1,
           transition: "opacity .1s, box-shadow .15s, background .15s",
@@ -808,7 +808,7 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
           document.addEventListener("touchend", onEnd);
         }}
       >
-        <span style={{ fontSize: 10, color: K.t3 }}>{p.handicapIndex}</span>
+        <span style={{ fontSize: FS.xs, color: K.t3 }}>{p.handicapIndex}</span>
         <span>{shortName(p)}</span>
       </div>
     );
@@ -843,13 +843,13 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
         }}
       >
         {isEmpty ? (
-          <span style={{ fontSize: 10, color: hasTapSelection ? K.act : K.t3 + "80", fontWeight: hasTapSelection ? 700 : 400, pointerEvents: "none" }}>
+          <span style={{ fontSize: FS.xs, color: hasTapSelection ? K.act : K.t3 + "80", fontWeight: hasTapSelection ? FW.bold : FW.regular, pointerEvents: "none" }}>
             {hasTapSelection ? "Tap to place" : "Tap or drop here"}
           </span>
         ) : (
           <div style={{ display: "flex", alignItems: "center", gap: 4, width: "100%" }}>
             <PlayerChip playerId={playerId} source={{ type: "slot", teamIdx, slot }} style={{ flex: 1, borderRadius: 4, border: "none", background: "transparent", padding: "4px 6px" }} />
-            <button onClick={(e) => { e.stopPropagation(); removeFromSlot(teamIdx, slot); }} style={{ background: "none", border: "none", color: K.t3, fontSize: 12, cursor: "pointer", padding: "2px 4px", flexShrink: 0, lineHeight: 1 }}>✕</button>
+            <button onClick={(e) => { e.stopPropagation(); removeFromSlot(teamIdx, slot); }} style={{ background: "none", border: "none", color: K.t3, fontSize: FS.sm, cursor: "pointer", padding: "2px 4px", flexShrink: 0, lineHeight: 1 }}>✕</button>
           </div>
         )}
       </div>
@@ -860,8 +860,8 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <BackBtn onClick={handleBack} />
-        <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Teams</span>
-        <button onClick={saveAll} style={{ background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: 13, padding: "7px 16px", cursor: dirty ? "pointer" : "default", fontWeight: 600, letterSpacing: .4, transition: "all .2s" }}>{saving ? "Saving..." : dirty ? "Save All" : "Saved"}</button>
+        <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: FS.lg, color: K.t1 }}>Teams</span>
+        <button onClick={saveAll} style={{ background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: FS.sm, padding: "7px 16px", cursor: dirty ? "pointer" : "default", fontWeight: FW.semibold, letterSpacing: .4, transition: "all .2s" }}>{saving ? "Saving..." : dirty ? "Save All" : "Saved"}</button>
       </div>
 
       {/* Unassigned player pool */}
@@ -877,12 +877,12 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
             background: K.act + "15", border: `1px solid ${K.act}50`,
             borderRadius: 8, padding: "8px 12px", marginBottom: 10,
           }}>
-            <span style={{ fontSize: 11, color: K.t3, fontWeight: 600, letterSpacing: .5, textTransform: "uppercase" }}>Selected:</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: K.t1 }}>{shortName(p)}</span>
-            <span style={{ flex: 1, fontSize: 11, color: K.t3 }}>Tap a slot to place, or tap another player to swap.</span>
+            <span style={{ fontSize: FS.xs, color: K.t3, fontWeight: FW.semibold, letterSpacing: .5, textTransform: "uppercase" }}>Selected:</span>
+            <span style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.t1 }}>{shortName(p)}</span>
+            <span style={{ flex: 1, fontSize: FS.xs, color: K.t3 }}>Tap a slot to place, or tap another player to swap.</span>
             <button onClick={() => setTapSelected(null)} style={{
               background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 6,
-              color: K.t2, fontSize: 10, padding: "4px 8px", cursor: "pointer", fontWeight: 600,
+              color: K.t2, fontSize: FS.xs, padding: "4px 8px", cursor: "pointer", fontWeight: FW.semibold,
             }}>Cancel</button>
           </div>
         );
@@ -890,9 +890,9 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
 
       {unassigned.length > 0 && (
         <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 10, fontWeight: 600, color: K.t3, letterSpacing: 1, marginBottom: 6 }}>
+          <div style={{ fontSize: FS.xs, fontWeight: FW.semibold, color: K.t3, letterSpacing: 1, marginBottom: 6 }}>
             Unassigned ({unassigned.length})
-            <span style={{ marginLeft: 10, textTransform: "none", letterSpacing: 0, fontSize: 10, color: K.t3, fontWeight: 400 }}>
+            <span style={{ marginLeft: 10, textTransform: "none", letterSpacing: 0, fontSize: FS.xs, color: K.t3, fontWeight: FW.regular }}>
               Tap to select, tap a slot to place — or drag
             </span>
           </div>
@@ -903,7 +903,7 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
       )}
 
       {/* Header row */}
-      <div style={{ display: "flex", gap: 6, padding: "0 4px 6px", fontSize: 10, fontWeight: 600, color: K.t3, letterSpacing: 1 }}>
+      <div style={{ display: "flex", gap: 6, padding: "0 4px 6px", fontSize: FS.xs, fontWeight: FW.semibold, color: K.t3, letterSpacing: 1 }}>
         <div style={{ width: 24 }}>#</div>
         <div style={{ flex: 1 }}>Player 1</div>
         <div style={{ flex: 1 }}>Player 2</div>
@@ -928,19 +928,19 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
               padding: "6px 8px",
             }}>
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <div style={{ width: 24, fontSize: 13, fontWeight: 700, color: K.t3, textAlign: "center", flexShrink: 0 }}>{i + 1}</div>
+                <div style={{ width: 24, fontSize: FS.sm, fontWeight: FW.bold, color: K.t3, textAlign: "center", flexShrink: 0 }}>{i + 1}</div>
                 <Slot teamIdx={i} slot="player1" playerId={r.player1} />
                 <Slot teamIdx={i} slot="player2" playerId={r.player2} />
               </div>
               {/* Subtitle row: incomplete-team flag OR combined handicap */}
-              <div style={{ display: "flex", gap: 6, alignItems: "center", paddingLeft: 30, fontSize: 10 }}>
+              <div style={{ display: "flex", gap: 6, alignItems: "center", paddingLeft: 30, fontSize: FS.xs }}>
                 {isIncomplete ? (
-                  <span style={{ color: K.warn, fontWeight: 700, letterSpacing: .5 }}>
+                  <span style={{ color: K.warn, fontWeight: FW.bold, letterSpacing: .5 }}>
                     ⚠ Needs {!r.player1 && !r.player2 ? "two players" : "one more player"}
                   </span>
                 ) : (
                   <span style={{ color: K.t3 }}>
-                    Combined HCP: <span style={{ color: K.t2, fontWeight: 700 }}>{combined.toFixed(1)}</span>
+                    Combined HCP: <span style={{ color: K.t2, fontWeight: FW.bold }}>{combined.toFixed(1)}</span>
                     <span style={{ marginLeft: 6, color: K.t3 }}>({h1} + {h2})</span>
                   </span>
                 )}
@@ -951,7 +951,7 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
       </div>
 
       {dirty && (
-        <button onClick={saveAll} disabled={saving} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: 700, cursor: "pointer", marginTop: 12, opacity: saving ? .6 : 1 }}>
+        <button onClick={saveAll} disabled={saving} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.act, border: "none", color: K.bg, fontSize: FS.base, fontWeight: FW.bold, cursor: "pointer", marginTop: 12, opacity: saving ? .6 : 1 }}>
           {saving ? "Saving..." : "Save All Teams"}
         </button>
       )}
@@ -1038,11 +1038,11 @@ function AdminCourse({ course, saveCourseData, onBack }) {
     const offset = side === 'front' ? 0 : 9;
     return (
       <div style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 11, color: K.t3, fontWeight: 600, marginBottom: 6 }}>{label}</div>
+        <div style={{ fontSize: FS.xs, color: K.t3, fontWeight: FW.semibold, marginBottom: 6 }}>{label}</div>
         <div style={{ display: "flex", gap: 6 }}>
           {Array.from({ length: 9 }, (_, i) => (
             <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
-              <div style={{ fontSize: 10, color: K.t3, fontWeight: 600 }}>{offset + i + 1}</div>
+              <div style={{ fontSize: FS.xs, color: K.t3, fontWeight: FW.semibold }}>{offset + i + 1}</div>
               <input
                 ref={el => { getRef(dataKey, i).current = el; }}
                 defaultValue={lc[dataKey][i]}
@@ -1051,7 +1051,7 @@ function AdminCourse({ course, saveCourseData, onBack }) {
                 inputMode="numeric"
                 maxLength={2}
                 className="hole-input"
-                style={{ width: 42, height: 40, padding: "4px 2px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 16, textAlign: "center", fontWeight: 600 }}
+                style={{ width: 42, height: 40, padding: "4px 2px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.lg, textAlign: "center", fontWeight: FW.semibold }}
               />
             </div>
           ))}
@@ -1076,15 +1076,15 @@ function AdminCourse({ course, saveCourseData, onBack }) {
     <div onInput={() => { if (!dirty) setDirty(true); }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <BackBtn onClick={handleBack} />
-        <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Course Setup</span>
-        <button onClick={saveWithRefs} style={{ background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: 13, padding: "7px 16px", cursor: dirty ? "pointer" : "default", fontWeight: 600, letterSpacing: .4, transition: "all .2s" }}>{dirty ? "Save" : "Saved"}</button>
+        <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: FS.lg, color: K.t1 }}>Course Setup</span>
+        <button onClick={saveWithRefs} style={{ background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: FS.sm, padding: "7px 16px", cursor: dirty ? "pointer" : "default", fontWeight: FW.semibold, letterSpacing: .4, transition: "all .2s" }}>{dirty ? "Save" : "Saved"}</button>
       </div>
-      <input value={lc.name} onChange={e => setLc({ ...lc, name: e.target.value })} placeholder="Course Name" style={{ width: "100%", maxWidth: 400, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14, marginBottom: 12 }} />
+      <input value={lc.name} onChange={e => setLc({ ...lc, name: e.target.value })} placeholder="Course Name" style={{ width: "100%", maxWidth: 400, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.base, marginBottom: 12 }} />
       {validationError && (
         <div style={{
           background: K.warn + "18", border: `1px solid ${K.warn}50`,
           borderRadius: 8, padding: "8px 12px", marginBottom: 12,
-          fontSize: 12, color: K.warn, fontWeight: 600,
+          fontSize: FS.sm, color: K.warn, fontWeight: FW.semibold,
         }}>
           ⚠ {validationError}
         </div>
@@ -1104,16 +1104,16 @@ function AdminCourse({ course, saveCourseData, onBack }) {
       <div className="players-grid">
       {lc.teeBoxes.map((t, ti) => (
         <Card key={ti} style={{ marginBottom: 6, padding: "10px 12px" }}>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}><div style={{ width: 14, height: 14, borderRadius: 4, background: t.color }} /><input value={t.name} onChange={e => upT(ti, 'name', e.target.value)} style={{ flex: 1, padding: "6px 8px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13, fontWeight: 700 }} /></div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}><div style={{ width: 14, height: 14, borderRadius: 4, background: t.color }} /><input value={t.name} onChange={e => upT(ti, 'name', e.target.value)} style={{ flex: 1, padding: "6px 8px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.sm, fontWeight: FW.bold }} /></div>
           <div style={{ display: "flex", gap: 8 }}>
-            <div style={{ flex: 1 }}><div style={{ fontSize: 10, color: K.t3, marginBottom: 2 }}>Slope</div><input value={t.slope} onChange={e => upT(ti, 'slope', e.target.value)} type="number" style={{ width: "100%", padding: "6px 8px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13 }} /></div>
-            <div style={{ flex: 1 }}><div style={{ fontSize: 10, color: K.t3, marginBottom: 2 }}>Rating</div><input value={t.rating} onChange={e => upT(ti, 'rating', e.target.value)} type="number" step="0.1" style={{ width: "100%", padding: "6px 8px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13 }} /></div>
-            <div style={{ flex: 1 }}><div style={{ fontSize: 10, color: K.t3, marginBottom: 2 }}>Color</div><input value={t.color} onChange={e => upT(ti, 'color', e.target.value)} type="color" style={{ width: "100%", height: 32, borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, cursor: "pointer" }} /></div>
+            <div style={{ flex: 1 }}><div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 2 }}>Slope</div><input value={t.slope} onChange={e => upT(ti, 'slope', e.target.value)} type="number" style={{ width: "100%", padding: "6px 8px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.sm }} /></div>
+            <div style={{ flex: 1 }}><div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 2 }}>Rating</div><input value={t.rating} onChange={e => upT(ti, 'rating', e.target.value)} type="number" step="0.1" style={{ width: "100%", padding: "6px 8px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.sm }} /></div>
+            <div style={{ flex: 1 }}><div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 2 }}>Color</div><input value={t.color} onChange={e => upT(ti, 'color', e.target.value)} type="color" style={{ width: "100%", height: 32, borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, cursor: "pointer" }} /></div>
           </div>
         </Card>
       ))}
       </div>
-      <button onClick={() => setLc({ ...lc, teeBoxes: [...lc.teeBoxes, { name: "New", color: "#888", slope: 113, rating: 67 }] })} style={{ width: "100%", maxWidth: 300, padding: 10, borderRadius: 8, background: K.inp, border: `1px dashed ${K.bdr}`, color: K.t3, fontSize: 12, cursor: "pointer", marginTop: 4 }}>+ Add Tee Box</button>
+      <button onClick={() => setLc({ ...lc, teeBoxes: [...lc.teeBoxes, { name: "New", color: "#888", slope: 113, rating: 67 }] })} style={{ width: "100%", maxWidth: 300, padding: 10, borderRadius: 8, background: K.inp, border: `1px dashed ${K.bdr}`, color: K.t3, fontSize: FS.sm, cursor: "pointer", marginTop: 4 }}>+ Add Tee Box</button>
       <ConfirmModal modal={confirmModal} />
     </div>
   );
@@ -1707,13 +1707,13 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
           <BackBtn onClick={handleOnBack} />
-          <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Schedule</span>
+          <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: FS.lg, color: K.t1 }}>Schedule</span>
           {(() => {
             // Roll up every dirty source that the top-right Save button should commit.
             // setupDirty = general setup fields; seedsDirty = custom seeded matchups.
             const anyDirty = setupDirty || seedsDirty;
             return (
-              <button onClick={saveSetup} disabled={!anyDirty || savingSetup} style={{ background: anyDirty ? K.act : K.inp, border: anyDirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: anyDirty ? K.bg : K.t3, fontSize: 13, padding: "7px 16px", cursor: anyDirty && !savingSetup ? "pointer" : "default", fontWeight: 600, letterSpacing: .4, transition: "all .2s", opacity: savingSetup ? 0.6 : 1 }}>{savingSetup ? "Saving..." : anyDirty ? "Save" : "Saved"}</button>
+              <button onClick={saveSetup} disabled={!anyDirty || savingSetup} style={{ background: anyDirty ? K.act : K.inp, border: anyDirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: anyDirty ? K.bg : K.t3, fontSize: FS.sm, padding: "7px 16px", cursor: anyDirty && !savingSetup ? "pointer" : "default", fontWeight: FW.semibold, letterSpacing: .4, transition: "all .2s", opacity: savingSetup ? 0.6 : 1 }}>{savingSetup ? "Saving..." : anyDirty ? "Save" : "Saved"}</button>
             );
           })()}
         </div>
@@ -1730,7 +1730,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 padding: "7px 14px", borderRadius: 6, border: "none", cursor: "pointer",
                 background: subTab === t.id ? K.card : "transparent",
                 color: subTab === t.id ? K.t1 : K.t3,
-                fontSize: 11, fontWeight: 700, letterSpacing: .8,
+                fontSize: FS.xs, fontWeight: FW.bold, letterSpacing: .8,
                 boxShadow: subTab === t.id ? `0 1px 3px ${K.bdr}40` : "none",
                 transition: "all .15s",
               }}>{t.label}</button>
@@ -1745,31 +1745,31 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
             <SubLabel>Schedule</SubLabel>
             <Card style={{ padding: 14 }}>
               <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>League Day</div>
-                <select value={cfg.dayOfWeek} onChange={e => setCfg({ ...cfg, dayOfWeek: e.target.value })} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }}>
+                <div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 4 }}>League Day</div>
+                <select value={cfg.dayOfWeek} onChange={e => setCfg({ ...cfg, dayOfWeek: e.target.value })} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.base }}>
                   {days.map(d => <option key={d} value={d}>{d}</option>)}
                 </select>
               </div>
               <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Season Start Date</div>
-                <input type="date" value={cfg.startDate} onChange={e => setCfg({ ...cfg, startDate: e.target.value })} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
+                <div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 4 }}>Season Start Date</div>
+                <input type="date" value={cfg.startDate} onChange={e => setCfg({ ...cfg, startDate: e.target.value })} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.base }} />
               </div>
               <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>First Tee Time</div>
-                <input value={cfg.startTime} onChange={e => setCfg({ ...cfg, startTime: e.target.value })} placeholder="4:28 PM" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
+                <div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 4 }}>First Tee Time</div>
+                <input value={cfg.startTime} onChange={e => setCfg({ ...cfg, startTime: e.target.value })} placeholder="4:28 PM" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.base }} />
               </div>
               <div>
-                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Minutes Between Tee Times</div>
-                <input type="number" value={cfg.teeInterval} onChange={e => setCfg({ ...cfg, teeInterval: parseInt(e.target.value) || 8 })} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
+                <div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 4 }}>Minutes Between Tee Times</div>
+                <input type="number" value={cfg.teeInterval} onChange={e => setCfg({ ...cfg, teeInterval: parseInt(e.target.value) || 8 })} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.base }} />
               </div>
               <div style={{ marginTop: 10 }}>
-                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: K.t2, cursor: "pointer" }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: FS.sm, color: K.t2, cursor: "pointer" }}>
                   <input type="checkbox" checked={cfg.alternateNines} onChange={e => setCfg({ ...cfg, alternateNines: e.target.checked })} style={{ accentColor: K.act }} />
                   Alternate front/back 9 each week
                 </label>
               </div>
               <div style={{ marginTop: 10 }}>
-                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Week 1 Starts On</div>
+                <div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 4 }}>Week 1 Starts On</div>
                 <div style={{ display: "flex", gap: 6 }}>
                   {[{ id: "front", label: "Front 9" }, { id: "back", label: "Back 9" }].map(opt => {
                     const active = cfg.startingSide === opt.id;
@@ -1779,7 +1779,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                         background: active ? K.act : K.inp,
                         border: `1px solid ${active ? K.act : K.bdr}`,
                         color: active ? K.bg : K.t2,
-                        fontSize: 13, fontWeight: 700, cursor: "pointer",
+                        fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer",
                       }}>{opt.label}</button>
                     );
                   })}
@@ -1794,10 +1794,10 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
               {/* Total season weeks — derived from RR + Seeded + Playoffs. Read-only. */}
               <div style={{ marginBottom: 12, padding: "10px 12px", background: K.act + "10", borderRadius: 8, border: `1px solid ${K.act}30` }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 13, fontWeight: 800, color: K.t1 }}>Total Season Weeks</span>
-                  <span style={{ width: 60, padding: "6px 8px", borderRadius: 6, border: `1px solid ${K.act}40`, background: K.card, color: K.act, fontSize: 16, fontWeight: 800, textAlign: "center", boxSizing: "border-box" }}>{totalWeeks}</span>
+                  <span style={{ fontSize: FS.sm, fontWeight: FW.heavy, color: K.t1 }}>Total Season Weeks</span>
+                  <span style={{ width: 60, padding: "6px 8px", borderRadius: 6, border: `1px solid ${K.act}40`, background: K.card, color: K.act, fontSize: FS.lg, fontWeight: FW.heavy, textAlign: "center", boxSizing: "border-box" }}>{totalWeeks}</span>
                 </div>
-                <div style={{ fontSize: 10, color: K.t3, marginTop: 6 }}>
+                <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 6 }}>
                   Round-robin + seeded + playoffs
                 </div>
               </div>
@@ -1805,30 +1805,30 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
               {/* Sub-category inputs */}
               <div style={{ marginBottom: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                  <div style={{ fontSize: 11, color: K.t3 }}>Round-Robin</div>
-                  <div style={{ fontSize: 10, color: K.t3 }}>{teams.length >= 2 ? `Full RR = ${defaultRRWeeks} wks` : ""}</div>
+                  <div style={{ fontSize: FS.xs, color: K.t3 }}>Round-Robin</div>
+                  <div style={{ fontSize: FS.xs, color: K.t3 }}>{teams.length >= 2 ? `Full RR = ${defaultRRWeeks} wks` : ""}</div>
                 </div>
                 <input type="number" min="0" value={rrWeekCount} onChange={e => {
                   const v = parseInt(e.target.value);
                   setCfg({ ...cfg, roundRobinWeeks: isNaN(v) ? 0 : Math.max(0, v) });
-                }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
+                }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.base }} />
               </div>
               <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Seeded Regular Season</div>
+                <div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 4 }}>Seeded Regular Season</div>
                 <input type="number" min="0" value={seededWeekCount} onChange={e => {
                   const v = parseInt(e.target.value);
                   setCfg({ ...cfg, seededWeeks: isNaN(v) ? 0 : Math.max(0, v) });
-                }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
+                }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.base }} />
               </div>
               <div style={{ marginBottom: 10 }}>
-                <div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Playoffs</div>
+                <div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 4 }}>Playoffs</div>
                 <input type="number" value={cfg.playoffWeeks} onChange={e => {
                   const pw = parseInt(e.target.value) || 0;
                   const rounds = [...(cfg.playoffRounds || [])];
                   while (rounds.length < pw) rounds.push({ name: `Round ${rounds.length + 1}`, matchups: [] });
                   while (rounds.length > pw) rounds.pop();
                   setCfg({ ...cfg, playoffWeeks: pw, playoffRounds: rounds });
-                }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} />
+                }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.base }} />
               </div>
               {/* Consolidated seeded matchup builder — single card with week toggle */}
               {teams.length >= 2 && (() => {
@@ -1894,10 +1894,10 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 return (
                   <div style={{ marginBottom: 10 }}>
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                      <div style={{ fontSize: 11, color: K.t3, display: "flex", alignItems: "center", gap: 6 }}>
+                      <div style={{ fontSize: FS.xs, color: K.t3, display: "flex", alignItems: "center", gap: 6 }}>
                         <span>Seeded Regular Season Matchups</span>
                         {seedsDirty && (
-                          <span style={{ fontSize: 9, fontWeight: 800, color: K.act, background: K.act + "18", border: `1px solid ${K.act}60`, padding: "2px 6px", borderRadius: 4, letterSpacing: .8, textTransform: "uppercase" }}>
+                          <span style={{ fontSize: FS.micro, fontWeight: FW.heavy, color: K.act, background: K.act + "18", border: `1px solid ${K.act}60`, padding: "2px 6px", borderRadius: 4, letterSpacing: .8, textTransform: "uppercase" }}>
                             Unsaved
                           </span>
                         )}
@@ -1910,10 +1910,10 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                           border: seedsDirty ? "none" : `1px solid ${K.bdr}`,
                           borderRadius: 6,
                           color: seedsDirty ? K.bg : K.t3,
-                          fontSize: 11,
+                          fontSize: FS.xs,
                           padding: "5px 12px",
                           cursor: seedsDirty && !savingSetup ? "pointer" : "default",
-                          fontWeight: 700,
+                          fontWeight: FW.bold,
                           letterSpacing: .4,
                           transition: "all .2s",
                           opacity: savingSetup ? 0.6 : 1,
@@ -1934,7 +1934,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                               flex: "1 1 auto", minWidth: 60, padding: "6px 8px", borderRadius: 6, cursor: "pointer",
                               background: isActive ? K.act + "18" : K.card,
                               border: `1px solid ${isActive ? K.act + "60" : wv.isValid ? K.bdr : K.red + "50"}`,
-                              color: isActive ? K.act : K.t2, fontSize: 10, fontWeight: 700, textTransform: "uppercase", letterSpacing: .5,
+                              color: isActive ? K.act : K.t2, fontSize: FS.xs, fontWeight: FW.bold, textTransform: "uppercase", letterSpacing: .5,
                             }}>
                               Week {wi + 1}
                               {!wv.isValid && <span style={{ color: K.red, marginLeft: 3 }}>!</span>}
@@ -1944,7 +1944,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                       </div>
 
                       {/* Hint */}
-                      <div style={{ fontSize: 10, color: K.t3, marginBottom: 8, fontStyle: "italic" }}>
+                      <div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 8, fontStyle: "italic" }}>
                         {selectedSeed ? "Tap another seed to swap" : "Tap a seed to select, then tap another to swap"}
                       </div>
 
@@ -1960,7 +1960,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                                 width: 48, height: 38, borderRadius: 6, cursor: "pointer",
                                 background: isSelected ? K.act : isTarget ? K.act + "10" : K.card,
                                 border: `1.5px solid ${isSelected ? K.act : isTarget ? K.act + "60" : K.bdr}`,
-                                color: isSelected ? K.bg : K.t1, fontSize: 15, fontWeight: 800,
+                                color: isSelected ? K.bg : K.t1, fontSize: FS.base, fontWeight: FW.heavy,
                                 display: "flex", alignItems: "center", justifyContent: "center",
                                 transition: "all .15s",
                               }}>
@@ -1970,9 +1970,9 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                           };
                           return (
                             <div key={pairIdx} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <span style={{ fontSize: 10, color: K.t3, width: 16 }}>{pairIdx + 1}.</span>
+                              <span style={{ fontSize: FS.xs, color: K.t3, width: 16 }}>{pairIdx + 1}.</span>
                               {renderSeedCard(p.s1, "s1")}
-                              <span style={{ fontSize: 10, color: K.t3, fontWeight: 700 }}>VS</span>
+                              <span style={{ fontSize: FS.xs, color: K.t3, fontWeight: FW.bold }}>VS</span>
                               {renderSeedCard(p.s2, "s2")}
                             </div>
                           );
@@ -1980,7 +1980,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                       </div>
 
                       {!isValid && (
-                        <div style={{ fontSize: 10, color: K.red, marginTop: 8, lineHeight: 1.4 }}>
+                        <div style={{ fontSize: FS.xs, color: K.red, marginTop: 8, lineHeight: 1.4 }}>
                           {hasDuplicates && "Each seed must be used once. "}
                           {missing.length > 0 && `Missing: ${missing.map(s => `#${s}`).join(", ")}`}
                         </div>
@@ -1989,8 +1989,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                       {/* Lock Seeds toggle */}
                       <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${K.bdr}50`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 11, color: K.t1, fontWeight: 700 }}>Lock Seeds</div>
-                          <div style={{ fontSize: 9, color: K.t3, lineHeight: 1.4, marginTop: 2 }}>
+                          <div style={{ fontSize: FS.xs, color: K.t1, fontWeight: FW.bold }}>Lock Seeds</div>
+                          <div style={{ fontSize: FS.micro, color: K.t3, lineHeight: 1.4, marginTop: 2 }}>
                             {lockSeedsEnabled
                               ? "#1 seed stays as #1 for all seeded weeks"
                               : "Seeds update each week based on current standings"}
@@ -2024,7 +2024,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           </div>
         </div>
 
-        <button onClick={generate} disabled={generating || teams.length < 2} style={{ width: "100%", padding: 14, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer", opacity: generating ? .6 : 1, marginTop: 16 }}>
+        <button onClick={generate} disabled={generating || teams.length < 2} style={{ width: "100%", padding: 14, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: FS.base, fontWeight: FW.bold, cursor: "pointer", opacity: generating ? .6 : 1, marginTop: 16 }}>
           {generating ? "Generating..." : "Generate Schedule"}
         </button>
         </>)}
@@ -2037,11 +2037,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           <div style={{ marginBottom: 14 }}>
             <SubLabel color={K.teal}>Individual Tournament</SubLabel>
             <Card style={{ padding: 14 }}>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: K.t2, cursor: "pointer", marginBottom: 8 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: FS.sm, color: K.t2, cursor: "pointer", marginBottom: 8 }}>
                 <input type="checkbox" checked={cfg.individualEvent !== false} onChange={e => setCfg({ ...cfg, individualEvent: e.target.checked })} style={{ accentColor: K.act }} />
                 Run individual net stroke play during playoffs
               </label>
-              <div style={{ fontSize: 11, color: K.t3, lineHeight: 1.5 }}>
+              <div style={{ fontSize: FS.xs, color: K.t3, lineHeight: 1.5 }}>
                 All players compete individually across {cfg.playoffWeeks} playoff rounds. Lowest cumulative net score wins.
               </div>
             </Card>
@@ -2059,7 +2059,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                   <button key={opt.id} onClick={() => setPlayoffView(opt.id)} style={{
                     padding: "6px 14px", borderRadius: 6, cursor: "pointer", border: "none",
                     background: isActive ? K.act : "transparent",
-                    color: isActive ? K.bg : K.t2, fontSize: 11, fontWeight: 700, transition: "all .2s",
+                    color: isActive ? K.bg : K.t2, fontSize: FS.xs, fontWeight: FW.bold, transition: "all .2s",
                   }}>
                     {opt.label}
                   </button>
@@ -2081,7 +2081,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 winners and need per-league configuration. */}
             {teams.length >= 2 && (cfg.playoffRounds || []).length > 0 && (
               <Card style={{ padding: "10px 12px", marginBottom: 8, background: K.inp, border: `1px dashed ${K.bdr}` }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: K.t3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
+                <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: K.t3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
                   Quick Setup — Round 1
                 </div>
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -2114,13 +2114,13 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                     }} style={{
                       padding: "6px 10px", borderRadius: 6,
                       background: K.card, border: `1px solid ${K.bdr}`,
-                      color: K.t2, fontSize: 11, fontWeight: 600, cursor: "pointer",
+                      color: K.t2, fontSize: FS.xs, fontWeight: FW.semibold, cursor: "pointer",
                     }}>
                       {preset.label}
                     </button>
                   ))}
                 </div>
-                <div style={{ fontSize: 10, color: K.t3, marginTop: 6, lineHeight: 1.4 }}>
+                <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 6, lineHeight: 1.4 }}>
                   Replaces Round 1 matchups only. Round 2+ still need manual setup (winners/losers from prior round).
                 </div>
               </Card>
@@ -2151,8 +2151,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 updateRound("matchups", m);
               };
 
-              const selectStyle = { padding: "6px 4px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 12, flex: 1, minWidth: 0 };
-              const typeStyle = { ...selectStyle, flex: "none", width: 52, fontSize: 11 };
+              const selectStyle = { padding: "6px 4px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.sm, flex: 1, minWidth: 0 };
+              const typeStyle = { ...selectStyle, flex: "none", width: 52, fontSize: FS.xs };
 
               const SlotSelect = ({ type, val, onTypeChange, onValChange }) => (
                 <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
@@ -2193,8 +2193,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
               return (
                 <Card key={ri} style={{ padding: 12, marginBottom: 8 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                    <input value={round.name} onChange={e => updateRound("name", e.target.value)} style={{ padding: "4px 8px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.warn, fontSize: 13, fontWeight: 700, flex: 1, maxWidth: 200 }} />
-                    <span style={{ fontSize: 10, color: K.t3 }}>Week {roundWeekNum}</span>
+                    <input value={round.name} onChange={e => updateRound("name", e.target.value)} style={{ padding: "4px 8px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.warn, fontSize: FS.sm, fontWeight: FW.bold, flex: 1, maxWidth: 200 }} />
+                    <span style={{ fontSize: FS.xs, color: K.t3 }}>Week {roundWeekNum}</span>
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {round.matchups.map((mu, mi) => (
@@ -2203,14 +2203,14 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                           <div style={{ flex: 1, minWidth: 0 }}>
                             <SlotSelect type={mu.s1type} val={mu.s1} onTypeChange={v => updateMatchup(mi, "s1type", v)} onValChange={v => updateMatchup(mi, "s1", v)} />
                           </div>
-                          <button onClick={() => removeMatchup(mi)} style={{ background: "none", border: "none", color: K.t3, fontSize: 13, cursor: "pointer", padding: "0 2px", flexShrink: 0, lineHeight: 1 }}>✕</button>
+                          <button onClick={() => removeMatchup(mi)} style={{ background: "none", border: "none", color: K.t3, fontSize: FS.sm, cursor: "pointer", padding: "0 2px", flexShrink: 0, lineHeight: 1 }}>✕</button>
                         </div>
-                        <div style={{ fontSize: 9, fontWeight: 700, color: K.t3, textAlign: "center", padding: "3px 0", letterSpacing: 1 }}>VS</div>
+                        <div style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.t3, textAlign: "center", padding: "3px 0", letterSpacing: 1 }}>VS</div>
                         <SlotSelect type={mu.s2type} val={mu.s2} onTypeChange={v => updateMatchup(mi, "s2type", v)} onValChange={v => updateMatchup(mi, "s2", v)} />
                       </div>
                     ))}
                   </div>
-                  <button onClick={addMatchup} style={{ width: "100%", padding: 8, borderRadius: 6, background: K.inp, border: `1px dashed ${K.bdr}`, color: K.t3, fontSize: 11, cursor: "pointer", marginTop: 8, fontWeight: 600 }}>+ Add Match</button>
+                  <button onClick={addMatchup} style={{ width: "100%", padding: 8, borderRadius: 6, background: K.inp, border: `1px dashed ${K.bdr}`, color: K.t3, fontSize: FS.xs, cursor: "pointer", marginTop: 8, fontWeight: FW.semibold }}>+ Add Match</button>
                 </Card>
               );
             })}
@@ -2267,8 +2267,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                         return (
                           <div key={ri} style={{ flex: 1, minWidth: 0 }}>
                             <div style={{ textAlign: "center", marginBottom: 4, height: 28 }}>
-                              <div style={{ fontSize: 9, fontWeight: 700, color: K.warn, letterSpacing: .8 }}>{round.name || `R${ri + 1}`}</div>
-                              <div style={{ fontSize: 8, color: K.t3 }}>Wk {computedRegularWeeks + ri + 1}</div>
+                              <div style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.warn, letterSpacing: .8 }}>{round.name || `R${ri + 1}`}</div>
+                              <div style={{ fontSize: FS.micro, color: K.t3 }}>Wk {computedRegularWeeks + ri + 1}</div>
                             </div>
                             <div style={{ paddingTop: topPad }}>
                               {mc > 0 ? matchups.map((mu, mi) => (
@@ -2278,8 +2278,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                                     <div style={{ flex: 1, minWidth: 0, background: K.inp, borderRadius: 4, border: `1px solid ${K.bdr}`, overflow: "hidden" }}>
                                       {["s1", "s2"].map((side, si) => (
                                         <div key={side} style={{ display: "flex", alignItems: "center", padding: "3px 5px", gap: 4, ...(si === 0 ? { borderBottom: `1px solid ${K.bdr}30` } : {}) }}>
-                                          <div style={{ width: 14, height: 14, borderRadius: 3, background: badgeColor(mu, side) + "20", border: `1px solid ${badgeColor(mu, side)}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, fontWeight: 800, color: badgeColor(mu, side), flexShrink: 0 }}>{badgeLetter(mu, side)}</div>
-                                          <div style={{ fontSize: 9, fontWeight: 600, color: K.t2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{slotLabel(mu, side)}</div>
+                                          <div style={{ width: 14, height: 14, borderRadius: 3, background: badgeColor(mu, side) + "20", border: `1px solid ${badgeColor(mu, side)}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: FS.micro, fontWeight: FW.heavy, color: badgeColor(mu, side), flexShrink: 0 }}>{badgeLetter(mu, side)}</div>
+                                          <div style={{ fontSize: FS.micro, fontWeight: FW.semibold, color: K.t2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{slotLabel(mu, side)}</div>
                                         </div>
                                       ))}
                                     </div>
@@ -2296,11 +2296,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                                       </div>
                                     )}
                                     {isLast && mc === 1 && (
-                                      <div style={{ fontSize: 14, marginLeft: 6, flexShrink: 0 }}>🏆</div>
+                                      <div style={{ fontSize: FS.base, marginLeft: 6, flexShrink: 0 }}>🏆</div>
                                     )}
                                   </div>
                                 </div>
-                              )) : <div style={{ background: K.inp, borderRadius: 4, border: `1px solid ${K.bdr}`, padding: 8, textAlign: "center", fontSize: 9, color: K.t3 }}>—</div>}
+                              )) : <div style={{ background: K.inp, borderRadius: 4, border: `1px solid ${K.bdr}`, padding: 8, textAlign: "center", fontSize: FS.micro, color: K.t3 }}>—</div>}
                             </div>
                           </div>
                         );
@@ -2310,14 +2310,14 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                     {consolationMatchups.length > 0 && (
                       <div style={{ marginTop: 12, display: "flex", justifyContent: "flex-end" }}>
                         <div style={{ width: `${100 / rounds.length}%`, minWidth: 0 }}>
-                          <div style={{ textAlign: "center", fontSize: 8, fontWeight: 700, color: K.t3, marginBottom: 4, textTransform: "uppercase", letterSpacing: .5 }}>3rd Place</div>
+                          <div style={{ textAlign: "center", fontSize: FS.micro, fontWeight: FW.bold, color: K.t3, marginBottom: 4, textTransform: "uppercase", letterSpacing: .5 }}>3rd Place</div>
                           {consolationMatchups.map((mu, mi) => (
                             <div key={mi} style={{ marginBottom: mi < consolationMatchups.length - 1 ? baseGap : 0 }}>
                               <div style={{ flex: 1, minWidth: 0, background: K.inp, borderRadius: 4, border: `1px solid ${K.red}30`, overflow: "hidden" }}>
                                 {["s1", "s2"].map((side, si) => (
                                   <div key={side} style={{ display: "flex", alignItems: "center", padding: "3px 5px", gap: 4, ...(si === 0 ? { borderBottom: `1px solid ${K.bdr}30` } : {}) }}>
-                                    <div style={{ width: 14, height: 14, borderRadius: 3, background: badgeColor(mu, side) + "20", border: `1px solid ${badgeColor(mu, side)}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 7, fontWeight: 800, color: badgeColor(mu, side), flexShrink: 0 }}>{badgeLetter(mu, side)}</div>
-                                    <div style={{ fontSize: 9, fontWeight: 600, color: K.t2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{slotLabel(mu, side)}</div>
+                                    <div style={{ width: 14, height: 14, borderRadius: 3, background: badgeColor(mu, side) + "20", border: `1px solid ${badgeColor(mu, side)}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: FS.micro, fontWeight: FW.heavy, color: badgeColor(mu, side), flexShrink: 0 }}>{badgeLetter(mu, side)}</div>
+                                    <div style={{ fontSize: FS.micro, fontWeight: FW.semibold, color: K.t2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{slotLabel(mu, side)}</div>
                                   </div>
                                 ))}
                               </div>
@@ -2331,13 +2331,13 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
               })()}
             </Card>
             ) : (
-              <div style={{ textAlign: "center", padding: 30, color: K.t3, fontSize: 13 }}>Configure your bracket in the Setup view first to see the preview.</div>
+              <div style={{ textAlign: "center", padding: 30, color: K.t3, fontSize: FS.sm }}>Configure your bracket in the Setup view first to see the preview.</div>
             )}
           </div>
           )}
 
           </>) : (
-            <div style={{ textAlign: "center", padding: 30, color: K.t3, fontSize: 13 }}>Set playoff weeks in the Setup tab to configure the bracket.</div>
+            <div style={{ textAlign: "center", padding: 30, color: K.t3, fontSize: FS.sm }}>Set playoff weeks in the Setup tab to configure the bracket.</div>
           )}
         </>)}
 
@@ -2434,7 +2434,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
               };
               return (
                 <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-                  <button onClick={doShuffle} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.acc, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 600 }}>
+                  <button onClick={doShuffle} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.acc, fontSize: FS.xs, padding: "6px 12px", cursor: "pointer", fontWeight: FW.semibold }}>
                     Shuffle Schedule
                   </button>
                 </div>
@@ -2472,7 +2472,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
               };
               return (
                 <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
-                  <button onClick={doRecoverySeed} style={{ background: K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: 11, padding: "6px 12px", cursor: "pointer", fontWeight: 700 }}>
+                  <button onClick={doRecoverySeed} style={{ background: K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: FS.xs, padding: "6px 12px", cursor: "pointer", fontWeight: FW.bold }}>
                     Seed {emptySeededWeeks.length} Remaining Week{emptySeededWeeks.length === 1 ? "" : "s"}
                   </button>
                 </div>
@@ -2524,12 +2524,12 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                       width: 4, background: barColor, flexShrink: 0,
                     }} />
                     <div style={{ display: "flex", alignItems: "center", flex: 1, padding: "10px 14px", gap: 8 }}>
-                      <div style={{ width: 26, fontSize: 14, fontWeight: 700, color: K.t1, flexShrink: 0 }}>{wk.week}</div>
-                      <div style={{ width: 52, fontSize: 12, fontWeight: 600, color: K.t1, flexShrink: 0 }}>{wk.date || "—"}</div>
+                      <div style={{ width: 26, fontSize: FS.base, fontWeight: FW.bold, color: K.t1, flexShrink: 0 }}>{wk.week}</div>
+                      <div style={{ width: 52, fontSize: FS.sm, fontWeight: FW.semibold, color: K.t1, flexShrink: 0 }}>{wk.date || "—"}</div>
                       <div style={{ width: 42, flexShrink: 0 }}>
-                        <Pill color={K.logoBright} style={{ fontSize: 8 }}>{side === 'front' ? 'FRONT' : 'BACK'}</Pill>
+                        <Pill color={K.logoBright} style={{ fontSize: FS.micro }}>{side === 'front' ? 'FRONT' : 'BACK'}</Pill>
                       </div>
-                      <div style={{ flex: 1, fontSize: 12, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+                      <div style={{ flex: 1, fontSize: FS.sm, fontWeight: FW.semibold, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
                         {isRainedOut ? "RAIN OUT" : isSeeded ? (() => {
                           if (isPlayoffWk) return "PLAYOFF — TBD";
                           // Show configured seed pairings if available
@@ -2550,11 +2550,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                         })() : "—"}
                       </div>
                       <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
-                        {isFinalized && <Pill color={K.grn} style={{ fontSize: 7 }}>FINAL</Pill>}
-                        {!isFinalized && allMatchesAttested && <Pill color={K.act} style={{ fontSize: 7 }}>READY</Pill>}
-                        {wk.makeupFor && <Pill color={K.teal} style={{ fontSize: 7 }}>MU</Pill>}
+                        {isFinalized && <Pill color={K.grn} style={{ fontSize: FS.micro }}>FINAL</Pill>}
+                        {!isFinalized && allMatchesAttested && <Pill color={K.act} style={{ fontSize: FS.micro }}>READY</Pill>}
+                        {wk.makeupFor && <Pill color={K.teal} style={{ fontSize: FS.micro }}>MU</Pill>}
                       </div>
-                      <div style={{ color: K.t3, fontSize: 12, flexShrink: 0 }}>›</div>
+                      <div style={{ color: K.t3, fontSize: FS.sm, flexShrink: 0 }}>›</div>
                     </div>
                   </button>
                 );
@@ -2579,27 +2579,6 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     const playoffWeeks = cfg.playoffWeeks;
     // Determine playoff round by counting playoff weeks up to and including this one
     const playoffRound = isPlayoff ? schedule.filter(s => s.isPlayoff === true && s.week <= wk.week).length : 0;
-
-    // ── Tee-group reordering (up / down / move-to-last) ──
-    // Tee time is purely positional: startTime + matchIndex * teeInterval. So
-    // changing a group's tee slot is nothing more than moving that match within
-    // wk.matches. Match-result lookups key on team IDs (not array index), so a
-    // reorder can never orphan a saved result or break the .ics export (whose
-    // UID is team + week, not tee time). We only allow it on weeks that haven't
-    // been finalized — once results exist or the week is locked, the tee order
-    // is a historical record and shouldn't change. We follow EditWeek's normal
-    // dirty + Save flow (the team drag-swap marks dirty the same way); the top
-    // "Save" button commits via saveWeekSchedule. Tee times in the list redraw
-    // live on each move because they're computed off the map index.
-    const canReorder = !isFinalized;
-    const reorderTeeGroup = (from, to) => {
-      if (!wk.matches || to < 0 || to >= wk.matches.length || from === to) return;
-      const next = wk.matches.map(mm => ({ ...mm }));
-      const [moved] = next.splice(from, 1);
-      next.splice(to, 0, moved);
-      setLocalWk({ ...wk, matches: next });
-      setWeekDirty(true);
-    };
 
     // Build current standings for seeding
     const buildStandingsForSeed = () => sharedBuildStandingsForSeed(teams, matchResults, schedule, leagueConfig?.standingsMethod);
@@ -2992,16 +2971,16 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       <div>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
           <BackBtn onClick={handleWeekBack} />
-          <span style={{ fontSize: 16, fontWeight: 700, color: K.t1, flex: 1 }}>Week {wk.week}</span>
-          {wk.date && <span style={{ fontSize: 12, color: K.t3 }}>{wk.date}</span>}
+          <span style={{ fontSize: FS.lg, fontWeight: FW.bold, color: K.t1, flex: 1 }}>Week {wk.week}</span>
+          {wk.date && <span style={{ fontSize: FS.sm, color: K.t3 }}>{wk.date}</span>}
           <Pill color={K.logoBright}>{wk.side === 'front' ? 'FRONT 9' : 'BACK 9'}</Pill>
           {isPlayoff && <Pill color={K.warn}>PLAYOFF</Pill>}
         </div>
 
         {isRainedOut && (
           <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "8px 12px", marginBottom: 10, textAlign: "center" }}>
-            <span style={{ fontSize: 13, fontWeight: 700, color: K.warn }}>Rained Out</span>
-            {wk.makeupFor && <span style={{ fontSize: 11, color: K.t3, marginLeft: 6 }}>(Makeup for Week {wk.makeupFor})</span>}
+            <span style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.warn }}>Rained Out</span>
+            {wk.makeupFor && <span style={{ fontSize: FS.xs, color: K.t3, marginLeft: 6 }}>(Makeup for Week {wk.makeupFor})</span>}
             <div style={{ marginTop: 8 }}>
               <button onClick={() => {
                 setConfirmModal({
@@ -3071,7 +3050,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                   },
                   onCancel: () => setConfirmModal(null),
                 });
-              }} style={{ padding: "6px 16px", borderRadius: 6, background: K.card, border: `1px solid ${K.warn}40`, color: K.warn, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+              }} style={{ padding: "6px 16px", borderRadius: 6, background: K.card, border: `1px solid ${K.warn}40`, color: K.warn, fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer" }}>
                 Undo Rain Out
               </button>
             </div>
@@ -3152,25 +3131,25 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           return (
             <div style={{ marginBottom: 12 }}>
               <div style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: CARD_RADIUS, padding: "14px", marginBottom: 8 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: K.t1, marginBottom: 4, textAlign: "center" }}>{roundName}</div>
-                <div style={{ fontSize: 10, color: K.t3, textAlign: "center", marginBottom: 10 }}>Current pairings based on standings</div>
+                <div style={{ fontSize: FS.base, fontWeight: FW.bold, color: K.t1, marginBottom: 4, textAlign: "center" }}>{roundName}</div>
+                <div style={{ fontSize: FS.xs, color: K.t3, textAlign: "center", marginBottom: 10 }}>Current pairings based on standings</div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                   {previewPairings.map((p, i) => (
                     <div key={i} style={{ background: K.card, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: "8px 10px", display: "flex", alignItems: "center", gap: 6 }}>
                       <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6, justifyContent: "flex-end" }}>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: K.t1 }}>{p.name1}</span>
-                        {p.seed1 && <div style={{ width: 20, height: 20, borderRadius: 5, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: K.logoBright, flexShrink: 0 }}>{p.seed1}</div>}
+                        <span style={{ fontSize: FS.sm, fontWeight: FW.semibold, color: K.t1 }}>{p.name1}</span>
+                        {p.seed1 && <div style={{ width: 20, height: 20, borderRadius: 5, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: FS.xs, fontWeight: FW.heavy, color: K.logoBright, flexShrink: 0 }}>{p.seed1}</div>}
                       </div>
-                      <div style={{ fontSize: 10, color: K.t3, fontWeight: 800, flexShrink: 0 }}>VS</div>
+                      <div style={{ fontSize: FS.xs, color: K.t3, fontWeight: FW.heavy, flexShrink: 0 }}>VS</div>
                       <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 6 }}>
-                        {p.seed2 && <div style={{ width: 20, height: 20, borderRadius: 5, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 800, color: K.logoBright, flexShrink: 0 }}>{p.seed2}</div>}
-                        <span style={{ fontSize: 12, fontWeight: 600, color: K.t1 }}>{p.name2}</span>
+                        {p.seed2 && <div style={{ width: 20, height: 20, borderRadius: 5, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: FS.xs, fontWeight: FW.heavy, color: K.logoBright, flexShrink: 0 }}>{p.seed2}</div>}
+                        <span style={{ fontSize: FS.sm, fontWeight: FW.semibold, color: K.t1 }}>{p.name2}</span>
                       </div>
                     </div>
                   ))}
                 </div>
               </div>
-              <button onClick={handleSeedWeek} style={{ width: "100%", padding: 14, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>
+              <button onClick={handleSeedWeek} style={{ width: "100%", padding: 14, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: FS.base, fontWeight: FW.bold, cursor: "pointer" }}>
                 Seed Week {wk.week}
               </button>
             </div>
@@ -3200,10 +3179,10 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
             const dupeNames = [...dupes].map(id => teams.find(t => t.id === id)?.name || id).join(", ");
             return (
               <div style={{ background: K.red + "12", border: `1.5px solid ${K.red}60`, borderRadius: 10, padding: 12, marginBottom: 10 }}>
-                <div style={{ fontSize: 12, fontWeight: 800, color: K.red, marginBottom: 4, letterSpacing: .3 }}>
+                <div style={{ fontSize: FS.sm, fontWeight: FW.heavy, color: K.red, marginBottom: 4, letterSpacing: .3 }}>
                   ⚠ DUPLICATE TEAM DETECTED
                 </div>
-                <div style={{ fontSize: 12, color: K.t2, marginBottom: 10, lineHeight: 1.4 }}>
+                <div style={{ fontSize: FS.sm, color: K.t2, marginBottom: 10, lineHeight: 1.4 }}>
                   {dupeNames} {dupes.size === 1 ? "appears" : "appear"} in more than one match this week. This happens when the bracket configuration has "seed N" and "winner of prior round" both resolving to the same team. Fix the bracket config in League Setup, then repair this week to clear scores and re-seed.
                 </div>
                 <button onClick={() => {
@@ -3221,7 +3200,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                     },
                     onCancel: () => setConfirmModal(null),
                   });
-                }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.red, border: "none", color: "#fff", fontSize: 12, fontWeight: 800, cursor: "pointer", letterSpacing: .3 }}>
+                }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.red, border: "none", color: "#fff", fontSize: FS.sm, fontWeight: FW.heavy, cursor: "pointer", letterSpacing: .3 }}>
                   Repair Week — Clear Scores & Pairings
                 </button>
               </div>
@@ -3231,7 +3210,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           {/* Action buttons — top of pairings */}
           <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
             {!isFinalized && (
-              <button onClick={handleRainOut} style={{ flex: 1, minWidth: 80, padding: 10, borderRadius: 8, background: K.red + "18", border: `1.5px solid ${K.red}50`, color: K.red, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+              <button onClick={handleRainOut} style={{ flex: 1, minWidth: 80, padding: 10, borderRadius: 8, background: K.red + "18", border: `1.5px solid ${K.red}50`, color: K.red, fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer" }}>
                 Rain Out
               </button>
             )}
@@ -3239,10 +3218,10 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
               const newSide = wk.side === 'front' ? 'back' : 'front';
               setLocalWk({ ...wk, side: newSide });
               setWeekDirty(true);
-            }} style={{ flex: 1, minWidth: 80, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 12, cursor: "pointer" }}>
+            }} style={{ flex: 1, minWidth: 80, padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: FS.sm, cursor: "pointer" }}>
               Change to {wk.side === 'front' ? 'Back' : 'Front'} 9
             </button>
-            <button onClick={saveWeekEdits} style={{ padding: "10px 16px", borderRadius: 8, background: weekDirty ? K.act : K.inp, border: weekDirty ? "none" : `1px solid ${K.bdr}`, color: weekDirty ? K.bg : K.t3, fontSize: 12, fontWeight: 700, cursor: weekDirty ? "pointer" : "default", transition: "all .2s" }}>
+            <button onClick={saveWeekEdits} style={{ padding: "10px 16px", borderRadius: 8, background: weekDirty ? K.act : K.inp, border: weekDirty ? "none" : `1px solid ${K.bdr}`, color: weekDirty ? K.bg : K.t3, fontSize: FS.sm, fontWeight: FW.bold, cursor: weekDirty ? "pointer" : "default", transition: "all .2s" }}>
               {weekDirty ? "Save" : "Saved"}
             </button>
           </div>
@@ -3260,12 +3239,12 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 },
                 onCancel: () => setConfirmModal(null),
               });
-            }} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 8, background: K.logoBright + "12", border: `1px solid ${K.logoBright}30`, color: K.logoBright, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+            }} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 8, background: K.logoBright + "12", border: `1px solid ${K.logoBright}30`, color: K.logoBright, fontSize: FS.xs, fontWeight: FW.bold, cursor: "pointer" }}>
               Re-seed from Standings
             </button>
           )}
 
-          <div style={{ fontSize: 11, color: K.t3, marginBottom: 12 }}>
+          <div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 12 }}>
             {dragTeam && !dragTeam.dragging ? "Tap another team to swap" : "Tap to select · Hold and drag to move"}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -3481,46 +3460,19 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                         width: 22, height: 22, borderRadius: 6, flexShrink: 0,
                         background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`,
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 11, fontWeight: 800, color: K.logoBright,
+                        fontSize: FS.xs, fontWeight: FW.heavy, color: K.logoBright,
                       }}>{seed}</div>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: K.t1, lineHeight: 1.3 }}>{lastNamesOnly(gn(teamId))}</div>
+                      <div style={{ fontSize: FS.sm, fontWeight: FW.semibold, color: K.t1, lineHeight: 1.3 }}>{lastNamesOnly(gn(teamId))}</div>
                     </div>
                   );
                 };
 
-                const lastIdx = wk.matches.length - 1;
                 return (
-                  <div key={mi} style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "10px 12px", display: "flex", flexDirection: "column", gap: 8, userSelect: "none" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <div style={{ flexShrink: 0, fontSize: 10, color: K.acc, fontWeight: 700 }}>{formatTeeTime(cfg.startTime ?? "4:28 PM", mi).replace(/\s*(AM|PM)$/i, '')}</div>
-                      {renderTeamCard(m.team1, seed1, "team1")}
-                      <div style={{ fontSize: 10, color: K.t3, fontWeight: 800, flexShrink: 0 }}>VS</div>
-                      {renderTeamCard(m.team2, seed2, "team2")}
-                    </div>
-                    {canReorder && wk.matches.length > 1 && (
-                      <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, borderTop: `1px solid ${K.bdr}`, paddingTop: 8 }}>
-                        {[
-                          { label: "Earlier", to: mi - 1, disabled: mi === 0, aria: "Move group to an earlier tee time" },
-                          { label: "Later", to: mi + 1, disabled: mi === lastIdx, aria: "Move group to a later tee time" },
-                          { label: "Move to last", to: lastIdx, disabled: mi === lastIdx, aria: "Move group to the last tee time", strong: true },
-                        ].map(b => (
-                          <button
-                            key={b.label}
-                            onClick={() => { if (!b.disabled) reorderTeeGroup(mi, b.to); }}
-                            disabled={b.disabled}
-                            aria-label={b.aria}
-                            style={{
-                              padding: "6px 10px", borderRadius: 7, fontSize: 11, fontWeight: 700,
-                              background: b.disabled ? K.inp : b.strong ? K.act + "18" : K.inp,
-                              border: `1px solid ${b.disabled ? K.bdr : b.strong ? K.act + "55" : K.bdr}`,
-                              color: b.disabled ? K.t3 : b.strong ? K.act : K.t2,
-                              cursor: b.disabled ? "default" : "pointer",
-                              opacity: b.disabled ? 0.5 : 1,
-                            }}
-                          >{b.label}</button>
-                        ))}
-                      </div>
-                    )}
+                  <div key={mi} style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, userSelect: "none" }}>
+                    <div style={{ flexShrink: 0, fontSize: FS.xs, color: K.acc, fontWeight: FW.bold }}>{formatTeeTime(cfg.startTime ?? "4:28 PM", mi).replace(/\s*(AM|PM)$/i, '')}</div>
+                    {renderTeamCard(m.team1, seed1, "team1")}
+                    <div style={{ fontSize: FS.xs, color: K.t3, fontWeight: FW.heavy, flexShrink: 0 }}>VS</div>
+                    {renderTeamCard(m.team2, seed2, "team2")}
                   </div>
                 );
               });
@@ -3562,8 +3514,8 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
 
   const F = ({ label, field }) => (
     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${K.bdr}15` }}>
-      <span style={{ fontSize: 12, color: K.t2 }}>{label}</span>
-      <input value={lc[field]} onChange={e => { setLc({ ...lc, [field]: parseFloat(e.target.value) || 0 }); setDirty(true); }} onFocus={e => setTimeout(() => e.target.select(), 10)} type="number" inputMode="decimal" step="0.5" style={{ width: 58, padding: "5px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13, textAlign: "center" }} />
+      <span style={{ fontSize: FS.sm, color: K.t2 }}>{label}</span>
+      <input value={lc[field]} onChange={e => { setLc({ ...lc, [field]: parseFloat(e.target.value) || 0 }); setDirty(true); }} onFocus={e => setTimeout(() => e.target.select(), 10)} type="number" inputMode="decimal" step="0.5" style={{ width: 58, padding: "5px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.sm, textAlign: "center" }} />
     </div>
   );
 
@@ -3584,8 +3536,8 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
               {value === f.id && <div style={{ width: 8, height: 8, borderRadius: "50%", background: K.act }} />}
             </div>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: value === f.id ? K.t1 : K.t2 }}>{f.label}</div>
-              {f.desc && <div style={{ fontSize: 10, color: K.t3, marginTop: 1 }}>{f.desc}</div>}
+              <div style={{ fontSize: FS.sm, fontWeight: FW.semibold, color: value === f.id ? K.t1 : K.t2 }}>{f.label}</div>
+              {f.desc && <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 1 }}>{f.desc}</div>}
             </div>
           </div>
         </button>
@@ -3609,7 +3561,7 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <BackBtn onClick={handleBack} />
-        <button onClick={save} style={{ background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: 13, padding: "7px 16px", cursor: dirty ? "pointer" : "default", fontWeight: 600, letterSpacing: .4, transition: "all .2s" }}>{dirty ? "Save" : "Saved"}</button>
+        <button onClick={save} style={{ background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: FS.sm, padding: "7px 16px", cursor: dirty ? "pointer" : "default", fontWeight: FW.semibold, letterSpacing: .4, transition: "all .2s" }}>{dirty ? "Save" : "Saved"}</button>
       </div>
 
       <SubLabel>Match Format</SubLabel>
@@ -3621,27 +3573,27 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
       {/* Worked example so the format choice isn't abstract. Numbers pull from the
           current scoring rules so the preview reflects what will actually happen. */}
       <Card style={{ padding: "10px 12px", marginBottom: 16, background: K.inp, border: `1px dashed ${K.bdr}` }}>
-        <div style={{ fontSize: 10, fontWeight: 700, color: K.t3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
+        <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: K.t3, letterSpacing: 1, textTransform: "uppercase", marginBottom: 6 }}>
           Example Week
         </div>
         {isLowHigh ? (
-          <div style={{ fontSize: 12, color: K.t2, lineHeight: 1.7 }}>
-            <div>• Your low-HCP player beat theirs <span style={{ color: K.t1, fontWeight: 700 }}>→ +{lc.matchWin ?? 3} pts</span></div>
-            <div>• Your high-HCP player tied theirs <span style={{ color: K.t1, fontWeight: 700 }}>→ +{lc.matchTie ?? 1.5} pts</span></div>
-            <div>• Your team net total won the bonus <span style={{ color: K.t1, fontWeight: 700 }}>→ +{lc.bonusWin ?? 3} pts</span></div>
-            <div style={{ marginTop: 4, paddingTop: 4, borderTop: `1px solid ${K.bdr}`, color: K.t1, fontWeight: 700 }}>
+          <div style={{ fontSize: FS.sm, color: K.t2, lineHeight: 1.7 }}>
+            <div>• Your low-HCP player beat theirs <span style={{ color: K.t1, fontWeight: FW.bold }}>→ +{lc.matchWin ?? 3} pts</span></div>
+            <div>• Your high-HCP player tied theirs <span style={{ color: K.t1, fontWeight: FW.bold }}>→ +{lc.matchTie ?? 1.5} pts</span></div>
+            <div>• Your team net total won the bonus <span style={{ color: K.t1, fontWeight: FW.bold }}>→ +{lc.bonusWin ?? 3} pts</span></div>
+            <div style={{ marginTop: 4, paddingTop: 4, borderTop: `1px solid ${K.bdr}`, color: K.t1, fontWeight: FW.bold }}>
               Total: {((lc.matchWin ?? 3) + (lc.matchTie ?? 1.5) + (lc.bonusWin ?? 3)).toFixed(1)} pts this week
             </div>
           </div>
         ) : (
-          <div style={{ fontSize: 12, color: K.t2, lineHeight: 1.7 }}>
+          <div style={{ fontSize: FS.sm, color: K.t2, lineHeight: 1.7 }}>
             <div>• Each hole: combined team net vs combined team net</div>
             <div>• Lower team net wins the hole — track 1UP, 2UP, etc.</div>
-            <div>• Match ends 2&1 (your team) <span style={{ color: K.t1, fontWeight: 700 }}>→ +{lc.matchWin ?? 3} pts</span></div>
-            <div style={{ marginTop: 4, paddingTop: 4, borderTop: `1px solid ${K.bdr}`, color: K.t1, fontWeight: 700 }}>
+            <div>• Match ends 2&1 (your team) <span style={{ color: K.t1, fontWeight: FW.bold }}>→ +{lc.matchWin ?? 3} pts</span></div>
+            <div style={{ marginTop: 4, paddingTop: 4, borderTop: `1px solid ${K.bdr}`, color: K.t1, fontWeight: FW.bold }}>
               Total: {(lc.matchWin ?? 3).toFixed(1)} pts this week
             </div>
-            <div style={{ fontSize: 10, color: K.t3, marginTop: 6, fontStyle: "italic" }}>
+            <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 6, fontStyle: "italic" }}>
               Match-play TIED → both teams get {(lc.matchTie ?? 1.5).toFixed(1)} pts
             </div>
           </div>
@@ -3728,7 +3680,7 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
         </>) : (
           <div>
             <Card style={{ padding: 14 }}>
-              <div style={{ fontSize: 13, color: K.t2, lineHeight: 1.6 }}>
+              <div style={{ fontSize: FS.sm, color: K.t2, lineHeight: 1.6 }}>
                 {isLowHigh
                   ? "Each week has 3 results: low match, high match, and bonus. Each result is a W, L, or T added to the team's record."
                   : "Each week produces a single W, L, or T for each team based on combined team net."
@@ -3876,22 +3828,22 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <BackBtn onClick={handleBack} />
-        <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 18, color: K.t1 }}>Accounts</span>
+        <span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: FS.lg, color: K.t1 }}>Accounts</span>
         <button
           onClick={saveAll}
           disabled={!dirty || saving}
           style={{
             background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`,
-            borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: 13,
+            borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: FS.sm,
             padding: "7px 16px", cursor: dirty && !saving ? "pointer" : "default",
-            fontWeight: 600, letterSpacing: .4, transition: "all .2s",
+            fontWeight: FW.semibold, letterSpacing: .4, transition: "all .2s",
             opacity: saving ? .6 : 1,
           }}
         >
           {saving ? "Saving..." : dirty ? `Save${dirtyCount > 1 ? ` (${dirtyCount})` : ""}` : "Saved"}
         </button>
       </div>
-      <div style={{ fontSize: 12, color: K.t3, marginBottom: 12, lineHeight: 1.5 }}>
+      <div style={{ fontSize: FS.sm, color: K.t3, marginBottom: 12, lineHeight: 1.5 }}>
         Members sign in via Google or email and link to a player profile. Commissioner
         access is granted here.
       </div>
@@ -3903,18 +3855,18 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
             background: notice.type === "success" ? K.grn + "18" : K.red + "18",
             border: `1px solid ${(notice.type === "success" ? K.grn : K.red)}55`,
             borderRadius: 10, padding: "10px 12px", marginBottom: 12, cursor: "pointer",
-            fontSize: 12, lineHeight: 1.5, color: notice.type === "success" ? K.grn : K.red,
+            fontSize: FS.sm, lineHeight: 1.5, color: notice.type === "success" ? K.grn : K.red,
           }}
         >
           {notice.text}
-          <span style={{ color: K.t3, marginLeft: 6, fontSize: 11 }}>(tap to dismiss)</span>
+          <span style={{ color: K.t3, marginLeft: 6, fontSize: FS.xs }}>(tap to dismiss)</span>
         </div>
       )}
 
       {members.length === 0 && (
         <div style={{ background: K.card, border: `1px dashed ${K.bdr}`, borderRadius: 10, padding: "24px 16px", textAlign: "center" }}>
-          <div style={{ fontSize: 13, color: K.t2, marginBottom: 4 }}>No accounts yet.</div>
-          <div style={{ fontSize: 11, color: K.t3 }}>Members appear here after they sign in and complete the join flow.</div>
+          <div style={{ fontSize: FS.sm, color: K.t2, marginBottom: 4 }}>No accounts yet.</div>
+          <div style={{ fontSize: FS.xs, color: K.t3 }}>Members appear here after they sign in and complete the join flow.</div>
         </div>
       )}
 
@@ -3932,25 +3884,25 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6, flex: 1, minWidth: 0 }}>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name || "—"}</div>
-                    <div style={{ fontSize: 10, color: K.t3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.email}</div>
+                    <div style={{ fontSize: FS.sm, fontWeight: FW.bold, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.name || "—"}</div>
+                    <div style={{ fontSize: FS.xs, color: K.t3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.email}</div>
                   </div>
                 </div>
                 <div style={{ display: "flex", gap: 4, alignItems: "center", flexShrink: 0 }}>
                   {isUnlinked && (
-                    <Pill color={K.hcpBlue} style={{ fontSize: 8 }}>UNLINKED</Pill>
+                    <Pill color={K.hcpBlue} style={{ fontSize: FS.micro }}>UNLINKED</Pill>
                   )}
                   {effectiveComm && (
-                    <Pill color={K.warn} style={{ fontSize: 8 }}>COMM</Pill>
+                    <Pill color={K.warn} style={{ fontSize: FS.micro }}>COMM</Pill>
                   )}
-                  <button onClick={() => handleDelete(m)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.red, fontSize: 10, padding: "3px 6px", cursor: "pointer" }}>✕</button>
+                  <button onClick={() => handleDelete(m)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.red, fontSize: FS.xs, padding: "3px 6px", cursor: "pointer" }}>✕</button>
                 </div>
               </div>
               <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 <select
                   value={effectivePlayerId}
                   onChange={e => setDraft(m.id, "playerId", e.target.value)}
-                  style={{ flex: 1, padding: 6, borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 12 }}
+                  style={{ flex: 1, padding: 6, borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.sm }}
                 >
                   <option value="">— Unlinked —</option>
                   {players
@@ -3965,7 +3917,7 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
                     background: effectiveComm ? K.warn + "20" : K.inp,
                     border: `1px solid ${effectiveComm ? K.warn + "40" : K.bdr}`,
                     color: effectiveComm ? K.warn : K.t3,
-                    fontSize: 10, fontWeight: 700, cursor: "pointer", whiteSpace: "nowrap",
+                    fontSize: FS.xs, fontWeight: FW.bold, cursor: "pointer", whiteSpace: "nowrap",
                   }}
                 >
                   {effectiveComm ? "Revoke" : "Make Comm"}
@@ -3981,7 +3933,7 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
                   style={{
                     background: "transparent", border: `1px solid ${K.bdr}`,
                     borderRadius: 6, color: resetBusyId === m.id ? K.t3 : K.hcpBlue,
-                    fontSize: 10, fontWeight: 700, letterSpacing: .3,
+                    fontSize: FS.xs, fontWeight: FW.bold, letterSpacing: .3,
                     padding: "4px 10px", cursor: resetBusyId === m.id ? "default" : "pointer",
                     opacity: resetBusyId === m.id ? .6 : 1, whiteSpace: "nowrap",
                   }}
@@ -4118,13 +4070,13 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
     <div>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
         <BackBtn onClick={handleBack} />
-        <button onClick={save} style={{ background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: 13, padding: "7px 16px", cursor: dirty ? "pointer" : "default", fontWeight: 600, letterSpacing: .4, transition: "all .2s" }}>{dirty ? "Save" : "Saved"}</button>
+        <button onClick={save} style={{ background: dirty ? K.act : K.inp, border: dirty ? "none" : `1px solid ${K.bdr}`, borderRadius: 6, color: dirty ? K.bg : K.t3, fontSize: FS.sm, padding: "7px 16px", cursor: dirty ? "pointer" : "default", fontWeight: FW.semibold, letterSpacing: .4, transition: "all .2s" }}>{dirty ? "Save" : "Saved"}</button>
       </div>
       <SubLabel>League Basics</SubLabel>
       <Card style={{ padding: 14, marginBottom: 16 }}>
-        <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>League Name</div><input value={lc.name} onChange={e => { setLc({ ...lc, name: e.target.value }); setDirty(true); }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} /></div>
-        <div style={{ marginBottom: 10 }}><div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Season Year</div><input value={lc.year} onChange={e => { setLc({ ...lc, year: parseInt(e.target.value) || 2026 }); setDirty(true); }} type="number" inputMode="numeric" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14 }} /></div>
-        <div><div style={{ fontSize: 11, color: K.t3, marginBottom: 4 }}>Invite Code</div><input value={lc.inviteCode || ""} onChange={e => { setLc({ ...lc, inviteCode: e.target.value.toUpperCase() }); setDirty(true); }} placeholder="e.g. MNQ2026" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 14, letterSpacing: 2, textTransform: "uppercase" }} /><div style={{ fontSize: 10, color: K.t3, marginTop: 4 }}>New members must enter this code to join. Leave blank to allow anyone.</div></div>
+        <div style={{ marginBottom: 10 }}><div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 4 }}>League Name</div><input value={lc.name} onChange={e => { setLc({ ...lc, name: e.target.value }); setDirty(true); }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.base }} /></div>
+        <div style={{ marginBottom: 10 }}><div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 4 }}>Season Year</div><input value={lc.year} onChange={e => { setLc({ ...lc, year: parseInt(e.target.value) || 2026 }); setDirty(true); }} type="number" inputMode="numeric" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.base }} /></div>
+        <div><div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 4 }}>Invite Code</div><input value={lc.inviteCode || ""} onChange={e => { setLc({ ...lc, inviteCode: e.target.value.toUpperCase() }); setDirty(true); }} placeholder="e.g. MNQ2026" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.base, letterSpacing: 2, textTransform: "uppercase" }} /><div style={{ fontSize: FS.xs, color: K.t3, marginTop: 4 }}>New members must enter this code to join. Leave blank to allow anyone.</div></div>
       </Card>
 
       {/* ── Handicaps section ──
@@ -4138,40 +4090,40 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
           <SubLabel>Handicaps</SubLabel>
           <Card style={{ padding: "2px 14px", marginBottom: 8 }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${K.bdr}15` }}>
-              <span style={{ fontSize: 12, color: K.t2 }}>Recent rounds to consider</span>
+              <span style={{ fontSize: FS.sm, color: K.t2 }}>Recent rounds to consider</span>
               <input
                 value={sr.hcpRecentCount ?? ""}
                 onChange={e => { setSr({ ...sr, hcpRecentCount: parseInt(e.target.value) || 0 }); setDirty(true); }}
                 onFocus={e => setTimeout(() => e.target.select(), 10)}
                 type="number" inputMode="numeric" step="1"
-                style={{ width: 58, padding: "5px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13, textAlign: "center" }}
+                style={{ width: 58, padding: "5px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.sm, textAlign: "center" }}
               />
             </div>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0" }}>
-              <span style={{ fontSize: 12, color: K.t2 }}>Best rounds to average</span>
+              <span style={{ fontSize: FS.sm, color: K.t2 }}>Best rounds to average</span>
               <input
                 value={sr.hcpBestCount ?? ""}
                 onChange={e => { setSr({ ...sr, hcpBestCount: parseInt(e.target.value) || 0 }); setDirty(true); }}
                 onFocus={e => setTimeout(() => e.target.select(), 10)}
                 type="number" inputMode="numeric" step="1"
-                style={{ width: 58, padding: "5px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: 13, textAlign: "center" }}
+                style={{ width: 58, padding: "5px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.sm, textAlign: "center" }}
               />
             </div>
           </Card>
-          <div style={{ fontSize: 10, color: K.t3, marginBottom: 16, lineHeight: 1.5, paddingLeft: 4 }}>
+          <div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 16, lineHeight: 1.5, paddingLeft: 4 }}>
             Handicap = average of the {sr.hcpBestCount || "N"} best rounds out of the most recent {sr.hcpRecentCount || "M"} rounds. Players with fewer rounds use a proportionally scaled count.
           </div>
 
           {recalcHandicaps && (
             <Card style={{ padding: 14, marginBottom: 16, border: `1px solid ${K.teal}30` }}>
-              <div style={{ fontSize: 12, color: K.t2, marginBottom: 10, lineHeight: 1.5 }}>
+              <div style={{ fontSize: FS.sm, color: K.t2, marginBottom: 10, lineHeight: 1.5 }}>
                 Recalculate all player handicaps now from historical scores. Normally runs automatically when a week is locked — use this to force a sync if stored values are out of date.
               </div>
-              <button onClick={handleRecalc} disabled={recalcing} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.teal + "15", border: `1.5px solid ${K.teal}50`, color: K.teal, fontSize: 13, fontWeight: 700, cursor: recalcing ? "default" : "pointer", opacity: recalcing ? 0.6 : 1 }}>
+              <button onClick={handleRecalc} disabled={recalcing} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.teal + "15", border: `1.5px solid ${K.teal}50`, color: K.teal, fontSize: FS.sm, fontWeight: FW.bold, cursor: recalcing ? "default" : "pointer", opacity: recalcing ? 0.6 : 1 }}>
                 {recalcing ? "Recalculating..." : "Recalc Handicaps Now"}
               </button>
               {recalcResult && (
-                <div style={{ fontSize: 11, color: recalcResult.error ? K.red : K.grn, marginTop: 8, textAlign: "center", fontWeight: 600 }}>
+                <div style={{ fontSize: FS.xs, color: recalcResult.error ? K.red : K.grn, marginTop: 8, textAlign: "center", fontWeight: FW.semibold }}>
                   {recalcResult.error ? `Error: ${recalcResult.error}` : `Done! ${recalcResult.updated} player(s) updated`}
                 </div>
               )}
@@ -4185,25 +4137,25 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
         <div style={{ marginTop: 24, paddingTop: 16, borderTop: `1px solid ${K.bdr}30` }}>
           <SubLabel color={K.red}>Danger Zone</SubLabel>
           <Card style={{ padding: 14, border: `1px solid ${K.red}30` }}>
-            <div style={{ fontSize: 12, color: K.t2, marginBottom: 10, lineHeight: 1.5 }}>
+            <div style={{ fontSize: FS.sm, color: K.t2, marginBottom: 10, lineHeight: 1.5 }}>
               Wipe all scores, match results, CTP data, and the entire schedule for the current season. After resetting, regenerate the schedule from Schedule settings.
             </div>
-            <button onClick={handleReset} disabled={resetting} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.red + "15", border: `1.5px solid ${K.red}50`, color: K.red, fontSize: 13, fontWeight: 700, cursor: resetting ? "default" : "pointer", opacity: resetting ? 0.6 : 1 }}>
+            <button onClick={handleReset} disabled={resetting} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.red + "15", border: `1.5px solid ${K.red}50`, color: K.red, fontSize: FS.sm, fontWeight: FW.bold, cursor: resetting ? "default" : "pointer", opacity: resetting ? 0.6 : 1 }}>
               {resetting ? "Resetting..." : "Reset Season Data"}
             </button>
           </Card>
 
           {saveMatchResult && import.meta.env.DEV && (
           <Card style={{ padding: 14, border: `1px solid ${K.warn}30`, marginTop: 8 }}>
-            <div style={{ fontSize: 12, color: K.t2, marginBottom: 10, lineHeight: 1.5 }}>
+            <div style={{ fontSize: FS.sm, color: K.t2, marginBottom: 10, lineHeight: 1.5 }}>
               <strong>Dev build only — hidden in production.</strong> Force-attest every match
               result, bypassing the opposing-team signature requirement.
             </div>
-            <button onClick={handleAttestAll} disabled={attesting} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: 13, fontWeight: 700, cursor: attesting ? "default" : "pointer", opacity: attesting ? 0.6 : 1 }}>
+            <button onClick={handleAttestAll} disabled={attesting} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.warn + "15", border: `1.5px solid ${K.warn}50`, color: K.warn, fontSize: FS.sm, fontWeight: FW.bold, cursor: attesting ? "default" : "pointer", opacity: attesting ? 0.6 : 1 }}>
               {attesting ? "Attesting..." : "Attest All Match Results"}
             </button>
             {attestResult && (
-              <div style={{ fontSize: 11, color: attestResult.error ? K.red : K.grn, marginTop: 8, textAlign: "center", fontWeight: 600 }}>
+              <div style={{ fontSize: FS.xs, color: attestResult.error ? K.red : K.grn, marginTop: 8, textAlign: "center", fontWeight: FW.semibold }}>
                 {attestResult.error ? `Error: ${attestResult.error}` : attestResult.message || `Done! ${attestResult.updated} result(s) attested`}
               </div>
             )}
