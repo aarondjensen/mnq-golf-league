@@ -15,8 +15,11 @@ import { EditConfirmationPopup } from "../components/EditConfirmationPopup";
 // column — a 4px misalignment). Pulling them into one place prevents
 // future drift and makes the layout intent obvious.
 const MY_SCHEDULE_COLS = {
-  week: 22,
-  date: 52,
+  // Combined Week+Date column — the date sits on top in a smaller, muted
+  // font with "Week N" bolded beneath it, mirroring the upcoming-matchup
+  // banner's stacked date/week. Replaces the prior separate week (22) +
+  // date (52) columns to reclaim horizontal space for the opponent column.
+  weekDate: 56,
   // Stacked column: tee time (or W/L result) on top, Front 9 / Back 9
   // on bottom — matches the app's upcoming-week banner stack pattern.
   // Width bumped from 44 → 56 to fit "FRONT 9" / "BACK 9" without
@@ -802,8 +805,12 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
             position: "relative",
           }}
         >
-          <div style={{ width: MY_SCHEDULE_COLS.week, fontSize: 14, fontWeight: 700, color: K.t1, flexShrink: 0 }}>{wk.week}</div>
-          <div style={{ width: MY_SCHEDULE_COLS.date, fontSize: 12, fontWeight: 600, color: K.t1, flexShrink: 0 }}>{wk.date || "—"}</div>
+          {/* Combined Date / Week column — stacked like the upcoming-match
+              banner: muted date on top, bold "Week N" beneath. */}
+          <div style={{ width: MY_SCHEDULE_COLS.weekDate, flexShrink: 0, display: "flex", flexDirection: "column", gap: 1, lineHeight: 1.15 }}>
+            <span style={{ fontSize: 11, fontWeight: 600, color: K.t2 }}>{wk.date || "—"}</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: K.t1 }}>Week {wk.week}</span>
+          </div>
           {/* Result/time column — stacked. Top: tee time, W/L result, or
               MAKEUP pill. Bottom: FRONT 9 / BACK 9 in muted blue, matching
               the upcoming-week banner pattern at the top of the app. */}
@@ -1369,8 +1376,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       {/* My Schedule column header — upcoming */}
       {myOnly && weeksToShow.upcoming.length > 0 && (
         <div style={{ display: "flex", alignItems: "center", padding: "0 14px 6px", fontSize: 9, color: K.t3, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8, gap: 10 }}>
-          <div style={{ width: MY_SCHEDULE_COLS.week }}>Wk</div>
-          <div style={{ width: MY_SCHEDULE_COLS.date }}>Date</div>
+          <div style={{ width: MY_SCHEDULE_COLS.weekDate }}>Date</div>
           <div style={{ width: MY_SCHEDULE_COLS.result }}>Time</div>
           <div style={{ flex: 1 }}>Opponent</div>
           <div style={{ width: MY_SCHEDULE_COLS.status, textAlign: "center" }}>Status</div>
@@ -1393,8 +1399,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           {/* My Schedule column header — complete */}
           {myOnly && (
             <div style={{ display: "flex", alignItems: "center", padding: "0 14px 6px", fontSize: 9, color: K.t3, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8, gap: 10 }}>
-              <div style={{ width: MY_SCHEDULE_COLS.week }}>Wk</div>
-              <div style={{ width: MY_SCHEDULE_COLS.date }}>Date</div>
+              <div style={{ width: MY_SCHEDULE_COLS.weekDate }}>Date</div>
               <div style={{ width: MY_SCHEDULE_COLS.result }}>Result</div>
               <div style={{ flex: 1 }}>Opponent</div>
             </div>
