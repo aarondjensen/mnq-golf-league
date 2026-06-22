@@ -633,9 +633,27 @@ export const FS = {
 };
 
 export const NAME_SIZE = FS.base;       // 15 — player/team names in lists
-export const NAME_WEIGHT = 700;   // font-weight for names
+
+// ── Weight scale ─────────────────────────────────────────────────────
+// Companion to FS for font-weights. The app uses five real weights; this
+// names them so call sites pick from a known set instead of scattering
+// raw numbers and state-toggle ternaries. IMPORTANT: League Spartan is
+// loaded at 300–800 only (see index.html). Weight 900 is NOT loaded and
+// silently falls back to 800, so any `fontWeight: 900` is a no-op — those
+// fold to FW.heavy during migration. (A handful exist today, including a
+// latent `isActive ? 900 : 800` toggle in Scoring that renders no
+// difference and needs a real emphasis cue.)
+export const FW = {
+  regular: 400,   // body text (rare)
+  medium: 500,    // gentle emphasis
+  semibold: 600,  // secondary labels, sub-headers
+  bold: 700,      // names, primary emphasis (most common)
+  heavy: 800,     // stat numbers, strong emphasis (also the 900 fallback)
+};
+
+export const NAME_WEIGHT = FW.bold;        // 700 — font-weight for names
 export const HERO_NUM_SIZE = FS.xl;     // 20 — large stat numbers (points, CTP count, etc.)
-export const HERO_NUM_WEIGHT = 800;
+export const HERO_NUM_WEIGHT = FW.heavy;   // 800
 export const RANK_BADGE_SIZE = 28; // width/height for rank badges
 export const RANK_BADGE_RADIUS = 7;
 export const RANK_BADGE_FONT = FS.sm;   // 13 — number inside rank badges

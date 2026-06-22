@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE, buildSeedMap, LoadingPanel, SkeletonList, buildHistoricalPlayers } from "../theme";
+import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE, FS, FW, buildSeedMap, LoadingPanel, SkeletonList, buildHistoricalPlayers } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { Popup } from "../components/Popup";
@@ -808,20 +808,20 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           {/* Combined Date / Week column — stacked like the upcoming-match
               banner: muted date on top, bold "Week N" beneath. */}
           <div style={{ width: MY_SCHEDULE_COLS.weekDate, flexShrink: 0, display: "flex", flexDirection: "column", gap: 1, lineHeight: 1.15 }}>
-            <span style={{ fontSize: 11, fontWeight: 600, color: K.t2 }}>{wk.date || "—"}</span>
-            <span style={{ fontSize: 13, fontWeight: 700, color: K.t1 }}>Week {wk.week}</span>
+            <span style={{ fontSize: FS.xs, fontWeight: FW.semibold, color: K.t2 }}>{wk.date || "—"}</span>
+            <span style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.t1 }}>Week {wk.week}</span>
           </div>
           {/* Result/time column — stacked. Top: tee time, W/L result, or
               MAKEUP pill. Bottom: FRONT 9 / BACK 9 in muted blue, matching
               the upcoming-week banner pattern at the top of the app. */}
           <div style={{ width: MY_SCHEDULE_COLS.result, flexShrink: 0, display: "flex", flexDirection: "column", gap: 1, lineHeight: 1.1, color: isRainedOut ? K.warn : isComplete ? resultColor : pendingMakeup ? K.act : isSeeded ? K.t3 : K.act }}>
             {isRainedOut ? (
-              <span style={{ fontSize: 14, fontWeight: 700 }}>—</span>
+              <span style={{ fontSize: FS.base, fontWeight: FW.bold }}>—</span>
             ) : isComplete ? (
               <>
-                <span style={{ fontSize: 14, fontWeight: 800, color: resultColor }}>{wlLetter}</span>
+                <span style={{ fontSize: FS.base, fontWeight: FW.heavy, color: resultColor }}>{wlLetter}</span>
                 {detailText && (
-                  <span style={{ fontSize: 10, fontWeight: 600, color: resultColor }}>{detailText}</span>
+                  <span style={{ fontSize: FS.xs, fontWeight: FW.semibold, color: resultColor }}>{detailText}</span>
                 )}
               </>
             ) : pendingMakeup ? (
@@ -830,26 +830,26 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                  column width — alignSelf keeps it left-aligned with the
                  sub-line below. */
               <span style={{
-                fontSize: 9, fontWeight: 800, letterSpacing: .8,
+                fontSize: FS.micro, fontWeight: FW.heavy, letterSpacing: .8,
                 textTransform: "uppercase", color: K.bg,
                 background: K.act, padding: "2px 5px", borderRadius: 4,
                 alignSelf: "flex-start",
               }}>Makeup</span>
             ) : isSeeded ? (
-              <span style={{ fontSize: 14, fontWeight: 700 }}>—</span>
+              <span style={{ fontSize: FS.base, fontWeight: FW.bold }}>—</span>
             ) : (
-              <span style={{ fontSize: 14, fontWeight: 700 }}>{teeTimeShort}</span>
+              <span style={{ fontSize: FS.base, fontWeight: FW.bold }}>{teeTimeShort}</span>
             )}
             {/* Front/Back sub-line — same column, matches banner style.
                 Omitted for rained-out weeks (the "—" speaks for itself) and
                 for completed weeks (the W/L result is what matters there). */}
             {!isRainedOut && !isComplete && (
-              <span style={{ fontSize: 9, fontWeight: 700, color: K.logoBright, letterSpacing: .5, textTransform: "uppercase" }}>
+              <span style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.logoBright, letterSpacing: .5, textTransform: "uppercase" }}>
                 {side === 'front' ? 'Front 9' : 'Back 9'}
               </span>
             )}
           </div>
-          <div style={{ flex: 1, fontSize: 13, fontWeight: 600, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", position: "relative", zIndex: 1, minWidth: 0 }}>
+          <div style={{ flex: 1, fontSize: FS.sm, fontWeight: FW.semibold, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", position: "relative", zIndex: 1, minWidth: 0 }}>
             {isRainedOut ? "RAIN" : isSeeded ? (() => {
               if (isPlayoff) {
                 const pRound = schedule.filter(s => s.isPlayoff === true && s.week <= wk.week).length;
@@ -880,9 +880,9 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                     const oppTeam = teams.find(t => t.id === oppTeamId);
                     if (oppTeam) return (
                       <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                        <span style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, color: K.logoBright, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800 }}>{mySeed}</span>
+                        <span style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, color: K.logoBright, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: FS.micro, fontWeight: FW.heavy }}>{mySeed}</span>
                         <span style={{ color: K.t3 }}>vs</span>
-                        <span style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, color: K.logoBright, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 9, fontWeight: 800 }}>{oppSeed}</span>
+                        <span style={{ width: 18, height: 18, borderRadius: 5, flexShrink: 0, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, color: K.logoBright, display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: FS.micro, fontWeight: FW.heavy }}>{oppSeed}</span>
                         <span>{lastNamesOnly(oppTeam.name)}</span>
                       </span>
                     );
@@ -901,7 +901,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                     width: 18, height: 18, borderRadius: 5, flexShrink: 0,
                     background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, color: K.logoBright,
                     display: "flex", alignItems: "center", justifyContent: "center",
-                    fontSize: 9, fontWeight: 800,
+                    fontSize: FS.micro, fontWeight: FW.heavy,
                   }}>{oppSeed}</div>
                 )}
                 <div style={{ display: "flex", flexDirection: "column", gap: 1, minWidth: 0, lineHeight: 1.15 }}>
@@ -921,7 +921,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                       by status (amber for makeup, grey for absent). */}
                   {teammateAttn && (
                   <span style={{
-                    fontSize: 8, fontWeight: 800, letterSpacing: .6,
+                    fontSize: FS.micro, fontWeight: FW.heavy, letterSpacing: .6,
                     textTransform: "uppercase",
                     padding: "2px 5px", borderRadius: 4,
                     background: teammateAttn.status === "makeup" ? K.act + "25" : K.red + "25",
@@ -941,7 +941,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
               column and the status column so it doesn't displace the
               status column's alignment with its header. */}
           {isComplete && res && (
-            <div style={{ flexShrink: 0, color: K.t3, fontSize: 9 }}>{expandedMatchKey === `${wk.week}_0` ? "▾" : "›"}</div>
+            <div style={{ flexShrink: 0, color: K.t3, fontSize: FS.micro }}>{expandedMatchKey === `${wk.week}_0` ? "▾" : "›"}</div>
           )}
           {/* Status column — fixed-width to align with the "Status" header.
               Three states:
@@ -956,7 +956,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
             {myAttn ? (
               <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3 }}>
                 <span style={{
-                  fontSize: 9, fontWeight: 800, letterSpacing: .8,
+                  fontSize: FS.micro, fontWeight: FW.heavy, letterSpacing: .8,
                   textTransform: "uppercase",
                   padding: "3px 7px", borderRadius: 5,
                   background: myAttn.status === "makeup" ? K.act : K.red,
@@ -970,7 +970,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                   aria-label="Clear attendance flag"
                   style={{
                     background: "transparent", border: "none",
-                    color: K.t3, fontSize: 11, cursor: "pointer",
+                    color: K.t3, fontSize: FS.xs, cursor: "pointer",
                     padding: "0 2px", lineHeight: 1,
                   }}
                 >✕ Clear</button>
@@ -981,7 +981,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                   onClick={(e) => { e.stopPropagation(); setMarkingWeek({ wk, status: "absent" }); }}
                   style={{
                     background: "transparent", border: `1px solid ${K.bdr}`,
-                    color: K.t3, fontSize: 9, fontWeight: 700,
+                    color: K.t3, fontSize: FS.micro, fontWeight: FW.bold,
                     letterSpacing: .6, textTransform: "uppercase",
                     padding: "4px 4px", borderRadius: 6,
                     cursor: "pointer",
@@ -993,7 +993,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                   onClick={(e) => { e.stopPropagation(); setMarkingWeek({ wk, status: "makeup" }); }}
                   style={{
                     background: "transparent", border: `1px solid ${K.bdr}`,
-                    color: K.t3, fontSize: 9, fontWeight: 700,
+                    color: K.t3, fontSize: FS.micro, fontWeight: FW.bold,
                     letterSpacing: .6, textTransform: "uppercase",
                     padding: "4px 4px", borderRadius: 6,
                     cursor: "pointer",
@@ -1112,7 +1112,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         <sc.TeamNetRow pids={dispT2Pids} isTeam1Side={false} />
       </div>
       {isComm && saveScore && (
-        <button onClick={() => openEditScores(wk, m, res)} style={{ width: "100%", padding: "6px 0", marginTop: 4, borderRadius: 6, background: K.warn + "15", border: `1px solid ${K.warn}40`, color: K.warn, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+        <button onClick={() => openEditScores(wk, m, res)} style={{ width: "100%", padding: "6px 0", marginTop: 4, borderRadius: 6, background: K.warn + "15", border: `1px solid ${K.warn}40`, color: K.warn, fontSize: FS.xs, fontWeight: FW.bold, cursor: "pointer" }}>
           Edit Scores
         </button>
       )}
@@ -1154,18 +1154,18 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           borderBottom: isExp ? "none" : undefined,
         }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span style={{ fontSize: NAME_SIZE, fontWeight: 700, color: K.t1, minWidth: 90 }}>
+            <span style={{ fontSize: NAME_SIZE, fontWeight: FW.bold, color: K.t1, minWidth: 90 }}>
               Week {wk.week}
             </span>
-            {wk.date && <span style={{ fontSize: 12, color: K.t3 }}>{wk.date}</span>}
+            {wk.date && <span style={{ fontSize: FS.sm, color: K.t3 }}>{wk.date}</span>}
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            {isRainedOut && <Pill color={K.warn} style={{ fontSize: 9 }}>RAIN OUT</Pill>}
-            {wk.makeupFor && <Pill color={K.teal} style={{ fontSize: 9 }}>MAKEUP</Pill>}
-            {!isRainedOut && <Pill color={K.logoBright} style={{ fontSize: 9 }}>{side === 'front' ? 'FRONT 9' : 'BACK 9'}</Pill>}
-            {isSeeded && !isRainedOut && <Pill color={K.acc} style={{ fontSize: 9 }}>SEEDED</Pill>}
-            {isPlayoff && !isRainedOut && <Pill color={K.warn} style={{ fontSize: 9 }}>PLAYOFF</Pill>}
-            {weekComplete && !isRainedOut && <Pill color={K.grn} style={{ fontSize: 9 }}>FINAL</Pill>}
+            {isRainedOut && <Pill color={K.warn} style={{ fontSize: FS.micro }}>RAIN OUT</Pill>}
+            {wk.makeupFor && <Pill color={K.teal} style={{ fontSize: FS.micro }}>MAKEUP</Pill>}
+            {!isRainedOut && <Pill color={K.logoBright} style={{ fontSize: FS.micro }}>{side === 'front' ? 'FRONT 9' : 'BACK 9'}</Pill>}
+            {isSeeded && !isRainedOut && <Pill color={K.acc} style={{ fontSize: FS.micro }}>SEEDED</Pill>}
+            {isPlayoff && !isRainedOut && <Pill color={K.warn} style={{ fontSize: FS.micro }}>PLAYOFF</Pill>}
+            {weekComplete && !isRainedOut && <Pill color={K.grn} style={{ fontSize: FS.micro }}>FINAL</Pill>}
             <span style={{ color: K.t3, fontSize: CHEVRON_SIZE, marginLeft: 2 }}>{isExp ? "▾" : "›"}</span>
           </div>
         </button>
@@ -1176,8 +1176,8 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
             border: `1px solid ${K.warn}40`, borderTop: "none", padding: "12px",
             textAlign: "center",
           }}>
-            <div style={{ fontSize: 13, color: K.warn, fontWeight: 600 }}>Rained Out</div>
-            <div style={{ fontSize: 11, color: K.t3, marginTop: 2 }}>Matchups rescheduled to makeup week</div>
+            <div style={{ fontSize: FS.sm, color: K.warn, fontWeight: FW.semibold }}>Rained Out</div>
+            <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 2 }}>Matchups rescheduled to makeup week</div>
           </div>
         )}
 
@@ -1194,8 +1194,8 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
             border: `1px solid ${K.bdr}`, borderTop: "none", padding: "12px",
             textAlign: "center",
           }}>
-            <div style={{ fontSize: 13, color: K.t2, fontWeight: 600 }}>{roundTitle}</div>
-            <div style={{ fontSize: 11, color: K.t3, marginTop: 2 }}>Matchups determined by standings — TBD</div>
+            <div style={{ fontSize: FS.sm, color: K.t2, fontWeight: FW.semibold }}>{roundTitle}</div>
+            <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 2 }}>Matchups determined by standings — TBD</div>
           </div>
           );
         })()}
@@ -1291,14 +1291,14 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                      tee time so the open status reads as intentional, not as
                      "we lost the score." */
                   <span style={{
-                    fontSize: 10, fontWeight: 800, letterSpacing: .8,
+                    fontSize: FS.xs, fontWeight: FW.heavy, letterSpacing: .8,
                     textTransform: "uppercase", color: K.bg,
                     background: K.act, padding: "3px 7px", borderRadius: 5,
                     display: "inline-block",
                   }}>Makeup</span>
                 ) : (
                   <div style={{
-                    fontSize: 15, fontWeight: 800, color: K.act, letterSpacing: .3,
+                    fontSize: FS.base, fontWeight: FW.heavy, color: K.act, letterSpacing: .3,
                     whiteSpace: "nowrap", textAlign: "center", lineHeight: 1.05,
                   }}>{fmtTeeTime(origIdx)}</div>
                 );
@@ -1350,13 +1350,13 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       <div style={{ display: "flex", gap: 5, marginBottom: 14, alignItems: "center" }}>
         {myTeam && (
           <button onClick={() => { setMyOnly(true); setShowAll(true); }} style={{
-            padding: "7px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600,
+            padding: "7px 10px", borderRadius: 6, cursor: "pointer", fontSize: FS.xs, fontWeight: FW.semibold,
             background: myOnly ? K.acc : K.card, color: myOnly ? K.bg : K.t2,
             border: `1px solid ${myOnly ? K.acc : K.bdr}`, whiteSpace: "nowrap",
           }}>My Schedule</button>
         )}
         <button onClick={() => { setShowAll(true); setMyOnly(false); }} style={{
-          padding: "7px 10px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 600,
+          padding: "7px 10px", borderRadius: 6, cursor: "pointer", fontSize: FS.xs, fontWeight: FW.semibold,
           background: !myOnly ? K.acc : K.card, color: !myOnly ? K.bg : K.t2,
           border: `1px solid ${!myOnly ? K.acc : K.bdr}`, whiteSpace: "nowrap",
         }}>Full League</button>
@@ -1366,7 +1366,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
             display: "flex", alignItems: "center", gap: 3,
             padding: "6px 8px", borderRadius: 6, cursor: "pointer",
             background: K.act + "12", border: `1px solid ${K.act}30`, color: K.act,
-            fontSize: 10, fontWeight: 600, whiteSpace: "nowrap", marginLeft: "auto",
+            fontSize: FS.xs, fontWeight: FW.semibold, whiteSpace: "nowrap", marginLeft: "auto",
           }}>
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
             Add All
@@ -1376,7 +1376,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
       {/* My Schedule column header — upcoming */}
       {myOnly && weeksToShow.upcoming.length > 0 && (
-        <div style={{ display: "flex", alignItems: "center", padding: "0 14px 6px", fontSize: 9, color: K.t3, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8, gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", padding: "0 14px 6px", fontSize: FS.micro, color: K.t3, fontWeight: FW.bold, textTransform: "uppercase", letterSpacing: .8, gap: 10 }}>
           <div style={{ width: MY_SCHEDULE_COLS.weekDate }}>Date</div>
           <div style={{ width: MY_SCHEDULE_COLS.result }}>Time</div>
           <div style={{ flex: 1 }}>Opponent</div>
@@ -1399,7 +1399,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           )}
           {/* My Schedule column header — complete */}
           {myOnly && (
-            <div style={{ display: "flex", alignItems: "center", padding: "0 14px 6px", fontSize: 9, color: K.t3, fontWeight: 700, textTransform: "uppercase", letterSpacing: .8, gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", padding: "0 14px 6px", fontSize: FS.micro, color: K.t3, fontWeight: FW.bold, textTransform: "uppercase", letterSpacing: .8, gap: 10 }}>
               <div style={{ width: MY_SCHEDULE_COLS.weekDate }}>Date</div>
               <div style={{ width: MY_SCHEDULE_COLS.result }}>Result</div>
               <div style={{ flex: 1 }}>Opponent</div>
@@ -1431,18 +1431,18 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           : "Not playing this week. Your teammate's score will be used in your spot.";
         return (
           <Popup onClose={() => setMarkingWeek(null)} maxWidth={380} padding={20}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>Week {markingWeek.wk.week} — {markingWeek.wk.date || ""}</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: K.t1, marginBottom: 6 }}>
+            <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>Week {markingWeek.wk.week} — {markingWeek.wk.date || ""}</div>
+            <div style={{ fontSize: FS.base, fontWeight: FW.bold, color: K.t1, marginBottom: 6 }}>
               Mark yourself as <span style={{ color: accent }}>{label}</span>?
             </div>
-            <div style={{ fontSize: 12, color: K.t2, lineHeight: 1.4, marginBottom: 18 }}>{description}</div>
+            <div style={{ fontSize: FS.sm, color: K.t2, lineHeight: 1.4, marginBottom: 18 }}>{description}</div>
             <div style={{ display: "flex", gap: 8 }}>
               <button
                 onClick={() => setMarkingWeek(null)}
                 style={{
                   flex: 1, padding: 11, borderRadius: 8,
                   background: K.inp, border: `1px solid ${K.bdr}`,
-                  color: K.t2, fontSize: 13, fontWeight: 700, cursor: "pointer",
+                  color: K.t2, fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer",
                 }}
               >
                 Cancel
@@ -1452,7 +1452,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                 style={{
                   flex: 1, padding: 11, borderRadius: 8,
                   background: accent, border: "none",
-                  color: K.bg, fontSize: 13, fontWeight: 800, cursor: "pointer",
+                  color: K.bg, fontSize: FS.sm, fontWeight: FW.heavy, cursor: "pointer",
                   letterSpacing: .5,
                 }}
               >
@@ -1520,7 +1520,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
             padding="14px 10px"
             outerPadding={10}
           >
-            <div style={{ fontSize: 14, fontWeight: 700, color: K.t1, marginBottom: 12, paddingRight: 40 }}>Edit Scores — Week {wk.week}</div>
+            <div style={{ fontSize: FS.base, fontWeight: FW.bold, color: K.t1, marginBottom: 12, paddingRight: 40 }}>Edit Scores — Week {wk.week}</div>
 
               {/* Hole header — was paddingLeft 64 to "indent past the player
                   meta column," but the meta row above wraps full-width
@@ -1530,13 +1530,13 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                   See audit issue #12. */}
               <div style={{ display: "flex", marginBottom: 2 }}>
                 {Array.from({ length: 9 }, (_, i) => (
-                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 9, fontWeight: 700, color: K.t3 }}>{side === 'front' ? i + 1 : i + 10}</div>
+                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: FS.micro, fontWeight: FW.bold, color: K.t3 }}>{side === 'front' ? i + 1 : i + 10}</div>
                 ))}
               </div>
               {/* Par row */}
               <div style={{ display: "flex", marginBottom: 8 }}>
                 {pars.map((p, i) => (
-                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: 10, fontWeight: 600, color: K.t2 }}>{p}</div>
+                  <div key={i} style={{ flex: 1, textAlign: "center", fontSize: FS.xs, fontWeight: FW.semibold, color: K.t2 }}>{p}</div>
                 ))}
               </div>
 
@@ -1563,21 +1563,21 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                         background: absent ? K.red + "20" : K.acc + "20",
                         color: absent ? K.red : K.acc,
                         display: "flex", alignItems: "center", justifyContent: "center",
-                        fontSize: 10, fontWeight: 800, letterSpacing: -.2,
+                        fontSize: FS.xs, fontWeight: FW.heavy, letterSpacing: -.2,
                         flexShrink: 0,
                       }}>{getInitials(pid)}</div>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: K.t1, flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <div style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.t1, flex: 1, minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {getName(pid)}
                       </div>
                       <div style={{
-                        fontSize: 10, fontWeight: 700, color: K.t3,
+                        fontSize: FS.xs, fontWeight: FW.bold, color: K.t3,
                         background: K.inp, padding: "2px 7px", borderRadius: 10,
                         flexShrink: 0,
                       }}>HCP {getHcp(pid)}</div>
                       <button
                         onClick={() => toggleAbsent(pid)}
                         style={{
-                          fontSize: 9, fontWeight: 800, letterSpacing: .3,
+                          fontSize: FS.micro, fontWeight: FW.heavy, letterSpacing: .3,
                           padding: "3px 9px", borderRadius: 10,
                           background: absent ? K.red : "transparent",
                           color: absent ? K.bg : K.t3,
@@ -1624,7 +1624,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                               onChange={e => setS(pid, h, parseInt(e.target.value) || 0)}
                               disabled={absent}
                               style={{
-                                width: "100%", maxWidth: 32, height: 30, textAlign: "center", fontSize: 14, fontWeight: 700,
+                                width: "100%", maxWidth: 32, height: 30, textAlign: "center", fontSize: FS.base, fontWeight: FW.bold,
                                 background: absent ? "transparent" : K.inp,
                                 border: `1px solid ${absent ? K.bdr + "40" : K.bdr}`,
                                 borderRadius: 4, color,
@@ -1657,7 +1657,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                       disabled={state !== "ready"}
                       style={{
                         flex: 1, padding: 10, borderRadius: 8,
-                        fontSize: 13, fontWeight: 700,
+                        fontSize: FS.sm, fontWeight: FW.bold,
                         background: state === "incomplete" ? K.inp : K.warn,
                         border: state === "incomplete" ? `1px solid ${K.bdr}` : "none",
                         color: state === "incomplete" ? K.t3 : K.bg,
@@ -1678,7 +1678,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                     </button>
                   );
                 })()}
-                <button onClick={() => setEditingMatch(null)} style={{ padding: "10px 16px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>
+                <button onClick={() => setEditingMatch(null)} style={{ padding: "10px 16px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer" }}>
                   Cancel
                 </button>
               </div>
