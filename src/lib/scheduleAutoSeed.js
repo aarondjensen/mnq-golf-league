@@ -82,7 +82,7 @@
 // state at call time, not the snapshot in the original closure.
 
 import { db, LEAGUE_ID } from "../firebase";
-import { buildStandingsForSeed, pairNonBracketTeams, collectPriorMatchups } from "../theme";
+import { buildStandingsForSeed, pairNonBracketTeams, collectPriorMatchups, serializeSeedWeeks } from "../theme";
 
 export async function autoSeedIfReady({
   justLockedWeek,
@@ -132,7 +132,12 @@ export async function autoSeedIfReady({
     // First time computing under lockSeedsEnabled? Save the snapshot
     // immediately so subsequent calls use it.
     if (!useLocked && lockSeedsEnabled) {
-      await db.upsert("league_config", { ...leagueConfig, id: leagueConfig?.id || `${LEAGUE_ID}_config`, league_id: LEAGUE_ID, lockedSeeds: seeds });
+      // Spreading ...leagueConfig carries customSeedWeeks, which is an
+      // array-of-arrays and illegal in Firestore — serialize it to the
+      // array-of-maps shape so this write doesn't silently fail.
+      const cfgWrite = { ...leagueConfig, id: leagueConfig?.id || `${LEAGUE_ID}_config`, league_id: LEAGUE_ID, lockedSeeds: seeds };
+      if ("customSeedWeeks" in cfgWrite) cfgWrite.customSeedWeeks = serializeSeedWeeks(cfgWrite.customSeedWeeks);
+      await db.upsert("league_config", cfgWrite);
     }
 
     const n = seeds.length;

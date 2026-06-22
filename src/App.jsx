@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
-import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, LoadingPanel } from "./theme";
+import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, LoadingPanel, serializeSeedWeeks, deserializeLeagueConfig } from "./theme";
 import { parseScheduleDate } from "./lib/scheduleDate";
 import { usePullToRefresh } from "./lib/usePullToRefresh";
 import { autoSeedIfReady as autoSeedIfReadyLib } from "./lib/scheduleAutoSeed";
@@ -256,7 +256,7 @@ export default function GolfLeagueApp() {
   const refetchOneTimeReads = useCallback(() => {
     db.get("league_course", LF).then(docs => { if (docs.length) setCourseData(docs[0]); });
     db.get("league_scoring", LF).then(docs => { if (docs.length) setScoringRules(docs[0]); });
-    db.get("league_config", LF).then(docs => { if (docs.length) setLeagueConfig(docs[0]); });
+    db.get("league_config", LF).then(docs => { if (docs.length) setLeagueConfig(deserializeLeagueConfig(docs[0])); });
   }, []);
 
   // Check whether a new build has been deployed since the app was loaded. We compare
@@ -758,7 +758,21 @@ export default function GolfLeagueApp() {
   const saveLeagueConfig = useCallback(async (c) => {
     const prev = leagueConfig;
     const data = { ...c, id: `${LEAGUE_ID}_config`, league_id: LEAGUE_ID };
-    await db.upsert("league_config", data);
+    // Firestore forbids directly nested arrays, so customSeedWeeks
+    // ([[{s1,s2},...], ...]) must be written as an array-of-maps. We
+    // serialize only the copy that goes to Firestore and keep `data`
+    // (the in-memory state) in the nested-array shape every reader
+    // expects. We also check the write result: db.upsert returns null on
+    // failure, and previously that was ignored — the in-memory update
+    // masked a silent persistence failure until the next reload.
+    const forFirestore = { ...data };
+    if ("customSeedWeeks" in forFirestore) {
+      forFirestore.customSeedWeeks = serializeSeedWeeks(forFirestore.customSeedWeeks);
+    }
+    const writeResult = await db.upsert("league_config", forFirestore);
+    if (writeResult === null) {
+      console.error("saveLeagueConfig: Firestore write failed — config not persisted", forFirestore);
+    }
     setLeagueConfig(data);
     // Stable deep-equality: JSON.stringify with a sorted-keys replacer
     // produces a canonical form that's invariant to key insertion order
