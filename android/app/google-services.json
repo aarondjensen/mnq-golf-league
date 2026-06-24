@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "367374056990",
+    "project_id": "mnq-golf-leage",
+    "storage_bucket": "mnq-golf-leage.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:367374056990:android:489c32fa25aab87158780f",
+        "android_client_info": {
+          "package_name": "com.mnqgolf.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "367374056990-p80pfpo1du6h90aenl53uf8mtmun878b.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mnqgolf.app",
+            "certificate_hash": "efc2a38c42bb3c69dcefd22ad1e049c74b77939c"
+          }
+        },
+        {
+          "client_id": "367374056990-09in1vap23fipl5pc030ebehdloqp6m1.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBTQbfSHaWbQdg-Rs0mTtizv-KlvSiBUxM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "367374056990-09in1vap23fipl5pc030ebehdloqp6m1.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

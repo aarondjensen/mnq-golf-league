@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, doc, setDoc, getDocs, query, where, writeBatch, onSnapshot, deleteDoc } from "firebase/firestore";
-import { getAuth, initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, onAuthStateChanged, signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
+import { getAuth, initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithCredential, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, onAuthStateChanged, signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { Capacitor } from "@capacitor/core";
 
@@ -79,6 +79,53 @@ try {
 }
 export const _auth = _authInstance;
 export const _googleProvider = new GoogleAuthProvider();
+
+// ─── Native Google sign-in (Capacitor) ──────────────────────────────────
+// The web popup/redirect Google flow can't run inside a native WebView, so
+// on iOS/Android we use @capacitor-firebase/authentication. It runs the
+// platform-native Google sign-in (native Google SDK / system account
+// picker) and returns an ID token. We exchange that for a Firebase
+// credential and sign into the JS SDK with signInWithCredential — so the
+// rest of the app (Firestore/Functions via the JS SDK) sees the user
+// EXACTLY as it does on web. The onAuthStateChanged listener fires normally
+// and routes the user in.
+//
+// skipNativeAuth:true (capacitor.config.json) means the plugin only mints
+// the credential and does NOT keep its own native Firebase session — the JS
+// SDK is the single source of truth for auth state, matching web. (This is
+// also why signInWithCredential works without the popup/redirect resolver
+// we deliberately omit on native — it's a direct credential exchange, not a
+// popup/redirect operation.)
+//
+// Dynamic import keeps the plugin off the web bundle's critical path; on
+// web this helper is never called (doGoogleSignIn branches on
+// Capacitor.isNativePlatform()).
+export const nativeGoogleSignIn = async () => {
+  const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
+  const result = await FirebaseAuthentication.signInWithGoogle();
+  const idToken = result?.credential?.idToken;
+  if (!idToken) {
+    throw new Error("Google sign-in did not return an ID token.");
+  }
+  const credential = GoogleAuthProvider.credential(idToken);
+  return signInWithCredential(_auth, credential);
+};
+
+// Sign out of the native Google/Firebase plugin layer too. With
+// skipNativeAuth:true the plugin holds no Firebase session, but the native
+// Google SDK can cache the last-used account; clearing it ensures the next
+// sign-in shows the account picker rather than silently re-using the
+// previous account (so a shared device can switch users). No-op-safe: any
+// failure is swallowed so it can never block the JS SDK signOut. Only call
+// on native.
+export const nativeAuthSignOut = async () => {
+  try {
+    const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
+    await FirebaseAuthentication.signOut();
+  } catch (e) {
+    console.warn("native FirebaseAuthentication.signOut failed:", e?.message || e);
+  }
+};
 
 // ─── Callable Cloud Functions ───────────────────────────────────────────
 // Default region (us-central1) — matches the v2 functions in functions/

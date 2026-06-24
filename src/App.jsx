@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
-import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
+import { db, LF, LEAGUE_ID, _auth, _googleProvider, nativeGoogleSignIn, nativeAuthSignOut, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
 import { Capacitor } from "@capacitor/core";
 import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, LoadingPanel, serializeSeedWeeks, deserializeLeagueConfig, buildSeedMap, FS, FW } from "./theme";
 import { parseScheduleDate } from "./lib/scheduleDate";
@@ -428,12 +428,12 @@ export default function GolfLeagueApp() {
   // Detection: iOS exposes navigator.standalone; other platforms expose
   // display-mode: standalone via matchMedia.
   const doGoogleSignIn = async () => {
-    // Native shells can't use the web Google flow: popup can't postMessage
-    // back, and redirect navigates the WebView away from the bundled app
-    // and never returns. Surface a clear message and bail until the native
-    // auth plugin lands in Phase 2.
+    // Native: use @capacitor-firebase/authentication (Phase 2). It runs the
+    // platform-native Google flow and signs into the JS SDK via
+    // signInWithCredential (see nativeGoogleSignIn in firebase.js). The web
+    // popup/redirect path below can't work inside a WebView.
     if (Capacitor.isNativePlatform()) {
-      throw new Error("Google sign-in isn't available in the app yet — please sign in with email and password.");
+      return nativeGoogleSignIn();
     }
     try {
       const isStandalone =
@@ -572,6 +572,11 @@ export default function GolfLeagueApp() {
     setCommMode(false);
     setImpersonating(null);
     setTab("standings");
+    // On native, also clear the plugin/native Google session so the next
+    // sign-in shows the account picker (lets a shared device switch users).
+    if (Capacitor.isNativePlatform()) {
+      await nativeAuthSignOut();
+    }
     await signOut(_auth);
   };
   const doPasswordReset = async (email) => {
