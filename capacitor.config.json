@@ -1,0 +1,19 @@
+{
+  "appId": "com.mnqgolf.app",
+  "appName": "MnQ Golf",
+  "webDir": "dist",
+  "ios": {
+    "backgroundColor": "#f0f2f5",
+    "scrollEnabled": true
+  },
+  "android": {
+    "backgroundColor": "#f0f2f5"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchAutoHide": false,
+      "backgroundColor": "#f0f2f5",
+      "showSpinner": false
+    }
+  }
+}

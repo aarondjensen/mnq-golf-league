@@ -161,6 +161,21 @@ export default function GolfLeagueApp() {
     import("./lib/notifications").then(mod => mod.initForegroundNotifications());
   }, []);
 
+  // ── Native splash dismiss ────────────────────────────────────────────
+  // The native splash is configured launchAutoHide:false, so it stays up
+  // until we explicitly hide it — guaranteeing it covers the WebView until
+  // React has actually painted, with no blank flash and no reliance on a
+  // guessed timer (the auto-hide timer proved unreliable on Android 12+).
+  // This effect runs after the first render commits, so by the time we
+  // hide the splash the app shell (LoadingScreen / AuthScreen / app) is
+  // already on screen. No-op on web, where there is no native splash.
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    import("@capacitor/splash-screen")
+      .then(({ SplashScreen }) => SplashScreen.hide())
+      .catch((e) => console.warn("SplashScreen.hide failed:", e?.message || e));
+  }, []);
+
   const [showMore, setShowMore] = useState(false);
   const [impersonating, setImpersonating] = useState(null);
   const [commMode, setCommMode] = useState(false);
