@@ -2,6 +2,10 @@
   "appId": "com.mnqgolf.app",
   "appName": "MnQ Golf",
   "webDir": "dist",
+  "server": {
+    "iosScheme": "https",
+    "androidScheme": "https"
+  },
   "ios": {
     "backgroundColor": "#f0f2f5",
     "scrollEnabled": true

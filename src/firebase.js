@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, doc, setDoc, getDocs, query, where, writeBatch, onSnapshot, deleteDoc } from "firebase/firestore";
-import { getAuth, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, onAuthStateChanged, signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
+import { getAuth, initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, onAuthStateChanged, signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
 
 const FIREBASE_CONFIG = {
@@ -27,7 +27,43 @@ export const LEAGUE_ID = "league_2026";
 
 const _app = initializeApp(FIREBASE_CONFIG);
 const _db = getFirestore(_app);
-export const _auth = getAuth(_app);
+// ─── Auth persistence — explicit and durable ────────────────────────────
+// Bare getAuth() resolves persistence through a SILENT fallback chain:
+// [indexedDB → localStorage → sessionStorage → in-memory]. It picks the
+// first available tier and never reports which one it landed on. The trap
+// is the bottom two tiers: if IndexedDB is unavailable or unwritable
+// (corrupted IDB, certain iOS content/lockdown settings, storage-pressure
+// eviction, a flaky redirect-handler write), getAuth() quietly degrades to
+// sessionStorage or in-memory — both wiped the instant the app is closed.
+// The symptom is "I signed in, came back, and it made me log in again,"
+// with NO error logged anywhere.
+//
+// initializeAuth lets us pin persistence to ONLY the durable tiers
+// (IndexedDB preferred, localStorage fallback) so it can never silently
+// drop to an ephemeral store. It's applied synchronously at construction,
+// so — unlike setPersistence(), which returns a promise — there's no race
+// against the onAuthStateChanged listener or getRedirectResult on cold
+// start.
+//
+// CAVEAT: initializeAuth does NOT auto-register the popup/redirect resolver
+// that getAuth wires up for you. Without browserPopupRedirectResolver, BOTH
+// the popup (browser tabs) and redirect (installed iOS PWA) Google flows
+// would break. We pass it explicitly.
+//
+// If construction throws (no IndexedDB AND no localStorage — effectively
+// never, outside hard-locked private modes), fall back to plain getAuth so
+// the app still loads rather than white-screening.
+let _authInstance;
+try {
+  _authInstance = initializeAuth(_app, {
+    persistence: [indexedDBLocalPersistence, browserLocalPersistence],
+    popupRedirectResolver: browserPopupRedirectResolver,
+  });
+} catch (e) {
+  console.error("initializeAuth failed; falling back to getAuth:", e?.message || e);
+  _authInstance = getAuth(_app);
+}
+export const _auth = _authInstance;
 export const _googleProvider = new GoogleAuthProvider();
 
 // ─── Callable Cloud Functions ───────────────────────────────────────────
