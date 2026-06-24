@@ -1,4 +1,4 @@
-{
+﻿{
   "appId": "com.mnqgolf.app",
   "appName": "MnQ Golf",
   "webDir": "dist",
@@ -14,6 +14,10 @@
       "launchAutoHide": false,
       "backgroundColor": "#f0f2f5",
       "showSpinner": false
+    },
+    "FirebaseAuthentication": {
+      "skipNativeAuth": true,
+      "providers": ["google.com"]
     }
   }
 }
