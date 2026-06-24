@@ -62,14 +62,39 @@ async function sendToPlayer(playerId, payload) {
     const data = tokenDoc.data();
     const token = data.token;
     if (!token) continue;
+
+    // Web/PWA tokens get the data-only format (the service worker renders
+    // the alert) for iOS-PWA delivery reliability. NATIVE tokens (Capacitor
+    // apps, flagged native:true at registration) need a `notification` block
+    // so iOS/Android display the alert automatically when the app is
+    // backgrounded or closed — a data-only message would arrive silently
+    // and show nothing. We keep the data payload on both so in-app /
+    // tap-through handling (data.url) still works.
+    const message = data.native
+      ? {
+          token,
+          notification: {
+            title: dataPayload.title,
+            body: dataPayload.body,
+          },
+          data: dataPayload,
+          apns: {
+            payload: { aps: { sound: "default" } },
+          },
+          android: {
+            priority: "high",
+          },
+        }
+      : {
+          token,
+          data: dataPayload,
+          webpush: {
+            headers: { TTL: "3600", Urgency: "high" },
+          },
+        };
+
     try {
-      await messaging.send({
-        token,
-        data: dataPayload,
-        webpush: {
-          headers: { TTL: "3600", Urgency: "high" },
-        },
-      });
+      await messaging.send(message);
       sent++;
       try { await tokenDoc.ref.update({ lastSeenAt: Date.now() }); }
       catch { /* swallow */ }

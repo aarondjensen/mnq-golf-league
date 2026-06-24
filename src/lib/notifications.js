@@ -24,6 +24,72 @@
 // function call, so the page always renders even when push is unsupported.
 
 import { db, LEAGUE_ID, getMessagingInstance } from "../firebase";
+import { Capacitor } from "@capacitor/core";
+
+// ─── Native push (Capacitor) ─────────────────────────────────────────────
+// On native (iOS/Android) the web service-worker + web-push path below does
+// not exist (no service workers in a WebView app). We use
+// @capacitor-firebase/messaging, which returns a real FCM token on BOTH
+// platforms, stored in the SAME league_notifications_tokens collection so
+// the Cloud Functions send logic is unchanged — except that native tokens
+// carry `native: true`, which the functions use (3c) to attach a
+// notification block so the OS displays the alert when backgrounded.
+// Dynamic import keeps the plugin out of the web bundle's critical path.
+const loadNativeMessaging = async () => {
+  const { FirebaseMessaging } = await import("@capacitor-firebase/messaging");
+  return FirebaseMessaging;
+};
+
+// Remember who registered this session so a later FCM token rotation
+// (tokenReceived) can be re-persisted against the right player. The token
+// is stable for months, so the main path is register-time; this just keeps
+// it fresh if it rotates while the app is open.
+let _lastRegisteredPlayerId = null;
+
+// Persist a native FCM token in the same shape as the web path, plus
+// native:true + platform so the admin view and Cloud Functions can tell
+// native devices apart.
+const storeNativeToken = async (playerId, token) => {
+  const tokenHash = await sha256Short(token);
+  const docId = `${LEAGUE_ID}_p${playerId}_${tokenHash}`;
+  const platform = Capacitor.getPlatform(); // "ios" | "android"
+  const ua = (typeof navigator !== "undefined" && navigator.userAgent) || "";
+  await db.upsert("league_notifications_tokens", {
+    id: docId,
+    league_id: LEAGUE_ID,
+    playerId,
+    token,
+    userAgent: ua.slice(0, 200),
+    isIOS: platform === "ios",
+    isStandalone: true, // a native app is always "standalone"
+    native: true,
+    platform,
+    registeredAt: Date.now(),
+    lastSeenAt: Date.now(),
+  });
+};
+
+// Native registration: request permission via the plugin, get the FCM
+// token, persist it. Returns the same { success, state, error } shape the
+// settings page already handles.
+const registerForPushNative = async (playerId) => {
+  try {
+    const FirebaseMessaging = await loadNativeMessaging();
+    const perm = await FirebaseMessaging.requestPermissions();
+    if (perm?.receive !== "granted") {
+      // "denied" | "prompt" | "prompt-with-rationale"
+      return { success: false, state: perm?.receive === "denied" ? "denied" : "default" };
+    }
+    const { token } = await FirebaseMessaging.getToken();
+    if (!token) return { success: false, state: "no_token" };
+    await storeNativeToken(playerId, token);
+    _lastRegisteredPlayerId = playerId;
+    return { success: true, state: "granted", token };
+  } catch (e) {
+    console.error("native registerForPush failed:", e);
+    return { success: false, state: "error", error: e?.message || String(e) };
+  }
+};
 
 // ─── VAPID public key ───────────────────────────────────────────────────
 // Generated in Firebase Console: Project Settings → Cloud Messaging →
@@ -43,6 +109,15 @@ const VAPID_PUBLIC_KEY = "BPHCLmvYDg5QBwHFnMVIn5aLeQHY2BTk2UHtihRVeA114PdrUEMBiB
 //   "granted"     — user said yes
 //   "denied"      — user said no (can't re-prompt; must direct to settings)
 export const getNotificationPermissionState = () => {
+  // Native: push IS supported, but the real permission is async (the plugin
+  // must be queried). This sync function can't await, so return "default"
+  // — that drives the settings page to show the "Enable" button, and the
+  // actual prompt happens when registerForPush() runs. The subscribed state
+  // (whether a token exists) is the real source of truth and comes from
+  // checkSubscriptionStatus(), which works natively unchanged. Never return
+  // "unsupported" here on native — that would wrongly show the browser
+  // "not supported" copy and the iOS install nudge inside a real app.
+  if (Capacitor.isNativePlatform()) return "default";
   if (typeof window === "undefined") return "unsupported";
   if (!("Notification" in window) || !("serviceWorker" in navigator)) {
     return "unsupported";
@@ -90,6 +165,11 @@ const registerServiceWorker = async () => {
 export const registerForPush = async (playerId) => {
   if (!playerId) {
     return { success: false, state: "error", error: "missing playerId" };
+  }
+  // Native uses the Capacitor FCM plugin; the web service-worker flow below
+  // can't run in a WebView app.
+  if (Capacitor.isNativePlatform()) {
+    return registerForPushNative(playerId);
   }
   if (getNotificationPermissionState() === "unsupported") {
     return { success: false, state: "unsupported" };
@@ -228,12 +308,22 @@ export const triggerTestPush = async (playerId) => {
 // (stops Cloud Functions from trying to send). Both are best-effort —
 // if one fails, the user is still functionally unsubscribed in the UI.
 export const unsubscribeFromPush = async (playerId) => {
-  const messaging = await getMessagingInstance();
-  if (messaging) {
+  if (Capacitor.isNativePlatform()) {
+    // Delete the FCM token at the native layer so the device stops being a
+    // valid push target, then fall through to the shared Firestore cleanup.
     try {
-      const { deleteToken } = await import("firebase/messaging");
-      await deleteToken(messaging);
-    } catch (e) { console.warn("deleteToken failed:", e); }
+      const FirebaseMessaging = await loadNativeMessaging();
+      await FirebaseMessaging.deleteToken();
+    } catch (e) { console.warn("native deleteToken failed:", e); }
+    _lastRegisteredPlayerId = null;
+  } else {
+    const messaging = await getMessagingInstance();
+    if (messaging) {
+      try {
+        const { deleteToken } = await import("firebase/messaging");
+        await deleteToken(messaging);
+      } catch (e) { console.warn("deleteToken failed:", e); }
+    }
   }
   // Clean up all token docs for this player. Multi-device users get all
   // their devices unsubscribed at once — which is the right behavior since
@@ -258,6 +348,37 @@ export const unsubscribeFromPush = async (playerId) => {
 let _foregroundUnsub = null;
 export const initForegroundNotifications = async () => {
   if (_foregroundUnsub) return; // idempotent
+
+  // Native: wire the plugin listeners. The OS auto-displays notification-
+  // format messages when the app is backgrounded (that's why 3c adds the
+  // notification block for native tokens). Here we (a) keep the stored
+  // token fresh if FCM rotates it mid-session, and (b) deep-link when the
+  // user taps a notification (data.url like "/#standings").
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const FirebaseMessaging = await loadNativeMessaging();
+      await FirebaseMessaging.addListener("tokenReceived", async ({ token }) => {
+        try {
+          if (_lastRegisteredPlayerId && token) {
+            await storeNativeToken(_lastRegisteredPlayerId, token);
+          }
+        } catch (e) { console.warn("native token refresh failed:", e); }
+      });
+      await FirebaseMessaging.addListener("notificationActionPerformed", (event) => {
+        const url = event?.notification?.data?.url;
+        if (url && typeof window !== "undefined") {
+          // Normalize to a hash route (e.g. "/#standings" → "#standings").
+          const hash = url.startsWith("#") ? url : `#${url.replace(/^\/?#?/, "")}`;
+          window.location.hash = hash;
+        }
+      });
+      _foregroundUnsub = () => {}; // mark initialized
+    } catch (e) {
+      console.warn("native notification listeners failed:", e);
+    }
+    return;
+  }
+
   const messaging = await getMessagingInstance();
   if (!messaging) return;
   const { onMessage } = await import("firebase/messaging");
