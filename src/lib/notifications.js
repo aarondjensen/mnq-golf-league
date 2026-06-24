@@ -35,10 +35,13 @@ import { Capacitor } from "@capacitor/core";
 // carry `native: true`, which the functions use (3c) to attach a
 // notification block so the OS displays the alert when backgrounded.
 // Dynamic import keeps the plugin out of the web bundle's critical path.
-const loadNativeMessaging = async () => {
-  const { FirebaseMessaging } = await import("@capacitor-firebase/messaging");
-  return FirebaseMessaging;
-};
+// IMPORTANT: never return the FirebaseMessaging plugin proxy from an async
+// function. Capacitor plugins are JS Proxies that intercept every property
+// access, so an async function returning the proxy makes JS's thenable check
+// invoke proxy.then(...), which the native bridge receives as a call to a
+// nonexistent "then" method ("FirebaseMessaging.then() is not implemented").
+// Instead, destructure the plugin inline at each call site and only ever
+// await its real methods. Dynamic import keeps it off the web bundle path.
 
 // Remember who registered this session so a later FCM token rotation
 // (tokenReceived) can be re-persisted against the right player. The token
@@ -74,7 +77,7 @@ const storeNativeToken = async (playerId, token) => {
 // settings page already handles.
 const registerForPushNative = async (playerId) => {
   try {
-    const FirebaseMessaging = await loadNativeMessaging();
+    const { FirebaseMessaging } = await import("@capacitor-firebase/messaging");
     const perm = await FirebaseMessaging.requestPermissions();
     if (perm?.receive !== "granted") {
       // "denied" | "prompt" | "prompt-with-rationale"
@@ -312,7 +315,7 @@ export const unsubscribeFromPush = async (playerId) => {
     // Delete the FCM token at the native layer so the device stops being a
     // valid push target, then fall through to the shared Firestore cleanup.
     try {
-      const FirebaseMessaging = await loadNativeMessaging();
+      const { FirebaseMessaging } = await import("@capacitor-firebase/messaging");
       await FirebaseMessaging.deleteToken();
     } catch (e) { console.warn("native deleteToken failed:", e); }
     _lastRegisteredPlayerId = null;
@@ -356,7 +359,7 @@ export const initForegroundNotifications = async () => {
   // user taps a notification (data.url like "/#standings").
   if (Capacitor.isNativePlatform()) {
     try {
-      const FirebaseMessaging = await loadNativeMessaging();
+      const { FirebaseMessaging } = await import("@capacitor-firebase/messaging");
       await FirebaseMessaging.addListener("tokenReceived", async ({ token }) => {
         try {
           if (_lastRegisteredPlayerId && token) {
