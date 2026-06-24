@@ -2,6 +2,7 @@ import { initializeApp } from "firebase/app";
 import { getFirestore, collection, doc, setDoc, getDocs, query, where, writeBatch, onSnapshot, deleteDoc } from "firebase/firestore";
 import { getAuth, initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, signInWithPopup, signInWithRedirect, getRedirectResult, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, onAuthStateChanged, signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
+import { Capacitor } from "@capacitor/core";
 
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDW3tTWxOlrPoKiflmlh_6JPLe8vbvVEUE",
@@ -57,7 +58,20 @@ let _authInstance;
 try {
   _authInstance = initializeAuth(_app, {
     persistence: [indexedDBLocalPersistence, browserLocalPersistence],
-    popupRedirectResolver: browserPopupRedirectResolver,
+    // Resolver is WEB-ONLY. On web it powers the popup (browser tab) and
+    // redirect (installed PWA) Google flows. On native we MUST omit it:
+    // initializeAuth eagerly processes pending-redirect state THROUGH this
+    // resolver during construction, which loads a cross-origin auth iframe
+    // from authDomain (www.mnqgolf.com). In the iOS WKWebView (origin
+    // capacitor://localhost — and iosScheme can't be changed to https, as
+    // WKWebView reserves that scheme) the cross-origin postMessage handshake
+    // never completes, so Auth's init promise hangs, onAuthStateChanged
+    // never fires, and the app sits on LoadingScreen forever with no error.
+    // Native Google sign-in arrives via @capacitor-firebase/authentication
+    // in Phase 2, so the web resolver is never needed on native.
+    ...(Capacitor.isNativePlatform()
+      ? {}
+      : { popupRedirectResolver: browserPopupRedirectResolver }),
   });
 } catch (e) {
   console.error("initializeAuth failed; falling back to getAuth:", e?.message || e);
