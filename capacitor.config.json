@@ -1,4 +1,4 @@
-﻿{
+{
   "appId": "com.mnqgolf.app",
   "appName": "MnQ Golf",
   "webDir": "dist",
@@ -18,6 +18,17 @@
     "FirebaseAuthentication": {
       "skipNativeAuth": true,
       "providers": ["google.com"]
+    }
+  },
+  "experimental": {
+    "ios": {
+      "spm": {
+        "packageOptions": {
+          "@capacitor-firebase/messaging": {
+            "symlink": true
+          }
+        }
+      }
     }
   }
 }
