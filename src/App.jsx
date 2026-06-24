@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
+import { Capacitor } from "@capacitor/core";
 import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, LoadingPanel, serializeSeedWeeks, deserializeLeagueConfig, buildSeedMap, FS, FW } from "./theme";
 import { parseScheduleDate } from "./lib/scheduleDate";
 import { usePullToRefresh } from "./lib/usePullToRefresh";
@@ -412,6 +413,13 @@ export default function GolfLeagueApp() {
   // Detection: iOS exposes navigator.standalone; other platforms expose
   // display-mode: standalone via matchMedia.
   const doGoogleSignIn = async () => {
+    // Native shells can't use the web Google flow: popup can't postMessage
+    // back, and redirect navigates the WebView away from the bundled app
+    // and never returns. Surface a clear message and bail until the native
+    // auth plugin lands in Phase 2.
+    if (Capacitor.isNativePlatform()) {
+      throw new Error("Google sign-in isn't available in the app yet — please sign in with email and password.");
+    }
     try {
       const isStandalone =
         window.navigator.standalone === true ||
@@ -438,6 +446,16 @@ export default function GolfLeagueApp() {
   // of actually being signed in. Safe to call unconditionally — returns
   // null if no redirect is pending.
   useEffect(() => {
+    // Skip on native. The web redirect resolver loads a hidden iframe from
+    // the custom authDomain (www.mnqgolf.com) and waits on a postMessage
+    // handshake that never completes inside a Capacitor WebView (origin
+    // https://localhost / capacitor://localhost). That stalls Firebase
+    // Auth initialization, so onAuthStateChanged never fires its first
+    // callback and the app sits on LoadingScreen forever. Skipping it lets
+    // Auth initialize from local persistence and emit normally. Native
+    // Google sign-in arrives via @capacitor-firebase/authentication in
+    // Phase 2; until then the native shell uses email/password only.
+    if (Capacitor.isNativePlatform()) return;
     getRedirectResult(_auth).catch(e => {
       // Common case: no redirect was pending → resolves null, no error.
       // Real errors (popup_closed_by_user, network) get logged for debug.
