@@ -14,19 +14,25 @@ import { db, LEAGUE_ID } from "../firebase";
 // Data flow:
 //   - Subscribe to league_notifications_tokens (live updates as players
 //     enable / disable)
-//   - Each token doc has playerId + isIOS + isStandalone + userAgent
+//   - Each token doc has playerId + isIOS + isStandalone + userAgent, and
+//     for native-app installs also native:true + platform ("ios"/"android")
 //   - Group tokens by playerId, join with the players array to get names
 //   - Render summary + per-player rows
 
-// Translate the (userAgent + isStandalone) into a short device-type chip
-// label. The iOS/Android/Desktop split is derived from userAgent (always
-// saved, robust against missing fields). The PWA-vs-Safari distinction
-// for iOS requires isStandalone, which was added in a later release — if
-// that field is missing on an older token doc, we show a neutral "iOS"
-// chip rather than guessing wrong (iOS Safari would be misleading since
-// the user clearly registered successfully — push won't actually fire
-// from a non-standalone iOS Safari tab).
+// Translate a token into a short device-type chip label.
+//
+// Native-app installs (Capacitor) are the most reliable to identify: they
+// carry native:true + platform, set at registration. We check that first
+// so an app install is never mislabeled as a browser/PWA install. For web
+// tokens we fall back to userAgent (+ isStandalone for the iOS PWA-vs-
+// Safari distinction, which only exists on tokens from a later release —
+// missing field shows a neutral "iOS" chip rather than guessing).
 const deviceType = (token) => {
+  if (token.native === true) {
+    if (token.platform === "ios") return { label: "iOS App", color: K.grn };
+    if (token.platform === "android") return { label: "Android App", color: K.grn };
+    return { label: "App", color: K.grn };
+  }
   const ua = token.userAgent || "";
   if (/iPhone|iPad|iPod/.test(ua)) {
     if (token.isStandalone === true) return { label: "iOS PWA", color: K.grn };
@@ -90,8 +96,12 @@ export default function NotificationsAdmin({ players }) {
   const enabledCount = rows.filter(r => !r.isOrphan && r.tokens.length > 0).length;
   const totalPlayers = (players || []).length;
   const isIOSToken = (t) => /iPhone|iPad|iPod/.test(t.userAgent || "");
-  const iosPwaCount = tokens.filter(t => isIOSToken(t) && t.isStandalone === true).length;
-  const iosSafariCount = tokens.filter(t => isIOSToken(t) && t.isStandalone === false).length;
+  // Native-app installs counted on their own. Web-only iOS PWA / Safari
+  // counts exclude native tokens so they aren't double-labeled (a native
+  // iOS token also reports isStandalone:true).
+  const nativeCount = tokens.filter(t => t.native === true).length;
+  const iosPwaCount = tokens.filter(t => !t.native && isIOSToken(t) && t.isStandalone === true).length;
+  const iosSafariCount = tokens.filter(t => !t.native && isIOSToken(t) && t.isStandalone === false).length;
 
   return (
     <div>
@@ -107,9 +117,13 @@ export default function NotificationsAdmin({ players }) {
             of {totalPlayers} players enabled
           </span>
         </div>
-        {iosPwaCount + iosSafariCount > 0 && (
+        {(nativeCount > 0 || iosPwaCount + iosSafariCount > 0) && (
           <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 4 }}>
-            iOS PWA: {iosPwaCount}{iosSafariCount > 0 && ` · iOS Safari (won't work): ${iosSafariCount}`}
+            {[
+              nativeCount > 0 ? `App installs: ${nativeCount}` : null,
+              iosPwaCount > 0 ? `iOS PWA: ${iosPwaCount}` : null,
+              iosSafariCount > 0 ? `iOS Safari (won't work): ${iosSafariCount}` : null,
+            ].filter(Boolean).join(" · ")}
           </div>
         )}
       </Card>
