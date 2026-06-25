@@ -7,26 +7,68 @@ import {
   isStandalonePWA,
   isIOSPushCapable,
   checkSubscriptionStatus,
-  triggerTestPush,
 } from "../lib/notifications";
+
+// ─────────────────────────────────────────────────────────────────────────
+//  Toggle — simple iOS-style on/off switch
+// ─────────────────────────────────────────────────────────────────────────
+// Self-contained, inline-styled to match the app. `on` drives the visual
+// state; `onChange` fires on tap; `busy` disables interaction mid-request.
+function Toggle({ on, busy, onChange }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={on}
+      onClick={onChange}
+      disabled={busy}
+      style={{
+        width: 52,
+        height: 30,
+        borderRadius: 15,
+        border: "none",
+        padding: 0,
+        background: on ? K.grn : K.bdr,
+        position: "relative",
+        cursor: busy ? "default" : "pointer",
+        opacity: busy ? 0.6 : 1,
+        transition: "background .2s ease",
+        flexShrink: 0,
+      }}
+    >
+      <span
+        style={{
+          position: "absolute",
+          top: 3,
+          left: on ? 25 : 3,
+          width: 24,
+          height: 24,
+          borderRadius: "50%",
+          background: "#fff",
+          transition: "left .2s ease",
+          boxShadow: "0 1px 3px rgba(0,0,0,.3)",
+        }}
+      />
+    </button>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 //  NotificationsSettings — More-tab page for managing push notifications
 // ─────────────────────────────────────────────────────────────────────────
 // Single-purpose surface that owns the entire user-facing permission
-// dance. Three meaningful flows:
+// dance. Meaningful flows:
 //
-//   (1) User on supported browser, never asked → big Enable button.
-//   (2) User has granted → confirmation + list of notification types
-//       they'll receive + a Disable button.
-//   (3) User has denied (or browser doesn't support) → explanatory
-//       state with troubleshooting hint. NO Enable button — the
-//       browser won't re-prompt after a denial; user must go to
-//       browser settings to undo.
+//   (1) User on supported browser/native → master toggle (off → enable,
+//       on → disable) plus a reference list of the alerts they'll receive.
+//   (2) User has denied → explanatory state with troubleshooting hint. No
+//       toggle — the browser won't re-prompt after a denial; the user must
+//       go to browser settings to undo.
+//   (3) Browser doesn't support push → explanatory "not supported" state.
 //
 // On iOS specifically there's a Phase 0 that fires before any of these:
-// if the app isn't running as a standalone PWA, push doesn't work at all,
-// so we show "install to home screen first" with brief steps.
+// if the app isn't running as a standalone PWA (and isn't the native app),
+// push doesn't work, so we show "install to home screen first."
 export default function NotificationsSettings({ leagueUser, appToast }) {
   const [permission, setPermission] = useState("default");
   // Whether the user has an active token registration in Firestore.
@@ -45,7 +87,7 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
     setIosOk(isIOSPushCapable());
     // Check Firestore for an existing token — covers the case where
     // the user previously enabled notifications on this device, killed
-    // the app, and reopened it. We want the UI to show "Enabled" instead
+    // the app, and reopened it. We want the UI to show "On" instead
     // of asking them to re-enable when they've already done so.
     if (leagueUser?.playerId) {
       checkSubscriptionStatus(leagueUser.playerId).then(setSubscribed);
@@ -68,32 +110,12 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
       // Both are expected outcomes that the status card on this page
       // already explains clearly. Skipping the toast avoids the big
       // red error banner for what's really just an informational state.
-      // The card text below the button does the explaining.
+      // The card text below the toggle does the explaining.
     } else {
       // Truly unexpected failure (VAPID key missing, SW registration
       // failed, FCM token fetch errored). These need debugging attention,
       // so the error toast IS appropriate here.
       appToast?.(`Couldn't enable: ${result.error || result.state}`, "error");
-    }
-  };
-
-  const handleTest = async () => {
-    if (!leagueUser?.playerId) return;
-    setBusy(true);
-    const result = await triggerTestPush(leagueUser.playerId);
-    setBusy(false);
-    if (result.success) {
-      // The push fires from the server within ~1s. We don't wait for
-      // confirmation — the user will see (or not see) the notification
-      // themselves. Toast is just a friendly "we sent it" ack.
-      const sent = result.result?.sent ?? 0;
-      if (sent > 0) {
-        appToast?.(`Sent test push to ${sent} device${sent === 1 ? "" : "s"}`, "success");
-      } else {
-        appToast?.("No active devices to send to — try Disable/Enable to refresh", "error");
-      }
-    } else {
-      appToast?.(`Test failed: ${result.error}`, "error");
     }
   };
 
@@ -105,6 +127,13 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
     setSubscribed(false);
     setPermission(getNotificationPermissionState());
     appToast?.("Notifications disabled", "success");
+  };
+
+  // Tapping the toggle: if currently on, disable; if off, enable.
+  const handleToggle = () => {
+    if (busy) return;
+    if (subscribed) handleDisable();
+    else handleEnable();
   };
 
   // Notification types the user will receive. Titles only — they're
@@ -160,7 +189,7 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
             <li>Tap the <strong style={{ color: K.t1 }}>Share</strong> button at the bottom of Safari.</li>
             <li>Scroll down and tap <strong style={{ color: K.t1 }}>Add to Home Screen</strong>.</li>
             <li>Open the app from your home screen (not from Safari).</li>
-            <li>Return to this Notifications page and tap Enable.</li>
+            <li>Return to this Notifications page and turn the switch on.</li>
           </ol>
         </Card>
       </div>
@@ -172,55 +201,17 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
   // ──────────────────────────────────────────────────────────────────────
   return (
     <div>
-      {/* Status card — adapts copy + button to current state. Note this
-          reads `subscribed`, not `permission` — they can diverge if the
-          user disables in our app without revoking browser permission. */}
-      <Card style={{ padding: "16px 18px", marginBottom: 12 }}>
-        {subscribed ? (
-          <>
-            <div style={{ fontSize: 14, fontWeight: 700, color: K.grn, marginBottom: 4 }}>
-              ✓ Enabled
-            </div>
-            <div style={{ fontSize: 12, color: K.t2, lineHeight: 1.5, marginBottom: 14 }}>
-              You'll get push notifications for the events below.
-            </div>
-            <button
-              onClick={handleDisable}
-              disabled={busy}
-              style={{
-                width: "100%", padding: "10px", borderRadius: 8,
-                background: "transparent", border: `1px solid ${K.bdr}`,
-                color: K.t2, fontSize: 13, fontWeight: 700,
-                cursor: busy ? "default" : "pointer", opacity: busy ? .5 : 1,
-                marginBottom: 8,
-              }}
-            >
-              {busy ? "..." : "Disable notifications"}
-            </button>
-            {/* Send-test utility button. Gold outline so it's visually
-                distinct from the gray Disable. Calls the sendTestPush
-                Cloud Function with the current user's playerId. */}
-            <button
-              onClick={handleTest}
-              disabled={busy}
-              style={{
-                width: "100%", padding: "9px", borderRadius: 8,
-                background: "transparent", border: `1px solid ${K.act}60`,
-                color: K.act, fontSize: 12, fontWeight: 700,
-                cursor: busy ? "default" : "pointer", opacity: busy ? .5 : 1,
-                letterSpacing: .3,
-              }}
-            >
-              {busy ? "..." : "Send a test push"}
-            </button>
-          </>
-        ) : permission === "denied" ? (
+      {/* Status card — adapts to current state. Note this reads
+          `subscribed`, not `permission` — they can diverge if the user
+          disables in our app without revoking browser permission. */}
+      <Card style={{ padding: "14px 18px", marginBottom: 12 }}>
+        {permission === "denied" ? (
           <>
             <div style={{ fontSize: 14, fontWeight: 700, color: K.warn, marginBottom: 4 }}>
               Blocked
             </div>
             <div style={{ fontSize: 12, color: K.t2, lineHeight: 1.5 }}>
-              You blocked notifications previously. To re-enable, go to your browser settings, find this site, and allow notifications — then refresh this page.
+              You blocked notifications previously. To re-enable, go to your device or browser settings, find this app, and allow notifications — then return to this page.
             </div>
           </>
         ) : permission === "unsupported" ? (
@@ -229,25 +220,23 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
               Not supported
             </div>
             <div style={{ fontSize: 12, color: K.t2, lineHeight: 1.5 }}>
-              Your browser doesn't support push notifications. Try Chrome, Safari (iOS 16.4+ installed to home screen), or Edge.
+              This browser doesn't support push notifications. Try Chrome, Safari (iOS 16.4+ installed to home screen), or Edge.
             </div>
           </>
         ) : (
-          <>
-            <button
-              onClick={handleEnable}
-              disabled={busy}
-              style={{
-                width: "100%", padding: "11px", borderRadius: 8,
-                background: K.act, border: "none",
-                color: K.bg, fontSize: 14, fontWeight: 800,
-                letterSpacing: .5, cursor: busy ? "default" : "pointer",
-                opacity: busy ? .5 : 1,
-              }}
-            >
-              {busy ? "..." : "Enable notifications"}
-            </button>
-          </>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: subscribed ? K.grn : K.t1 }}>
+                {subscribed ? "Notifications on" : "Notifications off"}
+              </div>
+              <div style={{ fontSize: 12, color: K.t2, lineHeight: 1.5, marginTop: 2 }}>
+                {subscribed
+                  ? "You'll get push notifications for the events below."
+                  : "Turn on to get push notifications for the events below."}
+              </div>
+            </div>
+            <Toggle on={subscribed} busy={busy} onChange={handleToggle} />
+          </div>
         )}
       </Card>
 
@@ -267,7 +256,7 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
           devices (phone + work laptop, etc.). Each device gets its own
           token; enabling on one doesn't enable on the other. */}
       <div style={{ fontSize: 10, color: K.t3, lineHeight: 1.5, marginTop: 12, padding: "0 4px" }}>
-        Notifications are device-specific. If you want them on both your phone and laptop, enable them separately on each.
+        Notifications are device-specific. If you want them on both your phone and laptop, turn them on separately on each.
       </div>
     </div>
   );
