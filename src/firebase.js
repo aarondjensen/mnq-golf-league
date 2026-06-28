@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, doc, setDoc, getDocs, query, where, writeBatch, onSnapshot, deleteDoc } from "firebase/firestore";
-import { getAuth, initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithCredential, GoogleAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, onAuthStateChanged, signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
+import { getAuth, initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithCredential, linkWithCredential, linkWithPopup, GoogleAuthProvider, OAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, onAuthStateChanged, signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { Capacitor } from "@capacitor/core";
 
@@ -80,6 +80,34 @@ try {
 export const _auth = _authInstance;
 export const _googleProvider = new GoogleAuthProvider();
 
+// Apple uses the generic OAuthProvider with the 'apple.com' provider id —
+// Firebase JS has no dedicated AppleAuthProvider class. Request name + email
+// scopes so the first Apple sign-in/link can populate displayName/email when
+// the user allows it. (With "Hide My Email" the email is a private relay
+// address; with "Share My Email" it's the real one. Either way the provider
+// id on providerData is 'apple.com'.) Used by the WEB link path
+// (linkWithPopup); the NATIVE path mints the credential through the Capacitor
+// plugin and builds an OAuthProvider('apple.com') credential inline below.
+export const _appleProvider = new OAuthProvider("apple.com");
+_appleProvider.addScope("email");
+_appleProvider.addScope("name");
+
+// Gate for showing the Apple "Link" action on NATIVE (iOS/Android) builds.
+// Native Apple linking calls FirebaseAuthentication.signInWithApple(), which
+// THROWS unless the app is fully Apple-enabled:
+//   1. add "apple.com" to plugins.FirebaseAuthentication.providers in
+//      capacitor.config.json
+//   2. enable the "Sign in with Apple" capability on the iOS App target
+//      (Xcode → Signing & Capabilities) + configure the Apple Service ID/key
+//      in the Apple Developer portal and Firebase Console (Auth → Apple)
+//   3. `npx cap sync ios` and rebuild + upload a new binary
+// Until all three are done, leaving this FALSE keeps the Apple Link button
+// from rendering on native — so a bundled/live-loaded build (including one in
+// App Store review) can never surface a button that errors on tap. Web/PWA
+// is unaffected: linkWithPopup works there today regardless of this flag.
+// Flip to TRUE in the same change that ships the Apple-enabled native build.
+export const NATIVE_APPLE_ENABLED = false;
+
 // ─── Native Google sign-in (Capacitor) ──────────────────────────────────
 // The web popup/redirect Google flow can't run inside a native WebView, so
 // on iOS/Android we use @capacitor-firebase/authentication. It runs the
@@ -127,7 +155,136 @@ export const nativeAuthSignOut = async () => {
   }
 };
 
-// ─── Callable Cloud Functions ───────────────────────────────────────────
+// ─── Account linking (Google ⇆ Apple → one Firebase user) ────────────────
+// PROBLEM: Google sign-in and Apple sign-in mint SEPARATE Firebase users
+// (different uid) for the same human, because Apple's "Hide My Email" relay
+// means the two identities never share an email Firebase could auto-match on.
+// In MNQ a uid maps to a league_members doc (id `${LEAGUE_ID}_${uid}`) which
+// carries the playerId → "team." So signing in with the OTHER provider lands
+// on a different/absent member doc — i.e. the JoinScreen "claim gate" or the
+// wrong player. The durable fix is EXPLICIT linking: while signed in as the
+// keeper account, the user attaches their second provider so both credentials
+// resolve to the SAME uid (and therefore the same member doc / playerId).
+//
+// We link in the JS SDK (linkWithCredential / linkWithPopup) on the
+// auth.currentUser. On native we keep skipNativeAuth:true semantics intact —
+// the Capacitor plugin only MINTS the provider credential (its own native
+// Firebase session stays disabled); we never sign in natively. We exchange
+// the plugin's token for a JS-SDK credential and link it, exactly mirroring
+// the existing nativeGoogleSignIn credential-exchange shape.
+//
+// IMPORTANT (Apple on native): this requires the FirebaseAuthentication
+// plugin to be configured for Apple. MNQ's capacitor.config.json currently
+// lists providers:["google.com"] only, and the iOS project needs the "Sign in
+// with Apple" capability. Until that's added + rebuilt, native Apple linking
+// throws; web Apple linking (linkWithPopup) works as-is after a deploy. See
+// the delivery notes accompanying this change.
+
+// Map link/credential failures to readable, user-facing messages. Anything
+// unrecognized falls through to the raw Firebase message so nothing is
+// silently swallowed during debugging.
+const mapLinkError = (e) => {
+  const code = e?.code || "";
+  const friendly = {
+    // The currently signed-in user already has this provider attached.
+    "auth/provider-already-linked": "That sign-in method is already linked to your account.",
+    // The provider exists, but as a SEPARATE Firebase user. Can't link until
+    // that duplicate is removed (or merged) — see console-cleanup steps.
+    "auth/credential-already-in-use": "That account is already registered as a separate login. It has to be removed in Firebase before it can be linked — ask the commissioner to delete the duplicate user, then try again.",
+    // The provider's email already belongs to another Firebase user.
+    "auth/email-already-in-use": "That email is already tied to a different account. The duplicate has to be removed in Firebase before linking.",
+    // Popup-flow cancellations (web). Treated as benign no-ops by callers,
+    // but mapped here so the message reads cleanly if surfaced.
+    "auth/popup-closed-by-user": "Sign-in was cancelled.",
+    "auth/cancelled-popup-request": "Sign-in was cancelled.",
+    "auth/popup-blocked": "The sign-in popup was blocked by the browser. Allow popups and try again.",
+    "auth/user-cancelled": "Sign-in was cancelled.",
+    "auth/network-request-failed": "Network error. Check your connection and try again.",
+  }[code];
+  const err = new Error(friendly || e?.message || "Could not link that sign-in method.");
+  err.code = code;
+  return err;
+};
+
+// Require a signed-in user before any link attempt. linkWith* operate on
+// auth.currentUser; if it's null (race on cold start, or called from a signed-
+// out state) the SDK error is opaque, so we guard explicitly.
+const requireCurrentUser = () => {
+  const user = _auth.currentUser;
+  if (!user) {
+    const err = new Error("You need to be signed in before linking another sign-in method.");
+    err.code = "auth/no-current-user";
+    throw err;
+  }
+  return user;
+};
+
+// Link Google to the currently signed-in user.
+//   native: plugin mints the Google ID token → GoogleAuthProvider.credential
+//           → linkWithCredential (mirrors nativeGoogleSignIn, but link not
+//           signIn). Google is already a configured native provider, so this
+//           works today.
+//   web:    linkWithPopup with the shared _googleProvider.
+export const linkGoogleAccount = async () => {
+  const user = requireCurrentUser();
+  try {
+    if (Capacitor.isNativePlatform()) {
+      const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
+      const result = await FirebaseAuthentication.signInWithGoogle();
+      const idToken = result?.credential?.idToken;
+      if (!idToken) throw new Error("Google did not return an ID token.");
+      const credential = GoogleAuthProvider.credential(idToken);
+      return await linkWithCredential(user, credential);
+    }
+    return await linkWithPopup(user, _googleProvider);
+  } catch (e) {
+    throw mapLinkError(e);
+  }
+};
+
+// Link Apple to the currently signed-in user.
+//   native: plugin mints the Apple ID token + nonce → OAuthProvider
+//           ('apple.com').credential({ idToken, rawNonce }) → linkWithCredential.
+//           rawNonce MUST come from result.credential.nonce — Apple verifies
+//           the SHA-256 of this raw value against the hashed nonce embedded in
+//           the ID token; omitting it yields auth/invalid-credential.
+//           Requires the plugin/iOS project to be Apple-enabled (see note above).
+//   web:    linkWithPopup with the configured _appleProvider.
+export const linkAppleAccount = async () => {
+  const user = requireCurrentUser();
+  try {
+    if (Capacitor.isNativePlatform()) {
+      const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
+      const result = await FirebaseAuthentication.signInWithApple();
+      const idToken = result?.credential?.idToken;
+      if (!idToken) throw new Error("Apple did not return an ID token.");
+      const provider = new OAuthProvider("apple.com");
+      const credential = provider.credential({
+        idToken,
+        rawNonce: result.credential?.nonce,
+      });
+      return await linkWithCredential(user, credential);
+    }
+    return await linkWithPopup(user, _appleProvider);
+  } catch (e) {
+    throw mapLinkError(e);
+  }
+};
+
+// Which providers are currently attached to the signed-in user. Reads
+// providerData (the authoritative per-provider list on the user record) and
+// checks the providerId strings. Returns {google, apple} booleans; both false
+// if signed out. The settings UI calls this on open and after each successful
+// link to refresh the "Linked / Link" state.
+export const getLinkedProviders = () => {
+  const user = _auth.currentUser;
+  const ids = (user?.providerData || []).map((p) => p?.providerId);
+  return {
+    google: ids.includes("google.com"),
+    apple: ids.includes("apple.com"),
+  };
+};
+
 // Default region (us-central1) — matches the v2 functions in functions/
 // index.js, none of which pin a region. `callFunction` is a thin wrapper so
 // callers get the unwrapped `.data` payload and a single place to evolve
