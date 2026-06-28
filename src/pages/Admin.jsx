@@ -1998,9 +1998,27 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                         </div>
                         <button onClick={async () => {
                           const newVal = !lockSeedsEnabled;
-                          const configId = `${LEAGUE_ID}_config`;
-                          await db.upsert("league_config", { id: configId, league_id: LEAGUE_ID, lockSeedsEnabled: newVal });
-                          saveLeagueConfig({ ...leagueConfig, lockSeedsEnabled: newVal });
+                          if (newVal) {
+                            // Enabling captures the frozen seed snapshot from
+                            // ROUND-ROBIN results only — the bracket should reflect
+                            // regular-season performance, not seeded/playoff weeks. That
+                            // makes this a SILENT recovery lever too: re-lock at any time
+                            // (even after seeded weeks are finalized) and you get the
+                            // correct end-of-RR order without un-finalizing anything — so
+                            // no week flips locked false→true and no results push fires.
+                            // saveLeagueConfig persists + updates in-memory config + triggers
+                            // a re-seed, so seeded weeks rebuild from the frozen seeds.
+                            const rrWeeks = new Set(
+                              schedule.filter(w => !w.isPlayoff && !w.seeded && !w.rainedOut && w.locked).map(w => w.week)
+                            );
+                            const rrResults = (matchResults || []).filter(r => rrWeeks.has(r.week));
+                            const seeds = sharedBuildStandingsForSeed(teams, rrResults, schedule, leagueConfig?.standingsMethod, false).map(s => s.teamId);
+                            saveLeagueConfig({ ...leagueConfig, lockSeedsEnabled: true, lockedSeeds: seeds });
+                          } else {
+                            // Disabling reverts to live standings. The stored snapshot is
+                            // left in place but ignored (useLocked gates on lockSeedsEnabled).
+                            saveLeagueConfig({ ...leagueConfig, lockSeedsEnabled: false });
+                          }
                         }} style={{
                           width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
                           background: lockSeedsEnabled ? K.act : K.bdr,
@@ -2016,6 +2034,54 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                           }} />
                         </button>
                       </div>
+
+                      {/* Round-robin final seed order (READ-ONLY reference).
+                          Answers "what were the seeds at the end of the regular
+                          season?" — computed from round-robin weeks ONLY, so it
+                          stays correct even after seeded-week results shuffle the
+                          live standings. Writes nothing. Also flags when the
+                          stored lockedSeeds snapshot has drifted from this order. */}
+                      {(() => {
+                        const rrWeekNums = new Set(
+                          schedule.filter(w => !w.isPlayoff && !w.seeded && !w.rainedOut && w.locked).map(w => w.week)
+                        );
+                        if (rrWeekNums.size === 0) return null;
+                        const rrResults = (matchResults || []).filter(r => rrWeekNums.has(r.week));
+                        const rrSeeds = sharedBuildStandingsForSeed(teams, rrResults, schedule, leagueConfig?.standingsMethod, false).map(s => s.teamId);
+                        if (!rrSeeds.length) return null;
+                        const locked = leagueConfig?.lockedSeeds;
+                        const lockedMatches = Array.isArray(locked) && locked.length === rrSeeds.length && locked.every((id, i) => id === rrSeeds[i]);
+                        return (
+                          <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${K.bdr}50` }}>
+                            <div style={{ fontSize: FS.xs, color: K.t1, fontWeight: FW.bold }}>Round-Robin Final Seeds</div>
+                            <div style={{ fontSize: FS.micro, color: K.t3, lineHeight: 1.4, marginTop: 2, marginBottom: 8 }}>
+                              From the {rrWeekNums.size} round-robin week{rrWeekNums.size === 1 ? "" : "s"} only — the bracket order at the end of the regular season. Reference only; changes nothing.
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                              {rrSeeds.map((teamId, i) => (
+                                <div key={teamId} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: FS.sm }}>
+                                  <span style={{
+                                    display: "inline-flex", alignItems: "center", justifyContent: "center",
+                                    minWidth: 20, height: 20, borderRadius: 4, fontSize: FS.xs, fontWeight: FW.heavy,
+                                    color: K.logoBright, background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`,
+                                  }}>{i + 1}</span>
+                                  <span style={{ color: K.t1, fontWeight: FW.semibold }}>{lastNamesOnly(gn(teamId))}</span>
+                                </div>
+                              ))}
+                            </div>
+                            {Array.isArray(locked) && !lockedMatches && (
+                              <div style={{ fontSize: FS.micro, color: K.red, lineHeight: 1.4, marginTop: 8 }}>
+                                Heads up: the stored locked seeds differ from this round-robin order. Toggle Lock Seeds off then on to re-freeze the bracket at the order shown here.
+                              </div>
+                            )}
+                            {lockedMatches && (
+                              <div style={{ fontSize: FS.micro, color: K.grn, lineHeight: 1.4, marginTop: 8 }}>
+                                Locked seeds match this round-robin order.
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 );

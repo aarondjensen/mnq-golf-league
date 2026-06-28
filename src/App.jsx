@@ -267,12 +267,14 @@ export default function GolfLeagueApp() {
 
   // resetPull moved to usePullToRefresh hook (returned in destructure below).
 
-  // Re-fetch the three collections that don't have live subscriptions (course,
-  // scoring rules, config). Used on mount and by pull-to-refresh.
+  // Re-fetch the two collections that don't have live subscriptions (course,
+  // scoring rules). Used on mount and by pull-to-refresh. league_config now has
+  // its own realtime subscription (see the subscriptions effect), so it's no
+  // longer read here — doing so would race the subscription and could briefly
+  // re-show a stale snapshot.
   const refetchOneTimeReads = useCallback(() => {
     db.get("league_course", LF).then(docs => { if (docs.length) setCourseData(docs[0]); });
     db.get("league_scoring", LF).then(docs => { if (docs.length) setScoringRules(docs[0]); });
-    db.get("league_config", LF).then(docs => { if (docs.length) setLeagueConfig(deserializeLeagueConfig(docs[0])); });
   }, []);
 
   // Check whether a new build has been deployed since the app was loaded. We compare
@@ -394,6 +396,20 @@ export default function GolfLeagueApp() {
     }));
     unsubs.push(db.subscribe("league_match_results", LF, (docs) => setMatchResults(docs)));
     unsubs.push(db.subscribe("league_ctp", LF, (docs) => setCtpData(docs)));
+    // league_config MUST be a live subscription, not a one-time read. The
+    // seeding pipeline (scheduleAutoSeed) writes `lockedSeeds` straight to
+    // Firestore via db.upsert — it has no way to call setLeagueConfig. Without
+    // a subscription, that write never flowed back into the in-memory config,
+    // so on the next finalize `useLocked` was false, seeds were recomputed from
+    // the now-updated standings, and the snapshot was overwritten — meaning
+    // finalizing a seeded week (e.g. week 10) re-derived every later seeded
+    // week (week 11+) from shifted seeds. The subscription closes that gap so
+    // lockedSeeds (and any Admin config edit) is reflected immediately.
+    // deserializeLeagueConfig restores customSeedWeeks from its Firestore-legal
+    // array-of-maps shape back to the nested array the app uses.
+    unsubs.push(db.subscribe("league_config", LF, (docs) => {
+      if (docs.length) setLeagueConfig(deserializeLeagueConfig(docs[0]));
+    }));
 
     refetchOneTimeReads();
 
