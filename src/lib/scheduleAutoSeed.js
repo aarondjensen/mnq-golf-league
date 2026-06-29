@@ -109,13 +109,32 @@ export async function autoSeedIfReady({
   const existingLocked = leagueConfig?.lockedSeeds;
   let seeds;
 
-  // Compute seeds via the canonical buildStandingsForSeed (same function
-  // Standings.jsx uses for live ranking, ensuring seed/standings parity).
-  // Default `lockedOnly: true` means it self-filters to results from
-  // locked weeks only.
+  // Live seeds: full current standings (every locked week, INCLUDING seeded
+  // weeks). This is the DYNAMIC ordering used when Lock Seeds is off, where
+  // "seeds update each week based on current standings" is the intended UX.
   const computeSeeds = () => buildStandingsForSeed(
     teams, matchResults, projectedSchedule, leagueConfig?.standingsMethod
   ).map(s => s.teamId);
+
+  // Frozen seeds: standings from ROUND-ROBIN weeks ONLY (locked, non-seeded,
+  // non-playoff). This is what Lock Seeds captures. The bracket must reflect
+  // regular-season performance and must NOT drift once seeded play begins —
+  // otherwise finalizing a seeded week re-ranks teams and reshuffles every
+  // later seeded week. Excluding seeded/playoff results makes this order
+  // identical whether it's computed at the end of the round robin or after
+  // week 10 is already locked, so the lock self-heals even when its in-memory
+  // snapshot is briefly stale. Mirrors the Admin "Lock Seeds" capture exactly.
+  const computeRRSeeds = () => {
+    const rrWeekNums = new Set(
+      projectedSchedule
+        .filter(s => !s.isPlayoff && !s.seeded && !s.rainedOut && s.locked === true)
+        .map(s => s.week)
+    );
+    const rrResults = (matchResults || []).filter(r => rrWeekNums.has(r.week));
+    return buildStandingsForSeed(
+      teams, rrResults, projectedSchedule, leagueConfig?.standingsMethod, false
+    ).map(s => s.teamId);
+  };
 
   // ── PHASE 1: Seeded regular-season pairings ──
   let seededCount = 0;
@@ -127,7 +146,8 @@ export async function autoSeedIfReady({
     // Lock snapshot wins when (a) it's enabled, (b) it exists, (c) it
     // matches the current team count (defensive against team adds).
     const useLocked = lockSeedsEnabled && existingLocked && existingLocked.length === teams.length;
-    seeds = useLocked ? existingLocked : computeSeeds();
+    // Lock on → frozen round-robin-only order; lock off → live dynamic order.
+    seeds = useLocked ? existingLocked : (lockSeedsEnabled ? computeRRSeeds() : computeSeeds());
 
     // First time computing under lockSeedsEnabled? Save the snapshot
     // immediately so subsequent calls use it.
@@ -187,11 +207,12 @@ export async function autoSeedIfReady({
 
   // Lazy seed compute: if PHASE 1 didn't run (RR not yet fully locked),
   // we still might be able to pair playoff rounds — fall through to
-  // existingLocked or compute fresh.
+  // existingLocked or compute fresh. Under Lock Seeds, freeze from the
+  // round-robin order so playoff seeding matches the regular-season bracket.
   if (!seeds) {
     seeds = existingLocked && existingLocked.length === teams.length
       ? existingLocked
-      : computeSeeds();
+      : (lockSeedsEnabled ? computeRRSeeds() : computeSeeds());
   }
 
   for (let pi = 0; pi < playoffWeeksList.length; pi++) {
