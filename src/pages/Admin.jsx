@@ -2549,13 +2549,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 need to draw attention to it in the UI. */}
 
             <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
-              {/* WEEKLY = regular season only (round-robin + seeded regular season).
-                  Playoff weeks carry seeded:true and have resolvable matches, so
-                  without this filter they render here with seed-pairing labels and
-                  read as extra "seeded regular season" weeks (e.g. a 4th seeded
-                  week). Playoff rounds are configured under the Playoff subtab and
-                  scored from the Scoring tab, so they don't belong in this list. */}
-              {schedule.filter(w => !w.isPlayoff).map(wk => {
+              {/* Shows the full season. Round-robin + seeded regular season render
+                  as normal; playoff weeks are labeled with their round name and a
+                  PLAYOFF pill (below) so they read as playoff rounds rather than
+                  extra "seeded regular season" weeks. */}
+              {schedule.map(wk => {
                 const isPlayoffWk = wk.isPlayoff === true;
                 const isRainedOut = wk.rainedOut === true;
                 const isSeeded = wk.seeded === true && (!wk.matches || wk.matches.length === 0);
@@ -2601,9 +2599,14 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                       <div style={{ width: 42, flexShrink: 0 }}>
                         <Pill color={K.logoBright} style={{ fontSize: FS.micro }}>{side === 'front' ? 'FRONT' : 'BACK'}</Pill>
                       </div>
-                      <div style={{ flex: 1, fontSize: FS.sm, fontWeight: FW.semibold, color: isRainedOut ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
-                        {isRainedOut ? "RAIN OUT" : isSeeded ? (() => {
-                          if (isPlayoffWk) return "PLAYOFF — TBD";
+                      <div style={{ flex: 1, fontSize: FS.sm, fontWeight: FW.semibold, color: isRainedOut ? K.warn : isPlayoffWk ? K.warn : isSeeded ? K.t3 : K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
+                        {isRainedOut ? "RAIN OUT" : isPlayoffWk ? (() => {
+                          // Playoff weeks show their round name, not seed pairings, so
+                          // they're never mistaken for seeded regular-season weeks.
+                          const pRound = schedule.filter(s => s.isPlayoff === true && s.week <= wk.week).length;
+                          const roundDef = (leagueConfig?.playoffRounds || [])[pRound - 1];
+                          return roundDef?.name || `Playoff Round ${pRound}`;
+                        })() : isSeeded ? (() => {
                           // Show configured seed pairings if available
                           const seededRegWeeks = schedule.filter(s => s.seeded === true && !s.isPlayoff).sort((a, b) => a.week - b.week);
                           const seededIdx = seededRegWeeks.findIndex(s => s.week === wk.week);
@@ -2622,6 +2625,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                         })() : "—"}
                       </div>
                       <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
+                        {isPlayoffWk && <Pill color={K.warn} style={{ fontSize: FS.micro }}>PLAYOFF</Pill>}
                         {isFinalized && <Pill color={K.grn} style={{ fontSize: FS.micro }}>FINAL</Pill>}
                         {!isFinalized && allMatchesAttested && <Pill color={K.act} style={{ fontSize: FS.micro }}>READY</Pill>}
                         {wk.makeupFor && <Pill color={K.teal} style={{ fontSize: FS.micro }}>MU</Pill>}
