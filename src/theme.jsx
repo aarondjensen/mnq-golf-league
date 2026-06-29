@@ -173,6 +173,26 @@ export function formatTeeTime(baseTime, idx, interval = 8) {
 // points delta would falsely give one team a W and the other an L on a tied
 // match. Standings still SORT by points in points mode, so unequal points
 // still drive ranking — only the W-L-T column is corrected.
+// ── Canonical "who plays in this match" resolver ──────────────────────────
+// Regular and bracket matches derive their four players from the two team
+// records (team1/team2). Consolation matches — the non-bracket playoff matches
+// for knocked-out teams — may instead carry an explicit `players` array, since
+// those players can be re-paired into ad-hoc groups that ignore team lines.
+// When `players` is present it wins; otherwise we fall back to the team rosters.
+// Single source of truth so scoring, the Low Net board, and the individual
+// tournament always agree on a match's roster regardless of how it was formed.
+// `match.sides` (optional) holds the competing sub-groups, e.g. [[pA,pB],[pC,pD]]
+// for a 2v2; absent means the group shares a tee time with no head-to-head.
+export function matchPids(match, teams) {
+  if (!match) return [];
+  if (Array.isArray(match.players) && match.players.length) {
+    return match.players.filter(Boolean);
+  }
+  const t1 = (teams || []).find(t => t.id === match.team1);
+  const t2 = (teams || []).find(t => t.id === match.team2);
+  return [t1?.player1, t1?.player2, t2?.player1, t2?.player2].filter(Boolean);
+}
+
 export function buildStandingsForSeed(teams, matchResults, schedule, standingsMethod, lockedOnly = true) {
   const pts = {};
   teams.forEach(t => { pts[t.id] = { teamId: t.id, points: 0, w: 0, l: 0, t: 0, hw: 0, gp: 0 }; });

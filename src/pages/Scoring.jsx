@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { K, I, BackBtn, Card, EmptyState,
   getWeekSide,
   formatTeeTime as fmtTeeTimeUtil, LIST_GAP,
-  buildSeedMap, FS, FW } from "../theme";
+  buildSeedMap, matchPids, FS, FW } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 import { computeMatchResult, resultLetterFor, readScoreEffective, readStrokesEffectiveExt, computePlayoffTiebreaker, isMatchPendingMakeup } from "../lib/matchCalc";
 import { parseScheduleDate } from "../lib/scheduleDate";
@@ -111,7 +111,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const [justSigned, setJustSigned] = useState(false); // prevents flash between sign and Firestore update
   const [showCtpPopup, setShowCtpPopup] = useState(false);
   const [ctpSelections, setCtpSelections] = useState({}); // { holeNum: { playerId, distance } }
-  const [lowNetSort, setLowNetSort] = useState("net"); // "net" | "gross" — Low Net leaderboard sort column
+  const [lowNetSort, setLowNetSort] = useState("toPar"); // "toPar" | "net" | "gross" — Low Net leaderboard sort column. To Par is the live-fair default (comparable across players mid-round).
   const [lowNetDir, setLowNetDir] = useState("asc"); // "asc" (best→worst) | "desc" (worst→best) — Low Net sort direction
   const initialJump = useRef(false);
   const matchGrn = K.matchGrn;
@@ -1599,15 +1599,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   // Players without a complete 9-hole round sit at the bottom with em-dashes.
   // Strokes use the player's stored handicap mapped to the course's stroke-index allocation.
   if (showLowNet && !activeMatch) {
-    const parTotal = pars.reduce((a, b) => a + b, 0);
-
-    // Build the set of players actually scheduled this week (across all matches)
+    // Build the set of players actually scheduled this week (across all matches).
+    // matchPids resolves explicit consolation players too, so re-paired knocked-out
+    // players still appear on the board.
     const weekPidsSet = new Set();
-    matches.forEach(m => {
-      const mt1 = teams.find(t => t.id === m.team1);
-      const mt2 = teams.find(t => t.id === m.team2);
-      [mt1?.player1, mt1?.player2, mt2?.player1, mt2?.player2].filter(Boolean).forEach(pid => weekPidsSet.add(pid));
-    });
+    matches.forEach(m => { matchPids(m, teams).forEach(pid => weekPidsSet.add(pid)); });
     const weekPids = Array.from(weekPidsSet);
 
     const rows = weekPids.map(pid => {
@@ -1616,38 +1612,51 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       const strokesByHole = getStrokesMap(hcp);
       const isAbsent = holeScores[`w${week}_p${pid}_habsent`] === 1;
 
-      let gross = 0, net = 0, holesPlayed = 0;
+      // Live totals: accumulate every hole entered so far (not just complete cards),
+      // and track par over the holes actually played so To Par is comparable between
+      // a player thru 4 and a player thru 9 — the standard live-golf ranking.
+      let gross = 0, net = 0, parPlayed = 0, thru = 0;
       for (let h = 0; h < 9; h++) {
         const s = holeScores[`w${week}_p${pid}_h${h}`] || 0;
         if (s > 0) {
           gross += s;
           net += s - (strokesByHole[h] || 0);
-          holesPlayed++;
+          parPlayed += pars[h] || 0;
+          thru++;
         }
       }
-      const complete = holesPlayed === 9 && !isAbsent;
+      const started = thru > 0 && !isAbsent;
+      const complete = thru === 9 && !isAbsent;
       return {
         pid,
         name: pl?.name || "?",
         hcp,
         isAbsent,
+        started,
         complete,
-        gross: complete ? gross : null,
-        net: complete ? net : null,
-        toPar: complete ? net - parTotal : null,
+        thru,
+        gross: started ? gross : null,
+        net: started ? net : null,
+        toPar: started ? net - parPlayed : null,
       };
     });
 
-    // Sort by selected column. Default is ascending (best → worst, lower is better in golf);
-    // tapping the same header toggles to descending (worst → best).
-    // Incomplete rounds (no 9-hole score yet) always stay at the bottom alphabetically,
-    // regardless of direction — they're shown as reference, not ranked.
-    const sortKey = lowNetSort; // "net" or "gross"
+    // Sort by selected column. Default To Par ascending (best → worst). Players
+    // who've started are ranked; not-yet-started sit below them, absent at the
+    // very bottom (both alphabetical for stable layout). Tie-break a shared
+    // figure by more holes played, then by net.
+    const sortKey = lowNetSort; // "toPar" | "net" | "gross"
     const dirMult = lowNetDir === "asc" ? 1 : -1;
+    const bucketOf = (r) => r.isAbsent ? 2 : r.started ? 0 : 1;
     rows.sort((a, b) => {
-      if (a.complete && !b.complete) return -1;
-      if (!a.complete && b.complete) return 1;
-      if (a.complete && b.complete) return (a[sortKey] - b[sortKey]) * dirMult;
+      const ba = bucketOf(a), bb = bucketOf(b);
+      if (ba !== bb) return ba - bb;
+      if (ba === 0) {
+        const d = (a[sortKey] - b[sortKey]) * dirMult;
+        if (d !== 0) return d;
+        if (b.thru !== a.thru) return b.thru - a.thru;
+        return a.net - b.net;
+      }
       return a.name.localeCompare(b.name);
     });
 
@@ -1696,7 +1705,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           <div style={{ width: 22, flexShrink: 0, textAlign: "center", opacity: .8 }}>#</div>
           <div style={{ flex: 1, minWidth: 0, paddingLeft: 8 }}>Player</div>
           <div style={{ width: 36, flexShrink: 0, textAlign: "center", opacity: .8 }}>Hcp</div>
-          <div style={{ width: 44, flexShrink: 0, textAlign: "center", opacity: .8 }}>To Par</div>
+          <div onClick={() => handleHeaderTap("toPar")} style={{ width: 44, flexShrink: 0, textAlign: "center", ...headerCellStyle(sortKey === "toPar") }}>
+            To Par<span style={{ display: "inline-block", width: 10, textAlign: "left" }}>{sortKey === "toPar" ? activeChevron : ""}</span>
+          </div>
           <div onClick={() => handleHeaderTap("net")} style={{ width: 48, flexShrink: 0, textAlign: "center", ...headerCellStyle(sortKey === "net") }}>
             Net<span style={{ display: "inline-block", width: 10, textAlign: "left" }}>{sortKey === "net" ? activeChevron : ""}</span>
           </div>
@@ -1716,28 +1727,28 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             // not the row's position in the displayed list, so the same
             // values hold whether we're sorted ascending (best first) or
             // descending (worst first).
-            const completeRows = rows.filter(r => r.complete);
+            const startedRows = rows.filter(r => r.started);
             return rows.map((r, i) => {
               const isMe = r.pid === leagueUser.playerId;
               const isLast = i === rows.length - 1;
-              const showRank = r.complete;
-              // Golf rank: count rows with strictly better score on the
-              // active sort column, then +1. For "asc" (low net is best)
-              // and the typical golf scenario, "better" = lower value.
+              const showRank = r.started;
+              // Golf rank among players who've started: count those with a
+              // strictly better figure on the active column, then +1. Ties share
+              // a rank. Figures (and thus ranks) update live as holes come in.
               const rank = showRank
-                ? completeRows.filter(other => other[sortKey] < r[sortKey]).length + 1
+                ? startedRows.filter(other => other[sortKey] < r[sortKey]).length + 1
                 : null;
               const isLeader = rank === 1;
-              // A row is tied when at least one OTHER complete row has the
-              // same score on the active sort column. Shows the "T" prefix
-              // on every member of a tied group (rather than just the
-              // second occurrence as the old tiedAbove check did).
-              const isTied = showRank && completeRows.some(other =>
+              const isTied = showRank && startedRows.some(other =>
                 other.pid !== r.pid && other[sortKey] === r[sortKey]
               );
-              // Green emphasis follows the active sort column
+              // Emphasis follows the active sort column.
+              const toParIsActive = sortKey === "toPar";
               const netIsActive = sortKey === "net";
               const grossIsActive = sortKey === "gross";
+              // Progress chip — "F" once all 9 are in, otherwise "THRU n" so
+              // everyone can see how far along each player is at a glance.
+              const progress = r.isAbsent ? null : r.complete ? "F" : r.started ? `THRU ${r.thru}` : null;
               return (
                 <div key={r.pid} style={{
                   display: "flex", alignItems: "center", padding: "9px 10px",
@@ -1749,10 +1760,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   </div>
                   <div style={{ flex: 1, minWidth: 0, paddingLeft: 8, fontSize: FS.sm, fontWeight: isMe ? FW.bold : FW.semibold, color: K.t1, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {r.name}
-                    {r.isAbsent && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: FW.bold, color: K.red, background: K.red + "15", padding: "1px 4px", borderRadius: 3 }}>ABS</span>}
+                    {r.isAbsent
+                      ? <span style={{ marginLeft: 6, fontSize: 8, fontWeight: FW.bold, color: K.red, background: K.red + "15", padding: "1px 4px", borderRadius: 3 }}>ABS</span>
+                      : progress && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: FW.bold, color: r.complete ? K.matchGrn : K.t3, background: (r.complete ? K.matchGrn : K.t3) + "15", padding: "1px 4px", borderRadius: 3 }}>{progress}</span>}
                   </div>
                   <div style={{ width: 36, flexShrink: 0, textAlign: "center", fontSize: FS.xs, fontWeight: FW.bold, color: K.hcpBlue }}>{r.hcp}</div>
-                  <div style={{ width: 44, flexShrink: 0, textAlign: "center", fontSize: FS.sm, fontWeight: FW.heavy, color: r.toPar === null ? K.t3 + "60" : r.toPar < 0 ? K.red : r.toPar === 0 ? K.t2 : K.t1 }}>
+                  <div style={{ width: 44, flexShrink: 0, textAlign: "center", fontSize: toParIsActive ? 14 : FS.sm, fontWeight: FW.heavy, color: r.toPar === null ? K.t3 + "60" : (toParIsActive && isLeader) ? K.matchGrn : r.toPar < 0 ? K.red : r.toPar === 0 ? K.t2 : K.t1 }}>
                     {fmtToPar(r.toPar)}
                   </div>
                   <div style={{ width: 48, flexShrink: 0, textAlign: "center", fontSize: netIsActive ? 14 : 13, fontWeight: netIsActive ? FW.heavy : FW.semibold, color: r.net === null ? K.t3 + "60" : (netIsActive && isLeader) ? K.matchGrn : netIsActive ? K.t1 : K.t2 }}>
@@ -1767,9 +1780,9 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           })()}
         </div>
 
-        {rows.every(r => !r.complete) && (
+        {rows.every(r => !r.started) && (
           <div style={{ textAlign: "center", marginTop: 16, fontSize: 12, color: K.t3, fontStyle: "italic" }}>
-            No complete rounds yet this week
+            No scores entered yet this week
           </div>
         )}
       </div>
