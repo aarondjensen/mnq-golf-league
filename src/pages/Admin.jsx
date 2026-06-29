@@ -2549,7 +2549,13 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 need to draw attention to it in the UI. */}
 
             <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
-              {schedule.map(wk => {
+              {/* WEEKLY = regular season only (round-robin + seeded regular season).
+                  Playoff weeks carry seeded:true and have resolvable matches, so
+                  without this filter they render here with seed-pairing labels and
+                  read as extra "seeded regular season" weeks (e.g. a 4th seeded
+                  week). Playoff rounds are configured under the Playoff subtab and
+                  scored from the Scoring tab, so they don't belong in this list. */}
+              {schedule.filter(w => !w.isPlayoff).map(wk => {
                 const isPlayoffWk = wk.isPlayoff === true;
                 const isRainedOut = wk.rainedOut === true;
                 const isSeeded = wk.seeded === true && (!wk.matches || wk.matches.length === 0);
