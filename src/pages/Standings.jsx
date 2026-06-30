@@ -1060,6 +1060,8 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
     const board = players.map(p => {
       let totalGross = 0;
       let totalNet = 0;
+      let totalToPar = 0;        // net relative to par over holes PLAYED — the live-comparable metric
+      let totalHolesPlayed = 0;  // drives THRU and keeps partial rounds honest
       let roundsPlayed = 0;
       const rounds = [];
 
@@ -1089,7 +1091,6 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
       for (const wk of playoffWeeks) {
         const side = wk.side || 'front';
         const pars = side === 'front' ? frontPars : backPars;
-        const parTotal = pars.reduce((a, b) => a + b, 0);
 
         const isAbsent = scores[`w${wk.week}_p${p.id}_habsent`] === 1;
 
@@ -1104,25 +1105,40 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
         if (withdrew) continue;
 
         let gross = 0;
-        let hasScores = false;
+        let parPlayed = 0;
+        let holesPlayed = 0;
         // Holes are stored 0-indexed in Firestore (h=0 through h=8) — saveScore in
         // App.jsx and the historical-data imports both use 0..8. Using h=1..9 here
         // would miss every score and produce an all-blank leaderboard.
         for (let h = 0; h <= 8; h++) {
           const key = `w${wk.week}_p${p.id}_h${h}`;
           const s = scores[key];
-          if (s && s > 0) { gross += s; hasScores = true; }
+          if (s && s > 0) { gross += s; parPlayed += (pars[h] || 0); holesPlayed++; }
         }
 
-        if (hasScores) {
+        if (holesPlayed > 0) {
           // Per-round handicap — computed from history BEFORE this week, so it matches
           // what the player was actually playing off of when they teed up that round.
           const roundHcp = handicapBeforeWeek(p, season, wk.week);
-          const net = gross - roundHcp;
+          // PRORATE the handicap to the holes actually played. Subtracting a full
+          // 9-hole handicap from a partial gross was the fairness bug: a player
+          // thru 4 holes had their entire handicap deducted from a 4-hole score
+          // and leapt the field on the live board. For a COMPLETED round
+          // holesPlayed === 9, so proratedHcp === roundHcp and net/parPlayed/toPar
+          // are identical to the prior behavior — no regression on finished rounds.
+          const proratedHcp = roundHcp * (holesPlayed / 9);
+          const net = gross - proratedHcp;
+          const toPar = net - parPlayed; // net relative to par over holes played
           totalGross += gross;
           totalNet += net;
+          totalToPar += toPar;
+          totalHolesPlayed += holesPlayed;
           roundsPlayed++;
-          rounds.push({ week: wk.week, date: wk.date, side, gross, net, nineHcp: roundHcp, parTotal, toPar: net - parTotal });
+          rounds.push({
+            week: wk.week, date: wk.date, side, gross,
+            net, netDisplay: Math.round(net),
+            holesPlayed, nineHcp: roundHcp, parPlayed, toPar,
+          });
         }
       }
 
@@ -1134,7 +1150,9 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
         teamName: team ? lastNamesOnly(team.name) : "",
         startNineHcp: startHcp,
         totalGross,
-        totalNet,
+        totalNet: Math.round(totalNet),
+        totalToPar,
+        totalHolesPlayed,
         roundsPlayed,
         rounds,
         withdrew,
@@ -1151,7 +1169,14 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
       const bb = bucket(b);
       if (ab !== bb) return ab - bb;
       if (ab === 0) {
-        if (a.totalNet !== b.totalNet) return a.totalNet - b.totalNet;
+        // Rank by total To Par over holes PLAYED — the only metric that's
+        // comparable while players are thru different numbers of holes (even
+        // par thru 4 and even par thru 9 both read E). At completion every
+        // active player has played the same rounds and pars, so To-Par order
+        // collapses to cumulative-net order — this matches the conventional
+        // final result and only changes the ordering while a round is live.
+        // Mirrors the Low Net board's live-ranking approach.
+        if (a.totalToPar !== b.totalToPar) return a.totalToPar - b.totalToPar;
         return a.totalGross - b.totalGross;
       }
       return a.name.localeCompare(b.name);
@@ -1290,7 +1315,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
                     fontWeight: isWDRound ? FW.heavy : FW.semibold,
                     color: isWDRound ? K.red : round ? K.t1 : K.t3 + "40",
                   }}>
-                    {isWDRound ? "WD" : round ? round.net : "–"}
+                    {isWDRound ? "WD" : round ? round.netDisplay : "–"}
                   </div>
                 );
               })}
