@@ -325,29 +325,73 @@ export function buildSeedMap(teams, matchResults, schedule, leagueConfig) {
 //   priorMatchups  — flat list of prior meetings from schedule.matches of earlier
 //                    weeks: [{ team1, team2 }...]. Both orientations are fine; we
 //                    canonicalize the pair key.
-export function pairNonBracketTeams(allTeams, bracketMatches, priorMatchups) {
+export function pairNonBracketTeams(allTeams, bracketMatches, priorMatchups, options = {}) {
+  const { optimize = null, coOccurrence = null, teams = null, seedOrder = null } = options;
+
   const bracketTeamIds = new Set();
   (bracketMatches || []).forEach(m => {
     if (m.team1) bracketTeamIds.add(m.team1);
     if (m.team2) bracketTeamIds.add(m.team2);
   });
+  const remainingRaw = (allTeams || []).map(t => t.id).filter(id => !bracketTeamIds.has(id));
+
+  // ── Non-optimize: simple standings-order pairing ──
+  // Order the leftover teams by the provided seed/standings order (best→worst)
+  // and pair neighbors (1v2, 3v4, …). Odd count → the lowest-ranked leftover
+  // draws the bye. No repeat-avoidance — that's exactly what "optimize" adds.
+  if (optimize === false) {
+    const rank = new Map((seedOrder || []).map((id, i) => [id, i]));
+    const ordered = [...remainingRaw].sort((a, b) => {
+      const ra = rank.has(a) ? rank.get(a) : Infinity;
+      const rb = rank.has(b) ? rank.get(b) : Infinity;
+      if (ra !== rb) return ra - rb;
+      return a < b ? -1 : a > b ? 1 : 0;
+    });
+    const pairs = [];
+    for (let i = 0; i + 1 < ordered.length; i += 2) {
+      pairs.push({ team1: ordered[i], team2: ordered[i + 1] });
+    }
+    const bye = ordered.length % 2 === 1 ? ordered[ordered.length - 1] : null;
+    return { pairs, bye };
+  }
+
+  // ── Optimize (and legacy default): minimum-cost matching ──
   // Deterministic order (team id sort) so re-running produces the same pairings.
-  const remaining = (allTeams || [])
-    .map(t => t.id)
-    .filter(id => !bracketTeamIds.has(id))
-    .sort();
+  const remaining = [...remainingRaw].sort();
   const n = remaining.length;
   if (n < 2) return { pairs: [], bye: n === 1 ? remaining[0] : null };
 
-  // Build meeting-count matrix keyed by canonical pair string.
-  const pairKey = (a, b) => a < b ? `${a}|${b}` : `${b}|${a}`;
-  const counts = {};
-  (priorMatchups || []).forEach(m => {
-    if (!m.team1 || !m.team2) return;
-    const k = pairKey(m.team1, m.team2);
-    counts[k] = (counts[k] || 0) + 1;
-  });
-  const costIJ = (i, j) => counts[pairKey(remaining[i], remaining[j])] || 0;
+  // Cost of pairing two leftover teams into one consolation group:
+  //   • optimize === true → minimize repeat PLAYER-pair groupings. Teams i and j
+  //     form a new four-player group; the players within each team are already
+  //     permanent teammates, so the only NEW co-occurrences are the CROSS pairs
+  //     (a player from i with a player from j). Cost = how often those cross
+  //     pairs have already shared a group this season (from `coOccurrence`).
+  //     This is the finer-grained "haven't played together much".
+  //   • otherwise (legacy / no options) → minimize repeat TEAM-vs-TEAM meetings.
+  let costIJ;
+  if (optimize === true && coOccurrence) {
+    const teamById = new Map((teams || []).map(t => [t.id, t]));
+    const ck = (a, b) => a < b ? `${a}|${b}` : `${b}|${a}`;
+    const crossCost = (idA, idB) => {
+      const ta = teamById.get(idA), tb = teamById.get(idB);
+      const aP = [ta?.player1, ta?.player2].filter(Boolean);
+      const bP = [tb?.player1, tb?.player2].filter(Boolean);
+      let c = 0;
+      for (const x of aP) for (const y of bP) c += (coOccurrence[ck(x, y)] || 0);
+      return c;
+    };
+    costIJ = (i, j) => crossCost(remaining[i], remaining[j]);
+  } else {
+    const pairKey = (a, b) => a < b ? `${a}|${b}` : `${b}|${a}`;
+    const counts = {};
+    (priorMatchups || []).forEach(m => {
+      if (!m.team1 || !m.team2) return;
+      const k = pairKey(m.team1, m.team2);
+      counts[k] = (counts[k] || 0) + 1;
+    });
+    costIJ = (i, j) => counts[pairKey(remaining[i], remaining[j])] || 0;
+  }
 
   // Memoized DP. State = bitmask of still-unmatched indices.
   // dp[mask] = { cost, pairs: [[i, j], ...] }
@@ -420,6 +464,30 @@ export function collectPriorMatchups(schedule, currentWeek) {
     });
   });
   return out;
+}
+
+// Count how often each PAIR of players has shared a group (tee time / match)
+// across every prior week. A "group" is a match's roster, resolved via matchPids
+// so it honors explicit consolation `players` arrays as well as team rosters.
+// Used by the "optimize" consolation mode to pair leftover teams so their players
+// have played together the least. Keyed by canonical "pidA|pidB" (sorted).
+export function buildPlayerCoOccurrence(schedule, currentWeek, teams) {
+  const counts = {};
+  const key = (a, b) => a < b ? `${a}|${b}` : `${b}|${a}`;
+  (schedule || []).forEach(wk => {
+    if (typeof wk.week !== "number" || wk.week >= currentWeek) return;
+    if (wk.rainedOut) return;
+    (wk.matches || []).forEach(m => {
+      const pids = matchPids(m, teams);
+      for (let i = 0; i < pids.length; i++) {
+        for (let j = i + 1; j < pids.length; j++) {
+          const k = key(pids[i], pids[j]);
+          counts[k] = (counts[k] || 0) + 1;
+        }
+      }
+    });
+  });
+  return counts;
 }
 
 // ══════════════════════════════════════════════════════════════

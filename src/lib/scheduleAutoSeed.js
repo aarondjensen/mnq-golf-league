@@ -89,7 +89,7 @@
 // state at call time, not the snapshot in the original closure.
 
 import { db, LEAGUE_ID } from "../firebase";
-import { buildStandingsForSeed, pairNonBracketTeams, collectPriorMatchups, serializeSeedWeeks } from "../theme";
+import { buildStandingsForSeed, pairNonBracketTeams, collectPriorMatchups, serializeSeedWeeks, buildPlayerCoOccurrence } from "../theme";
 
 export async function autoSeedIfReady({
   justLockedWeek,
@@ -252,6 +252,24 @@ export async function autoSeedIfReady({
       : (lockSeedsEnabled ? computeRRSeeds() : computeSeeds());
   }
 
+  // Consolation is opt-in. When off, teams outside the bracket simply have no
+  // match that week. When on, `optimize` chooses the pairing strategy:
+  //   • optimize ON  → minimize repeat player-pair groupings across the season
+  //   • optimize OFF → pair leftover teams in standings (seed) order
+  const consolationEnabled = leagueConfig?.consolationEnabled === true;
+  const consolationOptimize = leagueConfig?.consolationOptimize === true;
+  const buildConsolation = (bracketMatches, week) => {
+    if (!consolationEnabled) return [];
+    const priorMatchups = collectPriorMatchups(projectedSchedule, week);
+    const coOccurrence = consolationOptimize
+      ? buildPlayerCoOccurrence(projectedSchedule, week, teams)
+      : null;
+    const { pairs } = pairNonBracketTeams(teams, bracketMatches, priorMatchups, {
+      optimize: consolationOptimize, coOccurrence, teams, seedOrder: seeds,
+    });
+    return pairs;
+  };
+
   for (let pi = 0; pi < playoffWeeksList.length; pi++) {
     const pWk = playoffWeeksList[pi];
     if (pWk.locked === true) continue;
@@ -278,9 +296,7 @@ export async function autoSeedIfReady({
       for (let i = 0; i < pairCount; i++) {
         matches.push({ team1: seeds[i], team2: seeds[n - 1 - i] });
       }
-      const priorMatchups = collectPriorMatchups(projectedSchedule, pWk.week);
-      const { pairs: consolationPairs } = pairNonBracketTeams(teams, matches, priorMatchups);
-      matches.push(...consolationPairs);
+      matches.push(...buildConsolation(matches, pWk.week));
       await db.upsert("league_schedule", { ...pWk, matches, league_id: LEAGUE_ID });
       playoffCount++;
       continue;
@@ -379,9 +395,7 @@ export async function autoSeedIfReady({
     // (or the only failures were duplicates that we logged about).
     if (bracketMatches.length !== roundDef.matchups.length && !hasDuplicate) break;
 
-    const priorMatchups = collectPriorMatchups(projectedSchedule, pWk.week);
-    const { pairs: consolationPairs } = pairNonBracketTeams(teams, bracketMatches, priorMatchups);
-    const matches = [...bracketMatches, ...consolationPairs];
+    const matches = [...bracketMatches, ...buildConsolation(bracketMatches, pWk.week)];
 
     await db.upsert("league_schedule", { ...pWk, matches, league_id: LEAGUE_ID });
     playoffCount++;

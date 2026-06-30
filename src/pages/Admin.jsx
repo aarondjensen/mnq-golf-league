@@ -3,7 +3,7 @@ import { LEAGUE_ID, db, callFunction } from "../firebase";
 import { K, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   getWeekSide, formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, lastNamesOnly,
   buildStandingsForSeed as sharedBuildStandingsForSeed, buildSeedMap,
-  pairNonBracketTeams, collectPriorMatchups, FS, FW } from "../theme";
+  pairNonBracketTeams, collectPriorMatchups, buildPlayerCoOccurrence, FS, FW } from "../theme";
 import { ConfirmModal } from "../components/Popup";
 import NotificationsAdmin from "./NotificationsAdmin";
 
@@ -1139,6 +1139,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     startDate: lc.startDate ?? "",
     alternateNines: lc.alternateNines !== false,
     startingSide: lc.startingSide ?? "front", // 'front' | 'back' — which nine week 1 plays
+    consolationEnabled: lc.consolationEnabled === true, // opt-in: matches for eliminated teams
+    consolationOptimize: lc.consolationOptimize === true, // pairing strategy when enabled
   });
 
   const [cfg, setCfg] = useState(() => ({
@@ -2113,6 +2115,33 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
             </Card>
           </div>
 
+          {/* Consolation Matches */}
+          <div style={{ marginBottom: 14 }}>
+            <SubLabel color={K.teal}>Consolation Matches</SubLabel>
+            <Card style={{ padding: 14 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: FS.sm, color: K.t2, cursor: "pointer", marginBottom: 8 }}>
+                <input type="checkbox" checked={cfg.consolationEnabled === true} onChange={e => setCfg({ ...cfg, consolationEnabled: e.target.checked })} style={{ accentColor: K.act }} />
+                Give eliminated teams a consolation match each playoff week
+              </label>
+              <div style={{ fontSize: FS.xs, color: K.t3, lineHeight: 1.5, marginBottom: cfg.consolationEnabled ? 12 : 0 }}>
+                When off, teams knocked out of the bracket simply don't play that week.
+              </div>
+              {cfg.consolationEnabled && (
+                <div style={{ paddingTop: 10, borderTop: `1px solid ${K.bdr}50` }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: FS.sm, color: K.t2, cursor: "pointer", marginBottom: 8 }}>
+                    <input type="checkbox" checked={cfg.consolationOptimize === true} onChange={e => setCfg({ ...cfg, consolationOptimize: e.target.checked })} style={{ accentColor: K.act }} />
+                    Optimize pairings
+                  </label>
+                  <div style={{ fontSize: FS.xs, color: K.t3, lineHeight: 1.5 }}>
+                    {cfg.consolationOptimize
+                      ? "Reviews every prior week and groups players who've played together the least all season."
+                      : "Pairs leftover teams in standings order (1v2, 3v4, …)."}
+                  </div>
+                </div>
+              )}
+            </Card>
+          </div>
+
           {/* Setup / Preview toggle */}
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 14 }}>
             <div style={{ display: "inline-flex", background: K.inp, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: 3 }}>
@@ -2856,11 +2885,19 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
         bracketCount = matches.length;
 
-        // Add consolation matchups so teams not in the bracket still have tee times.
-        // Picks pairings that minimize repeat meetings based on full-season history.
-        const priorMatchups = collectPriorMatchups(schedule, wk.week);
-        const { pairs: consolationPairs } = pairNonBracketTeams(teams, matches, priorMatchups);
-        matches.push(...consolationPairs);
+        // Add consolation matchups so teams not in the bracket still have tee
+        // times — only when the league has consolation enabled. Optimize ON
+        // minimizes repeat player-pair groupings across the whole season;
+        // OFF pairs leftover teams in standings (seed) order.
+        if (leagueConfig?.consolationEnabled === true) {
+          const optimize = leagueConfig?.consolationOptimize === true;
+          const priorMatchups = collectPriorMatchups(schedule, wk.week);
+          const coOccurrence = optimize ? buildPlayerCoOccurrence(schedule, wk.week, teams) : null;
+          const { pairs: consolationPairs } = pairNonBracketTeams(teams, matches, priorMatchups, {
+            optimize, coOccurrence, teams, seedOrder: seeds,
+          });
+          matches.push(...consolationPairs);
+        }
       } else {
         // Seeded regular season: use per-week custom matchups
         const n = seeds.length;
