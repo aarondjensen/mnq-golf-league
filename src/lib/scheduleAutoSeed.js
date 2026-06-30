@@ -28,12 +28,19 @@
 //     If the entire round-robin block is now locked (every non-playoff
 //     non-seeded week is locked, except possibly justLockedWeek which
 //     we project as locked), we know seeds are stable enough to assign
-//     to seeded weeks. For each seeded week that isn't already locked:
+//     to seeded weeks. For each seeded week that isn't already locked,
+//     isn't rained out, and doesn't already have play recorded against it
+//     (see the stale-bracket guard — same protection the playoff phase
+//     uses, so finalizing one seeded week can't re-pair or revert another
+//     that's in progress or hand-curated):
 //       • If `customSeedWeeks` defines positional pairings for that
 //         week, use them (commissioner-curated seed-vs-seed matchups).
 //       • Otherwise, default pairings are 1v10, 2v9, 3v8, … (top vs
 //         bottom). This is the standard "seed against the bracket"
 //         approach for a competitive last few weeks before playoffs.
+//     customSeedWeeks is indexed by position among ALL seeded reg weeks
+//     (rained-out included), matching Admin's "Seed Week" and Schedule's
+//     display so the three never disagree.
 //
 //   PHASE 2 — Playoff round 1.
 //     If the league has playoff weeks configured AND no explicit Round 1
@@ -163,12 +170,42 @@ export async function autoSeedIfReady({
     const n = seeds.length;
     const pairCount = Math.floor(n / 2);
     if (pairCount >= 1) {
-      const seededRegWeeks = projectedSchedule.filter(s => s.seeded === true && !s.isPlayoff && !s.rainedOut).sort((a, b) => a.week - b.week);
+      // Index basis for customSeedWeeks. This list must match how Admin's
+      // "Seed Week" action (Admin.jsx) and Schedule.jsx's display index into
+      // customSeedWeeks: position among ALL seeded regular-season weeks,
+      // rained-out weeks INCLUDED. Previously this writer excluded rainedOut
+      // from the basis (`!s.rainedOut`), so a single rained-out seeded week
+      // shifted every later week's `si` by one — the auto-seeded pairing then
+      // disagreed with the commissioner-configured pairing the readers show.
+      // We still skip rainedOut weeks when writing (below); we just no longer
+      // let them shift the index.
+      const seededRegWeeks = projectedSchedule.filter(s => s.seeded === true && !s.isPlayoff).sort((a, b) => a.week - b.week);
       const customWeeks = leagueConfig?.customSeedWeeks;
 
       for (let si = 0; si < seededRegWeeks.length; si++) {
         const wk = seededRegWeeks[si];
         if (wk.locked === true) continue;
+        // A rained-out seeded week never gets matches written, but it still
+        // occupies an index slot above so customSeedWeeks stays aligned.
+        if (wk.rainedOut) continue;
+
+        // Stale-bracket guard — mirrors the playoff phase below. Finalizing
+        // ANY week (or a config refresh via autoSeedIfReady(0)) re-runs this
+        // loop and would otherwise re-upsert every unlocked seeded week. If a
+        // seeded week already has matchups AND any play is recorded against it
+        // (a result, or raw hole scores for a group that teed off early), the
+        // commissioner has either started that week or hand-curated it — do
+        // not clobber it. Without this guard, finalizing week 10 could re-pair
+        // weeks 11/12 mid-round (under live/dynamic seeds) or revert a manual
+        // matchup edit back to the computed pairing. `locked` alone didn't
+        // cover the "in progress but not yet finalized" window.
+        const hasExistingMatches = wk.matches && wk.matches.length > 0;
+        if (hasExistingMatches) {
+          const hasAnyScoreOrResult = (matchResults || []).some(r => r.week === wk.week)
+            || Object.keys(holeScores || {}).some(k => k.startsWith(`w${wk.week}_`));
+          if (hasAnyScoreOrResult) continue;
+        }
+
         const weekPairs = (customWeeks && customWeeks[si]) || null;
         const matches = [];
         if (weekPairs && weekPairs.length === pairCount) {
