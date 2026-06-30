@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, nativeGoogleSignIn, nativeAuthSignOut, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
 import { Capacitor } from "@capacitor/core";
-import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, LoadingPanel, serializeSeedWeeks, deserializeLeagueConfig, buildSeedMap, FS, FW } from "./theme";
+import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, LoadingPanel, serializeSeedWeeks, deserializeLeagueConfig, FS, FW } from "./theme";
 import { parseScheduleDate } from "./lib/scheduleDate";
 import { usePullToRefresh } from "./lib/usePullToRefresh";
 import { autoSeedIfReady as autoSeedIfReadyLib } from "./lib/scheduleAutoSeed";
@@ -1105,10 +1105,6 @@ export default function GolfLeagueApp() {
   const myTeam = teams.find(t => t.player1 === leagueUser.playerId || t.player2 === leagueUser.playerId);
   const upcomingBanner = (() => {
     if (!myTeam || !schedule.length) return null;
-    // Seed badges show only for seeded regular-season and playoff weeks —
-    // same rule used by Schedule/Scoring/Standings. seedMap is the shared
-    // resolver so the banner's seed matches everywhere else.
-    const seedMap = buildSeedMap(teams, matchResults, schedule, leagueConfig);
     for (const wk of schedule) {
       if (wk.rainedOut) continue;
       if (!wk.matches || wk.matches.length === 0) continue;
@@ -1117,8 +1113,6 @@ export default function GolfLeagueApp() {
       if (!myMatch) return null;
       const oppId = myMatch.team1 === myTeam.id ? myMatch.team2 : myMatch.team1;
       const opp = teams.find(t => t.id === oppId);
-      const isSeededWeek = wk.seeded === true || wk.isPlayoff === true;
-      const oppSeed = isSeededWeek && opp ? (seedMap[opp.id] || null) : null;
       const matchIdx = wk.matches.indexOf(myMatch);
       const base = leagueConfig?.startTime ?? "4:28 PM";
       const interval = leagueConfig?.teeInterval ?? 8;
@@ -1132,7 +1126,7 @@ export default function GolfLeagueApp() {
       const oppP2 = opp ? activePlayers.find(p => p.id === opp.player2) : null;
       const oppName1 = oppP1 ? oppP1.name.split(' ').pop() : "TBD";
       const oppName2 = oppP2 ? oppP2.name.split(' ').pop() : "TBD";
-      return { week: wk.week, date: wk.date, teeTime, teeMinutes: mins, opp: opp?.name || "TBD", oppName1, oppName2, oppSeed, side: wk.side };
+      return { week: wk.week, date: wk.date, teeTime, teeMinutes: mins, opp: opp?.name || "TBD", oppName1, oppName2, side: wk.side };
     }
     return null;
   })();
@@ -1302,14 +1296,6 @@ export default function GolfLeagueApp() {
                   <div style={{ fontSize: FS.base, color: K.t1, fontWeight: FW.bold }}>Week {upcomingBanner.week}</div>
                 </div>
                 <div style={{ minWidth: 80, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
-                  {upcomingBanner.oppSeed != null && (
-                    <div style={{
-                      width: 20, height: 20, borderRadius: 5, flexShrink: 0,
-                      background: K.logoBright + "20", border: `1px solid ${K.logoBright}30`, color: K.logoBright,
-                      display: "flex", alignItems: "center", justifyContent: "center",
-                      fontSize: FS.xs, fontWeight: FW.heavy,
-                    }}>{upcomingBanner.oppSeed}</div>
-                  )}
                   <div style={{ textAlign: "right", lineHeight: 1.3 }}>
                     <div style={{ fontSize: FS.base, fontWeight: FW.bold, color: K.t1 }}>{upcomingBanner.oppName1}</div>
                     <div style={{ fontSize: FS.base, fontWeight: FW.bold, color: K.t1 }}>{upcomingBanner.oppName2}</div>
