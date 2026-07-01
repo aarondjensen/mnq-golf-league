@@ -1,6 +1,24 @@
 import { useState, useEffect, useMemo, useRef, memo } from "react";
 import { K, EmptyState, SubLabel, LIST_GAP, CARD_RADIUS, getWeekSide, LoadingPanel, resolvePlayerHcpForWeek } from "../theme";
-import { buildStrokesMap } from "../lib/matchCalc";
+import { buildStrokesMap, resultLetterFor } from "../lib/matchCalc";
+
+// Parse the defeat margin out of a match-play result string. The result text
+// is golf shorthand produced by computeMatchResult:
+//   "5&4" — up 5 with 4 to play (clinched early) → margin 5
+//   "2UP" — went the distance, finished 2 up      → margin 2
+//   "TIED" / "TIE (Low net)" — no defeat margin   → null
+// Only real defeat margins (≥1) feed the Worst Match Result board; tiebreak
+// losses and ties return null and are skipped, so the board is strictly about
+// how many holes down a team finished.
+function parseMatchMargin(text) {
+  if (!text) return null;
+  const t = String(text).trim().toUpperCase();
+  let m = t.match(/^(\d+)\s*&\s*\d+/);   // "5&4"
+  if (m) return parseInt(m[1], 10);
+  m = t.match(/^(\d+)\s*UP/);            // "2UP"
+  if (m) return parseInt(m[1], 10);
+  return null;                          // TIED, TIE (…), or unknown
+}
 
 // ──────────────────────────────────────────────────────────────────────────
 //  StatsView — season-long leaderboards
@@ -18,7 +36,7 @@ import { buildStrokesMap } from "../lib/matchCalc";
 //
 // Performance: O(players × weeks × 9) per recompute. For 20 players over
 // 16 weeks that's ~3000 iterations — well within useMemo budget.
-export default function StatsView({ players, course, schedule, scoringRules, fetchSeasonScores, fetchAllScores, leagueConfig, leagueUser }) {
+export default function StatsView({ players, course, schedule, scoringRules, fetchSeasonScores, fetchAllScores, leagueConfig, leagueUser, teams, matchResults }) {
   const [scores, setScores] = useState({});
   const [allRounds, setAllRounds] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -102,6 +120,59 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
     // Season read off leagueConfig so the retroactive handicap calc is
     // multi-season-aware (matches autoHeal + Standings).
     const currentSeason = leagueConfig?.year || new Date().getFullYear();
+
+    // ── Worst Match Result precompute ─────────────────────────────────────
+    // The team's biggest margin of defeat, attributed to BOTH rostered
+    // players (2v2 — a blowout loss is a bad day for the whole team). Mirrors
+    // Standings' record logic:
+    //   • Source of truth = persisted league_match_results (matchResultText +
+    //     the canonical W/L from resultLetterFor), not a recompute.
+    //   • Counts a match only once its WEEK IS LOCKED — same filter Standings
+    //     uses for the official record, so Stats and Standings never disagree.
+    //   • Consolation matches are excluded. They aren't flagged on the result
+    //     doc, so we reconstruct the set structurally the way Standings does:
+    //     in a playoff week, matches past the configured bracket size are
+    //     consolation. If a round has no configured bracket size (can't split
+    //     reliably) we exclude nothing rather than risk dropping real matches.
+    //   • Only genuine defeat margins (≥1) count — tiebreak losses and ties
+    //     return null from parseMatchMargin and are skipped.
+    const rosterByTeam = {};
+    (teams || []).forEach(t => { rosterByTeam[t.id] = [t.player1, t.player2].filter(Boolean); });
+
+    const lockedWeeks = new Set();
+    (schedule || []).forEach(wk => { if (wk.locked) lockedWeeks.add(wk.week); });
+
+    // Build the consolation-match key set from the playoff bracket config.
+    const playoffRounds = leagueConfig?.playoffRounds || [];
+    const playoffWeeks = (schedule || [])
+      .filter(wk => wk.isPlayoff === true && !wk.rainedOut)
+      .sort((a, b) => a.week - b.week);
+    const consolationKeys = new Set();
+    playoffWeeks.forEach((wk, ri) => {
+      const bracketSize = (playoffRounds[ri]?.matchups || []).length;
+      if (bracketSize <= 0) return;                 // can't split → exclude nothing
+      (wk.matches || []).slice(bracketSize).forEach(m => {
+        consolationKeys.add(`${wk.week}|${m.team1}|${m.team2}`);
+        consolationKeys.add(`${wk.week}|${m.team2}|${m.team1}`);
+      });
+    });
+
+    const worstByPid = {};
+    (matchResults || []).forEach(r => {
+      if (!lockedWeeks.has(r.week)) return;
+      if (consolationKeys.has(`${r.week}|${r.team1Id}|${r.team2Id}`)) return;
+      const margin = parseMatchMargin(r.matchResultText);
+      if (margin == null || margin < 1) return;     // real defeat margins only
+      [r.team1Id, r.team2Id].forEach(teamId => {
+        if (resultLetterFor(r, teamId) !== "L") return;
+        (rosterByTeam[teamId] || []).forEach(pid => {
+          const cur = worstByPid[pid];
+          if (!cur || margin > cur.margin) {
+            worstByPid[pid] = { margin, text: r.matchResultText, week: r.week };
+          }
+        });
+      });
+    });
 
     return players.map(p => {
       // Resolves the handicap this player had GOING INTO a given week via the
@@ -233,6 +304,13 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         // Best round
         lowestGross: Math.min(...rounds.map(r => r.gross)),
         lowestNet:   Math.min(...rounds.map(r => r.net)),
+        // Worst round (Bad Day) — mirror of Best Round, same completed-round set
+        highestGross: Math.max(...rounds.map(r => r.gross)),
+        highestNet:   Math.max(...rounds.map(r => r.net)),
+        // Worst match result (Bad Day) — biggest team defeat, from worstByPid
+        worstMatchMargin: worstByPid[p.id] ? worstByPid[p.id].margin : null,
+        worstMatchText:   worstByPid[p.id] ? worstByPid[p.id].text   : null,
+        worstMatchWeek:   worstByPid[p.id] ? worstByPid[p.id].week   : null,
         // Round average
         avgGross: sum(rounds, r => r.gross) / rounds.length,
         avgNet:   sum(rounds, r => r.net)   / rounds.length,
@@ -262,7 +340,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         easyAvgNet:      easyCount > 0 ? easySumNet   / easyCount : null,
       };
     }).filter(Boolean);
-  }, [players, course, schedule, scores, allRounds, leagueConfig, scoringRules]);
+  }, [players, course, schedule, scores, allRounds, leagueConfig, scoringRules, teams, matchResults]);
 
   // Hole numbers behind the Hardest/Easiest specialist boards, derived from
   // the course hcp arrays so the subtitle always matches what's actually
@@ -299,6 +377,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
     rounds:      useRef(null),
     holes:       useRef(null),
     specialists: useRef(null),
+    badday:      useRef(null),
   };
   const handleSectionTap = (id) => {
     const el = sectionRefs[id]?.current;
@@ -334,7 +413,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
   // small uppercase tag between the name and the hero number — used
   // by Pars/Birdies boards in Avg mode to show "5r" so users can see
   // at a glance why a 4-rounder might outrank a 6-rounder by rate.
-  const board = ({ title, valueFn, sortDir = 'asc', valueFmt, headerToggle, subtitle, playerAnnotation }) => {
+  const board = ({ title, valueFn, sortDir = 'asc', valueFmt, valueDisplay, headerToggle, subtitle, playerAnnotation }) => {
     const allSorted = [...stats]
       .filter(s => valueFn(s) !== null && valueFn(s) !== undefined)
       .sort((a, b) => sortDir === 'asc' ? valueFn(a) - valueFn(b) : valueFn(b) - valueFn(a));
@@ -353,7 +432,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
     // in a hidden decimal. Computed over allSorted (not the visible
     // slice) so a collapsed top-5 board still shows correct positions,
     // and shown[i] maps to rankInfo[i] since shown is a leading slice.
-    const fmtVal = (s) => (valueFmt ? valueFmt(valueFn(s)) : valueFn(s));
+    const fmtVal = (s) => (valueDisplay ? valueDisplay(s) : valueFmt ? valueFmt(valueFn(s)) : valueFn(s));
     const rankInfo = [];
     for (let i = 0; i < allSorted.length; i++) {
       if (i > 0 && fmtVal(allSorted[i]) === fmtVal(allSorted[i - 1])) {
@@ -410,7 +489,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
                 rank={rankLabel(rankInfo[i])}
                 name={s.name}
                 annotation={annotation}
-                value={valueFmt ? valueFmt(valueFn(s)) : valueFn(s)}
+                value={valueDisplay ? valueDisplay(s) : valueFmt ? valueFmt(valueFn(s)) : valueFn(s)}
                 isFirst={rankInfo[i].rank === 1}
                 isMe={isMe}
               />
@@ -605,6 +684,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         { id: "rounds", label: "Rounds" },
         { id: "holes", label: "Holes" },
         { id: "specialists", label: "Specialists" },
+        { id: "badday", label: "Bad Day" },
       ].map(s => (
         <button
           key={s.id}
@@ -720,6 +800,21 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         valueFn: s => isNet ? s.easyAvgNet : s.easyAvgGross,
         sortDir: 'asc',
         valueFmt: v => v.toFixed(2),
+      })}
+
+      <Section title="Bad Day" refKey="badday" />
+      {board({
+        title: `Worst Round — ${modeLabel}`,
+        valueFn: s => isNet ? s.highestNet : s.highestGross,
+        sortDir: 'desc',
+      })}
+      {board({
+        title: "Worst Match Result",
+        subtitle: "Biggest margin of defeat — regular + playoff, consolation excluded",
+        valueFn: s => s.worstMatchMargin,
+        valueDisplay: s => s.worstMatchText || "—",
+        sortDir: 'desc',
+        playerAnnotation: s => s.worstMatchWeek ? `Wk ${s.worstMatchWeek}` : null,
       })}
     </div>
   );
