@@ -1765,7 +1765,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       : progress && <span style={{ marginLeft: 6, fontSize: 8, fontWeight: FW.bold, color: r.complete ? K.matchGrn : K.t3, background: (r.complete ? K.matchGrn : K.t3) + "15", padding: "1px 4px", borderRadius: 3 }}>{progress}</span>}
                   </div>
                   <div style={{ width: 36, flexShrink: 0, textAlign: "center", fontSize: FS.xs, fontWeight: FW.bold, color: K.hcpBlue }}>{r.hcp}</div>
-                  <div style={{ width: 44, flexShrink: 0, textAlign: "center", fontSize: toParIsActive ? 14 : FS.sm, fontWeight: FW.heavy, color: r.toPar === null ? K.t3 + "60" : (toParIsActive && isLeader) ? K.matchGrn : r.toPar < 0 ? K.red : r.toPar === 0 ? K.t2 : K.t1 }}>
+                  <div style={{ width: 44, flexShrink: 0, textAlign: "center", fontSize: toParIsActive ? 14 : FS.sm, fontWeight: FW.heavy, color: r.toPar === null ? K.t3 + "60" : r.toPar < 0 ? K.red : (toParIsActive && isLeader) ? K.matchGrn : r.toPar === 0 ? K.t2 : K.t1 }}>
                     {fmtToPar(r.toPar)}
                   </div>
                   <div style={{ width: 48, flexShrink: 0, textAlign: "center", fontSize: netIsActive ? 14 : 13, fontWeight: netIsActive ? FW.heavy : FW.semibold, color: r.net === null ? K.t3 + "60" : (netIsActive && isLeader) ? K.matchGrn : netIsActive ? K.t1 : K.t2 }}>
