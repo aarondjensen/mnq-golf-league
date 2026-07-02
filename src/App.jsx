@@ -428,9 +428,20 @@ export default function GolfLeagueApp() {
           const key = `w${r.week}_p${r.player_id}_h${r.hole}`;
           if (ch.type === "removed") delete next[key];
           else next[key] = r.score;
+          // Write through to the session-level season cache so OTHER
+          // users' live saves keep it warm too — this is what lets
+          // fetchSeasonScores / fetchWeekScores / fetchAllScores stay
+          // accurate for the live week without ever re-querying.
+          if (seasonScoresCacheRef.current) {
+            if (ch.type === "removed") delete seasonScoresCacheRef.current[key];
+            else seasonScoresCacheRef.current[key] = r.score;
+          }
         });
         return next;
       });
+      // Live-week changes affect completed-round aggregates; mark the
+      // derived cache dirty (recompute is client-side, 0 reads).
+      if (changes && changes.length) allScoresCacheRef.current = null;
       setTimeout(() => setSyncing(false), 500);
     });
     return () => unsub();
@@ -617,11 +628,116 @@ export default function GolfLeagueApp() {
 
   const CURRENT_SEASON = 2026;
 
+  // ── Hole-score read caching ──────────────────────────────────────────
+  // WHY: league_hole_scores is by far the largest collection (~7.5K
+  // historical docs from the 2023–2025 import + ~180 docs per 2026 week),
+  // and the June billing graph showed 5.4M reads/month against 1.4K
+  // writes. The two culprits were:
+  //   1. fetchAllScores read the ENTIRE collection (every season) and its
+  //      cache was nulled by EVERY saveScore — so on league night each
+  //      hole entered re-armed a ~9,000-doc refetch for the next page
+  //      mount.
+  //   2. fetchSeasonScores had no cache at all and ran on every
+  //      Standings/Stats mount — and tabs unmount on switch, so casual
+  //      tab-flipping cost ~1,600 reads per flip.
+  //
+  // The caching is tiered by mutability:
+  //   • HISTORICAL (seasons < CURRENT_SEASON): immutable. Per-round
+  //     aggregates ({season, week, gross} per player) are computed once
+  //     from a single full-collection read and persisted to localStorage.
+  //     Cost after first load on a device: 0 reads, forever. Invalidated
+  //     only by importHistoricalScores (the one path that can change
+  //     history).
+  //   • CURRENT SEASON (raw hole scores): cached per session in
+  //     seasonScoresCacheRef and PATCHED in place — by saveScore (local
+  //     writes) and by the liveWeek subscription (other users' writes) —
+  //     instead of being invalidated. fetchSeasonScores and
+  //     fetchWeekScores serve from it after the first query of a session.
+  //   • DERIVED ROUNDS (fetchAllScores' byPlayer shape): recomputed
+  //     client-side from the two tiers above whenever dirty. Marking it
+  //     dirty costs 0 reads — recomputation is pure CPU over in-memory
+  //     data, unlike before where dirty meant "re-read ~9,000 docs".
+  //
+  // Correctness guardrail: recalcHandicaps (finalize-week path) calls
+  // fetchAllScores(true), which force-refreshes the season tier from
+  // Firestore before computing. Handicaps therefore never derive from a
+  // session cache that might have missed another user's past-week edit.
+  // That costs one season query (~1,600 reads) per finalize — 16×/season,
+  // negligible — and preserves the exact freshness guarantee the old
+  // "invalidate on save → full refetch" behavior provided.
   const allScoresCacheRef = useRef(null);
+  const seasonScoresCacheRef = useRef(null);
+  const historicalRoundsRef = useRef(null);
+  // Versioned key: bump v1 if the stored shape ever changes. Scoped to
+  // CURRENT_SEASON because "historical" means "seasons before this one" —
+  // rolling the season constant forward naturally invalidates the cache.
+  const HIST_CACHE_KEY = `mnq_hist_rounds_v1_${LEAGUE_ID}_${CURRENT_SEASON}`;
+
+  // Aggregate raw hole-score docs into completed 9-hole rounds, keyed by
+  // player. Exact semantics of the original fetchAllScores reducer: any
+  // doc with score > 0 counts a hole (an _habsent=1 doc therefore counts
+  // 1 phantom "hole", which can never reach 9 on its own — same as
+  // before), and only rounds with exactly 9 scored holes survive.
+  const aggregateRounds = (docs) => {
+    const roundMap = {};
+    docs.forEach(r => {
+      const key = `${r.season}_${r.week}_${r.player_id}`;
+      if (!roundMap[key]) roundMap[key] = { season: r.season, week: r.week, playerId: r.player_id, holes: 0, gross: 0 };
+      if (r.score > 0) { roundMap[key].holes++; roundMap[key].gross += r.score; }
+    });
+    const byPlayer = {};
+    Object.values(roundMap).forEach(rd => {
+      if (rd.holes === 9) {
+        if (!byPlayer[rd.playerId]) byPlayer[rd.playerId] = [];
+        byPlayer[rd.playerId].push({ season: rd.season, week: rd.week, gross: rd.gross });
+      }
+    });
+    return byPlayer;
+  };
+
+  // Historical rounds (seasons < CURRENT_SEASON). Resolution order:
+  // in-memory ref → localStorage → one full-collection Firestore read.
+  // The bootstrap read is the only place the whole collection is ever
+  // fetched now, and it happens at most once per device (per cache key).
+  // As a bonus, the bootstrap also seeds the season cache from the same
+  // docs, so the first-ever session on a device pays for exactly one
+  // query total.
+  const loadHistoricalRounds = useCallback(async () => {
+    if (historicalRoundsRef.current) return historicalRoundsRef.current;
+    try {
+      const raw = localStorage.getItem(HIST_CACHE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && parsed.v === 1 && parsed.rounds && typeof parsed.rounds === "object") {
+          historicalRoundsRef.current = parsed.rounds;
+          return parsed.rounds;
+        }
+      }
+    } catch {} // corrupted/unavailable localStorage → fall through to fetch
+    const docs = await db.get("league_hole_scores", LF);
+    const histDocs = docs.filter(r => r.season < CURRENT_SEASON);
+    const rounds = aggregateRounds(histDocs);
+    historicalRoundsRef.current = rounds;
+    try { localStorage.setItem(HIST_CACHE_KEY, JSON.stringify({ v: 1, rounds })); } catch {} // quota/eviction → just refetch next session
+    if (!seasonScoresCacheRef.current) {
+      const flat = {};
+      docs.forEach(r => { if (r.season === CURRENT_SEASON) flat[`w${r.week}_p${r.player_id}_h${r.hole}`] = r.score; });
+      seasonScoresCacheRef.current = flat;
+    }
+    return rounds;
+  }, []);
 
   const saveScore = useCallback(async (week, playerId, hole, score) => {
+    const key = `w${week}_p${playerId}_h${hole}`;
     const id = `${LEAGUE_ID}_s${CURRENT_SEASON}_w${week}_p${playerId}_h${hole}`;
-    setHoleScores(prev => ({ ...prev, [`w${week}_p${playerId}_h${hole}`]: score }));
+    setHoleScores(prev => ({ ...prev, [key]: score }));
+    // Write through to the season cache (keeps fetchSeasonScores /
+    // fetchWeekScores / fetchAllScores consistent with what was just
+    // entered) and mark the derived-rounds cache dirty. NOTE: dirty ≠
+    // refetch anymore — the next fetchAllScores recomputes from cached
+    // data at zero read cost. The old `allScoresCacheRef.current = null`
+    // here re-armed a full ~9,000-doc collection read per hole entered.
+    if (seasonScoresCacheRef.current) seasonScoresCacheRef.current[key] = score;
     allScoresCacheRef.current = null;
     // Return the upsert result. db.upsert resolves to the data object on
     // success and to `null` when Firestore rejects the write (network drop,
@@ -633,6 +749,18 @@ export default function GolfLeagueApp() {
   }, []);
 
   const fetchWeekScores = useCallback(async (weekNum) => {
+    // Serve from the warm season cache when available (0 reads). Prefix
+    // match is unambiguous: keys are `w{week}_p...`, so `w1_` can never
+    // match a `w10_...` key — the char after the week number is always
+    // the underscore before `p`.
+    if (seasonScoresCacheRef.current) {
+      const prefix = `w${weekNum}_`;
+      const scores = {};
+      for (const k in seasonScoresCacheRef.current) {
+        if (k.startsWith(prefix)) scores[k] = seasonScoresCacheRef.current[k];
+      }
+      return scores;
+    }
     const docs = await db.get("league_hole_scores", [...LF, { field: "season", op: "==", value: CURRENT_SEASON }, { field: "week", op: "==", value: weekNum }]);
     const scores = {};
     docs.forEach(r => { scores[`w${r.week}_p${r.player_id}_h${r.hole}`] = r.score; });
@@ -640,34 +768,61 @@ export default function GolfLeagueApp() {
   }, []);
 
   const fetchSeasonScores = useCallback(async () => {
+    // Copy-on-return so callers that setState the result own an immutable
+    // snapshot — subsequent write-through patches to the cache can't
+    // mutate a page's already-rendered data out from under it.
+    if (seasonScoresCacheRef.current) return { ...seasonScoresCacheRef.current };
     const docs = await db.get("league_hole_scores", [...LF, { field: "season", op: "==", value: CURRENT_SEASON }]);
     const scores = {};
     docs.forEach(r => { scores[`w${r.week}_p${r.player_id}_h${r.hole}`] = r.score; });
-    return scores;
+    seasonScoresCacheRef.current = scores;
+    return { ...scores };
   }, []);
 
-  const fetchAllScores = useCallback(async () => {
-    if (allScoresCacheRef.current) return allScoresCacheRef.current;
-    const docs = await db.get("league_hole_scores", LF);
-    const byPlayer = {};
-    const roundMap = {};
-    docs.forEach(r => {
-      const key = `${r.season}_${r.week}_${r.player_id}`;
-      if (!roundMap[key]) roundMap[key] = { season: r.season, week: r.week, playerId: r.player_id, holes: 0, gross: 0 };
-      if (r.score > 0) { roundMap[key].holes++; roundMap[key].gross += r.score; }
-    });
-    Object.values(roundMap).forEach(rd => {
-      if (rd.holes === 9) {
-        if (!byPlayer[rd.playerId]) byPlayer[rd.playerId] = [];
-        byPlayer[rd.playerId].push({ season: rd.season, week: rd.week, gross: rd.gross });
-      }
-    });
-    for (const pid in byPlayer) {
-      byPlayer[pid].sort((a, b) => a.season !== b.season ? a.season - b.season : a.week - b.week);
+  // Derived rounds across all seasons, in the exact shape the old
+  // full-collection fetchAllScores returned: { [pid]: [{season, week,
+  // gross}] } sorted by season then week. `forceSeasonRefresh` drops the
+  // season tier first so callers that must see other users' latest writes
+  // (recalcHandicaps on finalize) compute from fresh Firestore data.
+  const fetchAllScores = useCallback(async (forceSeasonRefresh = false) => {
+    if (forceSeasonRefresh) {
+      seasonScoresCacheRef.current = null;
+      allScoresCacheRef.current = null;
     }
+    if (allScoresCacheRef.current) return allScoresCacheRef.current;
+    const hist = await loadHistoricalRounds();
+    if (!seasonScoresCacheRef.current) await fetchSeasonScores();
+    // Reconstruct doc-shaped rows from the season cache's flat keys so
+    // aggregateRounds can run unchanged. Key format is
+    // `w{week}_p{playerId}_h{hole}`; playerId may itself contain
+    // underscores, so parse from both ends: week up to the first `_p`,
+    // hole from the last `_h`. The hole segment can also be the literal
+    // "absent" (the `_habsent` sentinel) — aggregateRounds only looks at
+    // score, so it flows through with identical semantics to the old
+    // raw-doc path.
+    const seasonDocs = [];
+    const flat = seasonScoresCacheRef.current;
+    for (const k in flat) {
+      const pStart = k.indexOf("_p");
+      const hStart = k.lastIndexOf("_h");
+      if (pStart < 1 || hStart <= pStart) continue;
+      seasonDocs.push({
+        season: CURRENT_SEASON,
+        week: Number(k.slice(1, pStart)),
+        player_id: k.slice(pStart + 2, hStart),
+        score: flat[k],
+      });
+    }
+    const current = aggregateRounds(seasonDocs);
+    const byPlayer = {};
+    const pids = new Set([...Object.keys(hist), ...Object.keys(current)]);
+    pids.forEach(pid => {
+      byPlayer[pid] = [...(hist[pid] || []), ...(current[pid] || [])];
+      byPlayer[pid].sort((a, b) => a.season !== b.season ? a.season - b.season : a.week - b.week);
+    });
     allScoresCacheRef.current = byPlayer;
     return byPlayer;
-  }, []);
+  }, [loadHistoricalRounds, fetchSeasonScores]);
 
   const saveCtp = useCallback(async (data) => await db.upsert("league_ctp", { ...data, league_id: LEAGUE_ID }), []);
 
@@ -699,6 +854,11 @@ export default function GolfLeagueApp() {
     setHoleScores({});
     setMatchResults([]);
     setSchedule([]);
+    // Current-season docs were just batch-deleted, so the season cache is
+    // wholesale stale — drop it (next fetch sees the empty collection).
+    // Historical rounds (seasons < CURRENT_SEASON) are untouched by the
+    // season-filtered delete, so the localStorage tier stays valid.
+    seasonScoresCacheRef.current = null;
     allScoresCacheRef.current = null;
   }, [schedule, leagueConfig]);
 
@@ -709,13 +869,21 @@ export default function GolfLeagueApp() {
     await db.batchDelete("league_hole_scores", weekFilter);
     await db.batchDelete("league_match_results", mrFilter);
     await db.batchDelete("league_ctp", ctpFilter);
-    // Invalidate the season-scores cache. Without this, a subsequent
-    // recalcHandicaps (or anything else that calls fetchAllScores) returns
-    // a stale cached snapshot that still contains the just-deleted week's
-    // scores, producing inflated handicap rolls. resetSeasonData and
-    // saveScore both invalidate this same cache; clearWeekData was the
-    // odd one out, easy to miss because it's only called from rain-out
-    // and reset-week flows that don't immediately recompute handicaps.
+    // Purge the deleted week from the season cache (batchDelete bypasses
+    // saveScore's write-through, and the liveWeek subscription only covers
+    // whatever week is currently live). Then mark the derived-rounds cache
+    // dirty. Without this, a subsequent recalcHandicaps (or anything else
+    // that calls fetchAllScores) would compute from a cached snapshot that
+    // still contains the just-deleted week's scores, producing inflated
+    // handicap rolls. Prefix match is safe: `w${weekNum}_` can't collide
+    // across week numbers because the char after the digits is always the
+    // underscore before `p`.
+    if (seasonScoresCacheRef.current) {
+      const prefix = `w${weekNum}_`;
+      for (const k of Object.keys(seasonScoresCacheRef.current)) {
+        if (k.startsWith(prefix)) delete seasonScoresCacheRef.current[k];
+      }
+    }
     allScoresCacheRef.current = null;
   }, []);
 
@@ -755,8 +923,16 @@ export default function GolfLeagueApp() {
     }
 
     const imported = await db.batchUpsert("league_hole_scores", docs);
-    // Invalidate the handicap-rollup cache so the next Players-tab visit
-    // computes from the freshly-imported data.
+    // Import is the ONE path that can rewrite history, so it must bust
+    // every cache tier: the persisted historical-rounds aggregate (ref +
+    // localStorage), the current-season cache (import rows could target
+    // CURRENT_SEASON), and the derived handicap rollup. Next fetch on
+    // this device re-runs the one-time bootstrap read; other devices
+    // re-bootstrap only if the commissioner tells them to clear data —
+    // acceptable, since import is a rare pre-season admin action.
+    historicalRoundsRef.current = null;
+    try { localStorage.removeItem(HIST_CACHE_KEY); } catch {}
+    seasonScoresCacheRef.current = null;
     allScoresCacheRef.current = null;
 
     return { imported, skipped };
@@ -766,7 +942,12 @@ export default function GolfLeagueApp() {
   // on demand AND implicitly on finalize-week. Returns the count updated, and
   // also surfaces a toast so the implicit finalize-week path isn't silent.
   const recalcHandicaps = useCallback(async () => {
-    const allScores = await fetchAllScores();
+    // Force-refresh the season tier (true) — finalize-week handicaps must
+    // reflect writes from EVERY device, not just what this session's
+    // cache has seen. Costs one season query (~1,600 reads) per finalize,
+    // which is the deliberate price of correctness here; the historical
+    // tier stays served from localStorage.
+    const allScores = await fetchAllScores(true);
     const par = courseData ? (courseData.frontPars || []).reduce((a, b) => a + b, 0) : 36;
     const recentN = scoringRules.hcpRecentCount ?? 8;
     const bestN = scoringRules.hcpBestCount ?? 6;
