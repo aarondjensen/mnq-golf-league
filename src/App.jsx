@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
-import { db, LF, LEAGUE_ID, _auth, _googleProvider, nativeGoogleSignIn, nativeAuthSignOut, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
+import { db, LF, LEAGUE_ID, _auth, _googleProvider, nativeGoogleSignIn, nativeAppleSignIn, NATIVE_APPLE_ENABLED, nativeAuthSignOut, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
 import { Capacitor } from "@capacitor/core";
 import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, LoadingPanel, serializeSeedWeeks, deserializeLeagueConfig, FS, FW } from "./theme";
 import { parseScheduleDate } from "./lib/scheduleDate";
@@ -467,6 +467,21 @@ export default function GolfLeagueApp() {
       console.error("Google sign-in failed:", e);
       throw e;
     }
+  };
+
+  // Native Sign in with Apple (App Store Guideline 4.8 parity for Google).
+  // Native-only: the Apple button in AuthScreen is gated on NATIVE_APPLE_ENABLED
+  // && isNativePlatform(), so this is only ever invoked inside the iOS app,
+  // where nativeAppleSignIn runs the platform Apple sheet and signs into the JS
+  // SDK via signInWithCredential (mirrors the native Google path). No web branch
+  // — web login offers Google + Email only.
+  const doAppleSignIn = async () => {
+    if (Capacitor.isNativePlatform()) {
+      return nativeAppleSignIn();
+    }
+    // Should be unreachable (button hidden off-native), but fail loudly rather
+    // than silently no-op if the gate is ever bypassed.
+    throw new Error("Sign in with Apple is only available in the app.");
   };
 
   // Handle the redirect result on app mount. When a user comes back from
@@ -1014,7 +1029,7 @@ export default function GolfLeagueApp() {
   }, [effectiveUser?.playerId]);
 
   if (authLoading) return <LoadingScreen />;
-  if (!authUser) return <AuthScreen onGoogle={doGoogleSignIn} onEmail={doEmailSignIn} onPasswordReset={doPasswordReset} />;
+  if (!authUser) return <AuthScreen onGoogle={doGoogleSignIn} onApple={doAppleSignIn} appleEnabled={NATIVE_APPLE_ENABLED && Capacitor.isNativePlatform()} onEmail={doEmailSignIn} onPasswordReset={doPasswordReset} />;
   if (!membersLoaded) return <LoadingScreen />;
   if (!leagueUser || !leagueUser.playerId) return <JoinScreen authUser={authUser} members={members} players={activePlayers} saveMember={saveMember} doSignOut={doSignOut} leagueConfig={leagueConfig} />;
 

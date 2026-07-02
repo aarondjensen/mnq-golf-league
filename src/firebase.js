@@ -106,7 +106,7 @@ _appleProvider.addScope("name");
 // App Store review) can never surface a button that errors on tap. Web/PWA
 // is unaffected: linkWithPopup works there today regardless of this flag.
 // Flip to TRUE in the same change that ships the Apple-enabled native build.
-export const NATIVE_APPLE_ENABLED = false;
+export const NATIVE_APPLE_ENABLED = true;
 
 // ─── Native Google sign-in (Capacitor) ──────────────────────────────────
 // The web popup/redirect Google flow can't run inside a native WebView, so
@@ -136,6 +136,43 @@ export const nativeGoogleSignIn = async () => {
     throw new Error("Google sign-in did not return an ID token.");
   }
   const credential = GoogleAuthProvider.credential(idToken);
+  return signInWithCredential(_auth, credential);
+};
+
+// ─── Native Sign in with Apple (Capacitor) ──────────────────────────────
+// Apple parity for Google sign-in (App Store Guideline 4.8: an app offering a
+// third-party login like Google must also offer Sign in with Apple). Mirrors
+// nativeGoogleSignIn exactly, but with Apple's extra nonce requirement.
+//
+// The plugin runs the platform-native Sign in with Apple sheet and returns an
+// ID token PLUS a nonce. We build an OAuthProvider('apple.com') credential
+// from BOTH and sign into the JS SDK with signInWithCredential — so the rest
+// of the app sees the user identically to web/Google (onAuthStateChanged
+// fires, the league_members lookup by uid runs, the user is routed in).
+//
+// rawNonce MUST be result.credential.nonce: Apple embeds the SHA-256 of the
+// raw nonce in the ID token and Firebase re-hashes rawNonce to verify it.
+// Omitting rawNonce yields auth/invalid-credential. (Same contract as the
+// linkAppleAccount native branch below.)
+//
+// Requires: "apple.com" in plugins.FirebaseAuthentication.providers
+// (capacitor.config.json), the "Sign in with Apple" capability on the iOS App
+// target, and Apple enabled in Firebase Auth. NATIVE_APPLE_ENABLED gates the
+// button so this is never called until those ship together. Web Apple sign-in
+// is not wired here (the app's web login offers Google + Email only); if that
+// changes, add a signInWithPopup(_auth, _appleProvider) branch in the caller.
+export const nativeAppleSignIn = async () => {
+  const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
+  const result = await FirebaseAuthentication.signInWithApple();
+  const idToken = result?.credential?.idToken;
+  if (!idToken) {
+    throw new Error("Apple sign-in did not return an ID token.");
+  }
+  const provider = new OAuthProvider("apple.com");
+  const credential = provider.credential({
+    idToken,
+    rawNonce: result.credential?.nonce,
+  });
   return signInWithCredential(_auth, credential);
 };
 
