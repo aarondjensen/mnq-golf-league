@@ -1487,6 +1487,24 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           const allPlayersSorted = [...players].sort((a, b) => a.name.localeCompare(b.name));
 
           const handleFinalize = async () => {
+            // Safety guard — never lock a week that isn't fully scored. With more
+            // than one commissioner, finalizes can race: once someone locks the
+            // current week, `currentWeek` advances underneath an already-open
+            // finalize popup, so confirming could drift onto the NEXT week and
+            // lock it before it's been played — the week gets "skipped" (shows
+            // FINAL with no results). Requiring a recorded result for every match
+            // makes that impossible. The banner only surfaces fully-attested
+            // weeks, so this never blocks a legitimate finalize.
+            const wkMatches = weekSch?.matches || [];
+            const everyMatchHasResult = wkMatches.length > 0 && wkMatches.every(m =>
+              matchResults.some(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2)
+            );
+            if (!everyMatchHasResult) {
+              setShowCtpPopup(false);
+              setToast(`Week ${week} isn't fully scored yet — every match needs a signed result before it can be finalized.`);
+              setTimeout(() => setToast(null), 3500);
+              return;
+            }
             // Save CTP selections
             for (const holeNum of par3Holes) {
               const sel = ctpSelections[holeNum];
