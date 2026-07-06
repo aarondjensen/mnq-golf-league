@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
-import { db, LF, LEAGUE_ID, _auth, _googleProvider, nativeGoogleSignIn, nativeAppleSignIn, NATIVE_APPLE_ENABLED, nativeAuthSignOut, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
+import { db, LF, LEAGUE_ID, _auth, _googleProvider, nativeGoogleSignIn, nativeAppleSignIn, NATIVE_APPLE_ENABLED, nativeAuthSignOut, deleteAccount, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
 import { Capacitor } from "@capacitor/core";
 import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, LoadingPanel, serializeSeedWeeks, deserializeLeagueConfig, FS, FW } from "./theme";
 import { parseScheduleDate } from "./lib/scheduleDate";
@@ -177,6 +177,10 @@ export default function GolfLeagueApp() {
   }, []);
 
   const [showMore, setShowMore] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteErr, setDeleteErr] = useState("");
+  const [deletePw, setDeletePw] = useState("");
   const [impersonating, setImpersonating] = useState(null);
   const [commMode, setCommMode] = useState(false);
   const [showPlayerPicker, setShowPlayerPicker] = useState(false);
@@ -621,6 +625,42 @@ export default function GolfLeagueApp() {
     }
     await signOut(_auth);
   };
+
+  // Permanently delete the signed-in user's account (Guideline 5.1.1(v)).
+  // Deletes the league_members doc + Firebase Auth user via deleteAccount(),
+  // then clears local auth-derived state exactly like doSignOut so the UI
+  // falls back to AuthScreen cleanly. Email/password users may need to
+  // re-enter their password (deletePw) for Firebase's recent-login check;
+  // Google/Apple users get re-authenticated silently by re-running the native
+  // provider inside deleteAccount().
+  const doDeleteAccount = async () => {
+    if (!authUser) return;
+    setDeleteBusy(true); setDeleteErr("");
+    const memberDocId = `${LEAGUE_ID}_${authUser.uid}`;
+    try {
+      await deleteAccount(memberDocId, { password: deletePw || undefined });
+      // Success — mirror doSignOut's synchronous state reset.
+      setMembersLoaded(false);
+      setMembers([]);
+      setLeagueUser(null);
+      setCommMode(false);
+      setImpersonating(null);
+      setTab("standings");
+      setShowDeleteAccount(false);
+      setDeletePw("");
+      // deleteUser already invalidates the session; ensure JS SDK is signed out.
+      try { await signOut(_auth); } catch { /* already gone */ }
+    } catch (e) {
+      const msg =
+        e?.code === "app/need-password" ? "Enter your password to confirm deletion." :
+        e?.code === "app/reauth-required" ? "Please sign out and sign back in, then try deleting again." :
+        e?.code === "auth/wrong-password" ? "Incorrect password." :
+        e?.code === "auth/network-request-failed" ? "Network error. Check your connection and try again." :
+        e?.message || "Could not delete account. Please try again.";
+      setDeleteErr(msg);
+    }
+    setDeleteBusy(false);
+  };
   const doPasswordReset = async (email) => {
     if (!email) { const e = new Error("Enter your email first"); e.code = "auth/missing-email"; throw e; }
     await sendPasswordResetEmail(_auth, email);
@@ -1054,6 +1094,11 @@ export default function GolfLeagueApp() {
   const deleteMember = useCallback(async (id) => await db.deleteDoc("league_members", id), []);
 
   const isComm = leagueUser?.isCommissioner === true;
+  // Email/password users must re-enter their password to delete their account
+  // (Firebase recent-login check); Google/Apple users are re-authenticated
+  // silently by re-running the native provider. Drives the password field in
+  // the delete-account confirmation modal.
+  const isPasswordUser = (authUser?.providerData || []).some(p => p?.providerId === "password");
   const activePlayers = useMemo(() => players.filter(p => p.status !== "inactive"), [players]);
 
   const [minuteTick, setMinuteTick] = useState(0);
@@ -1282,6 +1327,7 @@ export default function GolfLeagueApp() {
     { id: "ctp", label: "CTP", icon: "target" },
     { id: "notifications", label: "Notifications", icon: "bell" },
     { id: "signout", label: "Sign Out", icon: "key" },
+    { id: "deleteaccount", label: "Delete Account", icon: "user" },
   ];
 
   const weekToFinalize = isComm ? (() => {
@@ -1538,6 +1584,34 @@ export default function GolfLeagueApp() {
         <div onClick={() => setShowMore(false)} style={{ position: "fixed", inset: 0, zIndex: 150 }} />
       )}
 
+      {showDeleteAccount && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1000, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }} onClick={() => { if (!deleteBusy) { setShowDeleteAccount(false); setDeletePw(""); setDeleteErr(""); } }}>
+          <div onClick={(e) => e.stopPropagation()} style={{ width: "100%", maxWidth: 360, background: K.card, borderRadius: 16, padding: 24, boxShadow: "0 10px 40px rgba(0,0,0,.4)", fontFamily: "'League Spartan', sans-serif" }}>
+            <div style={{ fontSize: FS.lg, fontWeight: FW.bold, color: K.t1, marginBottom: 10 }}>Delete Account</div>
+            <div style={{ fontSize: FS.sm, color: K.t2, lineHeight: 1.5, marginBottom: 16 }}>
+              This permanently deletes your account and removes you from the league. Your scores and match history remain part of the league record, but your login and profile will be erased. This cannot be undone.
+            </div>
+            {isPasswordUser && (
+              <input
+                type="password"
+                value={deletePw}
+                onChange={(e) => setDeletePw(e.target.value)}
+                placeholder="Enter your password to confirm"
+                autoComplete="current-password"
+                style={{ width: "100%", padding: "12px 14px", borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.base, marginBottom: 12, boxSizing: "border-box" }}
+              />
+            )}
+            {deleteErr && <div style={{ fontSize: FS.sm, color: K.red, marginBottom: 12 }}>{deleteErr}</div>}
+            <button onClick={doDeleteAccount} disabled={deleteBusy} style={{ width: "100%", padding: "13px 16px", borderRadius: 10, cursor: deleteBusy ? "default" : "pointer", fontSize: FS.base, fontWeight: FW.semibold, background: K.red, color: "#fff", border: "none", marginBottom: 8, opacity: deleteBusy ? .6 : 1 }}>
+              {deleteBusy ? "Deleting…" : "Delete My Account"}
+            </button>
+            <button onClick={() => { if (!deleteBusy) { setShowDeleteAccount(false); setDeletePw(""); setDeleteErr(""); } }} disabled={deleteBusy} style={{ width: "100%", padding: "13px 16px", borderRadius: 10, cursor: deleteBusy ? "default" : "pointer", fontSize: FS.base, fontWeight: FW.semibold, background: "transparent", color: K.t2, border: `1px solid ${K.bdr}` }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {showPlayerPicker && (
         <Popup onClose={() => setShowPlayerPicker(false)} maxWidth={340}>
           <div style={{ fontSize: FS.base, fontWeight: FW.bold, color: K.t1, marginBottom: 12, textAlign: "center" }}>Switch Player</div>
@@ -1624,6 +1698,7 @@ export default function GolfLeagueApp() {
               {moreItems.map((item) => {
                 const active = tab === item.id;
                 const isSignOut = item.id === "signout";
+                const isDeleteAccount = item.id === "deleteaccount";
                 return (
                   <div key={item.id}>
                     {isSignOut && (<>
@@ -1648,12 +1723,12 @@ export default function GolfLeagueApp() {
                       <div style={{ borderTop: `1px solid ${K.bdr}`, margin: "4px 0" }} />
                     </>)}
                     <button onClick={() => {
-                      if (isSignOut) { doSignOut(); }
-                      else { setTab(item.id); }
-                      setShowMore(false);
-                    }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 16px", background: active && !isSignOut ? K.acc + "12" : "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
-                      <span style={{ display: "flex" }}>{I[item.icon](16, isSignOut ? K.red : active ? K.acc : K.t3)}</span>
-                      <span style={{ fontSize: FS.base, fontWeight: active && !isSignOut ? FW.semibold : FW.regular, color: isSignOut ? K.red : active ? K.acc : K.t1 }}>{item.label}</span>
+                      if (isSignOut) { doSignOut(); setShowMore(false); }
+                      else if (isDeleteAccount) { setDeleteErr(""); setDeletePw(""); setShowDeleteAccount(true); setShowMore(false); }
+                      else { setTab(item.id); setShowMore(false); }
+                    }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 16px", background: active && !isSignOut && !isDeleteAccount ? K.acc + "12" : "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
+                      <span style={{ display: "flex" }}>{I[item.icon](16, (isSignOut || isDeleteAccount) ? K.red : active ? K.acc : K.t3)}</span>
+                      <span style={{ fontSize: FS.base, fontWeight: active && !isSignOut && !isDeleteAccount ? FW.semibold : FW.regular, color: (isSignOut || isDeleteAccount) ? K.red : active ? K.acc : K.t1 }}>{item.label}</span>
                     </button>
                   </div>
                 );

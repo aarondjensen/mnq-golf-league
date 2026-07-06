@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, collection, doc, setDoc, getDocs, query, where, writeBatch, onSnapshot, deleteDoc } from "firebase/firestore";
-import { getAuth, initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithCredential, linkWithCredential, linkWithPopup, GoogleAuthProvider, OAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, onAuthStateChanged, signOut, updateProfile, sendPasswordResetEmail } from "firebase/auth";
+import { getAuth, initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithCredential, linkWithCredential, linkWithPopup, GoogleAuthProvider, OAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, onAuthStateChanged, signOut, updateProfile, sendPasswordResetEmail, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { Capacitor } from "@capacitor/core";
 
@@ -320,6 +320,103 @@ export const getLinkedProviders = () => {
     google: ids.includes("google.com"),
     apple: ids.includes("apple.com"),
   };
+};
+
+// ─── Account deletion (App Store Guideline 5.1.1(v)) ─────────────────────
+// Apps that support account creation MUST offer in-app account deletion.
+// This permanently removes the user: (1) their league_members doc, then
+// (2) their Firebase Auth user. Order matters — delete the member doc first
+// (still authenticated, so security rules pass) then the auth user.
+//
+// Firebase requires RECENT authentication to delete a user; if the last
+// sign-in is stale, deleteUser throws auth/requires-recent-login. We catch
+// that and re-authenticate in-place using the provider we can re-run
+// silently on native (Google/Apple mint a fresh credential) or, for email
+// users, the password they re-enter. Then we retry the delete once.
+//
+// reauthProvider tells us how to refresh:
+//   'google.com' / 'apple.com' → re-run the native provider, build a
+//        credential, reauthenticateWithCredential.
+//   'password' → caller passes { email, password }; EmailAuthProvider
+//        credential → reauthenticate.
+// On web (non-native) Google/Apple reauth would need a popup; MNQ's delete
+// entry point is the native app menu, so native reauth is the path exercised
+// by review. Web callers get a clear error asking them to sign out/in first.
+const reauthenticateCurrentUser = async (opts = {}) => {
+  const user = _auth.currentUser;
+  if (!user) throw new Error("Not signed in.");
+  const providerId = (user.providerData?.[0]?.providerId) || "";
+
+  if (providerId === "password") {
+    const email = user.email || opts.email;
+    if (!email || !opts.password) {
+      const e = new Error("Please re-enter your password to confirm deletion.");
+      e.code = "app/need-password";
+      throw e;
+    }
+    const cred = EmailAuthProvider.credential(email, opts.password);
+    return reauthenticateWithCredential(user, cred);
+  }
+
+  if (Capacitor.isNativePlatform() && (providerId === "google.com" || providerId === "apple.com")) {
+    const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
+    if (providerId === "google.com") {
+      const result = await FirebaseAuthentication.signInWithGoogle();
+      const idToken = result?.credential?.idToken;
+      if (!idToken) throw new Error("Google did not return an ID token for re-authentication.");
+      const cred = GoogleAuthProvider.credential(idToken);
+      return reauthenticateWithCredential(user, cred);
+    }
+    // apple.com
+    const result = await FirebaseAuthentication.signInWithApple();
+    const idToken = result?.credential?.idToken;
+    if (!idToken) throw new Error("Apple did not return an ID token for re-authentication.");
+    const provider = new OAuthProvider("apple.com");
+    const cred = provider.credential({ idToken, rawNonce: result.credential?.nonce });
+    return reauthenticateWithCredential(user, cred);
+  }
+
+  // Fallback: can't silently reauth (e.g. web Google/Apple). Ask the user to
+  // sign out and back in, then retry deletion.
+  const e = new Error("For your security, please sign out and sign back in, then delete your account.");
+  e.code = "app/reauth-required";
+  throw e;
+};
+
+// Permanently delete the signed-in user's account + member doc.
+//   memberDocId: `${LEAGUE_ID}_${uid}` (the league_members doc id).
+//   opts.password: only needed for email/password users (re-auth).
+// Returns true on success. Throws a readable Error otherwise.
+export const deleteAccount = async (memberDocId, opts = {}) => {
+  const user = _auth.currentUser;
+  if (!user) throw new Error("Not signed in.");
+
+  // 1. Remove the league membership doc while still authenticated.
+  if (memberDocId) {
+    try { await deleteDoc(doc(_db, "league_members", String(memberDocId))); }
+    catch (e) { console.warn("deleteAccount: member doc delete failed:", e?.message || e); }
+  }
+
+  // 2. Delete the Firebase Auth user; reauth + retry once if required.
+  try {
+    await deleteUser(user);
+  } catch (e) {
+    if (e?.code === "auth/requires-recent-login") {
+      await reauthenticateCurrentUser(opts);
+      await deleteUser(_auth.currentUser);
+    } else {
+      throw e;
+    }
+  }
+
+  // 3. Clear any native provider session so the next sign-in is clean.
+  if (Capacitor.isNativePlatform()) {
+    try {
+      const { FirebaseAuthentication } = await import("@capacitor-firebase/authentication");
+      await FirebaseAuthentication.signOut();
+    } catch { /* non-fatal */ }
+  }
+  return true;
 };
 
 // Default region (us-central1) — matches the v2 functions in functions/
