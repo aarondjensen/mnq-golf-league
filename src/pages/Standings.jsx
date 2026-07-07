@@ -1865,6 +1865,17 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
             const isExp = expanded === s.teamId;
             const results = isExp ? getTeamResults(s.teamId) : [];
             const curPos = i + 1;
+            // Displayed Pts derives from the match-play record: 2 per win,
+            // 1 per tie, 0 per loss — whole numbers by design so the
+            // column never shows decimals. Deliberately NOT tied to
+            // scoringRules.matchWin/matchTie (those price the individual
+            // match lines in lowHighBonus scoring, 3/1.5) and NOT the
+            // stored s.points (which sums three independent point lines
+            // per week). If this scale ever needs to be commissioner-
+            // configurable, add record-points fields to leagueConfig and
+            // cfgFromLeague rather than reusing the match-line rules.
+            const RECORD_PTS_WIN = 2, RECORD_PTS_TIE = 1;
+            const recordPts = s.w * RECORD_PTS_WIN + s.t * RECORD_PTS_TIE;
             const prevPos = prevPositionMap[s.teamId];
             const posChange = (prevPos && latestLockedWeek > 0) ? prevPos - curPos : null;
 
@@ -1927,7 +1938,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                   <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 0 }}>
                     <div style={wltStyle}>{s.w}-{s.l}-{s.t}</div>
                     <div style={ptsHwStyle}>
-                      <div style={{ fontWeight: FW.heavy, color: K.t1 }}>{s.points}</div>
+                      <div style={{ fontWeight: FW.heavy, color: K.t1 }}>{recordPts}</div>
                       <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: K.hcpBlue }}>{s.hw}</div>
                     </div>
                   </div>
