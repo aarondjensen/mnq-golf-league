@@ -152,8 +152,9 @@ export function formatTeeTime(baseTime, idx, interval = 8) {
 //      `schedule` is ignored in this mode.
 //
 // Output shape: [{ teamId, points, w, l, t, hw, gp }, ...] sorted from
-// 1st (index 0) to last. Field `gp` (games played) is needed by the record-
-// mode sort to compute win %; no consumer outside this file reads it directly.
+// 1st (index 0) to last. Field `gp` (games played) is retained for
+// completeness (the old record-mode sort computed win % from it); no
+// consumer outside this file reads it directly.
 //
 // Tiebreaker chains
 // ─────────────────
@@ -162,10 +163,11 @@ export function formatTeeTime(baseTime, idx, interval = 8) {
 //     2. more holes won (hw)
 //
 // `record` mode (`standingsMethod === "record"`):
-//     1. higher win % ((w + 0.5*t) / gp)
-//     2. more wins
-//     3. fewer losses
-//     4. more holes won (hw) — the league's actual final tiebreaker rule.
+//     1. higher record points (2 per win, 1 per tie — see recordPoints)
+//     2. more holes won (hw)
+//     3. head-to-head record points among the tied teams, if applicable
+//        (mini-table over matches within the tied group; see the inline
+//        comment in buildStandingsForSeed for why it's not pairwise).
 //
 // W/L/T comes from match-play result via `resultLetterFor`, NOT from a points
 // comparison. In lowHighBonus and legacy teamNetTotal data a TIED match-play
@@ -193,9 +195,29 @@ export function matchPids(match, teams) {
   return [t1?.player1, t1?.player2, t2?.player1, t2?.player2].filter(Boolean);
 }
 
+// ── Canonical record-points scale ─────────────────────────────────────────
+// Standings points derive from the match-play record: 2 per win, 1 per tie,
+// 0 per loss — whole numbers by design so the Standings Pts column never
+// shows decimals. Deliberately NOT tied to scoringRules.matchWin/matchTie
+// (those price the individual match lines in lowHighBonus scoring, 3/1.5)
+// and NOT the stored per-match team points (which sum three independent
+// point lines per week). Single source of truth: Standings display and the
+// record-mode sort below both call recordPoints so they can never disagree.
+// If this scale ever needs to be commissioner-configurable, add record-
+// points fields to leagueConfig and cfgFromLeague rather than reusing the
+// match-line rules.
+export const RECORD_PTS_WIN = 2;
+export const RECORD_PTS_TIE = 1;
+export const recordPoints = (s) => (s?.w || 0) * RECORD_PTS_WIN + (s?.t || 0) * RECORD_PTS_TIE;
+
 export function buildStandingsForSeed(teams, matchResults, schedule, standingsMethod, lockedOnly = true) {
   const pts = {};
   teams.forEach(t => { pts[t.id] = { teamId: t.id, points: 0, w: 0, l: 0, t: 0, hw: 0, gp: 0 }; });
+  // Per-match result letters, captured under the same lockedOnly filter as
+  // the season totals — consumed by the record-mode head-to-head tiebreaker
+  // below so h2h can never be built from a different result set than the
+  // standings themselves.
+  const h2hRows = [];
   (matchResults || []).forEach(r => {
     if (!r) return;
     if (lockedOnly) {
@@ -209,6 +231,7 @@ export function buildStandingsForSeed(teams, matchResults, schedule, standingsMe
     if (pts[r.team2Id]) { pts[r.team2Id].points += (r.team2Points || 0); if (r.t2HolesWon !== undefined) pts[r.team2Id].hw += r.t2HolesWon; }
     const t1Letter = resultLetterFor(r, r.team1Id);
     const t2Letter = resultLetterFor(r, r.team2Id);
+    if (pts[r.team1Id] && pts[r.team2Id]) h2hRows.push({ t1: r.team1Id, t2: r.team2Id, l1: t1Letter, l2: t2Letter });
     if (pts[r.team1Id]) {
       if (t1Letter === "W") { pts[r.team1Id].w++; pts[r.team1Id].gp++; }
       else if (t1Letter === "L") { pts[r.team1Id].l++; pts[r.team1Id].gp++; }
@@ -223,33 +246,54 @@ export function buildStandingsForSeed(teams, matchResults, schedule, standingsMe
   const isRecord = standingsMethod === "record";
   const arr = Object.values(pts);
   if (isRecord) {
-    // Record-mode tiebreaker chain — 4 steps:
-    //   1. higher win % ((w + 0.5*t) / gp)
-    //   2. more wins
-    //   3. fewer losses
-    //   4. more holes won (hw)
+    // Record-mode chain — 3 steps:
+    //   1. higher record points (2 per win, 1 per tie — recordPoints above)
+    //   2. more holes won (hw)
+    //   3. head-to-head record points among the tied teams (if applicable)
     //
-    // The 4th step is the league's actual tiebreaker rule — when teams are
-    // perfectly tied on record, the team with the most holes won across the
-    // season ranks higher. Standings.jsx had this chain in its local
-    // buildStandings copy long before consolidation; theme.jsx's version
-    // missed it.
+    // Step 1+2 replaced the older 4-step win % chain ((w + 0.5*t)/gp →
+    // wins → losses → hw). Win % and record points order identically when
+    // every team has the same games played, but diverge with unequal gp
+    // (rainouts / makeups) — the league counts absolute points, not
+    // percentage.
+    //
+    // Step 3 is NOT a pairwise comparator — with 3+ tied teams, pairwise
+    // h2h can be non-transitive (A beat B, B beat C, C beat A) and would
+    // make Array.sort order-dependent. Instead: sort by steps 1–2, then
+    // partition into groups tied on BOTH, and within each group build a
+    // mini-table of record points counting only matches where both teams
+    // are in the tied group. Teams still tied after that keep their
+    // existing order (sort is stable in all modern engines).
     //
     // If your league has `lockedSeeds` set in leagueConfig (Admin → Config
     // → Lock Seeds toggle), and that snapshot was captured under the older
-    // 3-step chain, Schedule's seeding can disagree with Standings's live
+    // chain, Schedule's seeding can disagree with Standings's live
     // ordering. The fix is to recompute the snapshot:
     //   • Admin → Config → toggle Lock Seeds off, then back on, OR
     //   • Firestore console → edit league_2026_config → delete the
     //     `lockedSeeds` field (buildSeedMap falls through to live compute)
-    arr.sort((a, b) => {
-      const aPct = a.gp ? (a.w + a.t * 0.5) / a.gp : 0;
-      const bPct = b.gp ? (b.w + b.t * 0.5) / b.gp : 0;
-      if (bPct !== aPct) return bPct - aPct;
-      if (b.w !== a.w) return b.w - a.w;
-      if (a.l !== b.l) return a.l - b.l;
-      return b.hw - a.hw;
-    });
+    arr.sort((a, b) => recordPoints(b) - recordPoints(a) || b.hw - a.hw);
+    const resolved = [];
+    let i = 0;
+    while (i < arr.length) {
+      let j = i + 1;
+      while (j < arr.length && recordPoints(arr[j]) === recordPoints(arr[i]) && arr[j].hw === arr[i].hw) j++;
+      const group = arr.slice(i, j);
+      if (group.length > 1) {
+        const ids = new Set(group.map(g => g.teamId));
+        const h2h = {};
+        group.forEach(g => { h2h[g.teamId] = 0; });
+        h2hRows.forEach(m => {
+          if (!ids.has(m.t1) || !ids.has(m.t2)) return;
+          h2h[m.t1] += m.l1 === "W" ? RECORD_PTS_WIN : m.l1 === "T" ? RECORD_PTS_TIE : 0;
+          h2h[m.t2] += m.l2 === "W" ? RECORD_PTS_WIN : m.l2 === "T" ? RECORD_PTS_TIE : 0;
+        });
+        group.sort((a, b) => h2h[b.teamId] - h2h[a.teamId]);
+      }
+      resolved.push(...group);
+      i = j;
+    }
+    return resolved;
   } else {
     arr.sort((a, b) => b.points - a.points || b.hw - a.hw);
   }

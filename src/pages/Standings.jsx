@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, calcPlayerHcp, buildSeedMap, buildStandingsForSeed, LoadingPanel, SkeletonList, buildHistoricalPlayers, FS, FW } from "../theme";
+import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, calcPlayerHcp, buildSeedMap, buildStandingsForSeed, recordPoints, LoadingPanel, SkeletonList, buildHistoricalPlayers, FS, FW } from "../theme";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { readScoreEffective, getStrokesForHole, resultLetterFor, buildStrokesMap } from "../lib/matchCalc";
 import { db, LF } from "../firebase";
@@ -1724,8 +1724,8 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
 
   // Right-cluster column styles — shared by record and points modes so the
   // column set is identical regardless of standingsMethod (only the sort
-  // differs). Two columns: W-L-T as a single tabular-nums string, then a
-  // stacked Pts-over-HW pair that mirrors the two-line name stack (so row
+  // differs). Two columns: Pts (the primary sort stat, so it leads), then a
+  // stacked W-L-T-over-HW pair that mirrors the two-line name stack (so row
   // height is unchanged).
   //
   // Widths are em-based rather than px so the columns scale with the text
@@ -1741,8 +1741,8 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   // Pts (hierarchy via weight/color, not size), FS.xs for HW, FS.micro for
   // the header. The old fixed 18/6px W-L-T cell grid clipped 2-digit
   // values at large scales and wasted width at normal scale.
-  const wltStyle = { minWidth: "3.4em", textAlign: "center", fontFamily: "'League Spartan', sans-serif", fontVariantNumeric: "tabular-nums", fontSize: NAME_SIZE, fontWeight: FW.medium, color: K.t2 };
-  const ptsHwStyle = { minWidth: "2.8em", textAlign: "center", fontFamily: "'League Spartan', sans-serif", fontSize: NAME_SIZE, lineHeight: 1.2 };
+  const ptsColStyle = { minWidth: "2.4em", textAlign: "center", fontFamily: "'League Spartan', sans-serif", fontSize: NAME_SIZE, fontWeight: FW.heavy, color: K.t1 };
+  const wltHwStyle = { minWidth: "3.4em", textAlign: "center", fontFamily: "'League Spartan', sans-serif", fontSize: NAME_SIZE, lineHeight: 1.2 };
 
   // ── Toggle structure ──────────────────────────────────────────────
   // PRIMARY toggle: Regular Season | Postseason.
@@ -1827,10 +1827,10 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
       {view === "standings" && (
         <div className="standings-grid" style={{ gap: LIST_GAP }}>
           {/* Slim column header — matches the row layout below.
-              Widths: Pos 36 · Change 22 · Team flex · W-L-T 3.4em ·
-              Pts/HW 2.8em (stacked label, mirrors the stacked pair in the
-              rows). Padding mirrors the row's "10px 10px" (tightened from
-              14 to maximize Team width on small screens). The Change
+              Widths: Pos 36 · Change 22 · Team flex · Pts 2.4em ·
+              W-L-T/HW 3.4em (stacked label, mirrors the stacked pair in
+              the rows). Padding mirrors the row's "10px 10px" (tightened
+              from 14 to maximize Team width on small screens). The Change
               column stays unlabeled — the ▲/▼ indicator below is
               self-evident, and a header label there would crowd the rank
               badge. */}
@@ -1851,11 +1851,11 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                 size as the row cells — header and rows stay aligned even
                 under system font scaling. */}
             <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
-              <div style={{ fontSize: NAME_SIZE, minWidth: "3.4em", textAlign: "center" }}>
-                <span style={{ fontSize: FS.micro }}>W-L-T</span>
+              <div style={{ fontSize: NAME_SIZE, minWidth: "2.4em", textAlign: "center" }}>
+                <span style={{ fontSize: FS.micro }}>Pts</span>
               </div>
-              <div style={{ fontSize: NAME_SIZE, minWidth: "2.8em", textAlign: "center", lineHeight: 1.2 }}>
-                <span style={{ fontSize: FS.micro }}>Pts<br />HW</span>
+              <div style={{ fontSize: NAME_SIZE, minWidth: "3.4em", textAlign: "center", lineHeight: 1.2 }}>
+                <span style={{ fontSize: FS.micro }}>W-L-T<br />HW</span>
               </div>
             </div>
           </div>
@@ -1865,17 +1865,11 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
             const isExp = expanded === s.teamId;
             const results = isExp ? getTeamResults(s.teamId) : [];
             const curPos = i + 1;
-            // Displayed Pts derives from the match-play record: 2 per win,
-            // 1 per tie, 0 per loss — whole numbers by design so the
-            // column never shows decimals. Deliberately NOT tied to
-            // scoringRules.matchWin/matchTie (those price the individual
-            // match lines in lowHighBonus scoring, 3/1.5) and NOT the
-            // stored s.points (which sums three independent point lines
-            // per week). If this scale ever needs to be commissioner-
-            // configurable, add record-points fields to leagueConfig and
-            // cfgFromLeague rather than reusing the match-line rules.
-            const RECORD_PTS_WIN = 2, RECORD_PTS_TIE = 1;
-            const recordPts = s.w * RECORD_PTS_WIN + s.t * RECORD_PTS_TIE;
+            // Displayed Pts comes from the canonical recordPoints helper in
+            // theme.jsx (2 per win, 1 per tie) — the same function the
+            // record-mode sort in buildStandingsForSeed uses, so the Pts
+            // column and the row order can never disagree.
+            const recordPts = recordPoints(s);
             const prevPos = prevPositionMap[s.teamId];
             const posChange = (prevPos && latestLockedWeek > 0) ? prevPos - curPos : null;
 
@@ -1931,14 +1925,14 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                     })()}
                   </div>
                   {/* Right cluster — identical in record and points modes;
-                      standingsMethod only changes the sort. Pts stays the
-                      visual anchor (NAME_SIZE, heavy, K.t1); W-L-T sits
-                      back at FW.medium in K.t2; HW reads as the supporting
-                      stat (FS.xs, K.hcpBlue) stacked under Pts. */}
+                      standingsMethod only changes the sort. Pts leads as
+                      the primary sort stat (NAME_SIZE, heavy, K.t1); the
+                      stacked pair follows with W-L-T at FW.medium in K.t2
+                      over HW, the tiebreaker, at FS.xs in K.hcpBlue. */}
                   <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 0 }}>
-                    <div style={wltStyle}>{s.w}-{s.l}-{s.t}</div>
-                    <div style={ptsHwStyle}>
-                      <div style={{ fontWeight: FW.heavy, color: K.t1 }}>{recordPts}</div>
+                    <div style={ptsColStyle}>{recordPts}</div>
+                    <div style={wltHwStyle}>
+                      <div style={{ fontWeight: FW.medium, color: K.t2, fontVariantNumeric: "tabular-nums" }}>{s.w}-{s.l}-{s.t}</div>
                       <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: K.hcpBlue }}>{s.hw}</div>
                     </div>
                   </div>
