@@ -1,7 +1,8 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, calcPlayerHcp, buildSeedMap, buildStandingsForSeed, LoadingPanel, SkeletonList, buildHistoricalPlayers, FS, FW } from "../theme";
 import { SharedScorecard } from "../components/SharedScorecard";
-import { readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/matchCalc";
+import { readScoreEffective, getStrokesForHole, resultLetterFor, buildStrokesMap } from "../lib/matchCalc";
+import { db, LF } from "../firebase";
 import { isScheduleDateAtOrPast } from "../lib/scheduleDate";
 import { autoHealMatchResults } from "../lib/autoHealMatchResults";
 import { TeamMatchupCard } from "../TeamMatchupCard";
@@ -874,38 +875,26 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
 // ════════════════════════════════════════════════════════════
 //  INDIVIDUAL TOURNAMENT VIEW
 // ════════════════════════════════════════════════════════════
-function IndividualEventView({ players, teams, schedule, course, leagueConfig, fetchWeekScores, fetchAllScores, scoringRules, matchResults }) {
+function IndividualEventView({ players, teams, schedule, course, leagueConfig, fetchAllScores, scoringRules }) {
   const [scores, setScores] = useState({});
   const [allRounds, setAllRounds] = useState(null); // { playerId: [{ season, week, gross }] }
   const [loading, setLoading] = useState(true);
 
-  // Identify the "final round" — the last round in the configured bracket. During
-  // the final round, the leaderboard updates live: we don't wait for signed match
-  // results, and we refresh scores on a short interval so everyone watching can
-  // see the tournament unfold in real time.
+  // ALWAYS-LIVE MODEL: every non-rained-out playoff week with matches is on the
+  // leaderboard unconditionally, and its scores stream in via Firestore
+  // onSnapshot subscriptions (see the effect below) the moment they're saved.
   //
-  // Earlier rounds DO wait for a signed match — this protects the leaderboard
-  // from stale test data or abandoned partial entries. You can think of the
-  // non-final round gate as "official scores only" and the final round as
-  // "live scoring window, show everything".
-  const finalRoundWeek = useMemo(() => {
-    const allPlayoffWeeks = schedule
-      .filter(wk => wk.isPlayoff === true && !wk.rainedOut && wk.matches?.length > 0)
-      .sort((a, b) => a.week - b.week);
-    return allPlayoffWeeks[allPlayoffWeeks.length - 1]?.week ?? null;
-  }, [schedule]);
-
+  // This intentionally REMOVES the old signed-match-result gate on earlier
+  // rounds (scores only appeared after a director signed the week's match) and
+  // the final-round-only 20-second polling window. Directors accepted the
+  // tradeoff: unsigned in-progress scores show immediately on THIS view.
+  // Match-play views and autoHeal keep their own signed-result semantics —
+  // nothing here feeds back into them.
   const playoffWeeks = useMemo(() =>
-    schedule.filter(wk => {
-      if (wk.rainedOut || wk.isPlayoff !== true) return false;
-      if (!(wk.matches?.length > 0)) return false;
-      // FINAL round: always include (live scoring window).
-      if (wk.week === finalRoundWeek) return true;
-      // EARLIER rounds: require at least one signed match result for this week,
-      // so stale test scores or abandoned entries can't show up.
-      return (matchResults || []).some(r => r.week === wk.week);
-    }).sort((a, b) => a.week - b.week),
-    [schedule, matchResults, finalRoundWeek]
+    schedule
+      .filter(wk => wk.isPlayoff === true && !wk.rainedOut && wk.matches?.length > 0)
+      .sort((a, b) => a.week - b.week),
+    [schedule]
   );
   // Total number of rounds configured for the tournament. Sourced from the admin's
   // bracket setup so the header count stays stable even when later rounds aren't
@@ -925,103 +914,71 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
     return parts.length > 1 ? `${parts[0][0]}. ${parts[parts.length - 1]}` : fullName;
   };
 
-  // Fetch scores for all playoff weeks AND the full rounds history needed for
-  // per-week handicap snapshots. Refetches on every mount/update of this view so
-  // the leaderboard always reflects the latest saved scores. Users typically land
-  // on the Individual tab only briefly, so re-running the fetches each time is
-  // not expensive in practice — and it guarantees freshness after pull-to-refresh
-  // or any background save.
+  // REAL-TIME SCORES — one Firestore onSnapshot subscription per playoff week,
+  // replacing the old fetch-once-then-poll-the-final-round pattern. Every round
+  // (not just the final) updates in real time, with no interval timer.
+  //
+  // Why one listener PER WEEK with equality filters, rather than a single
+  // `week >= firstPlayoffWeek` range listener: the per-week equality query
+  // (league_id ==, season ==, week ==) is the exact shape App.jsx's liveWeek
+  // subscription already runs in production, so its index provably exists. A
+  // range query would need a new composite index and would fail silently (an
+  // onSnapshot error log, blank leaderboard) until one was created.
+  //
+  // Each snapshot delivers the FULL doc set for its week; we rebuild that
+  // week's keys wholesale (delete-then-refill by prefix) so score deletions
+  // propagate — the same merge model finalRoundOnlyFetch used. Prefix matching
+  // is unambiguous: keys are `w{week}_p...`, so `w1_` can never match `w10_...`.
+  //
+  // READ-COST NOTE: attaching a listener costs an initial snapshot read of that
+  // week's docs (~180/week, ~720 with all four playoff weeks seeded) on every
+  // mount of this tab — the old path served the initial load from the warm
+  // season cache at 0 reads. This only runs during playoff weeks, on a tab
+  // people visit briefly, so it's bounded; but it's a knob to revisit if the
+  // Firestore read monitoring flags it (the fix would be lifting the
+  // subscription into App.jsx's cache layer alongside liveWeek).
+  //
+  // The rounds history for retroactive per-week handicaps is a one-time fetch —
+  // served from App.jsx's derived-rounds cache, and per-round handicaps only
+  // change when a week is finalized, not per hole saved.
   useEffect(() => {
-    if (!playoffWeeks.length || !fetchWeekScores) return;
+    if (!playoffWeeks.length) return;
     let cancelled = false;
+    const season = leagueConfig?.year || new Date().getFullYear();
 
-    // Full refresh — scores for all playoff weeks + history for per-round HCP calc.
-    // This is the initial load path.
-    const fullFetch = async (showLoading) => {
-      if (showLoading) setLoading(true);
-      const all = {};
-      for (const wk of playoffWeeks) {
-        const wkScores = await fetchWeekScores(wk.week);
-        Object.assign(all, wkScores);
-      }
-      if (cancelled) return;
-      setScores(all);
-      if (fetchAllScores) {
-        const hist = await fetchAllScores();
-        if (cancelled) return;
-        setAllRounds(hist);
-      }
-      if (showLoading) setLoading(false);
-    };
-
-    // Lightweight refresh — only the final round's scores. Used by the polling
-    // interval during live final-round play so we don't redownload earlier rounds
-    // on every tick (their scores are already final and won't change).
-    const finalRoundOnlyFetch = async () => {
-      if (!finalRoundWeek) return;
-      const wkScores = await fetchWeekScores(finalRoundWeek);
-      if (cancelled) return;
-      setScores(prev => {
-        // Keep prior rounds' data, replace the final round's keys.
-        const merged = { ...prev };
-        // Strip any old final-round keys first so deletions propagate.
-        for (const k of Object.keys(merged)) {
-          if (k.startsWith(`w${finalRoundWeek}_`)) delete merged[k];
-        }
-        return { ...merged, ...wkScores };
-      });
-    };
-
-    // Kick off the initial load.
-    fullFetch(true);
-
-    // LIVE LEADERBOARD — poll every 20s only while the final round is
-    // actually being played, not just because it's on the schedule. The
-    // tournament runs during playoffs, which can be weeks away at season
-    // start; the original condition (final round merely exists in the
-    // schedule) lit the LIVE badge from week 1. Now we also require:
-    //   - the final round itself is unlocked (not yet finalized), and
-    //   - any prior playoff round has been finalized (so we know we've
-    //     reached the final round, not still in earlier rounds), and
-    //   - today is at or past the final round's scheduled date (so the
-    //     badge doesn't burn 20s polling cycles before play actually starts).
-    // All three must hold; without prior rounds (single-round tournament)
-    // the prior-rounds check is vacuously satisfied.
-    const isFinalRoundLive = (() => {
-      if (!finalRoundWeek) return false;
-      const finalWk = schedule.find(wk => wk.week === finalRoundWeek);
-      if (!finalWk || finalWk.locked === true) return false;
-      if (!playoffWeeks.some(wk => wk.week === finalRoundWeek)) return false;
-      const earlierPlayoffWeeks = schedule.filter(wk =>
-        wk.isPlayoff === true && !wk.rainedOut && wk.week < finalRoundWeek
-      );
-      const priorRoundsDone = earlierPlayoffWeeks.length === 0
-        || earlierPlayoffWeeks.every(wk => wk.locked === true);
-      if (!priorRoundsDone) return false;
-      // Date guard: only "live" once the scheduled date has arrived.
-      //
-      // PRIOR BUG: comment claimed dates were ISO ("2026-08-04") and compared
-      // todayStr.toISOString() < finalWk.date — but dates throughout the app
-      // are stored as short readable strings ("Apr 21"). ASCII-wise digit < letter
-      // is always true, so this guard always returned false and live polling
-      // never engaged. The LIVE badge never appeared. Fixed by using the
-      // canonical parser via isScheduleDateAtOrPast.
-      if (finalWk.date) {
-        const year = leagueConfig?.year || new Date().getFullYear();
-        if (!isScheduleDateAtOrPast(finalWk.date, year)) return false;
-      }
-      return true;
-    })();
-    let pollId = null;
-    if (isFinalRoundLive) {
-      pollId = setInterval(() => { finalRoundOnlyFetch(); }, 20_000);
+    if (fetchAllScores) {
+      fetchAllScores().then(hist => { if (!cancelled) setAllRounds(hist); });
     }
+
+    // Flip loading off once EVERY subscribed week has delivered its first
+    // snapshot, so the board doesn't paint with only some rounds' scores.
+    const received = new Set();
+    const unsubs = playoffWeeks.map(wk =>
+      db.subscribe(
+        "league_hole_scores",
+        [...LF, { field: "season", op: "==", value: season }, { field: "week", op: "==", value: wk.week }],
+        (docs) => {
+          if (cancelled) return;
+          setScores(prev => {
+            const next = { ...prev };
+            const prefix = `w${wk.week}_`;
+            for (const k of Object.keys(next)) {
+              if (k.startsWith(prefix)) delete next[k];
+            }
+            docs.forEach(r => { next[`w${r.week}_p${r.player_id}_h${r.hole}`] = r.score; });
+            return next;
+          });
+          received.add(wk.week);
+          if (received.size === playoffWeeks.length) setLoading(false);
+        }
+      )
+    );
 
     return () => {
       cancelled = true;
-      if (pollId) clearInterval(pollId);
+      unsubs.forEach(u => u && u());
     };
-  }, [playoffWeeks, finalRoundWeek, fetchWeekScores, fetchAllScores, leagueConfig]);
+  }, [playoffWeeks, fetchAllScores, leagueConfig]);
 
   // Build leaderboard: each player's net total across playoff rounds.
   // KEY DIFFERENCE from prior implementation: handicap is NOT a single value per player.
@@ -1058,7 +1015,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
 
     const board = players.map(p => {
       let totalGross = 0;
-      let totalNet = 0;          // running net total over holes PLAYED (handicap prorated per round)
+      let totalNetToPar = 0;     // cumulative net-to-par over holes PLAYED — the ranking metric
       let totalHolesPlayed = 0;
       let roundsPlayed = 0;
       const rounds = [];
@@ -1103,33 +1060,68 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
 
         let gross = 0;
         let holesPlayed = 0;
+        const playedHoles = [];
         // Holes are stored 0-indexed in Firestore (h=0 through h=8) — saveScore in
         // App.jsx and the historical-data imports both use 0..8. Using h=1..9 here
         // would miss every score and produce an all-blank leaderboard.
         for (let h = 0; h <= 8; h++) {
           const key = `w${wk.week}_p${p.id}_h${h}`;
           const s = scores[key];
-          if (s && s > 0) { gross += s; holesPlayed++; }
+          if (s && s > 0) { gross += s; holesPlayed++; playedHoles.push(h); }
         }
 
         if (holesPlayed > 0) {
           // Per-round handicap — computed from history BEFORE this week, so it matches
           // what the player was actually playing off of when they teed up that round.
           const roundHcp = handicapBeforeWeek(p, season, wk.week);
-          // PRORATE the handicap to the holes actually played so a partial round
-          // reads as a sensible net-through-N total. Subtracting a full 9-hole
-          // handicap from a 4-hole gross was the bug. For a COMPLETED round
-          // holesPlayed === 9, so proratedHcp === roundHcp and net is identical
-          // to the prior integer behavior — no regression on finished rounds.
-          const proratedHcp = roundHcp * (holesPlayed / 9);
-          const net = gross - proratedHcp;
+          // Per-hole stroke allocation by stroke index (USGA convention), replacing
+          // the old linear proration (roundHcp * holesPlayed / 9). The round handicap
+          // is distributed across this side's 9 holes hardest-first via
+          // buildStrokesMap — the SAME canonical allocator match play, Schedule's
+          // stroke dots, and Stats already use — and only the strokes that landed on
+          // holes actually PLAYED count. Fallback when the course doc has no valid
+          // stroke indexes for this side: sequential order (hole 1 = index 1 …
+          // hole 9 = index 9), never proration, so allocation stays deterministic
+          // and integer either way.
+          const sideHcps = side === 'front' ? course?.frontHcps : course?.backHcps;
+          const hcps = (Array.isArray(sideHcps) && sideHcps.length === 9)
+            ? sideHcps
+            : [1, 2, 3, 4, 5, 6, 7, 8, 9];
+          const strokeMap = buildStrokesMap(roundHcp, hcps);
+          let strokesOnPlayed = 0;
+          for (const h of playedHoles) strokesOnPlayed += strokeMap[h] || 0;
+          // buildStrokesMap distributes |roundHcp|, so re-apply the sign: a plus
+          // (negative) handicap gives strokes BACK.
+          const signedStrokes = roundHcp < 0 ? -strokesOnPlayed : strokesOnPlayed;
+
+          // RANKING METRIC: net-to-par over holes played, NOT raw net strokes.
+          // Raw net systematically flatters whoever is through fewer holes during
+          // live play — 4 holes of golf is fewer strokes than 9 regardless of
+          // quality. Measuring against par for exactly the holes played (this
+          // side's pars, played holes only) makes mid-round players comparable:
+          // even par through 4 and even par through 9 both read E.
+          const sidePars = side === 'front' ? course?.frontPars : course?.backPars;
+          const pars = (Array.isArray(sidePars) && sidePars.length === 9)
+            ? sidePars
+            : [4, 4, 4, 3, 5, 4, 4, 3, 5];
+          let parPlayed = 0;
+          for (const h of playedHoles) parPlayed += pars[h] || 4;
+          const netToPar = gross - parPlayed - signedStrokes;
+
+          // Exactness guarantees, both integer end-to-end (integer gross, integer
+          // pars, integer allocated strokes — no rounding anywhere, so per-round
+          // values sum to the totals exactly):
+          //   completed round: strokes sum to roundHcp (buildStrokesMap wraps in
+          //   passes until exhausted) and parPlayed is the full side par, so
+          //   netToPar === (gross - roundHcp) - sidePar — the same relative
+          //   ordering as raw net for finished rounds, just re-based to par.
           totalGross += gross;
-          totalNet += net;
+          totalNetToPar += netToPar;
           totalHolesPlayed += holesPlayed;
           roundsPlayed++;
           rounds.push({
             week: wk.week, date: wk.date, side, gross,
-            net, netDisplay: Math.round(net),
+            netToPar,
             holesPlayed, nineHcp: roundHcp,
           });
         }
@@ -1143,7 +1135,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
         teamName: team ? lastNamesOnly(team.name) : "",
         startNineHcp: startHcp,
         totalGross,
-        totalNet,
+        totalNetToPar,
         totalHolesPlayed,
         roundsPlayed,
         rounds,
@@ -1153,22 +1145,35 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
     }).filter(p => p.roundsPlayed > 0 || playoffWeeks.length > 0);
 
     // Sort order: ACTIVE (played at least one round, not withdrawn) → WD → NO DATA.
-    // Within ACTIVE, net low→high, gross as tiebreaker. Within WD and NO DATA,
-    // alphabetical for stable layout.
+    // Within ACTIVE, cumulative net-to-par low→high. Equal totals are GENUINE
+    // TIES — no gross tiebreaker (standard golf tie handling); alphabetical
+    // within a tied group purely for stable layout. Within WD and NO DATA,
+    // alphabetical for the same reason.
     const bucket = (p) => p.withdrew ? 1 : p.roundsPlayed > 0 ? 0 : 2;
     board.sort((a, b) => {
       const ab = bucket(a);
       const bb = bucket(b);
       if (ab !== bb) return ab - bb;
-      if (ab === 0) {
-        // Rank by running net total over holes played (handicap prorated per
-        // round, so a partial round contributes its net-through-N rather than
-        // a full handicap on a few holes). Low net wins; gross breaks ties.
-        if (a.totalNet !== b.totalNet) return a.totalNet - b.totalNet;
-        return a.totalGross - b.totalGross;
+      if (ab === 0 && a.totalNetToPar !== b.totalNetToPar) {
+        return a.totalNetToPar - b.totalNetToPar;
       }
       return a.name.localeCompare(b.name);
     });
+
+    // Golf-standard positions: walk the sorted active players, group consecutive
+    // equal totals, and label tied groups with a T prefix. The next distinct
+    // total resumes at its true index — e.g. totals [-2, -2, +1] rank T1, T1, 3
+    // and [E, +1, +1, +3] rank 1, T2, T2, 4. WD and no-data players get no
+    // position (posLabel stays undefined; the badge doesn't render for them).
+    const actives = board.filter(p => bucket(p) === 0);
+    actives.forEach((p, j) => {
+      p.posRank = (j > 0 && p.totalNetToPar === actives[j - 1].totalNetToPar)
+        ? actives[j - 1].posRank
+        : j + 1;
+    });
+    const rankCounts = {};
+    actives.forEach(p => { rankCounts[p.posRank] = (rankCounts[p.posRank] || 0) + 1; });
+    actives.forEach(p => { p.posLabel = (rankCounts[p.posRank] > 1 ? "T" : "") + p.posRank; });
 
     return board;
   }, [players, teams, course, playoffWeeks, scores, allRounds, scoringRules, leagueConfig]);
@@ -1181,31 +1186,24 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
     return <EmptyState icon="flag" title="No playoff rounds played yet" subtitle="The individual tournament runs alongside the playoff weeks." />;
   }
 
-  const leaderName = leaderboard[0]?.roundsPlayed > 0 ? leaderboard[0].name.split(" ").pop() : null;
-
-  // Show a LIVE badge when the final round is active — visible signal that the
-  // leaderboard is auto-refreshing every 20 seconds. Conditions match the
-  // polling effect above: final round seeded but not locked, all prior rounds
-  // locked, and today's date has reached the final round's scheduled date.
-  // See the polling effect for the full rationale.
-  const isFinalRoundLive = (() => {
-    if (!finalRoundWeek) return false;
-    const finalWk = schedule.find(wk => wk.week === finalRoundWeek);
-    if (!finalWk || finalWk.locked === true) return false;
-    if (!playoffWeeks.some(wk => wk.week === finalRoundWeek)) return false;
-    const earlierPlayoffWeeks = schedule.filter(wk =>
-      wk.isPlayoff === true && !wk.rainedOut && wk.week < finalRoundWeek
-    );
-    const priorRoundsDone = earlierPlayoffWeeks.length === 0
-      || earlierPlayoffWeeks.every(wk => wk.locked === true);
-    if (!priorRoundsDone) return false;
-    if (finalWk.date) {
-      // Same fix as the polling guard above — was comparing ISO to "Apr 21".
+  // LIVE badge — the leaderboard now ALWAYS updates in real time via the
+  // onSnapshot subscriptions above, so the badge no longer gates anything.
+  // It simply signals that a playoff round is plausibly in progress right now:
+  // some round is unlocked (not finalized) and its scheduled date has arrived.
+  // No final-round-only logic, no prior-rounds-locked requirement.
+  const isLive = playoffWeeks.some(wk => {
+    if (wk.locked === true) return false;
+    if (wk.date) {
       const year = leagueConfig?.year || new Date().getFullYear();
-      if (!isScheduleDateAtOrPast(finalWk.date, year)) return false;
+      if (!isScheduleDateAtOrPast(wk.date, year)) return false;
     }
     return true;
-  })();
+  });
+
+  // To-par display convention (golf standard): under par renders with the
+  // leading minus JS gives negative numbers ("-2"), over par gets an explicit
+  // "+3", and level par is "E".
+  const fmtToPar = (n) => n === 0 ? "E" : n > 0 ? `+${n}` : String(n);
 
   return (
     <div style={{ padding: "0 2px" }}>
@@ -1214,7 +1212,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
         <div style={{ fontSize: FS.xs, color: K.t3 }}>
           Net stroke play · {totalRounds} round{totalRounds !== 1 ? "s" : ""} · All players
         </div>
-        {isFinalRoundLive && (
+        {isLive && (
           <>
             <style>{`
               @keyframes mnqLivePulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
@@ -1244,34 +1242,40 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
           {Array.from({ length: totalRounds }, (_, i) => (
             <div key={i} style={{ width: 36, textAlign: "center" }}>R{i + 1}</div>
           ))}
-          <div style={{ width: 44, textAlign: "right" }}>Net</div>
+          <div style={{ width: 44, textAlign: "right" }}>To Par</div>
         </div>
 
         {leaderboard.map((p, i) => {
-          const mc = i === 0 ? K.gold : i === 1 ? K.silver : i === 2 ? K.bronze : K.logoBright;
+          // Medal colors key off the golf POSITION, not the list index, so
+          // everyone sharing T1 gets gold, T2 silver, T3 bronze.
+          const mc = p.posRank === 1 ? K.gold : p.posRank === 2 ? K.silver : p.posRank === 3 ? K.bronze : K.logoBright;
           const hasRounds = p.roundsPlayed > 0;
           const isWD = p.withdrew;
           // Only active (non-WD) players with rounds get a rank badge; WD players
-          // are explicitly ineligible for ranking.
-          const showRank = hasRounds && !isWD;
+          // are explicitly ineligible for ranking. posLabel is only assigned to
+          // active players, so it doubles as the eligibility check.
+          const showRank = hasRounds && !isWD && p.posLabel != null;
 
           return (
             <div key={p.playerId} style={{
               display: "flex", alignItems: "center", background: K.card,
-              borderRadius: CARD_RADIUS, border: `1px solid ${i === 0 && showRank ? K.act + "30" : K.bdr}`,
+              borderRadius: CARD_RADIUS, border: `1px solid ${p.posRank === 1 && showRank ? K.act + "30" : K.bdr}`,
               padding: "10px 14px",
               opacity: isWD ? 0.55 : 1,
             }}>
-              {/* Rank */}
+              {/* Rank — golf-standard tie labels: T1/T2/… for tied groups, plain
+                  number otherwise. minWidth + padding (instead of fixed width)
+                  keeps 3-character labels like "T10" from clipping. */}
               <div style={{ width: 28, flexShrink: 0 }}>
                 {showRank && (
                   <div style={{
-                    width: 22, height: 22, borderRadius: 6,
-                    background: i < 3 ? mc + "20" : K.logoBright + "20",
-                    display: "flex", alignItems: "center", justifyContent: "center",
+                    minWidth: 22, height: 22, borderRadius: 6, padding: "0 3px",
+                    boxSizing: "border-box",
+                    background: p.posRank <= 3 ? mc + "20" : K.logoBright + "20",
+                    display: "inline-flex", alignItems: "center", justifyContent: "center",
                     fontSize: FS.xs, fontWeight: FW.heavy, color: mc,
-                    border: i < 3 ? `1.5px solid ${mc}40` : `1.5px solid ${K.logoBright}30`,
-                  }}>{i + 1}</div>
+                    border: p.posRank <= 3 ? `1.5px solid ${mc}40` : `1.5px solid ${K.logoBright}30`,
+                  }}>{p.posLabel}</div>
                 )}
               </div>
 
@@ -1292,7 +1296,9 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
                   unseeded round shows a dash; a seeded round with no score for this
                   player also shows a dash (same visual treatment — they haven't
                   posted a score either way). The round the player withdrew in is
-                  marked "WD" in red. */}
+                  marked "WD" in red. Cells show the round's NET-TO-PAR (E/+3/-2)
+                  over holes played, so an in-progress round reads comparably to a
+                  finished one. */}
               {Array.from({ length: totalRounds }, (_, wi) => {
                 const wk = playoffWeeks[wi];
                 const round = wk ? p.rounds.find(r => r.week === wk.week) : null;
@@ -1303,20 +1309,29 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
                     fontWeight: isWDRound ? FW.heavy : FW.semibold,
                     color: isWDRound ? K.red : round ? K.t1 : K.t3 + "40",
                   }}>
-                    {isWDRound ? "WD" : round ? round.netDisplay : "–"}
+                    {isWDRound ? "WD" : round ? fmtToPar(round.netToPar) : "–"}
                   </div>
                 );
               })}
 
-              {/* Total net — WD players get "WD" in red regardless of how many
-                  rounds they played before withdrawing. */}
-              <div style={{
-                width: 44, textAlign: "right",
-                fontSize: HERO_NUM_SIZE - 4, fontWeight: HERO_NUM_WEIGHT,
-                color: isWD ? K.red : hasRounds ? K.t1 : K.t3,
-                fontFamily: "'League Spartan', sans-serif",
-              }}>
-                {isWD ? "WD" : hasRounds ? Math.round(p.totalNet) : "–"}
+              {/* Total — cumulative net-to-par in golf convention (E/+3/-2),
+                  integer end-to-end so it's the exact sum of the round cells.
+                  Total gross rides below as secondary info: it no longer breaks
+                  ties, it's just context. WD players get "WD" in red regardless
+                  of how many rounds they played before withdrawing. */}
+              <div style={{ width: 44, textAlign: "right" }}>
+                <div style={{
+                  fontSize: HERO_NUM_SIZE - 4, fontWeight: HERO_NUM_WEIGHT,
+                  color: isWD ? K.red : hasRounds ? K.t1 : K.t3,
+                  fontFamily: "'League Spartan', sans-serif",
+                }}>
+                  {isWD ? "WD" : hasRounds ? fmtToPar(p.totalNetToPar) : "–"}
+                </div>
+                {!isWD && hasRounds && (
+                  <div style={{ fontSize: FS.micro, color: K.t3, marginTop: 1 }}>
+                    {p.totalGross} gross
+                  </div>
+                )}
               </div>
             </div>
           );
@@ -1778,7 +1793,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
           regardless of season phase. */}
       {view === "individual" && (
         playoffsStarted ? (
-          <IndividualEventView players={players} teams={teams} schedule={schedule} course={course} leagueConfig={leagueConfig} fetchWeekScores={fetchWeekScores} fetchAllScores={fetchAllScores} scoringRules={scoringRules} matchResults={matchResults} />
+          <IndividualEventView players={players} teams={teams} schedule={schedule} course={course} leagueConfig={leagueConfig} fetchAllScores={fetchAllScores} scoringRules={scoringRules} />
         ) : (() => {
           // Find the first playoff week — that's when the individual tournament kicks off.
           const firstPlayoff = schedule.filter(wk => wk.isPlayoff === true && !wk.rainedOut).sort((a, b) => a.week - b.week)[0];

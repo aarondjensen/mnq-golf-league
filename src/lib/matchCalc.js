@@ -55,11 +55,19 @@
 export function buildStrokesMap(nh, hcps) {
   const sorted = hcps.map((h, i) => ({ idx: i, hcp: h })).sort((a, b) => a.hcp - b.hcp);
   const mp = {};
+  if (!sorted.length) return mp;
   let rem = Math.abs(nh);
-  // First pass: one stroke per hole in HCP order
-  for (const h of sorted) { if (rem <= 0) break; mp[h.idx] = (mp[h.idx] || 0) + 1; rem--; }
-  // Second pass: handles >9 strokes (rare but possible for very high handicaps)
-  for (const h of sorted) { if (rem <= 0) break; mp[h.idx] = (mp[h.idx] || 0) + 1; rem--; }
+  // Award strokes one pass at a time in HCP order (hardest hole first), wrapping
+  // into additional passes until the handicap is exhausted. This used to be two
+  // hardcoded passes, which silently capped allocation at 18 strokes; the loop
+  // generalizes it so the completed map ALWAYS sums to exactly |nh|. The
+  // individual-tournament net calc in Standings.jsx relies on that invariant to
+  // guarantee net === gross - roundHcp on completed 9-hole rounds. For any
+  // |nh| <= 18 the output is bit-identical to the old two-pass version, so no
+  // existing match result, stroke dot, or stat changes.
+  while (rem > 0) {
+    for (const h of sorted) { if (rem <= 0) break; mp[h.idx] = (mp[h.idx] || 0) + 1; rem--; }
+  }
   return mp;
 }
 
