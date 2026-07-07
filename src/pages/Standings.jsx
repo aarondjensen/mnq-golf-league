@@ -1346,7 +1346,9 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
 //  MAIN STANDINGS VIEW
 // ════════════════════════════════════════════════════════════
 export default function StandingsView({ teams, players, matchResults, leagueConfig, schedule, fetchSeasonScores, course, fetchWeekScores, scoringRules, fetchAllScores, saveMatchResult, dataLoaded }) {
-  const isRecord = leagueConfig?.standingsMethod === "record";
+  // Note: no local isRecord flag anymore — the standings rows render the
+  // same column set (W-L-T · Pts/HW) in both modes; standingsMethod only
+  // affects the sort, which buildStandingsForSeed receives as a string.
   const [expanded, setExpanded] = useState(null);
   const [expandedResult, setExpandedResult] = useState(null);
   const [weekScores, setWeekScores] = useState({});
@@ -1720,11 +1722,27 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   if (dataLoaded && !dataLoaded.teams) return <SkeletonList count={10} height={60} />;
   if (!teams.length) return <EmptyState icon="trophy" title="No teams yet" subtitle="Commissioner needs to set up teams." />;
 
-  // W-L-T cell widths — sized for 1–2 digit values. Was 22/8 originally
-  // which left 16px of slack across the trio; trimmed so the Team column
-  // gets that space for longer last names.
-  const wltCol = { width: 18, textAlign: "center", fontFamily: "'League Spartan', sans-serif" };
-  const wltDash = { width: 6, textAlign: "center", color: K.t3 };
+  // Right-cluster column styles — shared by record and points modes so the
+  // column set is identical regardless of standingsMethod (only the sort
+  // differs). Two columns: W-L-T as a single tabular-nums string, then a
+  // stacked Pts-over-HW pair that mirrors the two-line name stack (so row
+  // height is unchanged).
+  //
+  // Widths are em-based rather than px so the columns scale with the text
+  // when a user's system font scale inflates font rendering without
+  // inflating px layout (Android WebView textZoom does exactly this; iOS
+  // page zoom scales both so it's unaffected either way). The header cells
+  // below wrap their micro-size label in a NAME_SIZE-font container with
+  // the same em minWidth, keeping header/row alignment at any scale. The
+  // Team column's ellipsis is then the only thing that degrades on
+  // large-font settings, which is the right failure mode.
+  //
+  // Type scale is deliberately minimal: NAME_SIZE for names, W-L-T, and
+  // Pts (hierarchy via weight/color, not size), FS.xs for HW, FS.micro for
+  // the header. The old fixed 18/6px W-L-T cell grid clipped 2-digit
+  // values at large scales and wasted width at normal scale.
+  const wltStyle = { minWidth: "3.4em", textAlign: "center", fontFamily: "'League Spartan', sans-serif", fontVariantNumeric: "tabular-nums", fontSize: NAME_SIZE, fontWeight: FW.medium, color: K.t2 };
+  const ptsHwStyle = { minWidth: "2.8em", textAlign: "center", fontFamily: "'League Spartan', sans-serif", fontSize: NAME_SIZE, lineHeight: 1.2 };
 
   // ── Toggle structure ──────────────────────────────────────────────
   // PRIMARY toggle: Regular Season | Postseason.
@@ -1809,12 +1827,13 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
       {view === "standings" && (
         <div className="standings-grid" style={{ gap: LIST_GAP }}>
           {/* Slim column header — matches the row layout below.
-              Widths: Pos 36 · Change 22 · Team flex · W-L-T 66 · final col
-              40 (Holes Won, label wraps onto two lines) or 30 (Pts).
-              Padding mirrors the row's "10px 10px" (tightened from 14 to
-              maximize Team width on small screens). The Change column
-              stays unlabeled — the ▲/▼ indicator below is self-evident,
-              and a header label there would crowd the rank badge. */}
+              Widths: Pos 36 · Change 22 · Team flex · W-L-T 3.4em ·
+              Pts/HW 2.8em (stacked label, mirrors the stacked pair in the
+              rows). Padding mirrors the row's "10px 10px" (tightened from
+              14 to maximize Team width on small screens). The Change
+              column stays unlabeled — the ▲/▼ indicator below is
+              self-evident, and a header label there would crowd the rank
+              badge. */}
           <div style={{
             display: "flex", alignItems: "center", width: "100%",
             padding: "4px 10px", marginBottom: -2,
@@ -1823,11 +1842,20 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
           }}>
             <div style={{ width: 36, flexShrink: 0, textAlign: "center" }}>Pos</div>
             <div style={{ width: 22, flexShrink: 0 }} />
-            <div style={{ flex: 1, textAlign: "center" }}>Team</div>
+            {/* Team header is left-aligned to sit over the left-aligned
+                stacked last names in the rows below (it previously
+                centered, which left it floating over nothing). */}
+            <div style={{ flex: 1, textAlign: "left" }}>Team</div>
+            {/* Each header cell wraps its micro label in a NAME_SIZE-font
+                container so the em minWidths compute against the same font
+                size as the row cells — header and rows stay aligned even
+                under system font scaling. */}
             <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
-              <div style={{ width: 66, textAlign: "center" }}>W-L-T</div>
-              <div style={{ minWidth: isRecord ? 40 : 30, textAlign: "center", marginLeft: 6, lineHeight: 1.1 }}>
-                {isRecord ? <>Holes<br />Won</> : "Pts"}
+              <div style={{ fontSize: NAME_SIZE, minWidth: "3.4em", textAlign: "center" }}>
+                <span style={{ fontSize: FS.micro }}>W-L-T</span>
+              </div>
+              <div style={{ fontSize: NAME_SIZE, minWidth: "2.8em", textAlign: "center", lineHeight: 1.2 }}>
+                <span style={{ fontSize: FS.micro }}>Pts<br />HW</span>
               </div>
             </div>
           </div>
@@ -1891,22 +1919,17 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                       return <div style={{ fontSize: NAME_SIZE, fontWeight: NAME_WEIGHT, letterSpacing: .5 }}>{lastNamesOnly(team.name)}</div>;
                     })()}
                   </div>
+                  {/* Right cluster — identical in record and points modes;
+                      standingsMethod only changes the sort. Pts stays the
+                      visual anchor (NAME_SIZE, heavy, K.t1); W-L-T sits
+                      back at FW.medium in K.t2; HW reads as the supporting
+                      stat (FS.xs, K.hcpBlue) stacked under Pts. */}
                   <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 0 }}>
-                    {isRecord ? (<>
-                      <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: FW.heavy, color: K.t1 }}>{s.w}</div>
-                      <div style={{ ...wltDash, fontSize: NAME_SIZE, fontWeight: FW.heavy }}>-</div>
-                      <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: FW.heavy, color: K.t1 }}>{s.l}</div>
-                      <div style={{ ...wltDash, fontSize: NAME_SIZE, fontWeight: FW.heavy }}>-</div>
-                      <div style={{ ...wltCol, fontSize: NAME_SIZE, fontWeight: FW.heavy, color: K.t1 }}>{s.t}</div>
-                      <div style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.hcpBlue, minWidth: 40, textAlign: "center", marginLeft: 6 }}>{s.hw}</div>
-                    </>) : (<>
-                      <div style={{ ...wltCol, fontSize: FS.xs, fontWeight: FW.medium, color: K.t3 }}>{s.w}</div>
-                      <div style={{ ...wltDash, fontSize: FS.xs, color: K.t3 }}>-</div>
-                      <div style={{ ...wltCol, fontSize: FS.xs, fontWeight: FW.medium, color: K.t3 }}>{s.l}</div>
-                      <div style={{ ...wltDash, fontSize: FS.xs, color: K.t3 }}>-</div>
-                      <div style={{ ...wltCol, fontSize: FS.xs, fontWeight: FW.medium, color: K.t3 }}>{s.t}</div>
-                      <div style={{ fontSize: HERO_NUM_SIZE, fontWeight: HERO_NUM_WEIGHT, color: K.t1, fontFamily: "'League Spartan', sans-serif", minWidth: 30, textAlign: "center", marginLeft: 6 }}>{s.points}</div>
-                    </>)}
+                    <div style={wltStyle}>{s.w}-{s.l}-{s.t}</div>
+                    <div style={ptsHwStyle}>
+                      <div style={{ fontWeight: FW.heavy, color: K.t1 }}>{s.points}</div>
+                      <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: K.hcpBlue }}>{s.hw}</div>
+                    </div>
                   </div>
                   {/* Chevron column removed — the entire row is a button so
                       tappability is implicit, and the 26px it occupied is
