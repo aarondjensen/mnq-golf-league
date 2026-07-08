@@ -1093,7 +1093,13 @@ export default function GolfLeagueApp() {
     // affected (unlocked, unplayed) weeks.
     const playoffSeedsChanged = stableStringify(prev?.playoffSeeds || null) !== stableStringify(data.playoffSeeds || null);
     const lockedSeedsChanged = stableStringify(prev?.lockedSeeds || null) !== stableStringify(data.lockedSeeds || null);
-    if (playoffChanged || customSeedChanged || standingsMethodChanged || playoffSeedsChanged || lockedSeedsChanged) {
+    // Consolation flags change which NON-bracket teams get paired each playoff
+    // week (byes + eliminated). Toggling them must regenerate the affected
+    // unlocked/unplayed weeks, or the change only takes effect on brand-new
+    // weeks while already-seeded weeks keep their old (or empty) pairings.
+    const consolationChanged = (prev?.consolationEnabled === true) !== (data.consolationEnabled === true)
+      || (prev?.consolationOptimize === true) !== (data.consolationOptimize === true);
+    if (playoffChanged || customSeedChanged || standingsMethodChanged || playoffSeedsChanged || lockedSeedsChanged || consolationChanged) {
       setTimeout(() => { autoSeedIfReady(0); }, 0);
     }
   }, [leagueConfig, autoSeedIfReady]);

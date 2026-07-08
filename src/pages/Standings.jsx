@@ -212,6 +212,10 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
     if (val === "lowestWinner") return "Low Winner";
     if (val === "nextLowestWinner") return "Next Low Winner";
     if (val === "lowestSeed") return "Low Seed";
+    if (val === "highestSeed") return "High Seed";
+    if (val === "highestWinner") return "High Winner";
+    if (val === "nextHighestSeed") return "2nd High Seed";
+    if (val === "nextHighestWinner") return "2nd High Winner";
     if (val === "nextLowestSeed") return "2nd Low Seed";
     if (val?.startsWith("winner_")) return `Winner M${parseInt(val.split("_")[1]) + 1}`;
     return "TBD";

@@ -2195,16 +2195,16 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
             </Card>
           </div>
 
-          {/* Consolation Matches */}
+          {/* Non-bracket matchups */}
           <div style={{ marginBottom: 14 }}>
-            <SubLabel color={K.teal}>Consolation Matches</SubLabel>
+            <SubLabel color={K.teal}>Non-Bracket Matchups</SubLabel>
             <Card style={{ padding: 14 }}>
               <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: FS.sm, color: K.t2, cursor: "pointer", marginBottom: 8 }}>
                 <input type="checkbox" checked={cfg.consolationEnabled === true} onChange={e => setCfg({ ...cfg, consolationEnabled: e.target.checked })} style={{ accentColor: K.act }} />
-                Give eliminated teams a consolation match each playoff week
+                Give non-bracket teams a matchup each playoff week
               </label>
               <div style={{ fontSize: FS.xs, color: K.t3, lineHeight: 1.5, marginBottom: cfg.consolationEnabled ? 12 : 0 }}>
-                When off, teams knocked out of the bracket simply don't play that week.
+                Covers teams with a first-round bye AND teams knocked out of the bracket, so all 10 teams play every playoff week. When off, any team not in the bracket that week simply doesn't play.
               </div>
               {cfg.consolationEnabled && (
                 <div style={{ paddingTop: 10, borderTop: `1px solid ${K.bdr}50` }}>
@@ -2355,6 +2355,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                       <option value="">—</option>
                       <option value="lowestWinner">Low winner</option>
                       <option value="lowestSeed">Low rem. seed</option>
+                      <option value="highestSeed">High rem. seed</option>
                       <option value="nextLowestWinner">2nd low winner</option>
                       <option value="nextLowestSeed">2nd low seed</option>
                       {prevWinnerCount > 0 && Array.from({ length: prevWinnerCount }, (_, i) => (
@@ -2413,6 +2414,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                   if (val === "lowestWinner") return "Lo W";
                   if (val === "nextLowestWinner") return "Nxt W";
                   if (val === "lowestSeed") return "Lo S";
+                  if (val === "highestSeed") return "Hi S";
                   if (val === "nextLowestSeed") return "2nd S";
                   if (val?.startsWith("winner_")) return `W${parseInt(val.split("_")[1]) + 1}`;
                   return "?";
@@ -2868,6 +2870,13 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
             } else if (val === "nextLowestSeed") {
               const sorted = prevWinners.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => b.rank - a.rank);
               return sorted[1]?.id || null;
+            } else if (val === "highestWinner" || val === "highestSeed") {
+              // Highest-seeded winner (lowest seed number among winners).
+              const sorted = prevWinners.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => a.rank - b.rank);
+              return sorted[0]?.id || null;
+            } else if (val === "nextHighestWinner" || val === "nextHighestSeed") {
+              const sorted = prevWinners.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => a.rank - b.rank);
+              return sorted[1]?.id || null;
             } else if (val?.startsWith("winner_")) {
               const idx = parseInt(val.split("_")[1]);
               return prevWinners[idx] || null;
@@ -2923,7 +2932,9 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
               if (type === "seed") return `seed #${val}`;
               if (type === "winner") {
                 if (val === "lowestWinner" || val === "lowestSeed") return "Lowest winner";
+                if (val === "highestWinner" || val === "highestSeed") return "Highest winner";
                 if (val === "nextLowestWinner" || val === "nextLowestSeed") return "Next lowest winner";
+                if (val === "nextHighestWinner" || val === "nextHighestSeed") return "Next highest winner";
                 if (val?.startsWith("winner_")) return `Winner of M${parseInt(val.split("_")[1]) + 1}`;
                 return `winner:${val}`;
               }
@@ -3290,7 +3301,9 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                 if (type === "seed") return val ? `#${val}` : "UNSET seed";
                 if (type === "winner") {
                   if (val === "lowestWinner" || val === "lowestSeed") return "Lowest winner";
+                  if (val === "highestWinner" || val === "highestSeed") return "Highest winner";
                   if (val === "nextLowestWinner" || val === "nextLowestSeed") return "Next lowest";
+                  if (val === "nextHighestWinner" || val === "nextHighestSeed") return "Next highest";
                   if (val?.startsWith("winner_")) return `Winner M${parseInt(val.split("_")[1]) + 1}`;
                   return "UNSET winner";
                 }

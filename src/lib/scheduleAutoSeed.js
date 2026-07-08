@@ -389,6 +389,14 @@ export async function autoSeedIfReady({
         } else if (val === "nextLowestWinner" || val === "nextLowestSeed") {
           const sorted = prevWinners.map(id => ({ id, rank: playoffSeeds.indexOf(id) })).sort((a, b) => b.rank - a.rank);
           return sorted[1]?.id || null;
+        } else if (val === "highestWinner" || val === "highestSeed") {
+          // Highest-seeded winner (lowest seed number among winners). With a
+          // 2-team play-in feeding #1/#2, this is the OTHER winner from lowestSeed.
+          const sorted = prevWinners.map(id => ({ id, rank: playoffSeeds.indexOf(id) })).sort((a, b) => a.rank - b.rank);
+          return sorted[0]?.id || null;
+        } else if (val === "nextHighestWinner" || val === "nextHighestSeed") {
+          const sorted = prevWinners.map(id => ({ id, rank: playoffSeeds.indexOf(id) })).sort((a, b) => a.rank - b.rank);
+          return sorted[1]?.id || null;
         } else if (val?.startsWith("winner_")) {
           const idx = parseInt(val.split("_")[1]);
           return prevWinners[idx] || null;
