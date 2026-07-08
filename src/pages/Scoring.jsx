@@ -111,6 +111,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const [justSigned, setJustSigned] = useState(false); // prevents flash between sign and Firestore update
   const [showCtpPopup, setShowCtpPopup] = useState(false);
   const [ctpSelections, setCtpSelections] = useState({}); // { holeNum: { playerId, distance } }
+  // Per-hole CTP auto-prompt: fires for each group when their foursome
+  // completes a par 3. See maybePromptHoleCtp.
+  const [holeCtpPrompt, setHoleCtpPrompt] = useState(null); // { holeNum } | null
+  const [holeCtpPlayer, setHoleCtpPlayer] = useState("");
+  const [holeCtpFeet, setHoleCtpFeet] = useState(10); // wheel-picker value, whole feet
+  const promptedCtpHoles = useRef({}); // session guard: `w${week}_h${holeNum}` → true once shown
   const [lowNetSort, setLowNetSort] = useState("toPar"); // "toPar" | "net" | "gross" — Low Net leaderboard sort column. To Par is the live-fair default (comparable across players mid-round).
   const [lowNetDir, setLowNetDir] = useState("asc"); // "asc" (best→worst) | "desc" (worst→best) — Low Net sort direction
   const initialJump = useRef(false);
@@ -140,8 +146,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
   // Notify App.jsx when popups open/close for body scroll lock
   useEffect(() => {
-    if (setPopupOpen) setPopupOpen(showFinalize || showScorecard || !!confirmModal || showCtpPopup);
-  }, [showFinalize, showScorecard, confirmModal, showCtpPopup, setPopupOpen]);
+    if (setPopupOpen) setPopupOpen(showFinalize || showScorecard || !!confirmModal || showCtpPopup || !!holeCtpPrompt);
+  }, [showFinalize, showScorecard, confirmModal, showCtpPopup, holeCtpPrompt, setPopupOpen]);
 
   // ── Player lookup map (O(1) instead of repeated .find()) ──
   const playerMap = useMemo(() => {
@@ -629,6 +635,48 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     return new Date() < teeAt;
   };
 
+  // ── Closest-to-the-pin auto-prompt ──────────────────────────────────
+  // When the score just entered completes a par 3 for THIS foursome (every
+  // present player in the active match now has a score on the hole), pop
+  // the CTP tag popup for the group's scorer. Every group gets the prompt
+  // as they finish the hole — earlier groups' tags appear as the "current
+  // CTP" leader bar so later groups know the number to beat, and can
+  // either tag someone from their own foursome or dismiss with "our
+  // foursome wasn't closer". Player-tagged records are written with
+  // approved:false; the commissioner's finalize flow is the approval step.
+  //
+  // Guards:
+  //   • pars[h] must be 3 and the new value must be a real score (>0)
+  //   • only the incomplete→complete transition fires: the entering
+  //     player must not already have a score on the hole
+  //   • absent players are skipped — their slot is scored under the
+  //     present teammate's pid, so requiring a raw score from them would
+  //     block forever
+  //   • never re-fires for a hole already prompted this session, and
+  //     never fires once a CTP is commish-approved for the hole
+  const maybePromptHoleCtp = (pid, h, val) => {
+    if (val <= 0) return;
+    if ((pars[h] || 4) !== 3) return;
+    const holeNum = side === 'front' ? h + 1 : h + 10;
+    const key = `w${week}_h${holeNum}`;
+    if (promptedCtpHoles.current[key]) return;
+    const rec = ctpData.find(c => c.week === week && c.holeNum === holeNum);
+    if (rec && rec.approved === true) return;
+    // This write must be what completes the hole for this group: the
+    // entering player had no raw score here yet…
+    if ((holeScores[`w${week}_p${pid}_h${h}`] || 0) > 0) return;
+    // …and every other present player in the foursome already has one.
+    for (const otherPid of [...t1Players, ...t2Players].filter(Boolean)) {
+      if (otherPid === pid) continue;
+      if (isPlayerAbsent(otherPid)) continue;
+      if ((holeScores[`w${week}_p${otherPid}_h${h}`] || 0) <= 0) return;
+    }
+    promptedCtpHoles.current[key] = true;
+    setHoleCtpPlayer("");
+    setHoleCtpFeet(rec?.distanceFt ? Math.max(1, Math.min(60, rec.distanceFt)) : 10);
+    setHoleCtpPrompt({ holeNum });
+  };
+
   const guardedSaveScore = (w, pid, h, val) => {
     if (scoresLocked) {
       // Different copy for commissioner vs regular user: regular users hit
@@ -661,7 +709,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       setConfirmModal({
         title: "Early Score Entry",
         message: "You are trying to enter scores before your scheduled tee time. Continue?",
-        onConfirm: () => { teeTimeWarningDismissed.current = true; setConfirmModal(null); saveScore(w, pid, h, val); },
+        onConfirm: () => { teeTimeWarningDismissed.current = true; setConfirmModal(null); saveScore(w, pid, h, val); maybePromptHoleCtp(pid, h, val); },
       });
       return;
     }
@@ -699,11 +747,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         onConfirm: () => {
           setConfirmModal(null);
           saveScore(w, pid, h, val);
+          maybePromptHoleCtp(pid, h, val);
         },
       });
       return;
     }
     saveScore(w, pid, h, val);
+    maybePromptHoleCtp(pid, h, val);
   };
 
   const currentHoleIdx = (() => {
@@ -1505,15 +1555,22 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               setTimeout(() => setToast(null), 3500);
               return;
             }
-            // Save CTP selections
+            // Save CTP selections. Finalize is the approval step: anything the
+            // commissioner leaves selected here (including player-tagged
+            // records pre-filled from the live prompts) is written with
+            // approved: true. distanceFt is preserved when the distance text
+            // still matches the wheel-tagged value.
             for (const holeNum of par3Holes) {
               const sel = ctpSelections[holeNum];
               if (sel && sel.playerId) {
+                const ftMatch = /^(\d+)\s*ft$/i.exec((sel.distance || "").trim());
                 await saveCtp({
                   id: `${LEAGUE_ID}_w${week}_h${holeNum}`,
                   week, holeNum,
                   playerId: sel.playerId,
                   distance: sel.distance || "",
+                  ...(ftMatch ? { distanceFt: parseInt(ftMatch[1], 10) } : {}),
+                  approved: true,
                   season: 2026,
                 });
               }
@@ -1557,9 +1614,16 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
               {par3Holes.map(holeNum => {
                 const sel = ctpSelections[holeNum] || {};
+                // Player-tagged on course, awaiting this approval step
+                const pendingTag = ctpData.some(c => c.week === week && c.holeNum === holeNum && c.playerId && c.approved === false);
                 return (
                   <div key={holeNum} style={{ marginBottom: 14, background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 10, padding: "12px" }}>
-                    <div style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.t1, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>Hole {holeNum}</div>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                      <div style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.t1, textTransform: "uppercase", letterSpacing: 1 }}>Hole {holeNum}</div>
+                      {pendingTag && (
+                        <span style={{ fontSize: 9, fontWeight: FW.heavy, color: K.warn, letterSpacing: 1.2, textTransform: "uppercase", background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 6, padding: "3px 6px" }}>Tagged · Approve</span>
+                      )}
+                    </div>
                     <select
                       value={sel.playerId || ""}
                       onChange={e => setCtpSelections(prev => ({ ...prev, [holeNum]: { ...prev[holeNum], playerId: e.target.value } }))}
@@ -2559,6 +2623,107 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             </div>
           </div>
         </>);
+      })()}
+      {/* ═══ Closest-to-the-Pin popup — this foursome just completed a par 3 ═══ */}
+      {holeCtpPrompt && (() => {
+        const { holeNum } = holeCtpPrompt;
+        const WHEEL_ITEM = 36, WHEEL_H = 150, WHEEL_MAX_FT = 60;
+        // Current leader — a tag from an earlier group (or the commish).
+        const leaderRec = ctpData.find(c => c.week === week && c.holeNum === holeNum && c.playerId);
+        const leaderName = leaderRec ? (playerMap[leaderRec.playerId]?.name || "—") : null;
+        const leaderDist = leaderRec ? (leaderRec.distanceFt ? `${leaderRec.distanceFt} ft` : (leaderRec.distance || "")) : "";
+        // Player choices are limited to this foursome's present players.
+        const groupPlayers = [...t1Players, ...t2Players]
+          .filter(p => p && !isPlayerAbsent(p))
+          .map(p => playerMap[p])
+          .filter(Boolean);
+        // Wheel init: set scrollTop once when the popup's scroll node mounts.
+        const wheelRef = (el) => {
+          if (el && !el.dataset.init) {
+            el.dataset.init = "1";
+            el.scrollTop = (holeCtpFeet - 1) * WHEEL_ITEM;
+          }
+        };
+        const onWheelScroll = (e) => {
+          const v = Math.max(1, Math.min(WHEEL_MAX_FT, Math.round(e.currentTarget.scrollTop / WHEEL_ITEM) + 1));
+          setHoleCtpFeet(prev => (prev === v ? prev : v));
+        };
+        const saveHoleCtp = async () => {
+          await saveCtp({
+            id: `${LEAGUE_ID}_w${week}_h${holeNum}`,
+            week, holeNum,
+            playerId: holeCtpPlayer,
+            distance: `${holeCtpFeet} ft`,
+            distanceFt: holeCtpFeet,
+            approved: false,
+            season: 2026,
+          });
+          setToast(`CTP tagged — Hole ${holeNum}`);
+          setTimeout(() => setToast(null), 2500);
+          setHoleCtpPrompt(null);
+        };
+        return (
+          <Popup onClose={() => setHoleCtpPrompt(null)} maxWidth={360} padding={20}>
+            <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8, textAlign: "center" }}>Hole {holeNum} · Par 3</div>
+            <div style={{ fontSize: FS.base, fontWeight: FW.heavy, color: K.t1, marginBottom: 14, textTransform: "uppercase", letterSpacing: 1.2, textAlign: "center" }}>Closest to the Pin</div>
+
+            {/* Current-leader bar — shown when an earlier group already tagged */}
+            {leaderRec && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, background: K.act + "1a", border: `1px solid ${K.act}66`, borderRadius: 10, padding: "8px 10px", marginBottom: 12 }}>
+                <span style={{ fontSize: 15 }}>⛳</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: 9, fontWeight: FW.heavy, color: K.warn, letterSpacing: 1.4, textTransform: "uppercase" }}>Current CTP</span>
+                  <span style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.t1, letterSpacing: .6 }}>{leaderName}</span>
+                </span>
+                {leaderDist && <span style={{ fontSize: FS.sm, fontWeight: FW.heavy, color: K.act }}>{leaderDist}</span>}
+              </div>
+            )}
+
+            <div style={{ fontSize: 10, fontWeight: FW.heavy, color: K.t3, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: 6 }}>{leaderRec ? "Who was closer?" : "Who was closest?"}</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 14 }}>
+              {groupPlayers.map(p => {
+                const sel = holeCtpPlayer === p.id;
+                return (
+                  <button
+                    key={p.id}
+                    onClick={() => setHoleCtpPlayer(sel ? "" : p.id)}
+                    style={{ padding: "11px 6px", borderRadius: 10, background: sel ? K.act + "24" : K.inp, border: `1px solid ${sel ? K.act : K.bdr}`, color: sel ? K.act : K.t2, fontSize: FS.sm, fontWeight: FW.bold, letterSpacing: .6, cursor: "pointer", textAlign: "center" }}
+                  >
+                    {p.name}
+                  </button>
+                );
+              })}
+            </div>
+
+            <div style={{ fontSize: 10, fontWeight: FW.heavy, color: K.t3, letterSpacing: 1.4, textTransform: "uppercase", marginBottom: 6 }}>Approx. distance</div>
+            <div style={{ position: "relative", height: WHEEL_H, background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 12, overflow: "hidden", marginBottom: 14 }}>
+              {/* selection band */}
+              <div style={{ position: "absolute", left: 10, right: 10, top: "50%", height: WHEEL_ITEM + 2, transform: "translateY(-50%)", borderTop: `1.5px solid ${K.act}`, borderBottom: `1.5px solid ${K.act}`, borderRadius: 4, background: K.act + "0d", pointerEvents: "none", zIndex: 2 }} />
+              <div style={{ position: "absolute", right: 46, top: "50%", transform: "translateY(-50%)", fontSize: 11, fontWeight: FW.heavy, color: K.act, letterSpacing: 1.2, pointerEvents: "none", zIndex: 2 }}>FT</div>
+              <div
+                ref={wheelRef}
+                onScroll={onWheelScroll}
+                style={{ height: "100%", overflowY: "scroll", scrollSnapType: "y mandatory", padding: `${(WHEEL_H - WHEEL_ITEM) / 2}px 0`, WebkitOverflowScrolling: "touch", scrollbarWidth: "none" }}
+              >
+                {Array.from({ length: WHEEL_MAX_FT }, (_, i) => i + 1).map(ft => (
+                  <div key={ft} style={{ height: WHEEL_ITEM, lineHeight: `${WHEEL_ITEM}px`, textAlign: "center", fontSize: ft === holeCtpFeet ? 21 : 18, fontWeight: ft === holeCtpFeet ? FW.heavy : FW.bold, color: ft === holeCtpFeet ? K.t1 : K.t3, scrollSnapAlign: "center" }}>
+                    {ft}
+                  </div>
+                ))}
+              </div>
+              {/* edge fades */}
+              <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 46, background: `linear-gradient(${K.inp}, transparent)`, pointerEvents: "none" }} />
+              <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, height: 46, background: `linear-gradient(transparent, ${K.inp})`, pointerEvents: "none" }} />
+            </div>
+
+            <button onClick={saveHoleCtp} disabled={!holeCtpPlayer} style={{ width: "100%", padding: 13, borderRadius: 10, background: holeCtpPlayer ? K.act : K.inp, border: holeCtpPlayer ? "none" : `1px solid ${K.bdr}`, color: holeCtpPlayer ? K.bg : K.t3, fontSize: 14, fontWeight: FW.heavy, cursor: holeCtpPlayer ? "pointer" : "default", letterSpacing: .8 }}>
+              {leaderRec ? "Tag New CTP" : "Tag CTP"}
+            </button>
+            <button onClick={() => setHoleCtpPrompt(null)} style={{ width: "100%", marginTop: 7, padding: 13, borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 13, fontWeight: FW.bold, cursor: "pointer", letterSpacing: .8 }}>
+              Our foursome wasn't closer
+            </button>
+          </Popup>
+        );
       })()}
       {/* Custom confirm modal */}
       <ConfirmModal modal={confirmModal && {
