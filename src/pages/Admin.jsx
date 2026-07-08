@@ -2354,8 +2354,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                     <select value={val} onChange={e => onValChange(e.target.value)} style={selectStyle}>
                       <option value="">—</option>
                       <option value="lowestWinner">Low winner</option>
-                      <option value="lowestSeed">Low rem. seed</option>
-                      <option value="highestSeed">High rem. seed</option>
+                      <option value="lowestSeed">Top seed</option>
+                      <option value="highestSeed">Lower seed</option>
                       <option value="nextLowestWinner">2nd low winner</option>
                       <option value="nextLowestSeed">2nd low seed</option>
                       {prevWinnerCount > 0 && Array.from({ length: prevWinnerCount }, (_, i) => (
@@ -2413,8 +2413,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                   }
                   if (val === "lowestWinner") return "Lo W";
                   if (val === "nextLowestWinner") return "Nxt W";
-                  if (val === "lowestSeed") return "Lo S";
-                  if (val === "highestSeed") return "Hi S";
+                  if (val === "lowestSeed") return "Top S";
+                  if (val === "highestSeed") return "Lwr S";
                   if (val === "nextLowestSeed") return "2nd S";
                   if (val?.startsWith("winner_")) return `W${parseInt(val.split("_")[1]) + 1}`;
                   return "?";
@@ -2829,15 +2829,18 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
             alert(`Previous playoff round (Week ${prevPlayoffWeek.week}) must be finalized first.`);
             return;
           }
-          // Slice to only the BRACKET matches from the prior round when building
-          // prevWinners/prevLosers — consolation matches share the matches array but
-          // must not feed into bracket progression. Bracket matches are always at the
-          // front of the array (consolation appended after at seed-time).
+          // Isolate the prior round's BRACKET matches when building
+          // prevWinners/prevLosers — consolation matches share the array but must
+          // not feed bracket progression. Prefer the isConsolation flag; fall
+          // back to first-N-are-bracket for weeks seeded before the flag existed.
           const prevRoundDef = (leagueConfig.playoffRounds || [])[playoffRound - 2];
           const prevBracketCount = (prevRoundDef?.matchups || []).length;
-          const prevBracketMatches = prevBracketCount > 0
-            ? prevPlayoffWeek.matches.slice(0, prevBracketCount)
-            : prevPlayoffWeek.matches; // no config for prev round → treat all as bracket
+          const prevHasFlag = prevPlayoffWeek.matches.some(m => m.isConsolation === true);
+          const prevBracketMatches = prevHasFlag
+            ? prevPlayoffWeek.matches.filter(m => !m.isConsolation)
+            : (prevBracketCount > 0
+                ? prevPlayoffWeek.matches.slice(0, prevBracketCount)
+                : prevPlayoffWeek.matches);
           // Get winners and losers in match order
           prevBracketMatches.forEach((m, mi) => {
             const r = prevResults.find(pr => pr.team1Id === m.team1 && pr.team2Id === m.team2);
@@ -2998,10 +3001,16 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           const optimize = leagueConfig?.consolationOptimize === true;
           const priorMatchups = collectPriorMatchups(schedule, wk.week);
           const coOccurrence = optimize ? buildPlayerCoOccurrence(schedule, wk.week, teams) : null;
+          // pairNonBracketTeams reads `matches` (still bracket-only here) to know
+          // which teams are already placed, so compute BEFORE reordering.
           const { pairs: consolationPairs } = pairNonBracketTeams(teams, matches, priorMatchups, {
             optimize, coOccurrence, teams, seedOrder: seeds,
           });
-          matches.push(...consolationPairs);
+          // Bracket (playoff) matches take the FINAL tee times of the week;
+          // non-bracket matches go first. Flag them and prepend so array order
+          // = tee-time order.
+          const flagged = consolationPairs.map(p => ({ ...p, isConsolation: true }));
+          matches.unshift(...flagged);
         }
       } else {
         // Seeded regular season: use per-week custom matchups
@@ -3040,9 +3049,9 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       // bracket doesn't include every team.
       const fmtPair = (m) => `• ${gn(m.team1)} vs ${gn(m.team2)}`;
       let msg;
-      if (isPlayoff && bracketCount > 0 && matches.length > bracketCount) {
-        const bracket = matches.slice(0, bracketCount);
-        const consolation = matches.slice(bracketCount);
+      if (isPlayoff && matches.some(m => m.isConsolation === true)) {
+        const bracket = matches.filter(m => !m.isConsolation);
+        const consolation = matches.filter(m => m.isConsolation === true);
         msg = `${roundName}:\n${bracket.map(fmtPair).join("\n")}\n\nConsolation (minimizes repeat matchups):\n${consolation.map(fmtPair).join("\n")}`;
       } else {
         msg = `${roundName}:\n\n${matches.map(fmtPair).join("\n")}`;

@@ -306,7 +306,10 @@ export async function autoSeedIfReady({
     const { pairs } = pairNonBracketTeams(teams, bracketMatches, priorMatchups, {
       optimize: consolationOptimize, coOccurrence, teams, seedOrder: playoffSeeds,
     });
-    return pairs;
+    // Tag non-bracket matches so downstream code can separate them from the
+    // bracket by flag rather than array position — which lets us place them
+    // FIRST (earliest tee times) while the bracket keeps the final tee times.
+    return pairs.map(p => ({ ...p, isConsolation: true }));
   };
 
   for (let pi = 0; pi < playoffWeeksList.length; pi++) {
@@ -331,11 +334,13 @@ export async function autoSeedIfReady({
       const n = playoffSeeds.length;
       const pairCount = Math.floor(n / 2);
       if (pairCount < 1) break;
-      const matches = [];
+      const bracketMatches = [];
       for (let i = 0; i < pairCount; i++) {
-        matches.push({ team1: playoffSeeds[i], team2: playoffSeeds[n - 1 - i] });
+        bracketMatches.push({ team1: playoffSeeds[i], team2: playoffSeeds[n - 1 - i] });
       }
-      matches.push(...buildConsolation(matches, pWk.week));
+      // Bracket (playoff) matches take the FINAL tee times of the week;
+      // non-bracket matches go first. Order: [non-bracket..., bracket...].
+      const matches = [...buildConsolation(bracketMatches, pWk.week), ...bracketMatches];
       await db.upsert("league_schedule", { ...pWk, matches, league_id: LEAGUE_ID });
       playoffCount++;
       continue;
@@ -357,9 +362,14 @@ export async function autoSeedIfReady({
       if (prevResults.length < prevPWk.matches.length) break;
       const prevRoundDef = playoffRoundsCfg[pi - 1];
       const prevBracketCount = (prevRoundDef?.matchups || []).length;
-      const prevBracketMatches = prevBracketCount > 0
-        ? prevPWk.matches.slice(0, prevBracketCount)
-        : prevPWk.matches;
+      // Prefer the isConsolation flag to isolate the bracket matches; fall back
+      // to the old first-N-are-bracket assumption for weeks seeded before the
+      // flag existed. Bracket matches keep their config order either way, so
+      // winner_0/winner_1/… still line up with the prior round's matchups.
+      const prevHasFlag = prevPWk.matches.some(m => m.isConsolation === true);
+      const prevBracketMatches = prevHasFlag
+        ? prevPWk.matches.filter(m => !m.isConsolation)
+        : (prevBracketCount > 0 ? prevPWk.matches.slice(0, prevBracketCount) : prevPWk.matches);
       prevBracketMatches.forEach((m) => {
         const r = prevResults.find(pr => pr.team1Id === m.team1 && pr.team2Id === m.team2);
         if (r) {
@@ -442,7 +452,9 @@ export async function autoSeedIfReady({
     // (or the only failures were duplicates that we logged about).
     if (bracketMatches.length !== roundDef.matchups.length && !hasDuplicate) break;
 
-    const matches = [...bracketMatches, ...buildConsolation(bracketMatches, pWk.week)];
+    // Bracket (playoff) matches take the FINAL tee times of the week;
+    // non-bracket matches go first. Order: [non-bracket..., bracket...].
+    const matches = [...buildConsolation(bracketMatches, pWk.week), ...bracketMatches];
 
     await db.upsert("league_schedule", { ...pWk, matches, league_id: LEAGUE_ID });
     playoffCount++;

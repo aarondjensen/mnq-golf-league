@@ -163,8 +163,18 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
     const roundWeek = playoffWeeks[ri];
     const allMatches = roundWeek?.matches || [];
     const bracketSize = (round.matchups || []).length;
-    const bracketMatches = allMatches.slice(0, bracketSize);
-    const consolationMatches = allMatches.slice(bracketSize);
+    // Prefer the isConsolation flag so bracket/consolation are separated by
+    // identity, not array position. This lets non-bracket matches sit in the
+    // earlier tee slots (they're ordered first) while the bracket keeps the
+    // final tee times. Fall back to the old first-N-are-bracket split for weeks
+    // seeded before the flag existed.
+    const hasConsolationFlag = allMatches.some(m => m.isConsolation === true);
+    const bracketMatches = hasConsolationFlag
+      ? allMatches.filter(m => !m.isConsolation)
+      : allMatches.slice(0, bracketSize);
+    const consolationMatches = hasConsolationFlag
+      ? allMatches.filter(m => m.isConsolation === true)
+      : allMatches.slice(bracketSize);
     const results = roundWeek ? matchResults.filter(r => r.week === roundWeek.week) : [];
     const isLocked = roundWeek?.locked === true;
 
@@ -211,8 +221,8 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
     }
     if (val === "lowestWinner") return "Low Winner";
     if (val === "nextLowestWinner") return "Next Low Winner";
-    if (val === "lowestSeed") return "Low Seed";
-    if (val === "highestSeed") return "High Seed";
+    if (val === "lowestSeed") return "Top Seed";
+    if (val === "highestSeed") return "Lower Seed";
     if (val === "highestWinner") return "High Winner";
     if (val === "nextHighestSeed") return "2nd High Seed";
     if (val === "nextHighestWinner") return "2nd High Winner";
