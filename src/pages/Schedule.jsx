@@ -701,8 +701,11 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     //      until results are actually in.
     // Once a playoff week is locked/complete the `isComplete` branch above
     // takes precedence and the row renders the result normally.
-    const isSeeded = (wk.seeded === true && (!wk.matches || wk.matches.length === 0))
-                  || (isPlayoff && !isComplete);
+    // Show the "TBD" placeholder only while a seeded/playoff week has NO matches
+    // written yet. Once it's seeded (matches exist — e.g. the 7v10 / 8v9 play-in
+    // plus any non-bracket golf pairings), render the real matchups even before
+    // the week is played.
+    const isSeeded = (!wk.matches || wk.matches.length === 0) && (wk.seeded === true || isPlayoff);
     const myMatch = !isSeeded ? wk.matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id) : null;
     const origIdx = myMatch ? wk.matches.indexOf(myMatch) : 0;
     const side = wk.side || getWeekSide(wk.week);
@@ -1140,8 +1143,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     // auto-seeding has filled in matchups already. Keeps the schedule view
     // honest about what's been played and avoids spoiling bracket pairings
     // here when the dedicated bracket view is one tab away.
-    const isSeeded = (wk.seeded === true && (!wk.matches || wk.matches.length === 0))
-                  || (isPlayoff && !weekComplete);
+    const isSeeded = (!wk.matches || wk.matches.length === 0) && (wk.seeded === true || isPlayoff);
     // Show seed badges on seeded (non-RR) and playoff weeks. RR weeks don't get seeds
     // because every team plays every other team equally, so seeds aren't meaningful.
     const showSeeds = (wk.seeded === true) || (wk.isPlayoff === true);
