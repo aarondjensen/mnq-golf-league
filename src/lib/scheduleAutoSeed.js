@@ -252,6 +252,45 @@ export async function autoSeedIfReady({
       : (lockSeedsEnabled ? computeRRSeeds() : computeSeeds());
   }
 
+  // ── PLAYOFF SEEDS — frozen at the END of the regular season ──
+  // A SEPARATE snapshot from `seeds` (round-robin only, drives seeded weeks).
+  // Playoff seeds come from the FULL regular season (round-robin + seeded
+  // weeks) and lock the instant the regular season finishes. They NEVER
+  // recompute during the playoffs: the #1 seed stays #1 through every round.
+  // Precedence:
+  //   1. A stored snapshot always wins — once frozen, never overwritten. This
+  //      is the hard lock that guarantees playoffs don't reseed.
+  //   2. If not yet stored AND the regular season is complete, capture it now
+  //      and persist so every later call reuses the exact same order.
+  //   3. If the regular season is still in progress, use a LIVE preview (not
+  //      persisted) so the bracket preview shows something sane pre-lock.
+  // computeRSSeeds pulls from locked NON-playoff weeks on the PROJECTED
+  // schedule, so it's correct on the very save that locks the final RS week.
+  const existingPlayoffSeeds = leagueConfig?.playoffSeeds;
+  const regularSeasonWeeks = projectedSchedule.filter(s => !s.isPlayoff && !s.rainedOut);
+  const regularSeasonComplete =
+    regularSeasonWeeks.length > 0 && regularSeasonWeeks.every(s => s.locked === true);
+  const computeRSSeeds = () => {
+    const rsWeekNums = new Set(
+      projectedSchedule.filter(s => !s.isPlayoff && s.locked === true).map(s => s.week)
+    );
+    const rsResults = (matchResults || []).filter(r => rsWeekNums.has(r.week));
+    return buildStandingsForSeed(
+      teams, rsResults, projectedSchedule, leagueConfig?.standingsMethod, false
+    ).map(s => s.teamId);
+  };
+  let playoffSeeds;
+  if (existingPlayoffSeeds && existingPlayoffSeeds.length === teams.length) {
+    playoffSeeds = existingPlayoffSeeds;                 // hard lock — never reseed
+  } else if (regularSeasonComplete) {
+    playoffSeeds = computeRSSeeds();                     // freeze now + persist
+    const cfgWrite = { ...leagueConfig, id: leagueConfig?.id || `${LEAGUE_ID}_config`, league_id: LEAGUE_ID, playoffSeeds };
+    if ("customSeedWeeks" in cfgWrite) cfgWrite.customSeedWeeks = serializeSeedWeeks(cfgWrite.customSeedWeeks);
+    await db.upsert("league_config", cfgWrite);
+  } else {
+    playoffSeeds = computeRSSeeds();                     // live preview, not frozen
+  }
+
   // Consolation is opt-in. When off, teams outside the bracket simply have no
   // match that week. When on, `optimize` chooses the pairing strategy:
   //   • optimize ON  → minimize repeat player-pair groupings across the season
@@ -265,7 +304,7 @@ export async function autoSeedIfReady({
       ? buildPlayerCoOccurrence(projectedSchedule, week, teams)
       : null;
     const { pairs } = pairNonBracketTeams(teams, bracketMatches, priorMatchups, {
-      optimize: consolationOptimize, coOccurrence, teams, seedOrder: seeds,
+      optimize: consolationOptimize, coOccurrence, teams, seedOrder: playoffSeeds,
     });
     return pairs;
   };
@@ -289,12 +328,12 @@ export async function autoSeedIfReady({
 
     // Round 1 default: if no explicit matchup config, use 1v10 / 2v9 / etc.
     if (pi === 0 && (!roundDef || !roundDef.matchups || !roundDef.matchups.length)) {
-      const n = seeds.length;
+      const n = playoffSeeds.length;
       const pairCount = Math.floor(n / 2);
       if (pairCount < 1) break;
       const matches = [];
       for (let i = 0; i < pairCount; i++) {
-        matches.push({ team1: seeds[i], team2: seeds[n - 1 - i] });
+        matches.push({ team1: playoffSeeds[i], team2: playoffSeeds[n - 1 - i] });
       }
       matches.push(...buildConsolation(matches, pWk.week));
       await db.upsert("league_schedule", { ...pWk, matches, league_id: LEAGUE_ID });
@@ -341,14 +380,14 @@ export async function autoSeedIfReady({
       const val = mu[side];
       if (type === "seed") {
         const seedIdx = parseInt(val) - 1;
-        return seedIdx >= 0 && seedIdx < seeds.length ? seeds[seedIdx] : null;
+        return seedIdx >= 0 && seedIdx < playoffSeeds.length ? playoffSeeds[seedIdx] : null;
       } else if (type === "winner") {
         if (val === "lowestWinner" || val === "lowestSeed") {
           // Lowest-seeded winner (highest seed number among winners).
-          const sorted = prevWinners.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => b.rank - a.rank);
+          const sorted = prevWinners.map(id => ({ id, rank: playoffSeeds.indexOf(id) })).sort((a, b) => b.rank - a.rank);
           return sorted[0]?.id || null;
         } else if (val === "nextLowestWinner" || val === "nextLowestSeed") {
-          const sorted = prevWinners.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => b.rank - a.rank);
+          const sorted = prevWinners.map(id => ({ id, rank: playoffSeeds.indexOf(id) })).sort((a, b) => b.rank - a.rank);
           return sorted[1]?.id || null;
         } else if (val?.startsWith("winner_")) {
           const idx = parseInt(val.split("_")[1]);
@@ -357,10 +396,10 @@ export async function autoSeedIfReady({
       } else if (type === "loser") {
         if (val === "highestLoser") {
           // Highest-seeded loser (lowest seed number among losers).
-          const sorted = prevLosers.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => a.rank - b.rank);
+          const sorted = prevLosers.map(id => ({ id, rank: playoffSeeds.indexOf(id) })).sort((a, b) => a.rank - b.rank);
           return sorted[0]?.id || null;
         } else if (val === "nextHighestLoser") {
-          const sorted = prevLosers.map(id => ({ id, rank: seeds.indexOf(id) })).sort((a, b) => a.rank - b.rank);
+          const sorted = prevLosers.map(id => ({ id, rank: playoffSeeds.indexOf(id) })).sort((a, b) => a.rank - b.rank);
           return sorted[1]?.id || null;
         } else if (val?.startsWith("loser_")) {
           const idx = parseInt(val.split("_")[1]);

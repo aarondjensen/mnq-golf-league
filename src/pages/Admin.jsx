@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { LEAGUE_ID, db, callFunction } from "../firebase";
 import { K, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   getWeekSide, formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, lastNamesOnly,
-  buildStandingsForSeed as sharedBuildStandingsForSeed, buildSeedMap,
+  buildStandingsForSeed as sharedBuildStandingsForSeed, buildSeedMap, buildPlayoffSeedMap, computeRegularSeasonSeeds,
   pairNonBracketTeams, collectPriorMatchups, buildPlayerCoOccurrence, FS, FW } from "../theme";
 import { ConfirmModal } from "../components/Popup";
 import NotificationsAdmin from "./NotificationsAdmin";
@@ -1698,6 +1698,13 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     () => buildSeedMap(teams, matchResults, schedule, leagueConfig),
     [teams, matchResults, schedule, leagueConfig]
   );
+  // Playoff seed map — full regular season, frozen at RS end. Used anywhere the
+  // Admin resolves or previews PLAYOFF matchups (seed → team). Seeded-week
+  // previews keep using seedMap (round-robin).
+  const playoffSeedMap = useMemo(
+    () => buildPlayoffSeedMap(teams, matchResults, schedule, leagueConfig),
+    [teams, matchResults, schedule, leagueConfig]
+  );
 
   // ── Tab layout (setup / weekly / playoff) ──
   if (editWeek === null && (step === "setup" || step === "view" || step === "playoff")) {
@@ -2079,6 +2086,71 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                             {lockedMatches && (
                               <div style={{ fontSize: FS.micro, color: K.grn, lineHeight: 1.4, marginTop: 8 }}>
                                 Locked seeds match this round-robin order.
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
+
+                      {/* ── Playoff seeds (full regular season) ──
+                          A SEPARATE lock from Lock Seeds above. Round-robin seeds
+                          drive the seeded regular-season weeks; PLAYOFF seeds come
+                          from the full regular season (round-robin + seeded weeks)
+                          and lock the instant the regular season finishes — the #1
+                          seed stays #1 through every playoff round. Auto-freezes via
+                          the seeder; this panel is the reference + a manual re-lock
+                          lever + a drift warning, mirroring the RR panel above. */}
+                      {(() => {
+                        const nonPlayoff = schedule.filter(w => !w.isPlayoff && !w.rainedOut);
+                        const rsComplete = nonPlayoff.length > 0 && nonPlayoff.every(w => w.locked === true);
+                        const rsSeeds = computeRegularSeasonSeeds(teams, matchResults, schedule, leagueConfig?.standingsMethod);
+                        if (!rsSeeds.length) return null;
+                        const frozen = leagueConfig?.playoffSeeds;
+                        const isFrozen = Array.isArray(frozen) && frozen.length === teams.length;
+                        const drifted = isFrozen && !frozen.every((id, i) => id === rsSeeds[i]);
+                        const captureSeeds = () => saveLeagueConfig({ ...leagueConfig, playoffSeeds: rsSeeds });
+                        const badgeStyle = {
+                          display: "inline-flex", alignItems: "center", justifyContent: "center",
+                          minWidth: 20, height: 20, borderRadius: 4, fontSize: FS.xs, fontWeight: FW.heavy,
+                          color: K.act, background: K.act + "20", border: `1px solid ${K.act}30`,
+                        };
+                        const btnStyle = {
+                          marginTop: 10, width: "100%", padding: 10, borderRadius: 8, border: "none",
+                          background: K.act, color: K.bg, fontSize: FS.xs, fontWeight: FW.bold, cursor: "pointer",
+                        };
+                        return (
+                          <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${K.bdr}50` }}>
+                            <div style={{ fontSize: FS.xs, color: K.t1, fontWeight: FW.bold }}>Playoff Seeds</div>
+                            <div style={{ fontSize: FS.micro, color: K.t3, lineHeight: 1.4, marginTop: 2, marginBottom: 8 }}>
+                              From the FULL regular season (round-robin + seeded weeks). Locked for the entire playoffs — the #1 seed stays #1 every round. Auto-locks when the regular season finishes.
+                            </div>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                              {rsSeeds.map((teamId, i) => (
+                                <div key={teamId} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: FS.sm }}>
+                                  <span style={badgeStyle}>{i + 1}</span>
+                                  <span style={{ color: K.t1, fontWeight: FW.semibold }}>{lastNamesOnly(gn(teamId))}</span>
+                                </div>
+                              ))}
+                            </div>
+                            {!rsComplete && (
+                              <div style={{ fontSize: FS.micro, color: K.t3, lineHeight: 1.4, marginTop: 8 }}>
+                                Live preview — the regular season isn't finished, so these can still change. They lock automatically once the final regular-season week is locked.
+                              </div>
+                            )}
+                            {rsComplete && !isFrozen && (
+                              <button onClick={captureSeeds} style={btnStyle}>Lock playoff seeds now</button>
+                            )}
+                            {rsComplete && isFrozen && drifted && (
+                              <>
+                                <div style={{ fontSize: FS.micro, color: K.red, lineHeight: 1.4, marginTop: 8 }}>
+                                  Heads up: the frozen playoff seeds differ from the current regular-season order (standings changed after they locked). Re-lock to rebuild the bracket at the order shown here.
+                                </div>
+                                <button onClick={captureSeeds} style={btnStyle}>Re-lock playoff seeds</button>
+                              </>
+                            )}
+                            {rsComplete && isFrozen && !drifted && (
+                              <div style={{ fontSize: FS.micro, color: K.grn, lineHeight: 1.4, marginTop: 8 }}>
+                                Playoff seeds are locked and match the regular-season order.
                               </div>
                             )}
                           </div>
@@ -3175,8 +3247,11 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           const roundDef = isPlayoff ? (leagueConfig.playoffRounds || [])[playoffRound - 1] : null;
           const roundName = isPlayoff ? (roundDef?.name || `Playoff Round ${playoffRound}`) : "Seeded Matchups";
 
-          // Build current seeded pairings preview
-          const seedEntries = Object.entries(seedMap).sort((a, b) => a[1] - b[1]); // sorted by seed
+          // Build current seeded pairings preview. Playoff rounds resolve seeds
+          // against the frozen playoff seed map; seeded regular-season weeks use
+          // the round-robin seedMap.
+          const activeSeedMap = isPlayoff ? playoffSeedMap : seedMap;
+          const seedEntries = Object.entries(activeSeedMap).sort((a, b) => a[1] - b[1]); // sorted by seed
           const getTeamBySeed = (seed) => {
             const entry = seedEntries.find(([, s]) => s === seed);
             return entry ? teams.find(t => t.id === entry[0]) : null;
@@ -3418,8 +3493,9 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
               };
 
               return wk.matches.map((m, mi) => {
-                const seed1 = seedMap[m.team1] || "—";
-                const seed2 = seedMap[m.team2] || "—";
+                const badgeSeedMap = wk.isPlayoff ? playoffSeedMap : seedMap;
+                const seed1 = badgeSeedMap[m.team1] || "—";
+                const seed2 = badgeSeedMap[m.team2] || "—";
 
                 const renderTeamCard = (teamId, seed, slot) => {
                   const info = { matchIdx: mi, slot, teamId };

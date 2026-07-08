@@ -345,6 +345,47 @@ export function buildSeedMap(teams, matchResults, schedule, leagueConfig) {
   return map;
 }
 
+// ── Shared utility: { teamId -> PLAYOFF seed number (1 = best) } ──
+// Playoff seeds are a SEPARATE snapshot from lockedSeeds:
+//   • lockedSeeds  → round-robin only (weeks 1–9). Drives the seeded
+//                    regular-season weeks. Built by buildSeedMap above.
+//   • playoffSeeds → the FULL regular season (round-robin + seeded weeks).
+//                    Frozen the moment the regular season finishes and NEVER
+//                    recomputed once the playoffs begin — the #1 seed stays #1
+//                    through every round, like any other sport.
+// Prefers the frozen leagueConfig.playoffSeeds when present + complete.
+// Otherwise derives a LIVE preview from full-season standings built ONLY from
+// locked, NON-playoff weeks. Playoff-week results are deliberately excluded so
+// that even the fallback path can never reseed the bracket mid-playoffs.
+export function buildPlayoffSeedMap(teams, matchResults, schedule, leagueConfig) {
+  const playoffSeeds = leagueConfig?.playoffSeeds;
+  if (playoffSeeds && Array.isArray(playoffSeeds) && playoffSeeds.length === teams.length) {
+    const map = {};
+    playoffSeeds.forEach((tid, i) => { map[tid] = i + 1; });
+    return map;
+  }
+  const nonPlayoffLocked = new Set(
+    (schedule || []).filter(s => s.locked === true && s.isPlayoff !== true).map(s => s.week)
+  );
+  const rsResults = (matchResults || []).filter(r => r && nonPlayoffLocked.has(r.week));
+  const standings = buildStandingsForSeed(teams, rsResults, schedule, leagueConfig?.standingsMethod, false);
+  const map = {};
+  standings.forEach((s, i) => { map[s.teamId] = i + 1; });
+  return map;
+}
+
+// Regular-season final seed order (team-id array, index 0 = #1 seed) from the
+// FULL regular season — round-robin + seeded weeks, locked non-playoff only.
+// Shared by autoSeed's freeze path and Admin's "Lock Playoff Seeds" capture so
+// both compute the playoff seeding identically.
+export function computeRegularSeasonSeeds(teams, matchResults, schedule, standingsMethod) {
+  const nonPlayoffLocked = new Set(
+    (schedule || []).filter(s => s.locked === true && s.isPlayoff !== true).map(s => s.week)
+  );
+  const rsResults = (matchResults || []).filter(r => r && nonPlayoffLocked.has(r.week));
+  return buildStandingsForSeed(teams, rsResults, schedule, standingsMethod, false).map(s => s.teamId);
+}
+
 // ══════════════════════════════════════════════════════════════
 //  NON-BRACKET PAIRING (PLAYOFF CONSOLATION)
 // ══════════════════════════════════════════════════════════════

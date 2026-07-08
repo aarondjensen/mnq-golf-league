@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE, FS, FW, buildSeedMap, LoadingPanel, SkeletonList, buildHistoricalPlayers } from "../theme";
+import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE, FS, FW, buildSeedMap, buildPlayoffSeedMap, LoadingPanel, SkeletonList, buildHistoricalPlayers } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { Popup } from "../components/Popup";
@@ -106,6 +106,16 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     () => buildSeedMap(teams, matchResults, schedule, leagueConfig),
     [teams, matchResults, schedule, leagueConfig]
   );
+  // Playoff weeks badge from the frozen playoff seeds (full regular season);
+  // seeded regular-season weeks keep the round-robin seedMap. seedForWeek picks
+  // the right map for a given week so a team can legitimately show a different
+  // seed in seeded play vs the playoffs.
+  const playoffSeedMap = useMemo(
+    () => buildPlayoffSeedMap(teams, matchResults, schedule, leagueConfig),
+    [teams, matchResults, schedule, leagueConfig]
+  );
+  const seedForWeek = (wk, id) =>
+    (wk?.isPlayoff === true ? playoffSeedMap[id] : seedMap[id]) || null;
 
   const toggleWeek = (weekNum) => {
     setExpandedWeeks(prev => ({ ...prev, [weekNum]: !prev[weekNum] }));
@@ -143,6 +153,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       scoringRules,
       leagueConfig,
       seedMap,
+      playoffSeedMap,
       healedIds: healedRef.current,
       saveMatchResult,
       // Pass season-wide rounds + current season so autoHeal recomputes each
@@ -153,7 +164,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       allRoundsByPid: allRounds,
       season: leagueConfig?.year || new Date().getFullYear(),
     });
-  }, [matchResults, matchScores, course, scoringRules, leagueConfig, saveMatchResult, schedule, teams, players, seedMap, allRounds]);
+  }, [matchResults, matchScores, course, scoringRules, leagueConfig, saveMatchResult, schedule, teams, players, seedMap, playoffSeedMap, allRounds]);
 
   // ── Commissioner score editing ──
   // Stripped the bounding-rect anchor calculation that the previous fix used —
@@ -257,7 +268,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       hcps,
       scoringRules,
       leagueConfig,
-      seedMap,
+      seedMap: (wk.isPlayoff === true ? playoffSeedMap : seedMap),
     });
 
     // ── Diff: what changed at the match-result level ────────────────────────
@@ -718,7 +729,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         const p2 = players.find(p => p.id === oppTeam.player2);
         opp1Name = p1 ? p1.name.split(' ').pop() : null;
         opp2Name = p2 ? p2.name.split(' ').pop() : null;
-        if (wk.seeded === true || isPlayoff) oppSeed = seedMap[oppId] || null;
+        if (wk.seeded === true || isPlayoff) oppSeed = seedForWeek(wk, oppId);
       }
     }
 
@@ -1103,11 +1114,11 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
         <sc.HoleRow />
         <sc.ParRow />
         {wk.isPlayoff && <sc.HcpRow />}
-        <sc.TeamLabelRow name={dispT1?.name} seed={showSeedsLocal ? (seedMap[dispT1?.id] || null) : null} />
+        <sc.TeamLabelRow name={dispT1?.name} seed={showSeedsLocal ? seedForWeek(wk, dispT1?.id) : null} />
         {dispT1Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
         <sc.TeamNetRow pids={dispT1Pids} isTeam1Side={true} />
         <sc.MatchRow />
-        <sc.TeamLabelRow name={dispT2?.name} seed={showSeedsLocal ? (seedMap[dispT2?.id] || null) : null} />
+        <sc.TeamLabelRow name={dispT2?.name} seed={showSeedsLocal ? seedForWeek(wk, dispT2?.id) : null} />
         {dispT2Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
         <sc.TeamNetRow pids={dispT2Pids} isTeam1Side={false} />
       </div>
@@ -1258,14 +1269,14 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                   name1Line1: nameWithAttn(t1?.player1),
                   name1Line2: nameWithAttn(t1?.player2),
                   record: fmtRecord(t1?.id, wk.week),
-                  seed: showSeeds ? (seedMap[t1?.id] || null) : null,
+                  seed: showSeeds ? seedForWeek(wk, t1?.id) : null,
                 };
                 const team2Props = {
                   id: t2?.id,
                   name1Line1: nameWithAttn(t2?.player1),
                   name1Line2: nameWithAttn(t2?.player2),
                   record: fmtRecord(t2?.id, wk.week),
-                  seed: showSeeds ? (seedMap[t2?.id] || null) : null,
+                  seed: showSeeds ? seedForWeek(wk, t2?.id) : null,
                 };
 
                 // Center strip: result + chevron when finalized, tee time otherwise.

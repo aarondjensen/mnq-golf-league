@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, calcPlayerHcp, buildSeedMap, buildStandingsForSeed, recordPoints, LoadingPanel, SkeletonList, buildHistoricalPlayers, FS, FW } from "../theme";
+import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, calcPlayerHcp, buildSeedMap, buildPlayoffSeedMap, buildStandingsForSeed, recordPoints, LoadingPanel, SkeletonList, buildHistoricalPlayers, FS, FW } from "../theme";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { readScoreEffective, getStrokesForHole, resultLetterFor, buildStrokesMap } from "../lib/matchCalc";
 import { db, LF } from "../firebase";
@@ -122,11 +122,12 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
     };
   }, [view, playoffRounds.length]);
 
-  // Use shared buildSeedMap so bracket seed badges match Schedule / Scoring / Admin.
-  // Prior implementation built its own seed map from raw points, ignoring locked status
-  // and standingsMethod, so bracket seeds could disagree with everywhere else in the app.
+  // Bracket seed badges use the PLAYOFF seed map (full regular season, frozen
+  // at RS end), NOT the round-robin-only lockedSeeds. This is the order that
+  // resolves the bracket matchups, so badges and teams always agree — and it
+  // matches the Regular Season standings everyone reads.
   const seedMap = useMemo(
-    () => buildSeedMap(teams, matchResults, schedule, leagueConfig),
+    () => buildPlayoffSeedMap(teams, matchResults, schedule, leagueConfig),
     [teams, matchResults, schedule, leagueConfig]
   );
 
@@ -1517,6 +1518,14 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     () => buildSeedMap(teams, matchResults, schedule, leagueConfig),
     [teams, matchResults, schedule, leagueConfig]
   );
+  // Playoff-week scorecards badge from the frozen playoff seeds (full regular
+  // season), while seeded regular-season weeks keep the round-robin seedMap.
+  const playoffSeedMap = useMemo(
+    () => buildPlayoffSeedMap(teams, matchResults, schedule, leagueConfig),
+    [teams, matchResults, schedule, leagueConfig]
+  );
+  const seedForWeek = (wk, id) =>
+    (wk?.isPlayoff === true ? playoffSeedMap[id] : seedMap[id]) || null;
 
   const healedRef = useRef(new Set());
   useEffect(() => {
@@ -1530,6 +1539,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
       scoringRules,
       leagueConfig,
       seedMap,
+      playoffSeedMap,
       healedIds: healedRef.current,
       saveMatchResult,
       // Pass season-wide rounds + current season so autoHeal can compute
@@ -1539,7 +1549,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
       allRoundsByPid: allRounds,
       season: leagueConfig?.year || new Date().getFullYear(),
     });
-  }, [matchResults, weekScores, course, scoringRules, leagueConfig, saveMatchResult, schedule, teams, players, seedMap, allRounds]);
+  }, [matchResults, weekScores, course, scoringRules, leagueConfig, saveMatchResult, schedule, teams, players, seedMap, playoffSeedMap, allRounds]);
 
   const lockedWeeks = useMemo(() => {
     const set = new Set();
@@ -1707,11 +1717,11 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
         <sc.HoleRow />
         <sc.ParRow />
         {wk?.isPlayoff && <sc.HcpRow />}
-        <sc.TeamLabelRow name={dispT1Obj?.name} seed={showSeedsLocal ? (seedMap[dispT1Obj?.id] || null) : null} />
+        <sc.TeamLabelRow name={dispT1Obj?.name} seed={showSeedsLocal ? seedForWeek(wk, dispT1Obj?.id) : null} />
         {dispT1Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
         <sc.TeamNetRow pids={dispT1Pids} isTeam1Side={true} />
         <sc.MatchRow />
-        <sc.TeamLabelRow name={dispT2Obj?.name} seed={showSeedsLocal ? (seedMap[dispT2Obj?.id] || null) : null} />
+        <sc.TeamLabelRow name={dispT2Obj?.name} seed={showSeedsLocal ? seedForWeek(wk, dispT2Obj?.id) : null} />
         {dispT2Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
         <sc.TeamNetRow pids={dispT2Pids} isTeam1Side={false} />
       </div>
@@ -1741,7 +1751,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   // Pts (hierarchy via weight/color, not size), FS.xs for HW, FS.micro for
   // the header. The old fixed 18/6px W-L-T cell grid clipped 2-digit
   // values at large scales and wasted width at normal scale.
-  const ptsColStyle = { minWidth: "2.4em", marginRight: "0.6em", textAlign: "center", fontFamily: "'League Spartan', sans-serif", fontSize: NAME_SIZE, fontWeight: FW.heavy, color: K.t1 };
+  const ptsColStyle = { minWidth: "2.4em", textAlign: "center", fontFamily: "'League Spartan', sans-serif", fontSize: NAME_SIZE, fontWeight: FW.heavy, color: K.t1 };
   const wltHwStyle = { minWidth: "3.4em", textAlign: "center", fontFamily: "'League Spartan', sans-serif", fontSize: NAME_SIZE, lineHeight: 1.2 };
 
   // ── Toggle structure ──────────────────────────────────────────────
@@ -1851,7 +1861,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                 size as the row cells — header and rows stay aligned even
                 under system font scaling. */}
             <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
-              <div style={{ fontSize: NAME_SIZE, minWidth: "2.4em", marginRight: "0.6em", textAlign: "center" }}>
+              <div style={{ fontSize: NAME_SIZE, minWidth: "2.4em", textAlign: "center" }}>
                 <span style={{ fontSize: FS.micro }}>Pts</span>
               </div>
               <div style={{ fontSize: NAME_SIZE, minWidth: "3.4em", textAlign: "center", lineHeight: 1.2 }}>

@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { K, I, BackBtn, Card, EmptyState,
   getWeekSide,
   formatTeeTime as fmtTeeTimeUtil, LIST_GAP,
-  buildSeedMap, matchPids, FS, FW } from "../theme";
+  buildSeedMap, buildPlayoffSeedMap, matchPids, FS, FW } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 import { computeMatchResult, resultLetterFor, readScoreEffective, readStrokesEffectiveExt, computePlayoffTiebreaker, isMatchPendingMakeup } from "../lib/matchCalc";
 import { parseScheduleDate } from "../lib/scheduleDate";
@@ -209,10 +209,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   // or locked-seeds snapshot). Hidden on pure round-robin weeks where every team plays every
   // other team equally and seeds aren't meaningful.
   const showSeeds = (weekSch?.seeded === true) || (weekSch?.isPlayoff === true);
+  // Playoff weeks badge from the frozen playoff seeds (full regular season);
+  // seeded regular-season weeks use the round-robin seedMap. Scoring renders a
+  // single week, so one map keyed off this week's isPlayoff flag is enough.
   const seedMap = useMemo(() => {
     if (!showSeeds) return {};
-    return buildSeedMap(teams, matchResults, schedule, leagueConfig);
-  }, [showSeeds, teams, matchResults, schedule, leagueConfig]);
+    return weekSch?.isPlayoff === true
+      ? buildPlayoffSeedMap(teams, matchResults, schedule, leagueConfig)
+      : buildSeedMap(teams, matchResults, schedule, leagueConfig);
+  }, [showSeeds, weekSch?.isPlayoff, teams, matchResults, schedule, leagueConfig]);
 
   const isWeekLocked = weekSch?.locked === true;
   const allMatchesFinalized = matches.every(m =>

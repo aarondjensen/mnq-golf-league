@@ -96,6 +96,11 @@ export function autoHealMatchResults({
   scoringRules,
   leagueConfig,
   seedMap,
+  // Optional: frozen playoff seed map (full regular season). Used as the
+  // seed tiebreaker for PLAYOFF-week matches so a tied playoff match breaks
+  // on the playoff seed, not the round-robin lockedSeeds. Falls back to
+  // seedMap when not provided (round-robin / seeded weeks always use seedMap).
+  playoffSeedMap,
   healedIds,
   saveMatchResult,
   // Season-wide rounds keyed by playerId, format:
@@ -185,7 +190,7 @@ export function autoHealMatchResults({
         hcps,
         scoringRules,
         leagueConfig,
-        seedMap,
+        seedMap: (wk.isPlayoff === true && playoffSeedMap) ? playoffSeedMap : seedMap,
       });
 
       // Drift fingerprint — every calc-derived field that consumers display
