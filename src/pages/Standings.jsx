@@ -221,8 +221,8 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
     }
     if (val === "lowestWinner") return "Low Winner";
     if (val === "nextLowestWinner") return "Next Low Winner";
-    if (val === "lowestSeed") return "Top Seed";
-    if (val === "highestSeed") return "Lower Seed";
+    if (val === "lowestSeed") return "Lower Seed";
+    if (val === "highestSeed") return "Top Seed";
     if (val === "highestWinner") return "High Winner";
     if (val === "nextHighestSeed") return "2nd High Seed";
     if (val === "nextHighestWinner") return "2nd High Winner";

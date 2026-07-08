@@ -2354,8 +2354,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                     <select value={val} onChange={e => onValChange(e.target.value)} style={selectStyle}>
                       <option value="">—</option>
                       <option value="lowestWinner">Low winner</option>
-                      <option value="lowestSeed">Top seed</option>
-                      <option value="highestSeed">Lower seed</option>
+                      <option value="lowestSeed">Lower seed</option>
+                      <option value="highestSeed">Top seed</option>
                       <option value="nextLowestWinner">2nd low winner</option>
                       <option value="nextLowestSeed">2nd low seed</option>
                       {prevWinnerCount > 0 && Array.from({ length: prevWinnerCount }, (_, i) => (
@@ -2413,8 +2413,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                   }
                   if (val === "lowestWinner") return "Lo W";
                   if (val === "nextLowestWinner") return "Nxt W";
-                  if (val === "lowestSeed") return "Top S";
-                  if (val === "highestSeed") return "Lwr S";
+                  if (val === "lowestSeed") return "Lwr S";
+                  if (val === "highestSeed") return "Top S";
                   if (val === "nextLowestSeed") return "2nd S";
                   if (val?.startsWith("winner_")) return `W${parseInt(val.split("_")[1]) + 1}`;
                   return "?";
