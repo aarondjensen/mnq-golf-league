@@ -415,15 +415,36 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
           };
 
           if (!mu && configMu) {
+            // Resolve each config slot: a locked SEED slot shows the real team
+            // (badge + name) exactly like a filled card; winner/loser slots stay
+            // as "Winner M1" / "Low Seed" placeholders until they resolve. This
+            // is what lets an unplayed round (e.g. Round 2 before the play-in
+            // finishes) display everything already known — seeds 1–6 here — while
+            // only the Week 13-dependent opponents remain TBD.
+            const slotContent = (side) => {
+              const type = configMu[side + "type"];
+              const val = configMu[side];
+              if (seedsLocked && type === "seed" && val) {
+                const teamId = teamIdForSeed(val);
+                if (teamId) return { resolved: true, seed: getSeed(teamId), name: gn(teamId) };
+              }
+              return { resolved: false, label: slotLabel(configMu, side) };
+            };
+            const placeholderRow = (label) => (
+              <div style={{ padding: "6px 7px", fontSize: FS.xs, color: K.t3, fontWeight: FW.semibold, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {label}
+              </div>
+            );
+            const renderSlot = (s) => s.resolved
+              ? teamRow(s.seed, s.name, false, false)
+              : placeholderRow(s.label);
+            const s1 = slotContent("s1");
+            const s2 = slotContent("s2");
             return (
               <div style={{ background: K.card, borderRadius: 6, border: `1px solid ${K.bdr}`, overflow: "hidden" }}>
-                <div style={{ padding: "6px 7px", fontSize: FS.xs, color: K.t3, fontWeight: FW.semibold, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {slotLabel(configMu, "s1")}
-                </div>
+                {renderSlot(s1)}
                 <div style={{ height: 1, background: K.bdr + "40" }} />
-                <div style={{ padding: "6px 7px", fontSize: FS.xs, color: K.t3, fontWeight: FW.semibold, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {slotLabel(configMu, "s2")}
-                </div>
+                {renderSlot(s2)}
               </div>
             );
           }
