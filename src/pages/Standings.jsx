@@ -217,6 +217,26 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
     return "TBD";
   };
 
+  // Once playoff seeds are locked, every SEED-type slot in a future round is
+  // already known — only winner/loser slots depend on games not yet played.
+  // Resolve those seed slots to the actual team so an unplayed round shows,
+  // e.g., "#4 CARPENTER vs #5 KELLEY" instead of "#4 SEED vs #5 SEED", while
+  // "Winner M1" / "Low Seed" slots stay as placeholders until they resolve.
+  const seedsLocked = Array.isArray(leagueConfig?.playoffSeeds) && leagueConfig.playoffSeeds.length === teams.length;
+  const teamIdForSeed = (n) => Object.keys(seedMap).find(id => seedMap[id] === Number(n)) || null;
+  const configSideProps = (mu, side) => {
+    const type = mu[side + "type"];
+    const val = mu[side];
+    if (seedsLocked && type === "seed" && val) {
+      const teamId = teamIdForSeed(val);
+      if (teamId) {
+        const [l1, l2] = playerLastNames(teamId);
+        return { name1Line1: l1 || gn(teamId), name1Line2: l2 || "", seed: getSeed(teamId) };
+      }
+    }
+    return { name1Line1: slotLabel(mu, side), name1Line2: "" };
+  };
+
   // ═════════════════════════════════════════════════════════════════
   //  MatchupCard — thin wrapper around TeamMatchupCard
   // ═════════════════════════════════════════════════════════════════
@@ -246,17 +266,14 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
     );
 
     // ── Config (placeholder) mode ──
-    // Round is unfilled; show "Winner M1" / "Loser M2" / "#3 Seed" labels
-    // pulled from the round config. Names are dimmed to K.t3 by passing
-    // them as the `name1Line1` field — TeamMatchupCard will render them
-    // in the standard name slot, so we ride the name slot's typography
-    // and let the surrounding card layout do the rest. No seeds, no
-    // winner state.
+    // Round is unfilled. Seed-type slots resolve to the actual team (seeds are
+    // locked); winner/loser slots show "Winner M1" / "Low Seed" placeholders
+    // until the feeding round finalizes. configSideProps handles the split.
     if (!mu && showConfig && configMu) {
       return (
         <TeamMatchupCard
-          team1={{ name1Line1: slotLabel(configMu, "s1"), name1Line2: "" }}
-          team2={{ name1Line1: slotLabel(configMu, "s2"), name1Line2: "" }}
+          team1={configSideProps(configMu, "s1")}
+          team2={configSideProps(configMu, "s2")}
           compact
           center={vsCenter}
         />
