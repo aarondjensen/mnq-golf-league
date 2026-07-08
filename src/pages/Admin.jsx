@@ -2108,7 +2108,15 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                         const frozen = leagueConfig?.playoffSeeds;
                         const isFrozen = Array.isArray(frozen) && frozen.length === teams.length;
                         const drifted = isFrozen && !frozen.every((id, i) => id === rsSeeds[i]);
-                        const captureSeeds = () => saveLeagueConfig({ ...leagueConfig, playoffSeeds: rsSeeds });
+                        const captureSeeds = async () => {
+                          await saveLeagueConfig({ ...leagueConfig, playoffSeeds: rsSeeds });
+                          // Force a re-seed so the stored playoff-week matches
+                          // regenerate off the frozen order — don't rely solely on
+                          // saveLeagueConfig's value-changed detection (the snapshot
+                          // may already equal rsSeeds while the stored matches were
+                          // written by an older seeding path).
+                          setTimeout(() => { autoSeedIfReady?.(0); }, 0);
+                        };
                         const badgeStyle = {
                           display: "inline-flex", alignItems: "center", justifyContent: "center",
                           minWidth: 20, height: 20, borderRadius: 4, fontSize: FS.xs, fontWeight: FW.heavy,
@@ -2783,6 +2791,20 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       let bracketCount = 0;
 
       if (isPlayoff) {
+        // Playoff weeks seed off the frozen PLAYOFF order (full regular season:
+        // round-robin + seeded weeks), NOT the round-robin-only lockedSeeds that
+        // drives seeded regular-season weeks. Prefer the frozen snapshot; if it
+        // hasn't been captured yet, compute it from the full regular season and
+        // freeze it now so the bracket never reseeds once playoffs begin. This
+        // overrides the round-robin `seeds` computed above for this branch only
+        // (the seeded-week branch below still uses the round-robin order).
+        const frozenPlayoffSeeds = leagueConfig?.playoffSeeds;
+        if (frozenPlayoffSeeds && frozenPlayoffSeeds.length === teams.length) {
+          seeds = frozenPlayoffSeeds;
+        } else {
+          seeds = computeRegularSeasonSeeds(teams, matchResults, schedule, leagueConfig?.standingsMethod);
+          await saveLeagueConfig({ ...leagueConfig, playoffSeeds: seeds });
+        }
         const playoffRounds = leagueConfig.playoffRounds || [];
         const roundDef = playoffRounds[playoffRound - 1];
         if (!roundDef || !roundDef.matchups || !roundDef.matchups.length) {

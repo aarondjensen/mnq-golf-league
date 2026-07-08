@@ -1086,7 +1086,14 @@ export default function GolfLeagueApp() {
     const playoffChanged = stableStringify(prev?.playoffRounds || []) !== stableStringify(data.playoffRounds || []);
     const customSeedChanged = stableStringify(prev?.customSeedWeeks || null) !== stableStringify(data.customSeedWeeks || null);
     const standingsMethodChanged = (prev?.standingsMethod || "") !== (data.standingsMethod || "");
-    if (playoffChanged || customSeedChanged || standingsMethodChanged) {
+    // Freezing/re-locking a seed snapshot must ALSO re-run the seeder, or the
+    // stored week matches keep their old pairings while only the live badges
+    // update. playoffSeeds drives the playoff bracket; lockedSeeds drives the
+    // seeded regular-season weeks — a change to either should regenerate the
+    // affected (unlocked, unplayed) weeks.
+    const playoffSeedsChanged = stableStringify(prev?.playoffSeeds || null) !== stableStringify(data.playoffSeeds || null);
+    const lockedSeedsChanged = stableStringify(prev?.lockedSeeds || null) !== stableStringify(data.lockedSeeds || null);
+    if (playoffChanged || customSeedChanged || standingsMethodChanged || playoffSeedsChanged || lockedSeedsChanged) {
       setTimeout(() => { autoSeedIfReady(0); }, 0);
     }
   }, [leagueConfig, autoSeedIfReady]);
