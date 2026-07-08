@@ -613,6 +613,16 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const year = leagueConfig?.year || new Date().getFullYear();
     const pad = (n) => String(n).padStart(2, '0');
     const fmtDt = (d) => `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}T${pad(d.getHours())}${pad(d.getMinutes())}00`;
+    // DTSTAMP / LAST-MODIFIED must be UTC (trailing Z). SEQUENCE must increase
+    // on every re-export or calendar clients treat a same-UID re-import as
+    // "no change" and keep the OLD event (stale opponent/tee time). Using a
+    // seconds-since-epoch sequence guarantees each export outranks the last, so
+    // re-adding actually UPDATES the existing events instead of being ignored.
+    const nowUtc = (() => {
+      const d = new Date();
+      return `${d.getUTCFullYear()}${pad(d.getUTCMonth()+1)}${pad(d.getUTCDate())}T${pad(d.getUTCHours())}${pad(d.getUTCMinutes())}${pad(d.getUTCSeconds())}Z`;
+    })();
+    const seq = Math.floor(Date.now() / 1000);
     // Stable UID per (league, season, team, week). Re-importing this .ics
     // updates the existing event in the calendar app instead of creating a
     // duplicate, so users can re-add after schedule changes (rain-outs, new
@@ -667,6 +677,9 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       events.push(
         `BEGIN:VEVENT\r\n` +
         `UID:${uidFor(wk.week)}\r\n` +
+        `SEQUENCE:${seq}\r\n` +
+        `DTSTAMP:${nowUtc}\r\n` +
+        `LAST-MODIFIED:${nowUtc}\r\n` +
         `DTSTART:${fmtDt(startDate)}\r\n` +
         `DTEND:${fmtDt(endDate)}\r\n` +
         `SUMMARY:${summary}\r\n` +
@@ -676,7 +689,7 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     });
 
     if (!events.length) return;
-    const cal = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//MnQ Golf//EN\r\n${events.join('')}END:VCALENDAR`;
+    const cal = `BEGIN:VCALENDAR\r\nVERSION:2.0\r\nPRODID:-//MnQ Golf//EN\r\nMETHOD:PUBLISH\r\nCALSCALE:GREGORIAN\r\n${events.join('')}END:VCALENDAR`;
     const blob = new Blob([cal], { type: 'text/calendar' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
