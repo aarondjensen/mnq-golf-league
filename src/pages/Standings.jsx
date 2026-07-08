@@ -1741,7 +1741,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   // Pts (hierarchy via weight/color, not size), FS.xs for HW, FS.micro for
   // the header. The old fixed 18/6px W-L-T cell grid clipped 2-digit
   // values at large scales and wasted width at normal scale.
-  const ptsColStyle = { minWidth: "2.4em", textAlign: "center", fontFamily: "'League Spartan', sans-serif", fontSize: NAME_SIZE, fontWeight: FW.heavy, color: K.t1 };
+  const ptsColStyle = { minWidth: "2.4em", marginRight: "0.6em", textAlign: "center", fontFamily: "'League Spartan', sans-serif", fontSize: NAME_SIZE, fontWeight: FW.heavy, color: K.t1 };
   const wltHwStyle = { minWidth: "3.4em", textAlign: "center", fontFamily: "'League Spartan', sans-serif", fontSize: NAME_SIZE, lineHeight: 1.2 };
 
   // ── Toggle structure ──────────────────────────────────────────────
@@ -1851,7 +1851,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
                 size as the row cells — header and rows stay aligned even
                 under system font scaling. */}
             <div style={{ flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
-              <div style={{ fontSize: NAME_SIZE, minWidth: "2.4em", textAlign: "center" }}>
+              <div style={{ fontSize: NAME_SIZE, minWidth: "2.4em", marginRight: "0.6em", textAlign: "center" }}>
                 <span style={{ fontSize: FS.micro }}>Pts</span>
               </div>
               <div style={{ fontSize: NAME_SIZE, minWidth: "3.4em", textAlign: "center", lineHeight: 1.2 }}>
