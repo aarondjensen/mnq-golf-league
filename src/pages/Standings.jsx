@@ -1442,30 +1442,33 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   );
 
   const hasIndividualEvent = leagueConfig?.individualEvent !== false; // default on
-  // Default tab on first mount, strictly aligned to season phase:
-  //   - "bracket" (Playoffs) → playoffs are CURRENTLY ACTIVE, defined as
-  //     "at least one playoff week has been locked OR has match results" AND
-  //     "at least one playoff week is still unlocked." So we only flip to
-  //     bracket once a playoff round has actually been PLAYED — pre-seeded
-  //     placeholder matchups in future playoff weeks no longer trip the
-  //     toggle prematurely (which was the bug Aaron hit during regular
-  //     season Week 2: playoff weeks had been pre-populated with empty
-  //     matchups by an earlier schedule generate, so `matches.length > 0`
-  //     fired even though no playoff golf had been played).
-  //   - "standings" (Season) → in every other case: regular season, gap
-  //     between regular season ending and playoffs starting, and after
-  //     playoffs fully conclude. Final-standings view is the most useful
-  //     landing once everything's locked.
+  // Default tab on first mount, strictly aligned to season phase. The
+  // switchover point is the START OF THE POSTSEASON, defined as "the final
+  // regular-season week has been finalized (locked)". Not "a playoff round
+  // has been played" — the bracket is the thing everyone wants to look at the
+  // moment seeding is final, before a single playoff shot is hit.
+  //   - "bracket" (Postseason) → playoff weeks exist AND the last regular-
+  //     season week is locked. Stays the default through the playoffs and
+  //     after they conclude (the champion/podium view is the season's payoff).
+  //   - "standings" (Regular Season) → everything before that: any week of the
+  //     regular season (including the seeded weeks), and any league that has
+  //     no playoff weeks configured at all.
+  // Note we key off the LAST regular-season week specifically rather than
+  // `every(locked)` — a mid-season week left unlocked for a makeup shouldn't
+  // hold the postseason default hostage once the finale is in the books.
   const defaultView = useMemo(() => {
-    const playoffWks = (schedule || []).filter(wk => wk.isPlayoff === true && !wk.rainedOut);
+    const wks = schedule || [];
+    const playoffWks = wks.filter(wk => wk.isPlayoff === true && !wk.rainedOut);
     if (!playoffWks.length) return "standings";
-    const anyPlayoffPlayed = playoffWks.some(wk =>
-      wk.locked === true || (matchResults || []).some(r => r.week === wk.week)
-    );
-    const anyUnlockedPlayoff = playoffWks.some(wk => !wk.locked);
-    if (anyPlayoffPlayed && anyUnlockedPlayoff) return "bracket";
-    return "standings";
-  }, [schedule, matchResults]);
+    const regWks = wks
+      .filter(wk => wk.isPlayoff !== true && !wk.rainedOut && (wk.matches?.length || 0) > 0)
+      .sort((a, b) => a.week - b.week);
+    // Guard against [].every()-style vacuous truth: no regular-season weeks
+    // on the board means the season hasn't been built yet, not that it's over.
+    if (!regWks.length) return "standings";
+    const finalRegWeek = regWks[regWks.length - 1];
+    return finalRegWeek.locked === true ? "bracket" : "standings";
+  }, [schedule]);
   const [view, setView] = useState(defaultView); // "standings" | "bracket" | "individual"
   // If the schedule loads after first mount (common — subscriptions arrive async)
   // and the default changes, respect the new default — but ONLY while the user
