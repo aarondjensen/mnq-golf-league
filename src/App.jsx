@@ -398,8 +398,15 @@ export default function GolfLeagueApp() {
       }
       setAttendance(flat);
     }));
-    unsubs.push(db.subscribe("league_match_results", LF, (docs) => setMatchResults(docs)));
-    unsubs.push(db.subscribe("league_ctp", LF, (docs) => setCtpData(docs)));
+    // Season-scoped like league_hole_scores above: match results and CTP
+    // accumulate forever, and an unfiltered subscription re-downloads the
+    // full cross-season history on every app open. New docs are stamped
+    // with `season` at write time (saveMatchResult / saveCtp); legacy docs
+    // without the field are backfilled once by the effect near those
+    // callbacks, after which they match this filter and flow in live.
+    const seasonLF = [...LF, { field: "season", op: "==", value: CURRENT_SEASON }];
+    unsubs.push(db.subscribe("league_match_results", seasonLF, (docs) => setMatchResults(docs)));
+    unsubs.push(db.subscribe("league_ctp", seasonLF, (docs) => setCtpData(docs)));
     // league_config MUST be a live subscription, not a one-time read. The
     // seeding pipeline (scheduleAutoSeed) writes `lockedSeeds` straight to
     // Firestore via db.upsert — it has no way to call setLeagueConfig. Without
@@ -754,7 +761,19 @@ export default function GolfLeagueApp() {
         }
       }
     } catch {} // corrupted/unavailable localStorage → fall through to fetch
-    const docs = await db.get("league_hole_scores", LF);
+    // getStrict (throws on failure), NOT db.get (swallows errors → []).
+    // With db.get, one transient Firestore failure produced an empty-but-
+    // "valid" cache that was persisted to localStorage and trusted by every
+    // later session — handicaps then computed from zero history on that
+    // device forever, with nothing surfaced. On failure we cache NOTHING
+    // (ref stays null → next call retries) and return {} for this call only.
+    let docs;
+    try {
+      docs = await db.getStrict("league_hole_scores", LF);
+    } catch (e) {
+      console.error("loadHistoricalRounds: fetch failed, not caching:", e);
+      return {};
+    }
     const histDocs = docs.filter(r => r.season < CURRENT_SEASON);
     const rounds = aggregateRounds(histDocs);
     historicalRoundsRef.current = rounds;
@@ -864,10 +883,66 @@ export default function GolfLeagueApp() {
     return byPlayer;
   }, [loadHistoricalRounds, fetchSeasonScores]);
 
-  const saveCtp = useCallback(async (data) => await db.upsert("league_ctp", { ...data, league_id: LEAGUE_ID }), []);
+  // Both stamp `season` so the app-load subscriptions can filter to the
+  // current season (spread first, so the stamp wins over any stale value
+  // carried in via `...existingResult` spreads at call sites).
+  const saveCtp = useCallback(async (data) => await db.upsert("league_ctp", { ...data, league_id: LEAGUE_ID, season: CURRENT_SEASON }), []);
 
-  const saveMatchResult = useCallback(async (data) => await db.upsert("league_match_results", { ...data, league_id: LEAGUE_ID }), []);
+  const saveMatchResult = useCallback(async (data) => await db.upsert("league_match_results", { ...data, league_id: LEAGUE_ID, season: CURRENT_SEASON }), []);
   const deleteMatchResult = useCallback(async (id) => await db.deleteDoc("league_match_results", id), []);
+
+  // ── One-time season backfill for match results + CTP ──
+  // The subscriptions above filter on `season`, but docs written before the
+  // field existed don't match the filter and would vanish from every client
+  // (standings/records would silently lose those weeks). This stamps
+  // `season: CURRENT_SEASON` onto any unstamped doc — correct because these
+  // collections only ever held current-season data (historical seasons were
+  // imported for hole scores only, and resetSeasonData wipes both wholesale).
+  // Runs for any signed-in member (security rules allow member writes here),
+  // so the first session after deploy self-heals: the merge writes make the
+  // docs match the filter and the live subscription picks them up in place.
+  // The localStorage flag is set only on success, so a failed attempt
+  // retries next session; concurrent devices racing is harmless (idempotent
+  // merge of an identical field).
+  useEffect(() => {
+    if (!leagueUser?.id) return;
+    const FLAG = "mnq_season_backfill_v1";
+    try { if (localStorage.getItem(FLAG)) return; } catch {}
+    (async () => {
+      try {
+        const [mrs, ctps] = await Promise.all([
+          db.getStrict("league_match_results", LF),
+          db.getStrict("league_ctp", LF),
+        ]);
+        const unstamped = (docs) => docs
+          .filter(d => d.id && typeof d.season !== "number")
+          .map(d => ({ id: d.id, season: CURRENT_SEASON }));
+        const mrFix = unstamped(mrs);
+        const ctpFix = unstamped(ctps);
+        if (mrFix.length) await db.batchUpsert("league_match_results", mrFix);
+        if (ctpFix.length) await db.batchUpsert("league_ctp", ctpFix);
+        try { localStorage.setItem(FLAG, "1"); } catch {}
+      } catch (e) {
+        console.error("season backfill failed (will retry next session):", e);
+      }
+    })();
+  }, [leagueUser?.id]);
+
+  // Atomic schedule rewrite. Ops: { type: "set"|"delete", id, data?, merge? }
+  // against league_schedule only. The destructive flows (generate schedule,
+  // rain-out, undo rain-out) renumber weeks by deleting and recreating docs;
+  // done as sequential awaits, a mid-run failure left the season half-deleted.
+  // Routing them through one batchWrite commit makes the whole rewrite
+  // all-or-nothing (callers stay under Firestore's 500-op batch limit —
+  // a full regenerate is ~2 ops per week). Throws on failure so callers can
+  // report "nothing was changed".
+  const applyScheduleOps = useCallback(async (ops) => {
+    return db.batchWrite(ops.map(op =>
+      op.type === "delete"
+        ? { type: "delete", col: "league_schedule", id: op.id }
+        : { type: "set", col: "league_schedule", id: op.id, data: { ...op.data, league_id: LEAGUE_ID }, merge: op.merge === true }
+    ));
+  }, []);
 
   const savePlayer = useCallback(async (p) => await db.upsert("league_players", { ...p, league_id: LEAGUE_ID }), []);
   const deletePlayer = useCallback(async (id) => await db.deleteDoc("league_players", id), []);
@@ -1563,13 +1638,13 @@ export default function GolfLeagueApp() {
           <ErrorBoundary>
           <Suspense fallback={TabFallback}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} fetchAllScores={fetchAllScores} saveMatchResult={saveMatchResult} dataLoaded={dataLoaded} />}
-          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} deleteMatchResult={deleteMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} commMode={commMode} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} openFinalize={openFinalize} onFinalizeOpened={() => setOpenFinalize(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} recalcHandicaps={recalcHandicaps} clearWeekData={clearWeekData} autoSeedIfReady={autoSeedIfReady} attendance={attendance} saveAttendance={saveAttendance} />}
+          {tab === "scoring" && <LiveScoringView leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} deleteMatchResult={deleteMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} commMode={commMode} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} applyScheduleOps={applyScheduleOps} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} openFinalize={openFinalize} onFinalizeOpened={() => setOpenFinalize(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} recalcHandicaps={recalcHandicaps} clearWeekData={clearWeekData} autoSeedIfReady={autoSeedIfReady} attendance={attendance} saveAttendance={saveAttendance} />}
           {tab === "schedule" && <ScheduleView schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} course={courseData} fetchWeekScores={fetchWeekScores} fetchAllScores={fetchAllScores} scoringRules={scoringRules} isComm={isComm} saveScore={saveScore} saveMatchResult={saveMatchResult} setPopupOpen={setPopupOpen} appToast={appToast} dataLoaded={dataLoaded} attendance={attendance} saveAttendance={saveAttendance} />}
           {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} dataLoaded={dataLoaded} />}
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} leagueConfig={leagueConfig} teams={teams} matchResults={matchResults} />}
           {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} isComm={isComm} saveCtp={saveCtp} />}
           {tab === "notifications" && <NotificationsSettings leagueUser={effectiveUser} appToast={appToast} />}
-          {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} saveMatchResult={saveMatchResult} resetSeasonData={resetSeasonData} importHistoricalScores={importHistoricalScores} recalcHandicaps={recalcHandicaps} autoSeedIfReady={autoSeedIfReady} clearWeekData={clearWeekData} />}
+          {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} applyScheduleOps={applyScheduleOps} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} saveMatchResult={saveMatchResult} resetSeasonData={resetSeasonData} importHistoricalScores={importHistoricalScores} recalcHandicaps={recalcHandicaps} autoSeedIfReady={autoSeedIfReady} clearWeekData={clearWeekData} />}
           </Suspense>
           </ErrorBoundary>
           {commMode && <div style={{ height: 44 }} />}
