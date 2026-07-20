@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useRef, memo } from "react";
-import { K, EmptyState, SubLabel, LIST_GAP, CARD_RADIUS, getWeekSide, LoadingPanel, resolvePlayerHcpForWeek } from "../theme";
+import { K, EmptyState, SubLabel, LIST_GAP, CARD_RADIUS, getWeekSide, LoadingPanel, resolvePlayerHcpForWeek, resolveIndivRound } from "../theme";
 import { buildStrokesMap, resultLetterFor } from "../lib/matchCalc";
 
 // Parse the defeat margin out of a match-play result string. The result text
@@ -208,7 +208,14 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
       for (const wk of sortedWeeks) {
         if (wk.rainedOut) continue;
         if (typeof wk.week !== "number" || wk.week <= 0) continue;
-        if (scores[`w${wk.week}_p${p.id}_habsent`] === 1) continue;
+        // Resolve this week's round through the canonical read resolver so
+        // makeup rounds (played another day) count in Stats: a live card, a
+        // makeup hole card, a total-only makeup, or nothing. Absence is now only
+        // a skip when there's ALSO no makeup — an absent player who made up their
+        // individual round still contributes their real golf to these boards.
+        const ir = resolveIndivRound(scores, wk.week, p.id);
+        const isAbsent = scores[`w${wk.week}_p${p.id}_habsent`] === 1;
+        if (isAbsent && ir.mode === 'none') continue;
 
         const side = wk.side || getWeekSide(wk.week);
         const pars = side === 'front' ? frontPars : backPars;
@@ -231,10 +238,28 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         const hardestIdxs = new Set(sortedByHcp.slice(0, 3).map(x => x.i));
         const easiestIdxs = new Set(sortedByHcp.slice(-3).map(x => x.i));
 
+        // Total-only makeup: a full round with no per-hole detail. It feeds the
+        // round-level boards (gross/net/averages/best/worst) but is intentionally
+        // absent from every per-hole board (pars, birdies, eagles, specialists) —
+        // there's no distribution to attribute, and fabricating one would inject
+        // fake pars. It also breaks any par-or-better streak: we can't credit
+        // holes we never recorded.
+        if (ir.totalOnly) {
+          holeSequence.push({ par: 0, gross: 0, net: 0, played: false });
+          const gross = ir.gross;
+          const net = gross - weekHcp;
+          rounds.push({ week: wk.week, side, gross, net });
+          continue;
+        }
+
         let gross = 0, holesPlayed = 0;
 
         for (let h = 0; h < 9; h++) {
-          const s = scores[`w${wk.week}_p${p.id}_h${h}`] || 0;
+          // Effective per-hole score: live OR makeup hole card. resolveIndivRound
+          // unifies both — a makeup card exposes its _hm{h} keys, a live round its
+          // _h{h} keys — so the per-hole boards treat a made-up round exactly like
+          // a live one. Unplayed holes read 0 (streak-breaking), as before.
+          const s = ir.holes[h] || 0;
           const par = pars[h] || 4;
           const str = strokes[h] || 0;
 
