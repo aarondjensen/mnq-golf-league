@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, calcPlayerHcp, buildSeedMap, buildPlayoffSeedMap, buildStandingsForSeed, recordPoints, LoadingPanel, SkeletonList, buildHistoricalPlayers, FS, FW } from "../theme";
+import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, calcPlayerHcp, buildSeedMap, buildPlayoffSeedMap, buildStandingsForSeed, recordPoints, resolveIndivRound, LoadingPanel, SkeletonList, buildHistoricalPlayers, FS, FW } from "../theme";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { readScoreEffective, getStrokesForHole, resultLetterFor, buildStrokesMap } from "../lib/matchCalc";
 import { db, LF } from "../firebase";
@@ -1087,97 +1087,98 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
       // teamName label; no longer used to substitute scores (see withdrawal logic below).
       const team = teams.find(t => t.player1 === p.id || t.player2 === p.id);
 
-      // Individual-tournament withdrawal: being marked absent for ANY playoff week
-      // disqualifies the player from the tournament. Their played rounds stay on
-      // the leaderboard as a record of what they shot, but their total becomes WD
-      // and they drop to the bottom of the sort. This differs from the team match,
-      // where an absent player's teammate covers for them and the match proceeds —
-      // the individual event has no teammate mechanic.
+      // Individual-tournament withdrawal is now driven ONLY by the explicit
+      // _hindivwd sentinel the commissioner sets at finalize — NOT by _habsent.
+      // That's the whole point of the makeup feature: an absent player who makes
+      // up their individual round keeps accumulating; only an explicit
+      // withdrawal drops them. Withdrawn players' played rounds stay on the
+      // leaderboard as a record, but their total becomes WD and they sort to the
+      // bottom. (The team match still uses _habsent for teammate substitution;
+      // the two signals are fully decoupled now.)
       let withdrew = false;
       let wdRound = null;
 
       for (const wk of playoffWeeks) {
         const side = wk.side || 'front';
 
-        const isAbsent = scores[`w${wk.week}_p${p.id}_habsent`] === 1;
+        // Resolve this week's individual-event round from the canonical read
+        // resolver (theme.jsx): a live League-Night card, a makeup hole card, a
+        // total-only makeup, or nothing — plus the explicit withdrawal flag.
+        const ir = resolveIndivRound(scores, wk.week, p.id);
 
-        if (isAbsent && !withdrew) {
-          // Mark withdrawal at the first round the player missed. Prior rounds
-          // (if any) remain in `rounds`; we stop accumulating here.
+        if (ir.withdrawn && !withdrew) {
+          // Sticky from the first withdrawn week — prior rounds remain as a
+          // record; we stop accumulating here.
           withdrew = true;
           wdRound = wk.week;
         }
-        // Once withdrawn, skip this and all subsequent rounds. No teammate
-        // substitution, no continued accumulation — the tournament is individual.
         if (withdrew) continue;
 
-        let gross = 0;
-        let holesPlayed = 0;
-        const playedHoles = [];
-        // Holes are stored 0-indexed in Firestore (h=0 through h=8) — saveScore in
-        // App.jsx and the historical-data imports both use 0..8. Using h=1..9 here
-        // would miss every score and produce an all-blank leaderboard.
-        for (let h = 0; h <= 8; h++) {
-          const key = `w${wk.week}_p${p.id}_h${h}`;
-          const s = scores[key];
-          if (s && s > 0) { gross += s; holesPlayed++; playedHoles.push(h); }
-        }
+        // Nothing posted this week (no live card, no makeup) — no round to score.
+        if (ir.mode === 'none') continue;
 
-        if (holesPlayed > 0) {
-          // Per-round handicap — computed from history BEFORE this week, so it matches
-          // what the player was actually playing off of when they teed up that round.
-          const roundHcp = handicapBeforeWeek(p, season, wk.week);
-          // Per-hole stroke allocation by stroke index (USGA convention), replacing
-          // the old linear proration (roundHcp * holesPlayed / 9). The round handicap
-          // is distributed across this side's 9 holes hardest-first via
-          // buildStrokesMap — the SAME canonical allocator match play, Schedule's
-          // stroke dots, and Stats already use — and only the strokes that landed on
-          // holes actually PLAYED count. Fallback when the course doc has no valid
-          // stroke indexes for this side: sequential order (hole 1 = index 1 …
-          // hole 9 = index 9), never proration, so allocation stays deterministic
-          // and integer either way.
-          const sideHcps = side === 'front' ? course?.frontHcps : course?.backHcps;
-          const hcps = (Array.isArray(sideHcps) && sideHcps.length === 9)
-            ? sideHcps
-            : [1, 2, 3, 4, 5, 6, 7, 8, 9];
+        const gross = ir.gross;
+        const holesPlayed = ir.holesPlayed;
+        const playedHoles = Object.keys(ir.holes).map(Number);
+
+        // Per-round handicap — computed from history BEFORE this week, so it
+        // matches what the player was playing off when they teed up. Makeup
+        // rounds included: the round still belongs to wk.week, so its handicap is
+        // the into-that-week index regardless of the day it was actually played.
+        const roundHcp = handicapBeforeWeek(p, season, wk.week);
+
+        // Side stroke-index / par arrays, with deterministic fallbacks when the
+        // course doc lacks valid data for this side (sequential index order,
+        // standard pars — never proration).
+        const sideHcps = side === 'front' ? course?.frontHcps : course?.backHcps;
+        const hcps = (Array.isArray(sideHcps) && sideHcps.length === 9)
+          ? sideHcps
+          : [1, 2, 3, 4, 5, 6, 7, 8, 9];
+        const sidePars = side === 'front' ? course?.frontPars : course?.backPars;
+        const pars = (Array.isArray(sidePars) && sidePars.length === 9)
+          ? sidePars
+          : [4, 4, 4, 3, 5, 4, 4, 3, 5];
+
+        // RANKING METRIC: net-to-par over holes played (not raw net strokes), so
+        // a mid-round live card reads comparably to a finished one. Integer
+        // end-to-end (integer gross, pars, allocated strokes — no rounding), so
+        // per-round values sum to the cumulative totals exactly.
+        let parPlayed, signedStrokes;
+        if (ir.totalOnly) {
+          // Total-only makeup: a complete 9 with no per-hole detail. Strokes over
+          // a full round always sum to |roundHcp| however they'd distribute, so
+          // net-to-par collapses to gross - fullSidePar - roundHcp. holesPlayed
+          // is already 9 from the resolver.
+          parPlayed = pars.reduce((a, b) => a + b, 0);
+          signedStrokes = roundHcp; // full allocation, sign already correct
+        } else {
+          // Live or makeup hole card: allocate strokes hardest-first via the
+          // canonical buildStrokesMap and count only strokes landing on holes
+          // actually played (same allocator as match play, Schedule dots, Stats).
           const strokeMap = buildStrokesMap(roundHcp, hcps);
           let strokesOnPlayed = 0;
           for (const h of playedHoles) strokesOnPlayed += strokeMap[h] || 0;
           // buildStrokesMap distributes |roundHcp|, so re-apply the sign: a plus
           // (negative) handicap gives strokes BACK.
-          const signedStrokes = roundHcp < 0 ? -strokesOnPlayed : strokesOnPlayed;
-
-          // RANKING METRIC: net-to-par over holes played, NOT raw net strokes.
-          // Raw net systematically flatters whoever is through fewer holes during
-          // live play — 4 holes of golf is fewer strokes than 9 regardless of
-          // quality. Measuring against par for exactly the holes played (this
-          // side's pars, played holes only) makes mid-round players comparable:
-          // even par through 4 and even par through 9 both read E.
-          const sidePars = side === 'front' ? course?.frontPars : course?.backPars;
-          const pars = (Array.isArray(sidePars) && sidePars.length === 9)
-            ? sidePars
-            : [4, 4, 4, 3, 5, 4, 4, 3, 5];
-          let parPlayed = 0;
+          signedStrokes = roundHcp < 0 ? -strokesOnPlayed : strokesOnPlayed;
+          parPlayed = 0;
           for (const h of playedHoles) parPlayed += pars[h] || 4;
-          const netToPar = gross - parPlayed - signedStrokes;
-
-          // Exactness guarantees, both integer end-to-end (integer gross, integer
-          // pars, integer allocated strokes — no rounding anywhere, so per-round
-          // values sum to the totals exactly):
-          //   completed round: strokes sum to roundHcp (buildStrokesMap wraps in
-          //   passes until exhausted) and parPlayed is the full side par, so
-          //   netToPar === (gross - roundHcp) - sidePar — the same relative
-          //   ordering as raw net for finished rounds, just re-based to par.
-          totalGross += gross;
-          totalNetToPar += netToPar;
-          totalHolesPlayed += holesPlayed;
-          roundsPlayed++;
-          rounds.push({
-            week: wk.week, date: wk.date, side, gross,
-            netToPar,
-            holesPlayed, nineHcp: roundHcp,
-          });
         }
+        const netToPar = gross - parPlayed - signedStrokes;
+
+        totalGross += gross;
+        totalNetToPar += netToPar;
+        totalHolesPlayed += holesPlayed;
+        roundsPlayed++;
+        rounds.push({
+          week: wk.week, date: wk.date, side, gross,
+          netToPar,
+          holesPlayed, nineHcp: roundHcp,
+          // Cell markers: makeup = played another day; totalOnly = entered as a
+          // bare gross (no per-hole detail, so it's absent from per-hole Stats).
+          makeup: ir.mode === 'makeupHoles' || ir.mode === 'makeupTotal',
+          totalOnly: ir.totalOnly,
+        });
       }
 
       // team already found above (for teammate lookup during absent handling)
@@ -1362,7 +1363,16 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
                     fontWeight: isWDRound ? FW.heavy : FW.semibold,
                     color: isWDRound ? K.red : round ? K.t1 : K.t3 + "40",
                   }}>
-                    {isWDRound ? "WD" : round ? fmtToPar(round.netToPar) : "–"}
+                    {isWDRound ? "WD" : round ? (
+                      <>
+                        {fmtToPar(round.netToPar)}
+                        {round.makeup && (
+                          <sup style={{ fontSize: FS.micro, color: K.act, fontWeight: FW.bold, marginLeft: 1 }}>
+                            {round.totalOnly ? "t" : "m"}
+                          </sup>
+                        )}
+                      </>
+                    ) : "–"}
                   </div>
                 );
               })}
@@ -1389,6 +1399,12 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
             </div>
           );
         })}
+        {leaderboard.some(p => p.rounds.some(r => r.makeup)) && (
+          <div style={{ padding: "8px 4px 2px", fontSize: FS.micro, color: K.t3, display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <span><sup style={{ color: K.act, fontWeight: FW.bold }}>m</sup> makeup round</span>
+            <span><sup style={{ color: K.act, fontWeight: FW.bold }}>t</sup> makeup (total only)</span>
+          </div>
+        )}
       </div>
     </div>
   );
