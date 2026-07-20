@@ -1,0 +1,140 @@
+rules_version = '2';
+
+// ─── MNQ Golf League — Firestore security rules ─────────────────────────
+//
+// Access model (mirrors the client's actual write paths — see the audit in
+// the comments on each block):
+//
+//   • signed-in (any Firebase Auth user, member or not): READ everything.
+//     The pre-join JoinScreen must list players/members and read the invite
+//     code from league_config before the user has a member doc, so reads
+//     can't be members-only without breaking the join flow.
+//   • league member (has a league_members doc): write gameplay data —
+//     hole scores (live scoring), match results (finalize / attest /
+//     auto-heal, which runs on every client), CTP claims, attendance,
+//     and their own push-notification tokens.
+//   • commissioner (member doc with isCommissioner: true): everything else —
+//     players, teams, schedule, config, course, scoring rules, and other
+//     users' member docs. All commissioner-only UI flows (Admin pages,
+//     finalize-week, rain-out) resolve to these collections.
+//   • Cloud Functions use the Admin SDK and bypass these rules entirely.
+//
+// Member doc id convention: `league_2026_<uid>` (LEAGUE_ID + "_" + uid).
+// This MUST match LEAGUE_ID in src/firebase.js — update both together when
+// the league id changes. Every member doc is created through JoinScreen /
+// saveMember with exactly this id, which is what lets the rules resolve
+// "who is this uid" without a query (rules can't run queries).
+//
+// Privilege escalation: a non-commissioner can create/update ONLY their own
+// member doc and can never set isCommissioner to true on it. The one-time
+// "first user bootstraps as commissioner" flow in JoinScreen is intentionally
+// NOT expressible here (rules can't check "collection is empty") — this
+// league is already bootstrapped. To bootstrap a brand-new league, create
+// the first commissioner member doc from the Firebase console.
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isMember() {
+      return signedIn() &&
+        exists(/databases/$(database)/documents/league_members/$("league_2026_" + request.auth.uid));
+    }
+
+    function isCommissioner() {
+      return signedIn() &&
+        get(/databases/$(database)/documents/league_members/$("league_2026_" + request.auth.uid)).data.isCommissioner == true;
+    }
+
+    // ── League structure & configuration — commissioner-only writes ──
+    // Client writers: Admin pages, saveLeagueConfig, schedule generation,
+    // rain-out / finalize-week (all isComm-gated in the UI), recalcHandicaps
+    // (league_players), and lib/scheduleAutoSeed (league_schedule +
+    // league_config lockedSeeds) — invoked only from commissioner actions.
+    match /league_players/{docId} {
+      allow read: if signedIn();
+      allow write: if isCommissioner();
+    }
+    match /league_teams/{docId} {
+      allow read: if signedIn();
+      allow write: if isCommissioner();
+    }
+    match /league_schedule/{docId} {
+      allow read: if signedIn();
+      allow write: if isCommissioner();
+    }
+    match /league_config/{docId} {
+      allow read: if signedIn();
+      allow write: if isCommissioner();
+    }
+    match /league_course/{docId} {
+      allow read: if signedIn();
+      allow write: if isCommissioner();
+    }
+    match /league_scoring/{docId} {
+      allow read: if signedIn();
+      allow write: if isCommissioner();
+    }
+
+    // ── Gameplay data — any member writes ──
+    // Live scoring (saveScore), peer finalize/attest (saveMatchResult),
+    // opportunistic drift correction (lib/autoHealMatchResults — runs on
+    // EVERY client from Standings/Schedule), player CTP claims, and
+    // attendance marking (players mark teammates too, so no owner check).
+    // Deletes are included: saveAttendance(status=null) deletes, and the
+    // unsign/edit flows delete match results.
+    match /league_hole_scores/{docId} {
+      allow read: if signedIn();
+      allow write: if isMember();
+    }
+    match /league_match_results/{docId} {
+      allow read: if signedIn();
+      allow write: if isMember();
+    }
+    match /league_ctp/{docId} {
+      allow read: if signedIn();
+      allow write: if isMember();
+    }
+    match /league_attendance/{docId} {
+      allow read: if signedIn();
+      allow write: if isMember();
+    }
+
+    // ── Push-notification tokens — members only ──
+    // Users register/refresh/delete their own device tokens; the admin
+    // notifications panel (commissioner, still a member) reads them.
+    match /league_notifications_tokens/{docId} {
+      allow read, write: if isMember();
+    }
+
+    // ── Membership ──
+    // Anyone signed in may read (JoinScreen needs the member list before
+    // joining). Commissioners may write any member doc (link players,
+    // toggle roles, remove members). A regular user may only create/update
+    // the doc for their OWN uid, may never grant themselves isCommissioner,
+    // and may delete their own doc (in-app account deletion).
+    match /league_members/{docId} {
+      allow read: if signedIn();
+      allow write: if isCommissioner();
+      allow create: if signedIn()
+        && docId == "league_2026_" + request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.get('isCommissioner', false) != true;
+      allow update: if signedIn()
+        && docId == "league_2026_" + request.auth.uid
+        && request.resource.data.uid == request.auth.uid
+        && (request.resource.data.get('isCommissioner', false) != true
+            || resource.data.get('isCommissioner', false) == true);
+      allow delete: if signedIn()
+        && docId == "league_2026_" + request.auth.uid;
+    }
+
+    // Everything else: denied (default, stated explicitly for clarity).
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -171,7 +171,7 @@ export default function AdminView(props) {
   if (sec === "players") return <AdminPlayers players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} course={course} teams={teams} members={members} saveMember={saveMember} onBack={() => setSec(null)} />;
   if (sec === "teams") return <AdminTeams teams={teams} saveTeam={saveTeam} players={players} onBack={() => setSec(null)} />;
   if (sec === "course") return <AdminCourse course={course} saveCourseData={saveCourseData} onBack={() => setSec(null)} />;
-  if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} autoSeedIfReady={props.autoSeedIfReady} clearWeekData={clearWeekData} onBack={() => setSec(null)} />;
+  if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} applyScheduleOps={props.applyScheduleOps} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} autoSeedIfReady={props.autoSeedIfReady} clearWeekData={clearWeekData} onBack={() => setSec(null)} />;
   if (sec === "scoring") return <AdminScoring scoring={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
   if (sec === "members") return <AdminMembers members={members} saveMember={saveMember} deleteMember={deleteMember} players={players} onBack={() => setSec(null)} />;
   if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} resetSeasonData={props.resetSeasonData} importHistoricalScores={props.importHistoricalScores} recalcHandicaps={props.recalcHandicaps} matchResults={matchResults} saveMatchResult={saveMatchResult} schedule={schedule} teams={teams} scoringRules={scoringRules} saveScoringRules={saveScoringRules} onBack={() => setSec(null)} />;
@@ -1120,7 +1120,7 @@ function AdminCourse({ course, saveCourseData, onBack }) {
 }
 
 
-function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, teams, leagueConfig, saveLeagueConfig, matchResults, autoSeedIfReady, clearWeekData, onBack }) {
+function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, applyScheduleOps, teams, leagueConfig, saveLeagueConfig, matchResults, autoSeedIfReady, clearWeekData, onBack }) {
   const [step, setStep] = useState(schedule.length > 0 ? "view" : "setup");
 
   // Single source of truth for "derive cfg from stored leagueConfig".
@@ -1364,25 +1364,31 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
   const runGenerate = async (preservedWeekNums) => {
     setGenerating(true);
 
-    // Clean corrupted data: locked seeded weeks shouldn't have makeupFor
-    for (const wk of schedule) {
-      if (wk.locked && wk.seeded && wk.makeupFor) {
-        await saveWeekSchedule({ ...wk, makeupFor: null });
-      }
-    }
+    // Every schedule write is collected into `ops` and committed as ONE
+    // atomic batch at the end (applyScheduleOps). The old flow deleted every
+    // week doc and recreated them with sequential awaits — a failure partway
+    // through left the season half-deleted with no rollback. Ops are deduped
+    // by doc id (last op wins), so delete-then-recreate collapses to just
+    // the final set for preserved weeks.
+    const ops = [];
+    const placeWeek = (data) => ops.push({ type: "set", id: data.id, data });
+
+    // Clean corrupted data: locked seeded weeks shouldn't have makeupFor.
+    // No direct write needed anymore — every existing doc is deleted and
+    // preserved weeks are recreated from cleanSchedule, which carries the fix.
     const cleanSchedule = schedule.map(wk =>
       (wk.locked && wk.seeded && wk.makeupFor) ? { ...wk, makeupFor: null } : wk
     );
 
     // Delete ALL existing schedule docs
     for (const existing of schedule) {
-      if (existing.id) await deleteWeekSchedule(existing.id);
+      if (existing.id) ops.push({ type: "delete", id: existing.id });
     }
 
     // Delete any zombie docs beyond the schedule
     const maxExisting = Math.max(0, ...schedule.map(s => s.week));
     for (let w = maxExisting + 1; w <= maxExisting + 5; w++) {
-      await deleteWeekSchedule(`${LEAGUE_ID}_w${w}`);
+      ops.push({ type: "delete", id: `${LEAGUE_ID}_w${w}` });
     }
 
     // ── Build the new schedule sequentially ──
@@ -1558,20 +1564,20 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
       if (existing && existing.rainedOut === true && !existing.seeded && !existing.isPlayoff) {
         // Rained-out RR week — preserve as dead slot
-        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+        placeWeek({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
         continue; // don't count toward rrPlayed
       }
 
       if (existing && existing.locked === true && !existing.seeded && !existing.isPlayoff) {
         // Locked RR week (not seeded) — preserve with scores intact
-        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+        placeWeek({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
         rrPlayed++;
         continue;
       }
 
       if (existing && existing.makeupFor && !existing.seeded) {
         // Makeup week for an RR rainout — preserve
-        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+        placeWeek({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
         rrPlayed++;
         continue;
       }
@@ -1579,7 +1585,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       // If there's a locked seeded/playoff week here, preserve it and skip past it
       // (the RR makeup will go to the next available slot)
       if (existing && existing.locked === true) {
-        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+        placeWeek({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
         continue; // don't count toward rrPlayed — this is a seeded/playoff week we're skipping past
       }
 
@@ -1597,7 +1603,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       }
       const round = balancedRounds[rrCursor];
       rrCursor++;
-      await setWeekSchedule({
+      placeWeek({
         id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum,
         matches: round, side,
         date: getWeekDate(weekNum - 1), isPlayoff: false,
@@ -1623,21 +1629,21 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
       if (existing && existing.rainedOut === true) {
         // Rained-out seeded week — preserve, push everything forward
-        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+        placeWeek({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
         continue;
       }
 
       if (existing && existing.locked === true && existing.seeded) {
         // Locked seeded week — already written in Phase 1 or preserve now
         if (!alreadyWrittenSeeded.some(s => s.week === weekNum)) {
-          await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+          placeWeek({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
         }
         seededPlaced++;
         continue;
       }
 
       // New seeded week
-      await setWeekSchedule({
+      placeWeek({
         id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum,
         matches: [], side,
         date: getWeekDate(weekNum - 1), isPlayoff: false, seeded: true,
@@ -1653,24 +1659,35 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
       if (existing && existing.rainedOut === true) {
         // Rained-out playoff week — preserve, push everything forward
-        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+        placeWeek({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
         continue;
       }
 
       if (existing && existing.locked === true) {
         // Locked playoff week — preserve
-        await setWeekSchedule({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
+        placeWeek({ ...existing, id: `${LEAGUE_ID}_w${weekNum}` });
         playoffPlaced++;
         continue;
       }
 
       // New playoff week
-      await setWeekSchedule({
+      placeWeek({
         id: `${LEAGUE_ID}_w${weekNum}`, week: weekNum,
         matches: [], side,
         date: getWeekDate(weekNum - 1), isPlayoff: true, seeded: true,
       });
       playoffPlaced++;
+    }
+
+    // Commit the entire rewrite in one atomic batch — either the new
+    // schedule fully replaces the old one, or nothing changes.
+    try {
+      await applyScheduleOps(ops);
+    } catch (e) {
+      console.error("runGenerate: schedule write failed — nothing was changed:", e);
+      alert(`Schedule generation failed — no changes were saved.\n\n${e?.message || e}`);
+      setGenerating(false);
+      return;
     }
 
     // Save config (preserve directly-saved fields)
@@ -3124,8 +3141,13 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       };
       const fmtDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
+      // The delete-and-renumber dance below is the riskiest write pattern in
+      // the app — a mid-run failure used to leave the season half-renumbered.
+      // All schedule writes are collected and committed in ONE atomic batch.
+      const ops = [];
+
       // Mark this week as rained out (clear matches since they're moved to the makeup)
-      await saveWeekSchedule({ ...wk, rainedOut: true, matches: [] });
+      ops.push({ type: "set", id: wk.id, data: { ...wk, rainedOut: true, matches: [] }, merge: true });
 
       // Shift only NON-LOCKED weeks from makeupWeekNum onward. Locked weeks stay put.
       // We process descending to avoid id collisions as we renumber.
@@ -3165,8 +3187,8 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
           parsed.setDate(parsed.getDate() + (newW - oldW) * 7);
           newDate = fmtDate(parsed);
         }
-        await deleteWeekSchedule(fw.id);
-        await setWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newW}`, week: newW, date: newDate });
+        ops.push({ type: "delete", id: fw.id });
+        ops.push({ type: "set", id: `${LEAGUE_ID}_w${newW}`, data: { ...fw, id: `${LEAGUE_ID}_w${newW}`, week: newW, date: newDate } });
       }
 
       // Create the makeup week at makeupWeekNum
@@ -3180,16 +3202,28 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
       }
       const makeupSide = neighborWeek?.side === 'front' ? 'back' : 'front';
 
-      await setWeekSchedule({
+      ops.push({
+        type: "set",
         id: `${LEAGUE_ID}_w${makeupWeekNum}`,
-        week: makeupWeekNum,
-        matches: [...(wk.matches || [])],
-        side: wk.side || makeupSide,
-        date: makeupDate,
-        makeupFor: wk.week,
-        isPlayoff: wk.isPlayoff || false,
-        seeded: wk.seeded || false,
+        data: {
+          id: `${LEAGUE_ID}_w${makeupWeekNum}`,
+          week: makeupWeekNum,
+          matches: [...(wk.matches || [])],
+          side: wk.side || makeupSide,
+          date: makeupDate,
+          makeupFor: wk.week,
+          isPlayoff: wk.isPlayoff || false,
+          seeded: wk.seeded || false,
+        },
       });
+
+      try {
+        await applyScheduleOps(ops);
+      } catch (e) {
+        console.error("doRainOut: schedule write failed — nothing was changed:", e);
+        alert(`Rain out failed — no changes were saved.\n\n${e?.message || e}`);
+        return;
+      }
 
       setEditWeek(null);
     };
@@ -3225,14 +3259,19 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                     };
                     const fmtDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
+                    // All schedule writes are collected and committed in ONE
+                    // atomic batch (applyScheduleOps) — the delete-and-renumber
+                    // below must never half-apply.
+                    const ops = [];
+
                     // Un-mark the rain out and restore matches if they were cleared
                     const makeupWeek = schedule.find(s => s.makeupFor === wk.week);
                     const restoredMatches = makeupWeek?.matches || wk.matches || [];
-                    await saveWeekSchedule({ ...wk, rainedOut: false, matches: restoredMatches });
+                    ops.push({ type: "set", id: wk.id, data: { ...wk, rainedOut: false, matches: restoredMatches }, merge: true });
 
                     if (makeupWeek) {
                       // Delete the makeup week, then shift weeks after it down by 1 — but skip over locked weeks.
-                      await deleteWeekSchedule(makeupWeek.id);
+                      ops.push({ type: "delete", id: makeupWeek.id });
 
                   // Build shift map: for each non-locked week after makeupWeek.week, find the next lower available slot.
                   const lockedWeekNums = new Set(schedule.filter(s => s.locked === true && s.week !== wk.week).map(s => s.week));
@@ -3268,9 +3307,17 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                       parsed.setDate(parsed.getDate() + (newW - oldW) * 7);
                       newDate = fmtDate(parsed);
                     }
-                    await deleteWeekSchedule(fw.id);
-                    await setWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newW}`, week: newW, date: newDate });
+                    ops.push({ type: "delete", id: fw.id });
+                    ops.push({ type: "set", id: `${LEAGUE_ID}_w${newW}`, data: { ...fw, id: `${LEAGUE_ID}_w${newW}`, week: newW, date: newDate } });
                   }
+                }
+
+                try {
+                  await applyScheduleOps(ops);
+                } catch (e) {
+                  console.error("undo rain out: schedule write failed — nothing was changed:", e);
+                  alert(`Undo rain out failed — no changes were saved.\n\n${e?.message || e}`);
+                  return;
                 }
 
                 setEditWeek(null);

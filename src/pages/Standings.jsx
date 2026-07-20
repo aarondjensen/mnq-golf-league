@@ -1259,6 +1259,18 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
   // "+3", and level par is "E".
   const fmtToPar = (n) => n === 0 ? "E" : n > 0 ? `+${n}` : String(n);
 
+  // Leaderboard grid column widths — shared between the column header and every
+  // row so they stay perfectly aligned. Kept intentionally tight (vs the prior
+  // 36px HCP/round columns and 14px side padding) to give the Player column more
+  // room before names truncate: with up to four round columns the fixed columns
+  // otherwise squeeze the name to just a few characters on narrow phones. The
+  // Player column is flex:1, so every pixel trimmed here goes straight to the name.
+  const POS_W = 26;   // rank badge cell
+  const HCP_W = 26;   // handicap column
+  const RND_W = 28;   // each R# column ("+3"/"-2"/"WD"/"E"/"–" all fit at FS.sm)
+  const TOPAR_W = 42; // To-Par + "NN gross" secondary line
+  const PAD_X = 10;   // card / header horizontal padding
+
   return (
     <div style={{ padding: "0 2px" }}>
       {/* Header */}
@@ -1289,14 +1301,14 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
       {/* Leaderboard */}
       <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
         {/* Column header */}
-        <div style={{ display: "flex", padding: "0 14px", fontSize: FS.micro, fontWeight: FW.bold, color: K.logoBright, textTransform: "uppercase", letterSpacing: .8 }}>
-          <div style={{ width: 28 }} />
-          <div style={{ flex: 1 }}>Player</div>
-          <div style={{ width: 36, textAlign: "center" }}>HCP</div>
+        <div style={{ display: "flex", padding: `0 ${PAD_X}px`, fontSize: FS.micro, fontWeight: FW.bold, color: K.logoBright, textTransform: "uppercase", letterSpacing: .8 }}>
+          <div style={{ width: POS_W }} />
+          <div style={{ flex: 1, minWidth: 0 }}>Player</div>
+          <div style={{ width: HCP_W, textAlign: "center" }}>HCP</div>
           {Array.from({ length: totalRounds }, (_, i) => (
-            <div key={i} style={{ width: 36, textAlign: "center" }}>R{i + 1}</div>
+            <div key={i} style={{ width: RND_W, textAlign: "center" }}>R{i + 1}</div>
           ))}
-          <div style={{ width: 44, textAlign: "right" }}>To Par</div>
+          <div style={{ width: TOPAR_W, textAlign: "right" }}>To Par</div>
         </div>
 
         {leaderboard.map((p, i) => {
@@ -1314,13 +1326,13 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
             <div key={p.playerId} style={{
               display: "flex", alignItems: "center", background: K.card,
               borderRadius: CARD_RADIUS, border: `1px solid ${p.posRank === 1 && showRank ? K.act + "30" : K.bdr}`,
-              padding: "10px 14px",
+              padding: `10px ${PAD_X}px`,
               opacity: isWD ? 0.55 : 1,
             }}>
               {/* Rank — golf-standard tie labels: T1/T2/… for tied groups, plain
                   number otherwise. minWidth + padding (instead of fixed width)
                   keeps 3-character labels like "T10" from clipping. */}
-              <div style={{ width: 28, flexShrink: 0 }}>
+              <div style={{ width: POS_W, flexShrink: 0 }}>
                 {showRank && (
                   <div style={{
                     minWidth: 22, height: 22, borderRadius: 6, padding: "0 3px",
@@ -1343,7 +1355,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
               {/* Handicap — shown as the player's starting handicap (what they had going
                   into Round 1). Per-round handicaps are reflected in each R# column's net
                   score, but showing a single stable number keeps the leaderboard readable. */}
-              <div style={{ width: 36, textAlign: "center", fontSize: FS.xs, color: K.t3 }}>{p.startNineHcp}</div>
+              <div style={{ width: HCP_W, textAlign: "center", fontSize: FS.xs, color: K.t3 }}>{p.startNineHcp}</div>
 
               {/* Round scores — one cell per CONFIGURED round, so the columns stay
                   aligned with the header even before later rounds are seeded. An
@@ -1359,7 +1371,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
                 const isWDRound = isWD && wk && wk.week === p.wdRound;
                 return (
                   <div key={wi} style={{
-                    width: 36, textAlign: "center", fontSize: FS.sm,
+                    width: RND_W, textAlign: "center", fontSize: FS.sm,
                     fontWeight: isWDRound ? FW.heavy : FW.semibold,
                     color: isWDRound ? K.red : round ? K.t1 : K.t3 + "40",
                   }}>
@@ -1382,7 +1394,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
                   Total gross rides below as secondary info: it no longer breaks
                   ties, it's just context. WD players get "WD" in red regardless
                   of how many rounds they played before withdrawing. */}
-              <div style={{ width: 44, textAlign: "right" }}>
+              <div style={{ width: TOPAR_W, textAlign: "right" }}>
                 <div style={{
                   fontSize: HERO_NUM_SIZE - 4, fontWeight: HERO_NUM_WEIGHT,
                   color: isWD ? K.red : hasRounds ? K.t1 : K.t3,

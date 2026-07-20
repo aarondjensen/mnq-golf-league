@@ -476,6 +476,16 @@ export const db = {
       return snap.docs.map(d => d.data());
     } catch (e) { console.error("db.get error:", col, e); return []; }
   },
+  // Like get(), but THROWS on failure instead of returning []. Use wherever
+  // the caller must distinguish "collection is empty" from "read failed" —
+  // e.g. before persisting a derived cache. db.get's swallow-and-return-[]
+  // contract once let a transient network error write an empty historical-
+  // rounds cache to localStorage, permanently zeroing handicap history on
+  // that device.
+  getStrict: async (col, filters = []) => {
+    const snap = await getDocs(db._q(col, filters));
+    return snap.docs.map(d => d.data());
+  },
   upsert: async (col, data) => {
     if (!data.id) { console.error("db.upsert: missing id", col, data); return null; }
     try {
@@ -518,6 +528,39 @@ export const db = {
   deleteDoc: async (col, id) => {
     try { await deleteDoc(doc(_db, col, String(id))); return true; }
     catch (e) { console.error("db.deleteDoc error:", col, e); return null; }
+  },
+  // Atomic mixed-op batch: ops are { type: "set"|"delete", col, id, data?,
+  // merge? }. Built for the destructive schedule rewrites (generate,
+  // rain-out, undo rain-out), which previously deleted-then-recreated week
+  // docs one sequential await at a time — a mid-run failure left the season
+  // half-deleted with no rollback. Ops are deduped by (col, id) keeping the
+  // LAST op, so a flow that logically deletes a doc and then recreates it
+  // (week renumbering) commits only the final state and never enqueues two
+  // writes to the same document. THROWS on failure — with ≤500 ops (every
+  // current caller) the commit is all-or-nothing, so the caller can report
+  // "nothing was changed" truthfully. Above 500 ops Firestore forces
+  // chunking and atomicity is per-chunk, same as batchUpsert.
+  batchWrite: async (ops) => {
+    if (!ops || !ops.length) return 0;
+    const byDoc = new Map();
+    for (const op of ops) {
+      if (!op || !op.col || op.id === undefined || op.id === null) {
+        console.error("db.batchWrite: bad op", op);
+        continue;
+      }
+      byDoc.set(`${op.col} ${op.id}`, op);
+    }
+    const finalOps = [...byDoc.values()];
+    for (let i = 0; i < finalOps.length; i += BATCH_LIMIT) {
+      const batch = writeBatch(_db);
+      for (const op of finalOps.slice(i, i + BATCH_LIMIT)) {
+        const ref = doc(_db, op.col, String(op.id));
+        if (op.type === "delete") batch.delete(ref);
+        else batch.set(ref, op.data, { merge: op.merge === true });
+      }
+      await batch.commit();
+    }
+    return finalOps.length;
   },
   batchDelete: async (col, filters = []) => {
     try {

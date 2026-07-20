@@ -83,7 +83,7 @@ function computeMatchStatus(t1Pids, t2Pids, getScore, getStrokes, pars) {
 // ═══════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
-export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, commMode, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, openAllMatches, onAllMatchesOpened, openFinalize, onFinalizeOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData, autoSeedIfReady, attendance, saveAttendance }) {
+export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, commMode, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, applyScheduleOps, openAllMatches, onAllMatchesOpened, openFinalize, onFinalizeOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData, autoSeedIfReady, attendance, saveAttendance }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
   // 3-way view toggle: "myMatch" (default scoring view), "allMatches" (week overview), "lowNet" (leaderboard)
@@ -1449,11 +1449,18 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                     };
                     const fmtDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
+                    // All schedule writes are collected and committed in ONE
+                    // atomic batch (applyScheduleOps) — the delete-and-renumber
+                    // dance below must never half-apply.
+                    const ops = [];
+
                     // Mark the week as rained out (clear matches since they're moved to makeup)
-                    await saveWeekSchedule({ ...weekSch, rainedOut: true, matches: [] });
+                    ops.push({ type: "set", id: weekSch.id, data: { ...weekSch, rainedOut: true, matches: [] }, merge: true });
 
                     // Hard-delete all partial data from this week so handicaps, stats,
                     // and standings don't carry stale info once the makeup is played.
+                    // Runs BEFORE the schedule batch: it's idempotent/re-runnable,
+                    // and if it fails the schedule hasn't been touched yet.
                     if (clearWeekData) await clearWeekData(week);
 
                     // Build shift map: non-locked weeks at or after makeupWeekNum skip over locked weeks
@@ -1485,9 +1492,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                         parsed.setDate(parsed.getDate() + (newW - oldW) * 7);
                         newDate = fmtDate(parsed);
                       }
-                      if (deleteWeekSchedule) await deleteWeekSchedule(fw.id);
-                      if (setWeekSchedule) await setWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newW}`, week: newW, date: newDate });
-                      else await saveWeekSchedule({ ...fw, id: `${LEAGUE_ID}_w${newW}`, week: newW, date: newDate });
+                      ops.push({ type: "delete", id: fw.id });
+                      ops.push({ type: "set", id: `${LEAGUE_ID}_w${newW}`, data: { ...fw, id: `${LEAGUE_ID}_w${newW}`, week: newW, date: newDate } });
                     }
 
                     // Create makeup week
@@ -1510,8 +1516,17 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                       isPlayoff: weekSch.isPlayoff || false,
                       seeded: weekSch.seeded || false,
                     };
-                    if (setWeekSchedule) await setWeekSchedule(makeupDoc);
-                    else await saveWeekSchedule(makeupDoc);
+                    ops.push({ type: "set", id: makeupDoc.id, data: makeupDoc });
+
+                    try {
+                      await applyScheduleOps(ops);
+                    } catch (e) {
+                      console.error("rain out: schedule write failed — nothing was changed:", e);
+                      setConfirmModal(null);
+                      setToast("Rain out failed — no schedule changes were saved.");
+                      setTimeout(() => setToast(null), 3500);
+                      return;
+                    }
 
                     setConfirmModal(null);
                     setToast("Week " + week + " rained out");

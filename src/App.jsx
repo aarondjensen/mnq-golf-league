@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, nativeGoogleSignIn, nativeAppleSignIn, NATIVE_APPLE_ENABLED, nativeAuthSignOut, deleteAccount, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
 import { Capacitor } from "@capacitor/core";
-import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, LoadingPanel, serializeSeedWeeks, deserializeLeagueConfig, FS, FW } from "./theme";
+import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, classifyScoreHole, LoadingPanel, serializeSeedWeeks, deserializeLeagueConfig, FS, FW } from "./theme";
 import { parseScheduleDate } from "./lib/scheduleDate";
 import { usePullToRefresh } from "./lib/usePullToRefresh";
 import { autoSeedIfReady as autoSeedIfReadyLib } from "./lib/scheduleAutoSeed";
@@ -714,22 +714,46 @@ export default function GolfLeagueApp() {
   const HIST_CACHE_KEY = `mnq_hist_rounds_v1_${LEAGUE_ID}_${CURRENT_SEASON}`;
 
   // Aggregate raw hole-score docs into completed 9-hole rounds, keyed by
-  // player. Exact semantics of the original fetchAllScores reducer: any
-  // doc with score > 0 counts a hole (an _habsent=1 doc therefore counts
-  // 1 phantom "hole", which can never reach 9 on its own — same as
-  // before), and only rounds with exactly 9 scored holes survive.
+  // player. Docs are classified by their `hole` field (classifyScoreHole) so
+  // the sentinels never masquerade as holes:
+  //   • 'real'        — a normal 0..8 League-Night hole. A full 9 survives as a
+  //                     round, exactly as before.
+  //   • 'makeupHole'  — one hole of an individual-event makeup card (_hm0.._hm8).
+  //                     A full 9 becomes a round on its own.
+  //   • 'makeupTotal' — a total-only makeup (_hmtotal): its score IS the round
+  //                     gross, promoted directly (no per-hole detail).
+  //   • 'absent'/'withdraw' — sentinels, never counted. This is the fix for the
+  //                     old phantom-hole behavior: previously an _habsent=1 doc
+  //                     counted as a hole, so an absent player who ALSO had a
+  //                     9-hole makeup card tallied 10 and got rejected — and any
+  //                     stray sentinel inflated the gross. Both are gone now.
+  // calcPlayerHcp (the sole downstream consumer of this shape) needs a gross,
+  // not per-hole data, so a promoted makeup — hole card or total — feeds the
+  // handicap identically to a live round. Resolution order below keeps a real
+  // League-Night round ahead of a makeup for the same week (a present player
+  // never needs a makeup, but if both somehow exist the live card wins).
   const aggregateRounds = (docs) => {
     const roundMap = {};
     docs.forEach(r => {
       const key = `${r.season}_${r.week}_${r.player_id}`;
-      if (!roundMap[key]) roundMap[key] = { season: r.season, week: r.week, playerId: r.player_id, holes: 0, gross: 0 };
-      if (r.score > 0) { roundMap[key].holes++; roundMap[key].gross += r.score; }
+      if (!roundMap[key]) roundMap[key] = { season: r.season, week: r.week, playerId: r.player_id, holes: 0, gross: 0, mkHoles: 0, mkGross: 0, mkTotal: 0 };
+      const rd = roundMap[key];
+      switch (classifyScoreHole(r.hole)) {
+        case "real":        if (r.score > 0) { rd.holes++;   rd.gross   += r.score; } break;
+        case "makeupHole":  if (r.score > 0) { rd.mkHoles++; rd.mkGross += r.score; } break;
+        case "makeupTotal": if (r.score > 0) { rd.mkTotal = r.score; } break;
+        default: break; // 'absent', 'withdraw', 'ignore' — not scored holes
+      }
     });
     const byPlayer = {};
     Object.values(roundMap).forEach(rd => {
-      if (rd.holes === 9) {
+      let gross = null;
+      if (rd.holes === 9)        gross = rd.gross;
+      else if (rd.mkHoles === 9) gross = rd.mkGross;
+      else if (rd.mkTotal > 0)   gross = rd.mkTotal;
+      if (gross !== null) {
         if (!byPlayer[rd.playerId]) byPlayer[rd.playerId] = [];
-        byPlayer[rd.playerId].push({ season: rd.season, week: rd.week, gross: rd.gross });
+        byPlayer[rd.playerId].push({ season: rd.season, week: rd.week, gross });
       }
     });
     return byPlayer;
