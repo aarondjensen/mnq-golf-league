@@ -1609,11 +1609,20 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               return [ta?.player1, ta?.player2, tb?.player1, tb?.player2];
             }).filter(Boolean)
           )];
+          // Only surface a row when it actually needs the commissioner to DO
+          // something: a playoff round that's unaccounted for (blocking), a
+          // partial card, or a scoreless-but-not-absent player (both anomalies
+          // worth a look on any week). Benign, self-resolving states —
+          // complete, a regular-week absence a teammate covered, an already-
+          // entered makeup, a withdrawal — are intentionally silent, so the
+          // section never nags when nothing's wrong.
+          const needsAction = (st) =>
+            st === "partial" || st === "none" || (isPlayoffWk && st === "absent");
+          const isBlockingStatus = (st) => isPlayoffWk && (st === "absent" || st === "none");
           const auditRows = weekPlayerIds
             .map(pid => ({ pid, name: players.find(p => p.id === pid)?.name || pid, status: indivStatus(pid) }))
-            .filter(r => r.status !== "complete")
+            .filter(r => needsAction(r.status))
             .sort((a, b) => a.name.localeCompare(b.name));
-          const isBlockingStatus = (st) => isPlayoffWk && (st === "absent" || st === "none");
           const blockingCount = auditRows.filter(r => isBlockingStatus(r.status)).length;
 
           const handleFinalize = async () => {
@@ -1701,11 +1710,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
               {auditRows.length > 0 && (
                 <div style={{ marginBottom: 16 }}>
-                  <div style={{ fontSize: FS.base, fontWeight: FW.bold, color: K.t1, marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>Missing Scores</div>
+                  <div style={{ fontSize: FS.base, fontWeight: FW.bold, color: K.t1, marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>Action Needed</div>
                   <div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 10, lineHeight: 1.4 }}>
                     {blockingCount > 0
-                      ? `${blockingCount} playoff round${blockingCount === 1 ? "" : "s"} still need a makeup or a withdrawal before this week can finalize.`
-                      : "Review — nothing here blocks finalizing."}
+                      ? `${blockingCount} playoff round${blockingCount === 1 ? "" : "s"} need a makeup or a withdrawal before this week can finalize.`
+                      : "These cards look incomplete — worth a check before finalizing (they don't block the lock)."}
                   </div>
                   {auditRows.map(r => (
                     <MakeupAuditRow
