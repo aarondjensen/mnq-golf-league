@@ -2,7 +2,7 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { K, I, BackBtn, Card, EmptyState,
   getWeekSide,
   formatTeeTime as fmtTeeTimeUtil, LIST_GAP,
-  buildSeedMap, buildPlayoffSeedMap, matchPids, FS, FW } from "../theme";
+  buildSeedMap, buildPlayoffSeedMap, matchPids, resolveIndivRound, FS, FW } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 import { computeMatchResult, resultLetterFor, readScoreEffective, readStrokesEffectiveExt, computePlayoffTiebreaker, isMatchPendingMakeup } from "../lib/matchCalc";
 import { parseScheduleDate } from "../lib/scheduleDate";
@@ -436,6 +436,42 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       saveScore(week, pid, "absent", 0);
     }
     saveAttendance(week, pid, "makeup");
+  };
+
+  // ── Individual-event makeup / withdrawal (Phase 4 finalize pre-flight) ──
+  // These write into the makeup namespace defined in theme.jsx
+  // (classifyScoreHole / resolveIndivRound), entirely separate from the team
+  // match's _h{0..8} + _habsent, so a makeup entered here never disturbs an
+  // already-decided match. saveScore rides them in as hole-score docs whose
+  // `hole` field is "m0".."m8", "mtotal", or "indivwd":
+  //   • saveMakeupHole  — one hole of a made-up individual round
+  //   • saveMakeupTotal — a total-only makeup (gross only; absent from per-hole Stats)
+  //   • clearMakeup     — wipe a player's makeup for this week (0 = ignored by the resolver)
+  //   • setIndivWithdraw— reversible withdrawal from the individual event (1 / 0)
+  const saveMakeupHole  = (pid, h, val) => saveScore(week, pid, `m${h}`, val);
+  const saveMakeupTotal = (pid, val)    => saveScore(week, pid, "mtotal", val);
+  const clearMakeup     = (pid) => { for (let h = 0; h <= 8; h++) saveScore(week, pid, `m${h}`, 0); saveScore(week, pid, "mtotal", 0); };
+  const setIndivWithdraw = (pid, on) => saveScore(week, pid, "indivwd", on ? 1 : 0);
+
+  // Classify a player's individual-event standing for THIS week from live
+  // holeScores, via the same canonical resolver the Individual view and Stats
+  // use — so the finalize pre-flight can never disagree with what those boards
+  // will show. Absence (_habsent) is read separately, since the resolver
+  // intentionally ignores it:
+  //   'complete'    — full 9-hole live card (nothing to resolve)
+  //   'makeup'      — a made-up hole card is in
+  //   'makeupTotal' — a total-only makeup is in
+  //   'withdrawn'   — explicitly withdrawn from the event
+  //   'partial'     — 1..8 live holes (likely a data-entry gap)
+  //   'absent'      — marked absent, no makeup / withdrawal
+  //   'none'        — no scores at all, not marked absent (anomaly on a signed week)
+  const indivStatus = (pid) => {
+    const ir = resolveIndivRound(holeScores, week, pid);
+    if (ir.withdrawn) return "withdrawn";
+    if (ir.mode === "makeupTotal") return "makeupTotal";
+    if (ir.mode === "makeupHoles") return "makeup";
+    if (ir.mode === "live") return ir.holesPlayed >= 9 ? "complete" : "partial";
+    return isPlayerAbsent(pid) ? "absent" : "none";
   };
 
   // Sync local absent state from Firestore. Reruns whenever:
@@ -1556,7 +1592,39 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           const par3Holes = pars.map((p, i) => p === 3 ? (side === 'front' ? i + 1 : i + 10) : null).filter(Boolean);
           const allPlayersSorted = [...players].sort((a, b) => a.name.localeCompare(b.name));
 
+          // ── Finalize pre-flight audit ──────────────────────────────────
+          // Every player in THIS week's matches who doesn't have a clean, full
+          // live card is surfaced for review before the week can lock — a
+          // safety buffer that catches missing scores on any week. Only playoff
+          // rounds that are still unaccounted for (absent / no scores, with no
+          // makeup and no withdrawal) actually BLOCK the finalize; everything
+          // else (a regular-week absence covered by a teammate, an already-
+          // entered makeup, a withdrawal, a partial card) is shown for
+          // awareness but doesn't gate the lock.
+          const isPlayoffWk = weekSch?.isPlayoff === true;
+          const weekPlayerIds = [...new Set(
+            (weekSch?.matches || []).flatMap(m => {
+              const ta = teams.find(t => t.id === m.team1);
+              const tb = teams.find(t => t.id === m.team2);
+              return [ta?.player1, ta?.player2, tb?.player1, tb?.player2];
+            }).filter(Boolean)
+          )];
+          const auditRows = weekPlayerIds
+            .map(pid => ({ pid, name: players.find(p => p.id === pid)?.name || pid, status: indivStatus(pid) }))
+            .filter(r => r.status !== "complete")
+            .sort((a, b) => a.name.localeCompare(b.name));
+          const isBlockingStatus = (st) => isPlayoffWk && (st === "absent" || st === "none");
+          const blockingCount = auditRows.filter(r => isBlockingStatus(r.status)).length;
+
           const handleFinalize = async () => {
+            // Pre-flight gate: on a playoff week, don't lock while any player's
+            // individual round is still unaccounted for. The button is disabled
+            // in this state, so this is defense-in-depth against a race.
+            if (blockingCount > 0) {
+              setToast(`Resolve ${blockingCount} playoff round${blockingCount === 1 ? "" : "s"} (enter a makeup or withdraw) before finalizing.`);
+              setTimeout(() => setToast(null), 3500);
+              return;
+            }
             // Safety guard — never lock a week that isn't fully scored. With more
             // than one commissioner, finalizes can race: once someone locks the
             // current week, `currentWeek` advances underneath an already-open
@@ -1630,6 +1698,34 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           return (
             <Popup onClose={() => setShowCtpPopup(false)} maxWidth={360} padding={20}>
               <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 10 }}>Finalize Week {week}</div>
+
+              {auditRows.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <div style={{ fontSize: FS.base, fontWeight: FW.bold, color: K.t1, marginBottom: 4, textTransform: "uppercase", letterSpacing: 1 }}>Missing Scores</div>
+                  <div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 10, lineHeight: 1.4 }}>
+                    {blockingCount > 0
+                      ? `${blockingCount} playoff round${blockingCount === 1 ? "" : "s"} still need a makeup or a withdrawal before this week can finalize.`
+                      : "Review — nothing here blocks finalizing."}
+                  </div>
+                  {auditRows.map(r => (
+                    <MakeupAuditRow
+                      key={r.pid}
+                      name={r.name}
+                      status={r.status}
+                      blocking={isBlockingStatus(r.status)}
+                      isPlayoff={isPlayoffWk}
+                      side={side}
+                      onSaveHoles={(vals) => { vals.forEach((v, h) => { if (v > 0) saveMakeupHole(r.pid, h, v); }); }}
+                      onSaveTotal={(v) => saveMakeupTotal(r.pid, v)}
+                      onClearMakeup={() => clearMakeup(r.pid)}
+                      onWithdraw={() => setIndivWithdraw(r.pid, true)}
+                      onUndoWithdraw={() => setIndivWithdraw(r.pid, false)}
+                      K={K}
+                    />
+                  ))}
+                </div>
+              )}
+
               <div style={{ fontSize: FS.base, fontWeight: FW.bold, color: K.t1, marginBottom: 14, textTransform: "uppercase", letterSpacing: 1 }}>Closest to the Pin</div>
 
               {par3Holes.map(holeNum => {
@@ -1670,7 +1766,7 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
               )}
 
               <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
-                <button onClick={handleFinalize} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: FW.bold, cursor: "pointer" }}>
+                <button onClick={handleFinalize} disabled={blockingCount > 0} style={{ flex: 1, padding: 12, borderRadius: 10, background: blockingCount > 0 ? K.t3 : K.act, border: "none", color: K.bg, fontSize: 14, fontWeight: FW.bold, cursor: blockingCount > 0 ? "not-allowed" : "pointer", opacity: blockingCount > 0 ? 0.6 : 1 }}>
                   Finalize Week
                 </button>
                 <button onClick={() => setShowCtpPopup(false)} style={{ flex: 1, padding: 12, borderRadius: 10, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: 14, fontWeight: FW.bold, cursor: "pointer" }}>
@@ -2772,6 +2868,122 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 // (e.g. an ace on a par 3, or a 9 on a par 4) since "Birdie/Par/Bogey/..." no
 // longer line up with the shifted numbers — see `showLabels` below.
 const SCORE_LABELS = ["Birdie", "Par", "Bogey", "Double", "Triple"];
+
+// ──────────────────────────────────────────────────────────────────────────
+//  MakeupAuditRow — one player in the finalize pre-flight review
+// ──────────────────────────────────────────────────────────────────────────
+// Renders a player whose individual-event round isn't a clean full live card.
+// On a playoff week an unresolved round (absent / no scores, no makeup, no
+// withdrawal) is BLOCKING, and offers the commissioner two ways to clear it:
+// enter a makeup round (hole-by-hole or a single total) or withdraw the player
+// from the event (reversible). Already-resolved rows (makeup in / withdrawn)
+// and non-blocking informational rows (a regular-week absence a teammate
+// covered, a partial card) render read-only. All writes go through the parent's
+// makeup namespace helpers, never touching the team match.
+function MakeupAuditRow({ name, status, blocking, isPlayoff, side, onSaveHoles, onSaveTotal, onClearMakeup, onWithdraw, onUndoWithdraw, K }) {
+  const [entry, setEntry] = useState(null);          // null | "holes" | "total"
+  const [holeVals, setHoleVals] = useState(Array(9).fill(""));
+  const [totalVal, setTotalVal] = useState("");
+
+  const holeLabel = (i) => side === "front" ? i + 1 : i + 10;   // 0-indexed → display number
+  const enteredCount = holeVals.filter(v => Number(v) > 0).length;
+  const totalNum = Number(totalVal);
+
+  const meta = {
+    makeup:      { label: "Makeup entered",         color: K.grn },
+    makeupTotal: { label: "Makeup entered (total)", color: K.grn },
+    withdrawn:   { label: "Withdrawn from event",   color: K.t3 },
+    partial:     { label: "Partial card",           color: K.warn },
+    absent:      { label: isPlayoff ? "Absent — needs a decision" : "Absent — teammate covered", color: blocking ? K.warn : K.t3 },
+    none:        { label: isPlayoff ? "No score — needs a decision" : "No score recorded",        color: K.warn },
+  }[status] || { label: status, color: K.t3 };
+
+  const commitHoles = () => {
+    if (enteredCount === 0) return;
+    onSaveHoles(holeVals.map(v => Number(v) || 0));
+    setEntry(null); setHoleVals(Array(9).fill(""));
+  };
+  const commitTotal = () => {
+    if (!(totalNum > 0)) return;
+    onSaveTotal(totalNum);
+    setEntry(null); setTotalVal("");
+  };
+
+  const btn = (label, onClick, kind) => (
+    <button onClick={onClick} style={{
+      fontSize: FS.xs, fontWeight: FW.bold, cursor: "pointer", borderRadius: 6, padding: "5px 10px",
+      background: kind === "solid" ? K.act : "none",
+      color: kind === "solid" ? K.bg : (kind === "danger" ? K.red : K.hcpBlue),
+      border: kind === "solid" ? "none" : `1px solid ${(kind === "danger" ? K.red : K.hcpBlue)}40`,
+    }}>{label}</button>
+  );
+
+  return (
+    <Card style={{ marginBottom: 6, padding: "10px 12px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <span style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.t1, flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{name}</span>
+        <span style={{ fontSize: 9, fontWeight: FW.heavy, letterSpacing: 1, textTransform: "uppercase", color: meta.color, background: meta.color + "18", border: `1px solid ${meta.color}40`, borderRadius: 6, padding: "3px 7px", whiteSpace: "nowrap" }}>{meta.label}</span>
+      </div>
+
+      {(status === "makeup" || status === "makeupTotal") && (
+        <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>{btn("Clear makeup", onClearMakeup, "danger")}</div>
+      )}
+      {status === "withdrawn" && (
+        <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>{btn("Undo withdrawal", onUndoWithdraw)}</div>
+      )}
+
+      {blocking && (
+        <>
+          {entry === null && (
+            <div style={{ marginTop: 8, display: "flex", gap: 8, justifyContent: "flex-end" }}>
+              {btn("Enter makeup", () => setEntry("holes"))}
+              {btn("Withdraw", onWithdraw, "danger")}
+            </div>
+          )}
+
+          {entry !== null && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                <button onClick={() => setEntry("holes")} style={{ flex: 1, fontSize: FS.xs, fontWeight: FW.bold, padding: "6px 0", borderRadius: 6, cursor: "pointer", background: entry === "holes" ? K.hcpBlue : "none", color: entry === "holes" ? K.bg : K.hcpBlue, border: `1px solid ${K.hcpBlue}40` }}>Hole-by-hole</button>
+                <button onClick={() => setEntry("total")} style={{ flex: 1, fontSize: FS.xs, fontWeight: FW.bold, padding: "6px 0", borderRadius: 6, cursor: "pointer", background: entry === "total" ? K.hcpBlue : "none", color: entry === "total" ? K.bg : K.hcpBlue, border: `1px solid ${K.hcpBlue}40` }}>Total only</button>
+              </div>
+
+              {entry === "holes" && (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+                    {holeVals.map((v, i) => (
+                      <div key={i} style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <span style={{ fontSize: 10, color: K.t3, width: 16, textAlign: "right" }}>{holeLabel(i)}</span>
+                        <input type="number" inputMode="numeric" value={v} onChange={e => setHoleVals(prev => { const n = [...prev]; n[i] = e.target.value; return n; })}
+                          style={{ width: "100%", minWidth: 0, padding: "6px 4px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.sm, textAlign: "center" }} />
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                    <button onClick={commitHoles} disabled={enteredCount === 0} style={{ flex: 1, padding: 9, borderRadius: 8, background: enteredCount === 0 ? K.t3 : K.grn, border: "none", color: K.bg, fontSize: FS.sm, fontWeight: FW.bold, cursor: enteredCount === 0 ? "not-allowed" : "pointer", opacity: enteredCount === 0 ? 0.6 : 1 }}>Save {enteredCount}/9</button>
+                    <button onClick={() => { setEntry(null); setHoleVals(Array(9).fill("")); }} style={{ padding: "9px 14px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer" }}>Cancel</button>
+                  </div>
+                </>
+              )}
+
+              {entry === "total" && (
+                <>
+                  <input type="number" inputMode="numeric" value={totalVal} placeholder="Total gross (9 holes)" onChange={e => setTotalVal(e.target.value)}
+                    style={{ width: "100%", padding: "10px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.sm, textAlign: "center" }} />
+                  <div style={{ fontSize: 10, color: K.t3, marginTop: 6, lineHeight: 1.4 }}>Total-only rounds count toward the tournament and handicaps, but not the per-hole Stats boards.</div>
+                  <div style={{ display: "flex", gap: 8, marginTop: 10 }}>
+                    <button onClick={commitTotal} disabled={!(totalNum > 0)} style={{ flex: 1, padding: 9, borderRadius: 8, background: !(totalNum > 0) ? K.t3 : K.grn, border: "none", color: K.bg, fontSize: FS.sm, fontWeight: FW.bold, cursor: !(totalNum > 0) ? "not-allowed" : "pointer", opacity: !(totalNum > 0) ? 0.6 : 1 }}>Save total</button>
+                    <button onClick={() => { setEntry(null); setTotalVal(""); }} style={{ padding: "9px 14px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer" }}>Cancel</button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </>
+      )}
+    </Card>
+  );
+}
 
 function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, pid, week, curHole, saveScore, K, absentBtn }) {
   const handleScore = (val) => {
