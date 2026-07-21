@@ -2414,26 +2414,31 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         const absentLocked = hole1Done && !absent;
         const absentBtn = !isAlreadyFinalized ? (
           <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
-            {/* Makeup button — amber pill, no absentLocked gate since
-                makeup is an explicit "this person plays later" decision
-                valid at any time. Writes attendance status="makeup" via
-                markMakeup, which clears any prior _habsent flag too. */}
-            <button
-              onClick={() => {
-                setConfirmModal({
-                  title: `Mark ${pl.name} as making up?`,
-                  message: `${pl.name} will post their score later. The match stays open until then.`,
-                  onConfirm: () => { markMakeup(pid); setConfirmModal(null); },
-                });
-              }}
-              style={{
-                fontSize: FS.xs, fontWeight: FW.semibold, color: K.t3, background: "none",
-                border: `1px solid ${K.bdr}`, borderRadius: 6,
-                padding: "3px 8px", cursor: "pointer", flexShrink: 0,
-              }}
-            >
-              Makeup
-            </button>
+            {/* Makeup button — team-match makeup, and deliberately NOT offered
+                in the playoffs: a head-to-head playoff match can't be replayed,
+                so an absent player's match is simply covered by their teammate.
+                (Their INDIVIDUAL tournament round can still be made up later via
+                the finalize pre-flight — that's a separate mechanism.) Writes
+                attendance status="makeup" via markMakeup, which clears any prior
+                _habsent flag too. Regular season only. */}
+            {!weekSch?.isPlayoff && (
+              <button
+                onClick={() => {
+                  setConfirmModal({
+                    title: `Mark ${pl.name} as making up?`,
+                    message: `${pl.name} will post their score later. The match stays open until then.`,
+                    onConfirm: () => { markMakeup(pid); setConfirmModal(null); },
+                  });
+                }}
+                style={{
+                  fontSize: FS.xs, fontWeight: FW.semibold, color: K.t3, background: "none",
+                  border: `1px solid ${K.bdr}`, borderRadius: 6,
+                  padding: "3px 8px", cursor: "pointer", flexShrink: 0,
+                }}
+              >
+                Makeup
+              </button>
+            )}
             <button
               onClick={() => {
                 if (absentLocked) return;
