@@ -857,23 +857,34 @@ export default function GolfLeagueApp() {
     const hist = await loadHistoricalRounds();
     if (!seasonScoresCacheRef.current) await fetchSeasonScores();
     // Reconstruct doc-shaped rows from the season cache's flat keys so
-    // aggregateRounds can run unchanged. Key format is
-    // `w{week}_p{playerId}_h{hole}`; playerId may itself contain
-    // underscores, so parse from both ends: week up to the first `_p`,
-    // hole from the last `_h`. The hole segment can also be the literal
-    // "absent" (the `_habsent` sentinel) — aggregateRounds only looks at
-    // score, so it flows through with identical semantics to the old
-    // raw-doc path.
+    // aggregateRounds can run over the same shape as the raw historical
+    // docs. Key format is `w{week}_p{playerId}_h{hole}`; playerId may
+    // itself contain underscores, so parse from both ends: week up to the
+    // first `_p`, hole from the last `_h`.
+    //
+    // The `hole` field is LOAD-BEARING: aggregateRounds classifies every
+    // row via classifyScoreHole(r.hole), and only rows that classify as
+    // "real" (holes 0..8) count toward a completed 9-hole round. It must be
+    // carried through here exactly as the raw historical docs carry it, or
+    // every reconstructed current-season row would classify as "ignore"
+    // (String(undefined) === "undefined") and the entire current season
+    // would silently drop out of the handicap history — leaving only prior
+    // seasons. The hole segment may be a numeric "0".."8" (a normal hole)
+    // or a sentinel/makeup token ("absent", "indivwd", "mtotal", "m0".."m8");
+    // numeric holes are normalized to Number to mirror the raw-doc shape,
+    // and classifyScoreHole handles both forms identically either way.
     const seasonDocs = [];
     const flat = seasonScoresCacheRef.current;
     for (const k in flat) {
       const pStart = k.indexOf("_p");
       const hStart = k.lastIndexOf("_h");
       if (pStart < 1 || hStart <= pStart) continue;
+      const holeSeg = k.slice(hStart + 2);
       seasonDocs.push({
         season: CURRENT_SEASON,
         week: Number(k.slice(1, pStart)),
         player_id: k.slice(pStart + 2, hStart),
+        hole: /^[0-8]$/.test(holeSeg) ? Number(holeSeg) : holeSeg,
         score: flat[k],
       });
     }
