@@ -933,12 +933,14 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
   const [allRounds, setAllRounds] = useState(null); // { playerId: [{ season, week, gross }] }
   const [loading, setLoading] = useState(true);
   const [expandedPid, setExpandedPid] = useState(null); // playerId whose scorecard is expanded inline
+  const [scoreMode, setScoreMode] = useState("net"); // "net" | "gross" — leaderboard scoring lens; defaults to Net
 
   // LIVE POSITION MOVEMENT — backs the WBC-style ▲/▼ arrows next to the rank
   // badge. prevPositions remembers each active player's last golf position so
   // the movement effect (defined after the leaderboard memo) can diff the board
   // whenever a live score reshuffles it.
   const prevPositions = useRef({});
+  const prevMode = useRef("net"); // last lens the movement effect saw; a change rebaselines without arrows
   const [movements, setMovements] = useState({});
 
   // ALWAYS-LIVE MODEL: every non-rained-out playoff week with matches is on the
@@ -1076,7 +1078,8 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
 
     const board = players.map(p => {
       let totalGross = 0;
-      let totalNetToPar = 0;     // cumulative net-to-par over holes PLAYED — the ranking metric
+      let totalNetToPar = 0;     // cumulative net-to-par over holes PLAYED — the Net ranking metric
+      let totalGrossToPar = 0;   // cumulative gross-to-par over holes PLAYED — the Gross ranking metric
       let totalHolesPlayed = 0;
       let roundsPlayed = 0;
       const rounds = [];
@@ -1173,14 +1176,19 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
           for (const h of playedHoles) parPlayed += pars[h] || 4;
         }
         const netToPar = gross - parPlayed - signedStrokes;
+        // Gross-to-par ignores allocated handicap strokes entirely — the same
+        // round scored as if this were a scratch/gross tournament. Drives the
+        // Gross lens on the leaderboard toggle.
+        const grossToPar = gross - parPlayed;
 
         totalGross += gross;
         totalNetToPar += netToPar;
+        totalGrossToPar += grossToPar;
         totalHolesPlayed += holesPlayed;
         roundsPlayed++;
         rounds.push({
           week: wk.week, date: wk.date, side, gross,
-          netToPar,
+          netToPar, grossToPar,
           holesPlayed, nineHcp: roundHcp,
           // Cell markers: makeup = played another day; totalOnly = entered as a
           // bare gross (no per-hole detail, so it's absent from per-hole Stats).
@@ -1198,6 +1206,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
         startNineHcp: startHcp,
         totalGross,
         totalNetToPar,
+        totalGrossToPar,
         totalHolesPlayed,
         roundsPlayed,
         rounds,
@@ -1206,18 +1215,23 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
       };
     }).filter(p => p.roundsPlayed > 0 || playoffWeeks.length > 0);
 
+    // Ranking metric follows the active lens: Net uses cumulative net-to-par,
+    // Gross uses cumulative gross-to-par. Everything below (sort, ties, positions)
+    // keys off this one field so the whole board re-ranks when the toggle flips.
+    const metricKey = scoreMode === "gross" ? "totalGrossToPar" : "totalNetToPar";
+
     // Sort order: ACTIVE (played at least one round, not withdrawn) → WD → NO DATA.
-    // Within ACTIVE, cumulative net-to-par low→high. Equal totals are GENUINE
-    // TIES — no gross tiebreaker (standard golf tie handling); alphabetical
-    // within a tied group purely for stable layout. Within WD and NO DATA,
-    // alphabetical for the same reason.
+    // Within ACTIVE, cumulative to-par low→high. Equal totals are GENUINE TIES —
+    // no secondary tiebreaker (standard golf tie handling); alphabetical within a
+    // tied group purely for stable layout. Within WD and NO DATA, alphabetical for
+    // the same reason.
     const bucket = (p) => p.withdrew ? 1 : p.roundsPlayed > 0 ? 0 : 2;
     board.sort((a, b) => {
       const ab = bucket(a);
       const bb = bucket(b);
       if (ab !== bb) return ab - bb;
-      if (ab === 0 && a.totalNetToPar !== b.totalNetToPar) {
-        return a.totalNetToPar - b.totalNetToPar;
+      if (ab === 0 && a[metricKey] !== b[metricKey]) {
+        return a[metricKey] - b[metricKey];
       }
       return a.name.localeCompare(b.name);
     });
@@ -1229,7 +1243,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
     // position (posLabel stays undefined; the badge doesn't render for them).
     const actives = board.filter(p => bucket(p) === 0);
     actives.forEach((p, j) => {
-      p.posRank = (j > 0 && p.totalNetToPar === actives[j - 1].totalNetToPar)
+      p.posRank = (j > 0 && p[metricKey] === actives[j - 1][metricKey])
         ? actives[j - 1].posRank
         : j + 1;
     });
@@ -1238,7 +1252,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
     actives.forEach(p => { p.posLabel = (rankCounts[p.posRank] > 1 ? "T" : "") + p.posRank; });
 
     return board;
-  }, [players, teams, course, playoffWeeks, scores, allRounds, scoringRules, leagueConfig]);
+  }, [players, teams, course, playoffWeeks, scores, allRounds, scoringRules, leagueConfig, scoreMode]);
 
   // WBC-style live movement arrows. When a streamed score reshuffles the board,
   // players who climbed get a green ▲ and players who dropped a red ▼; the marker
@@ -1256,11 +1270,17 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
     .join(",");
   useEffect(() => {
     const actives = leaderboard.filter(p => p.posLabel != null && !p.withdrew);
+    // A lens flip (Net↔Gross) reshuffles nearly everyone; that's not live
+    // movement, so rebaseline positions without drawing any arrows.
+    const modeChanged = prevMode.current !== scoreMode;
+    prevMode.current = scoreMode;
     const newMov = {};
-    actives.forEach(p => {
-      const prev = prevPositions.current[p.playerId];
-      if (prev != null && prev !== p.posRank) newMov[p.playerId] = prev > p.posRank ? "up" : "down";
-    });
+    if (!modeChanged) {
+      actives.forEach(p => {
+        const prev = prevPositions.current[p.playerId];
+        if (prev != null && prev !== p.posRank) newMov[p.playerId] = prev > p.posRank ? "up" : "down";
+      });
+    }
     setMovements(newMov);
     const newPos = {};
     actives.forEach(p => { newPos[p.playerId] = p.posRank; });
@@ -1301,10 +1321,15 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
   // room before names truncate: with up to four round columns the fixed columns
   // otherwise squeeze the name to just a few characters on narrow phones. The
   // Player column is flex:1, so every pixel trimmed here goes straight to the name.
+  // Total / Thru / R1–R4 all share ONE width and are center-aligned, so their
+  // centers sit at an even rhythm — equal gaps require equal interior widths, and
+  // right-aligning Total (the old layout) was what jammed it against Thru. 32px
+  // holds a 3-char total ("+12"/"WD") at FS.base with room to spare.
   const POS_W = 30;   // rank badge cell (+4px over the badge for the ▲/▼ arrow gutter)
-  const THRU_W = 30;  // "Thru" column ("F" or holes-completed count)
-  const RND_W = 28;   // each R# column ("+3"/"-2"/"WD"/"E"/"–" all fit at FS.sm)
-  const TOPAR_W = 44; // cumulative Total (to-par) column
+  const STAT_W = 32;  // every numeric column (Total, Thru, each R#) — uniform for even spacing
+  const THRU_W = STAT_W;
+  const RND_W = STAT_W;
+  const TOPAR_W = STAT_W;
   const PAD_X = 10;   // card / header horizontal padding
 
   // PGA-style "Thru": the round the field is currently on is the furthest week
@@ -1373,12 +1398,14 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
     );
   };
 
+  const isGross = scoreMode === "gross";
+
   return (
     <div style={{ padding: "0 2px" }}>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 10 }}>
         <div style={{ fontSize: FS.xs, color: K.t3 }}>
-          Net stroke play · {totalRounds} round{totalRounds !== 1 ? "s" : ""} · All players
+          {isGross ? "Gross" : "Net"} stroke play · {totalRounds} round{totalRounds !== 1 ? "s" : ""} · All players
         </div>
         {isLive && (
           <>
@@ -1400,13 +1427,35 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
         )}
       </div>
 
+      {/* Net | Gross lens toggle — Net is the default. Gross re-scores the whole
+          board as a scratch tournament: same rounds, handicap strokes removed, so
+          positions and every to-par value recompute. Matches the app's segmented
+          control styling (Regular Season | Postseason, etc.). */}
+      <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+        <div style={{ display: "inline-flex", background: K.inp, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: 3 }}>
+          {["net", "gross"].map(m => {
+            const active = scoreMode === m;
+            return (
+              <button key={m} onClick={() => setScoreMode(m)} style={{
+                padding: "6px 18px", borderRadius: 6, border: "none", cursor: "pointer",
+                background: active ? K.card : "transparent",
+                color: active ? K.t1 : K.t3,
+                fontSize: 10, fontWeight: FW.bold, letterSpacing: .8, textTransform: "uppercase",
+                boxShadow: active ? `0 1px 3px ${K.bdr}40` : "none",
+                transition: "all .15s", whiteSpace: "nowrap",
+              }}>{m}</button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Leaderboard */}
       <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
         {/* Column header */}
         <div style={{ display: "flex", padding: `0 ${PAD_X}px`, fontSize: FS.micro, fontWeight: FW.bold, color: K.logoBright, textTransform: "uppercase", letterSpacing: .8 }}>
           <div style={{ width: POS_W }} />
           <div style={{ flex: 1, minWidth: 0 }}>Player</div>
-          <div style={{ width: TOPAR_W, textAlign: "right" }}>Total</div>
+          <div style={{ width: TOPAR_W, textAlign: "center" }}>Total</div>
           <div style={{ width: THRU_W, textAlign: "center" }}>Thru</div>
           {Array.from({ length: totalRounds }, (_, i) => (
             <div key={i} style={{ width: RND_W, textAlign: "center" }}>R{i + 1}</div>
@@ -1502,11 +1551,11 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
                   end-to-end so it's the exact sum of the round cells. WD players
                   show "WD" in red. */}
               <div style={{
-                width: TOPAR_W, textAlign: "right", fontSize: FS.base, fontWeight: FW.heavy,
+                width: TOPAR_W, textAlign: "center", fontSize: FS.base, fontWeight: FW.heavy,
                 fontFamily: "'League Spartan', sans-serif",
-                color: isWD ? K.red : hasRounds ? (p.totalNetToPar < 0 ? K.red : K.t1) : K.t3,
+                color: isWD ? K.red : hasRounds ? ((isGross ? p.totalGrossToPar : p.totalNetToPar) < 0 ? K.red : K.t1) : K.t3,
               }}>
-                {isWD ? "WD" : hasRounds ? fmtToPar(p.totalNetToPar) : "–"}
+                {isWD ? "WD" : hasRounds ? fmtToPar(isGross ? p.totalGrossToPar : p.totalNetToPar) : "–"}
               </div>
 
               {/* Thru — "F" when the current round's 9 is complete, otherwise
@@ -1528,15 +1577,16 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
                 const wk = playoffWeeks[wi];
                 const round = wk ? p.rounds.find(r => r.week === wk.week) : null;
                 const isWDRound = isWD && wk && wk.week === p.wdRound;
+                const roundVal = round ? (isGross ? round.grossToPar : round.netToPar) : null;
                 return (
                   <div key={wi} style={{
                     width: RND_W, textAlign: "center", fontSize: FS.sm,
                     fontWeight: isWDRound ? FW.heavy : FW.semibold,
-                    color: isWDRound ? K.red : round ? (round.netToPar < 0 ? K.red : K.t1) : K.t3 + "40",
+                    color: isWDRound ? K.red : round ? (roundVal < 0 ? K.red : K.t1) : K.t3 + "40",
                   }}>
                     {isWDRound ? "WD" : round ? (
                       <>
-                        {fmtToPar(round.netToPar)}
+                        {fmtToPar(roundVal)}
                         {round.makeup && (
                           <sup style={{ fontSize: FS.micro, color: K.act, fontWeight: FW.bold, marginLeft: 1 }}>
                             {round.totalOnly ? "t" : "m"}
