@@ -933,6 +933,11 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
   const [loading, setLoading] = useState(true);
   const [expandedPid, setExpandedPid] = useState(null); // playerId whose scorecard is expanded inline
   const [scoreMode, setScoreMode] = useState("net"); // "net" | "gross" — leaderboard scoring lens; defaults to Net
+  // Display sort — a VIEW-only reorder. Rank badges + movement arrows always keep
+  // reflecting golf position (computed by Total in the memo); this only changes
+  // row order. Defaults to Total ascending, which reproduces leader-on-top.
+  const [sortCol, setSortCol] = useState("total"); // "player" | "total" | "thru" | "r1".."rN"
+  const [sortDir, setSortDir] = useState("asc");   // "asc" | "desc"
 
   // LIVE POSITION MOVEMENT — backs the WBC-style ▲/▼ arrows next to the rank
   // badge. prevPositions remembers each active player's last golf position so
@@ -1385,6 +1390,81 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
 
   const isGross = scoreMode === "gross";
 
+  // Header click: same column flips asc⇄desc; a new column starts ascending.
+  const onSort = (col) => {
+    if (sortCol === col) setSortDir(d => (d === "asc" ? "desc" : "asc"));
+    else { setSortCol(col); setSortDir("asc"); }
+  };
+
+  // Display sort. Outermost key is always the bucket (active → WD → no-data) so
+  // real competitors stay on top no matter the column; within a bucket we sort by
+  // the chosen column. Players with no value for that column (e.g. haven't teed
+  // off in the current round when sorting Thru) sink to the bottom of their bucket
+  // regardless of direction, and equal values fall back to name order for stable
+  // layout. Total / R# use the active Net/Gross lens.
+  const bucketOf = (p) => (p.withdrew ? 1 : p.roundsPlayed > 0 ? 0 : 2);
+  const sortVal = (p) => {
+    switch (sortCol) {
+      case "player":
+        return p.name.toLowerCase();
+      case "thru": {
+        const cr = currentRoundWeek ? p.rounds.find(r => r.week === currentRoundWeek) : null;
+        return cr ? cr.holesPlayed : null;
+      }
+      case "total":
+        return p.roundsPlayed > 0 ? (isGross ? p.totalGrossToPar : p.totalNetToPar) : null;
+      default: {
+        if (sortCol[0] === "r") {
+          const idx = parseInt(sortCol.slice(1), 10) - 1;
+          const wk = playoffWeeks[idx];
+          const rd = wk ? p.rounds.find(r => r.week === wk.week) : null;
+          return rd ? (isGross ? rd.grossToPar : rd.netToPar) : null;
+        }
+        return null;
+      }
+    }
+  };
+  const dirMul = sortDir === "desc" ? -1 : 1;
+  const displayBoard = [...leaderboard].sort((a, b) => {
+    const ba = bucketOf(a), bb = bucketOf(b);
+    if (ba !== bb) return ba - bb;
+    const va = sortVal(a), vb = sortVal(b);
+    const am = va === null || va === undefined;
+    const bm = vb === null || vb === undefined;
+    if (am && bm) return a.name.localeCompare(b.name);
+    if (am) return 1;   // missing values sink to the bottom of the bucket
+    if (bm) return -1;
+    if (typeof va === "string") {
+      const c = va.localeCompare(vb) * dirMul;
+      return c !== 0 ? c : a.name.localeCompare(b.name);
+    }
+    if (va !== vb) return (va - vb) * dirMul;
+    return a.name.localeCompare(b.name);
+  });
+
+  // Sortable column-header cell — active column reads in the maize accent with a
+  // ▲/▼ direction caret. Player is left-aligned and flex; the rest are the shared
+  // fixed width, centered.
+  const th = (col, label, { width, flex, align, keyId } = {}) => {
+    const active = sortCol === col;
+    return (
+      <div
+        key={keyId}
+        onClick={() => onSort(col)}
+        style={{
+          width, flex, minWidth: flex ? 0 : undefined,
+          cursor: "pointer", userSelect: "none",
+          color: active ? K.act : K.logoBright,
+          display: "flex", alignItems: "center", gap: 1,
+          justifyContent: align === "left" ? "flex-start" : "center",
+        }}
+      >
+        <span>{label}</span>
+        {active && <span style={{ fontSize: 7, lineHeight: 1 }}>{sortDir === "asc" ? "▲" : "▼"}</span>}
+      </div>
+    );
+  };
+
   return (
     <div style={{ padding: "0 2px" }}>
       {/* Header — reads "Net · N rounds · All players". This is a Net event and
@@ -1406,18 +1486,18 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
 
       {/* Leaderboard */}
       <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
-        {/* Column header */}
+        {/* Column header — click any header to sort (asc, then desc). */}
         <div style={{ display: "flex", padding: `0 ${PAD_X}px`, fontSize: FS.micro, fontWeight: FW.bold, color: K.logoBright, textTransform: "uppercase", letterSpacing: .8 }}>
           <div style={{ width: POS_W }} />
-          <div style={{ flex: 1, minWidth: 0 }}>Player</div>
-          <div style={{ width: TOPAR_W, textAlign: "center" }}>Total</div>
-          <div style={{ width: THRU_W, textAlign: "center" }}>Thru</div>
-          {Array.from({ length: totalRounds }, (_, i) => (
-            <div key={i} style={{ width: RND_W, textAlign: "center" }}>R{i + 1}</div>
-          ))}
+          {th("player", "Player", { flex: 1, align: "left" })}
+          {th("total", "Total", { width: TOPAR_W })}
+          {th("thru", "Thru", { width: THRU_W })}
+          {Array.from({ length: totalRounds }, (_, i) =>
+            th(`r${i + 1}`, `R${i + 1}`, { width: RND_W, keyId: `rhdr${i + 1}` })
+          )}
         </div>
 
-        {leaderboard.map((p, i) => {
+        {displayBoard.map((p, i) => {
           // Payout is 1st place only, so 1st is the ONLY chip that reads
           // differently — gold, tie-aware (everyone sharing 1st/T1 gets it). Every
           // other position (2nd through last) is visually identical: no money, no
