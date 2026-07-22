@@ -1387,29 +1387,21 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
 
   return (
     <div style={{ padding: "0 2px" }}>
-      {/* Header — the Net/Gross toggle IS the lead of the header line, followed
-          by the round count and field. Net is the default; Gross re-scores the
-          whole board as a scratch tournament (handicap strokes removed), so
-          positions and every to-par value recompute. */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
-        <div style={{ display: "inline-flex", background: K.inp, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: 3 }}>
-          {["net", "gross"].map(m => {
-            const active = scoreMode === m;
-            return (
-              <button key={m} onClick={() => setScoreMode(m)} style={{
-                padding: "5px 12px", borderRadius: 6, border: "none", cursor: "pointer",
-                background: active ? K.card : "transparent",
-                color: active ? K.t1 : K.t3,
-                fontSize: 10, fontWeight: FW.bold, letterSpacing: .8, textTransform: "uppercase",
-                boxShadow: active ? `0 1px 3px ${K.bdr}40` : "none",
-                transition: "all .15s", whiteSpace: "nowrap",
-              }}>{m}</button>
-            );
-          })}
-        </div>
-        <div style={{ fontSize: FS.xs, color: K.t3 }}>
-          · {totalRounds} round{totalRounds !== 1 ? "s" : ""} · All players
-        </div>
+      {/* Header — reads "Net · N rounds · All players". This is a Net event and
+          Gross is just a curiosity, so the lens control is deliberately quiet: the
+          leading word itself is tappable and flips Net⇄Gross (a faint dashed
+          underline is the only hint), rather than a prominent segmented control. */}
+      <div style={{ textAlign: "center", marginBottom: 12, fontSize: FS.xs, color: K.t3 }}>
+        <span
+          onClick={() => setScoreMode(isGross ? "net" : "gross")}
+          role="button"
+          tabIndex={0}
+          style={{
+            color: K.t2, fontWeight: FW.bold, cursor: "pointer",
+            borderBottom: `1px dashed ${K.t3}`, paddingBottom: 1,
+          }}
+        >{isGross ? "Gross" : "Net"}</span>
+        {" · "}{totalRounds} round{totalRounds !== 1 ? "s" : ""} · All players
       </div>
 
       {/* Leaderboard */}
