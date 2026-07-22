@@ -935,6 +935,13 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
   const [loading, setLoading] = useState(true);
   const [scPlayer, setScPlayer] = useState(null); // { pid, week } — open scorecard popout
 
+  // LIVE POSITION MOVEMENT — backs the WBC-style ▲/▼ arrows next to the rank
+  // badge. prevPositions remembers each active player's last golf position so
+  // the movement effect (defined after the leaderboard memo) can diff the board
+  // whenever a live score reshuffles it.
+  const prevPositions = useRef({});
+  const [movements, setMovements] = useState({});
+
   // ALWAYS-LIVE MODEL: every non-rained-out playoff week with matches is on the
   // leaderboard unconditionally, and its scores stream in via Firestore
   // onSnapshot subscriptions (see the effect below) the moment they're saved.
@@ -1234,6 +1241,34 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
     return board;
   }, [players, teams, course, playoffWeeks, scores, allRounds, scoringRules, leagueConfig]);
 
+  // WBC-style live movement arrows. When a streamed score reshuffles the board,
+  // players who climbed get a green ▲ and players who dropped a red ▼; the marker
+  // persists until the NEXT reshuffle. Keying the effect on the active players'
+  // rank SIGNATURE (playerId:posRank pairs) — not on the leaderboard array — is
+  // what gives that persistence: ordinary in-round score updates that don't move
+  // anyone leave rankSig unchanged, so the effect doesn't re-run and the existing
+  // arrows stay put. Positions compared are golf POSITIONS (posRank, tie-aware),
+  // so a T3→T2 climb counts as up and alphabetical shuffling inside a tied group
+  // never fabricates an arrow. WD / no-data players carry no position and are
+  // excluded on both sides of the diff.
+  const rankSig = leaderboard
+    .filter(p => p.posLabel != null && !p.withdrew)
+    .map(p => `${p.playerId}:${p.posRank}`)
+    .join(",");
+  useEffect(() => {
+    const actives = leaderboard.filter(p => p.posLabel != null && !p.withdrew);
+    const newMov = {};
+    actives.forEach(p => {
+      const prev = prevPositions.current[p.playerId];
+      if (prev != null && prev !== p.posRank) newMov[p.playerId] = prev > p.posRank ? "up" : "down";
+    });
+    setMovements(newMov);
+    const newPos = {};
+    actives.forEach(p => { newPos[p.playerId] = p.posRank; });
+    prevPositions.current = newPos;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rankSig]);
+
   if (loading && playoffWeeks.length > 0) {
     return <LoadingPanel subtitle="scores" />;
   }
@@ -1267,7 +1302,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
   // room before names truncate: with up to four round columns the fixed columns
   // otherwise squeeze the name to just a few characters on narrow phones. The
   // Player column is flex:1, so every pixel trimmed here goes straight to the name.
-  const POS_W = 26;   // rank badge cell
+  const POS_W = 30;   // rank badge cell (+4px over the badge for the ▲/▼ arrow gutter)
   const THRU_W = 30;  // "Thru" column ("F" or holes-completed count)
   const RND_W = 28;   // each R# column ("+3"/"-2"/"WD"/"E"/"–" all fit at FS.sm)
   const TOPAR_W = 44; // cumulative Total (to-par) column
@@ -1330,9 +1365,18 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
           // active players, so it doubles as the eligibility check.
           const showRank = hasRounds && !isWD && p.posLabel != null;
 
+          // Live movement for this player's rank (set only for active players).
+          const mov = showRank ? movements[p.playerId] : null;
+
           // Thru — progress in the field's current round (see currentRoundWeek).
+          // WBC-style live emphasis: a player mid-round (1–8 holes in the current
+          // round) is highlighted in the maize accent so the eye lands on who's
+          // still out on the course; a finished "F" reads secondary, and "–"
+          // (hasn't teed off / WD) stays dimmed.
           const curRound = currentRoundWeek ? p.rounds.find(r => r.week === currentRoundWeek) : null;
           const thru = isWD ? "–" : curRound ? (curRound.holesPlayed >= 9 ? "F" : String(curRound.holesPlayed)) : "–";
+          const thruLive = !isWD && curRound && curRound.holesPlayed > 0 && curRound.holesPlayed < 9;
+          const thruColor = thruLive ? K.act : (!isWD && curRound && curRound.holesPlayed >= 9) ? K.t2 : K.t3;
 
           // Tapping the name opens that player's current-round scorecard — their
           // most recent round (curRound if they're in the current round, else the
@@ -1350,7 +1394,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
               {/* Rank — golf-standard tie labels: T1/T2/… for tied groups, plain
                   number otherwise. minWidth + padding (instead of fixed width)
                   keeps 3-character labels like "T10" from clipping. */}
-              <div style={{ width: POS_W, flexShrink: 0 }}>
+              <div style={{ width: POS_W, flexShrink: 0, position: "relative" }}>
                 {showRank && (
                   <div style={{
                     minWidth: 22, height: 22, borderRadius: 6, padding: "0 3px",
@@ -1360,6 +1404,16 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
                     fontSize: FS.xs, fontWeight: FW.heavy, color: mc,
                     border: p.posRank <= 3 ? `1.5px solid ${mc}40` : `1.5px solid ${K.logoBright}30`,
                   }}>{p.posLabel}</div>
+                )}
+                {/* Live ▲/▼ — sits in the gutter to the right of the badge (absolutely
+                    positioned so it never squeezes the badge or the Player column).
+                    Green ▲ for a climb, red ▼ for a drop; cleared on the next reshuffle. */}
+                {mov && (
+                  <span style={{
+                    position: "absolute", right: 0, top: "50%", transform: "translateY(-50%)",
+                    fontSize: 8, lineHeight: 1, fontWeight: FW.heavy,
+                    color: mov === "up" ? K.grn : K.red,
+                  }}>{mov === "up" ? "▲" : "▼"}</span>
                 )}
               </div>
 
@@ -1387,7 +1441,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
 
               {/* Thru — "F" when the current round's 9 is complete, otherwise
                   holes played; "–" if not teed off in the current round. */}
-              <div style={{ width: THRU_W, textAlign: "center", fontSize: FS.sm, fontWeight: FW.semibold, color: K.t2 }}>
+              <div style={{ width: THRU_W, textAlign: "center", fontSize: FS.sm, fontWeight: thruLive ? FW.heavy : FW.semibold, color: thruColor }}>
                 {thru}
               </div>
 
