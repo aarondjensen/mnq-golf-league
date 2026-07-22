@@ -3,7 +3,6 @@ import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS,
 import { SharedScorecard } from "../components/SharedScorecard";
 import { readScoreEffective, getStrokesForHole, resultLetterFor, buildStrokesMap } from "../lib/matchCalc";
 import { db, LF } from "../firebase";
-import { isScheduleDateAtOrPast } from "../lib/scheduleDate";
 import { autoHealMatchResults } from "../lib/autoHealMatchResults";
 import { TeamMatchupCard } from "../TeamMatchupCard";
 
@@ -1296,20 +1295,6 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
     return <EmptyState icon="flag" title="No playoff rounds played yet" subtitle="The individual tournament runs alongside the playoff weeks." />;
   }
 
-  // LIVE badge — the leaderboard now ALWAYS updates in real time via the
-  // onSnapshot subscriptions above, so the badge no longer gates anything.
-  // It simply signals that a playoff round is plausibly in progress right now:
-  // some round is unlocked (not finalized) and its scheduled date has arrived.
-  // No final-round-only logic, no prior-rounds-locked requirement.
-  const isLive = playoffWeeks.some(wk => {
-    if (wk.locked === true) return false;
-    if (wk.date) {
-      const year = leagueConfig?.year || new Date().getFullYear();
-      if (!isScheduleDateAtOrPast(wk.date, year)) return false;
-    }
-    return true;
-  });
-
   // To-par display convention (golf standard): under par renders with the
   // leading minus JS gives negative numbers ("-2"), over par gets an explicit
   // "+3", and level par is "E".
@@ -1402,42 +1387,17 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
 
   return (
     <div style={{ padding: "0 2px" }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 10 }}>
-        <div style={{ fontSize: FS.xs, color: K.t3 }}>
-          {isGross ? "Gross" : "Net"} stroke play · {totalRounds} round{totalRounds !== 1 ? "s" : ""} · All players
-        </div>
-        {isLive && (
-          <>
-            <style>{`
-              @keyframes mnqLivePulse { 0%,100% { opacity: 1; } 50% { opacity: .4; } }
-            `}</style>
-            <div style={{
-              display: "inline-flex", alignItems: "center", gap: 4,
-              padding: "2px 7px", borderRadius: 10,
-              background: K.red + "18", border: `1px solid ${K.red}40`,
-            }}>
-              <div style={{
-                width: 6, height: 6, borderRadius: "50%", background: K.red,
-                animation: "mnqLivePulse 1.5s ease-in-out infinite",
-              }} />
-              <span style={{ fontSize: FS.micro, fontWeight: FW.heavy, color: K.red, letterSpacing: .8 }}>LIVE</span>
-            </div>
-          </>
-        )}
-      </div>
-
-      {/* Net | Gross lens toggle — Net is the default. Gross re-scores the whole
-          board as a scratch tournament: same rounds, handicap strokes removed, so
-          positions and every to-par value recompute. Matches the app's segmented
-          control styling (Regular Season | Postseason, etc.). */}
-      <div style={{ display: "flex", justifyContent: "center", marginBottom: 12 }}>
+      {/* Header — the Net/Gross toggle IS the lead of the header line, followed
+          by the round count and field. Net is the default; Gross re-scores the
+          whole board as a scratch tournament (handicap strokes removed), so
+          positions and every to-par value recompute. */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
         <div style={{ display: "inline-flex", background: K.inp, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: 3 }}>
           {["net", "gross"].map(m => {
             const active = scoreMode === m;
             return (
               <button key={m} onClick={() => setScoreMode(m)} style={{
-                padding: "6px 18px", borderRadius: 6, border: "none", cursor: "pointer",
+                padding: "5px 12px", borderRadius: 6, border: "none", cursor: "pointer",
                 background: active ? K.card : "transparent",
                 color: active ? K.t1 : K.t3,
                 fontSize: 10, fontWeight: FW.bold, letterSpacing: .8, textTransform: "uppercase",
@@ -1446,6 +1406,9 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
               }}>{m}</button>
             );
           })}
+        </div>
+        <div style={{ fontSize: FS.xs, color: K.t3 }}>
+          · {totalRounds} round{totalRounds !== 1 ? "s" : ""} · All players
         </div>
       </div>
 
