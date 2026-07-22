@@ -1355,9 +1355,11 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
         </div>
 
         {leaderboard.map((p, i) => {
-          // Medal colors key off the golf POSITION, not the list index, so
-          // everyone sharing T1 gets gold, T2 silver, T3 bronze.
-          const mc = p.posRank === 1 ? K.gold : p.posRank === 2 ? K.silver : p.posRank === 3 ? K.bronze : K.logoBright;
+          // Payout is 1st place only, so 1st is the ONLY chip that reads
+          // differently — gold, tie-aware (everyone sharing 1st/T1 gets it). Every
+          // other position (2nd through last) is visually identical: no money, no
+          // distinction. Keys off the golf POSITION (posRank), not the list index.
+          const mc = p.posRank === 1 ? K.gold : K.logoBright;
           const hasRounds = p.roundsPlayed > 0;
           const isWD = p.withdrew;
           // Only active (non-WD) players with rounds get a rank badge; WD players
@@ -1399,10 +1401,10 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
                   <div style={{
                     minWidth: 22, height: 22, borderRadius: 6, padding: "0 3px",
                     boxSizing: "border-box",
-                    background: p.posRank <= 3 ? mc + "20" : K.logoBright + "20",
+                    background: p.posRank === 1 ? mc + "20" : K.logoBright + "20",
                     display: "inline-flex", alignItems: "center", justifyContent: "center",
                     fontSize: FS.xs, fontWeight: FW.heavy, color: mc,
-                    border: p.posRank <= 3 ? `1.5px solid ${mc}40` : `1.5px solid ${K.logoBright}30`,
+                    border: p.posRank === 1 ? `1.5px solid ${mc}40` : `1.5px solid ${K.logoBright}30`,
                   }}>{p.posLabel}</div>
                 )}
                 {/* Live ▲/▼ — sits in the gutter to the right of the badge (absolutely
