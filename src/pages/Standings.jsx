@@ -1268,7 +1268,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
   const POS_W = 26;   // rank badge cell
   const HCP_W = 26;   // handicap column
   const RND_W = 28;   // each R# column ("+3"/"-2"/"WD"/"E"/"–" all fit at FS.sm)
-  const TOPAR_W = 42; // To-Par + "NN gross" secondary line
+  const TOPAR_W = 42; // cumulative To-Par total column
   const PAD_X = 10;   // card / header horizontal padding
 
   return (
@@ -1364,7 +1364,8 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
                   posted a score either way). The round the player withdrew in is
                   marked "WD" in red. Cells show the round's NET-TO-PAR (E/+3/-2)
                   over holes played, so an in-progress round reads comparably to a
-                  finished one. */}
+                  finished one. Under-par cells render red per golf-scoreboard
+                  convention. */}
               {Array.from({ length: totalRounds }, (_, wi) => {
                 const wk = playoffWeeks[wi];
                 const round = wk ? p.rounds.find(r => r.week === wk.week) : null;
@@ -1373,7 +1374,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
                   <div key={wi} style={{
                     width: RND_W, textAlign: "center", fontSize: FS.sm,
                     fontWeight: isWDRound ? FW.heavy : FW.semibold,
-                    color: isWDRound ? K.red : round ? K.t1 : K.t3 + "40",
+                    color: isWDRound ? K.red : round ? (round.netToPar < 0 ? K.red : K.t1) : K.t3 + "40",
                   }}>
                     {isWDRound ? "WD" : round ? (
                       <>
@@ -1391,22 +1392,17 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
 
               {/* Total — cumulative net-to-par in golf convention (E/+3/-2),
                   integer end-to-end so it's the exact sum of the round cells.
-                  Total gross rides below as secondary info: it no longer breaks
-                  ties, it's just context. WD players get "WD" in red regardless
-                  of how many rounds they played before withdrawing. */}
+                  Under-par totals render red per golf-scoreboard convention. WD
+                  players get "WD" in red regardless of how many rounds they
+                  played before withdrawing. */}
               <div style={{ width: TOPAR_W, textAlign: "right" }}>
                 <div style={{
                   fontSize: HERO_NUM_SIZE - 4, fontWeight: HERO_NUM_WEIGHT,
-                  color: isWD ? K.red : hasRounds ? K.t1 : K.t3,
+                  color: isWD ? K.red : hasRounds ? (p.totalNetToPar < 0 ? K.red : K.t1) : K.t3,
                   fontFamily: "'League Spartan', sans-serif",
                 }}>
                   {isWD ? "WD" : hasRounds ? fmtToPar(p.totalNetToPar) : "–"}
                 </div>
-                {!isWD && hasRounds && (
-                  <div style={{ fontSize: FS.micro, color: K.t3, marginTop: 1 }}>
-                    {p.totalGross} gross
-                  </div>
-                )}
               </div>
             </div>
           );
