@@ -1,7 +1,6 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
 import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, calcPlayerHcp, buildSeedMap, buildPlayoffSeedMap, buildStandingsForSeed, recordPoints, resolveIndivRound, LoadingPanel, SkeletonList, buildHistoricalPlayers, FS, FW } from "../theme";
 import { SharedScorecard } from "../components/SharedScorecard";
-import { Popup } from "../components/Popup";
 import { readScoreEffective, getStrokesForHole, resultLetterFor, buildStrokesMap } from "../lib/matchCalc";
 import { db, LF } from "../firebase";
 import { isScheduleDateAtOrPast } from "../lib/scheduleDate";
@@ -933,7 +932,7 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
   const [scores, setScores] = useState({});
   const [allRounds, setAllRounds] = useState(null); // { playerId: [{ season, week, gross }] }
   const [loading, setLoading] = useState(true);
-  const [scPlayer, setScPlayer] = useState(null); // { pid, week } — open scorecard popout
+  const [expandedPid, setExpandedPid] = useState(null); // playerId whose scorecard is expanded inline
 
   // LIVE POSITION MOVEMENT — backs the WBC-style ▲/▼ arrows next to the rank
   // badge. prevPositions remembers each active player's last golf position so
@@ -1314,6 +1313,66 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
   const currentRoundWeek = leaderboard.reduce(
     (mx, p) => p.rounds.reduce((m, r) => Math.max(m, r.week), mx), 0);
 
+  // Inline scorecard panel for an expanded player row. Same builder the old
+  // popup used — SharedScorecard + into-week handicaps (buildHistoricalPlayers)
+  // and the shared lib/matchCalc score/stroke readers — so stroke dots and the
+  // net line match the team match cards and the Schedule tab exactly. Stroke
+  // play, so no opponent / match row. Returns just the panel body; the row card
+  // supplies the outer chrome, mirroring how Schedule drops its mini scorecard
+  // straight into the match card rather than a modal.
+  const renderPlayerScorecard = (pid, week) => {
+    const wk = schedule.find(s => s.week === week);
+    if (!wk || !course) return null;
+    if (!allRounds) return <LoadingPanel size="compact" subtitle="scores" />;
+
+    const side = wk.side || getWeekSide(week);
+    const pars = side === 'front' ? course.frontPars : course.backPars;
+    const hcps = side === 'front' ? course.frontHcps : course.backHcps;
+    if (!Array.isArray(pars) || !Array.isArray(hcps)) return null;
+
+    const season = leagueConfig?.year || new Date().getFullYear();
+    const historicalPlayers = buildHistoricalPlayers({
+      players, week, season, allRoundsByPid: allRounds, scoringRules, course,
+    });
+
+    // Teammate resolves the absent model (present teammate plays both slots),
+    // matching how this player's round total was computed on the leaderboard.
+    const team = teams.find(t => t.player1 === pid || t.player2 === pid);
+    const teammate = team ? (team.player1 === pid ? team.player2 : team.player1) : null;
+    const t1Pids = [pid];
+    const t2Pids = teammate ? [teammate] : [];
+
+    const getInitials = (x) => { const pl = players.find(pp => pp.id === x); return pl ? pl.name.split(' ').map(n => n[0]).join('') : "?"; };
+    const getHcp = (x) => { const hp = historicalPlayers.find(pp => pp.id === x); return hp ? Math.round(hp.handicapIndex || 0) : 0; };
+    const isAbsent = (x) => scores[`w${week}_p${x}_habsent`] === 1;
+    const getStrokes = (x, h) => getStrokesForHole({ pid: x, h, players: historicalPlayers, hcps, week, holeScores: scores, t1Pids, t2Pids });
+    const getScore = (x, h) => readScoreEffective({ pid: x, h, week, holeScores: scores, t1Pids, t2Pids, pars, hcps, players: historicalPlayers });
+
+    const sc = SharedScorecard({
+      pars, side, hcps, team1Pids: t1Pids, team2Pids: t2Pids,
+      getScore, getStrokes, getHcp, getInitials, isAbsent,
+      variant: "allMatches", showTotals: true, showMatchRow: false, matchGrn: K.matchGrn,
+    });
+
+    const roundIdx = playoffWeeks.findIndex(w => w.week === week);
+    const roundLabel = roundIdx >= 0 ? `Round ${roundIdx + 1}` : `Week ${week}`;
+
+    return (
+      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${K.bdr}` }}>
+        <div style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.t3, textTransform: "uppercase", letterSpacing: .6, marginBottom: 6 }}>
+          {roundLabel} · {side === 'front' ? 'Front 9' : 'Back 9'}
+        </div>
+        <div style={{ background: K.bg, border: `1px solid ${K.bdr}60`, borderRadius: 10, overflow: "hidden" }}>
+          <sc.HoleRow />
+          <sc.ParRow />
+          <sc.HcpRow />
+          {t1Pids.map(x => <sc.PlayerRow key={x} pid={x} />)}
+          <sc.TeamNetRow pids={t1Pids} isTeam1Side={true} />
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div style={{ padding: "0 2px" }}>
       {/* Header */}
@@ -1386,13 +1445,22 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
           // stays inert rather than opening an empty card.
           const scWk = curRound ? currentRoundWeek : (p.rounds.length ? p.rounds.reduce((m, r) => Math.max(m, r.week), 0) : null);
 
+          const isExp = expandedPid === p.playerId;
+
           return (
             <div key={p.playerId} style={{
-              display: "flex", alignItems: "center", background: K.card,
+              display: "flex", flexDirection: "column", background: K.card,
               borderRadius: CARD_RADIUS, border: `1px solid ${p.posRank === 1 && showRank ? K.act + "30" : K.bdr}`,
               padding: `10px ${PAD_X}px`,
               opacity: isWD ? 0.55 : 1,
             }}>
+              {/* Row — the whole row is the tap target: selecting it expands this
+                  player's scorecard inline below (Schedule-style), or collapses it.
+                  Inert when there's no round to show (scWk null). */}
+              <div
+                onClick={scWk ? () => setExpandedPid(isExp ? null : p.playerId) : undefined}
+                style={{ display: "flex", alignItems: "center", cursor: scWk ? "pointer" : "default" }}
+              >
               {/* Rank — golf-standard tie labels: T1/T2/… for tied groups, plain
                   number otherwise. minWidth + padding (instead of fixed width)
                   keeps 3-character labels like "T10" from clipping. */}
@@ -1419,14 +1487,14 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
                 )}
               </div>
 
-              {/* Name — tap to open this player's current-round scorecard. */}
-              <div
-                onClick={scWk ? () => setScPlayer({ pid: p.playerId, week: scWk }) : undefined}
-                style={{ flex: 1, minWidth: 0, cursor: scWk ? "pointer" : "default" }}
-              >
-                <div style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.t1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {/* Name + expand chevron (rotates when the row is expanded). */}
+              <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 4 }}>
+                <span style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.t1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {p.displayName}
-                </div>
+                </span>
+                {scWk && (
+                  <span style={{ fontSize: 8, flexShrink: 0, color: isExp ? K.act : K.t3, transition: "transform 0.2s", display: "inline-block", transform: isExp ? "rotate(180deg)" : "rotate(0)" }}>▼</span>
+                )}
               </div>
 
               {/* Total — cumulative net-to-par (E/+3/-2), placed right after the
@@ -1479,6 +1547,11 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
                   </div>
                 );
               })}
+              </div>
+
+              {/* Inline scorecard — appears directly below the row when selected,
+                  the way Schedule expands a match. No modal. */}
+              {isExp && scWk && renderPlayerScorecard(p.playerId, scWk)}
             </div>
           );
         })}
@@ -1489,80 +1562,6 @@ function IndividualEventView({ players, teams, schedule, course, leagueConfig, f
           </div>
         )}
       </div>
-
-      {/* Current-round scorecard popout — reuses the shared match scorecard
-          framework (SharedScorecard + Popup) for a single player: same score/
-          stroke reading (lib/matchCalc) and into-week handicaps (buildHistorical-
-          Players) as the team match cards, so stroke dots and net line match
-          everywhere. Stroke play, so no opponent / match rows. */}
-      {scPlayer && (() => {
-        const player = players.find(pl => pl.id === scPlayer.pid);
-        const wk = schedule.find(s => s.week === scPlayer.week);
-        if (!player || !wk || !course) return null;
-
-        const closeBtn = (
-          <button onClick={() => setScPlayer(null)} style={{ display: "block", width: "calc(100% - 20px)", margin: "10px auto 0", padding: "9px", background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 8, color: K.t2, fontSize: FS.sm, fontWeight: FW.semibold, cursor: "pointer", letterSpacing: .4 }}>Close</button>
-        );
-
-        if (!allRounds) {
-          return (
-            <Popup onClose={() => setScPlayer(null)} maxWidth={420} padding={10} outerPadding={12}>
-              <LoadingPanel size="compact" />
-              {closeBtn}
-            </Popup>
-          );
-        }
-
-        const side = wk.side || getWeekSide(scPlayer.week);
-        const pars = side === 'front' ? course.frontPars : course.backPars;
-        const hcps = side === 'front' ? course.frontHcps : course.backHcps;
-        if (!Array.isArray(pars) || !Array.isArray(hcps)) return null;
-
-        const season = leagueConfig?.year || new Date().getFullYear();
-        const historicalPlayers = buildHistoricalPlayers({
-          players, week: scPlayer.week, season,
-          allRoundsByPid: allRounds, scoringRules, course,
-        });
-
-        // Teammate resolves the absent model (present teammate plays both slots),
-        // matching how this player's round total was computed on the leaderboard.
-        const team = teams.find(t => t.player1 === scPlayer.pid || t.player2 === scPlayer.pid);
-        const teammate = team ? (team.player1 === scPlayer.pid ? team.player2 : team.player1) : null;
-        const t1Pids = [scPlayer.pid];
-        const t2Pids = teammate ? [teammate] : [];
-
-        const getInitials = (pid) => { const pl = players.find(x => x.id === pid); return pl ? pl.name.split(' ').map(n => n[0]).join('') : "?"; };
-        const getHcp = (pid) => { const hp = historicalPlayers.find(x => x.id === pid); return hp ? Math.round(hp.handicapIndex || 0) : 0; };
-        const isAbsent = (pid) => scores[`w${scPlayer.week}_p${pid}_habsent`] === 1;
-        const getStrokes = (pid, h) => getStrokesForHole({ pid, h, players: historicalPlayers, hcps, week: scPlayer.week, holeScores: scores, t1Pids, t2Pids });
-        const getScore = (pid, h) => readScoreEffective({ pid, h, week: scPlayer.week, holeScores: scores, t1Pids, t2Pids, pars, hcps, players: historicalPlayers });
-
-        const sc = SharedScorecard({
-          pars, side, hcps, team1Pids: t1Pids, team2Pids: t2Pids,
-          getScore, getStrokes, getHcp, getInitials, isAbsent,
-          variant: "allMatches", showTotals: true, showMatchRow: false, matchGrn: K.matchGrn,
-        });
-
-        const roundIdx = playoffWeeks.findIndex(w => w.week === scPlayer.week);
-        const roundLabel = roundIdx >= 0 ? `Round ${roundIdx + 1}` : `Week ${scPlayer.week}`;
-
-        return (
-          <Popup onClose={() => setScPlayer(null)} maxWidth={420} padding={10} outerPadding={12}>
-            <div style={{ textAlign: "center", marginBottom: 8 }}>
-              <div style={{ fontSize: FS.base, fontWeight: FW.heavy, color: K.t1, fontFamily: "'League Spartan', sans-serif" }}>{shortName(player.name)}</div>
-              <div style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.t3, textTransform: "uppercase", letterSpacing: .6 }}>{roundLabel} · {side === 'front' ? 'Front 9' : 'Back 9'}</div>
-            </div>
-            <div style={{ background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 10, overflow: "hidden" }}>
-              <sc.HoleRow />
-              <sc.ParRow />
-              <sc.HcpRow />
-              {t1Pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
-              <sc.TeamNetRow pids={t1Pids} isTeam1Side={true} />
-            </div>
-            {closeBtn}
-          </Popup>
-        );
-      })()}
     </div>
   );
 }
