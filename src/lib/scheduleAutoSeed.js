@@ -89,7 +89,8 @@
 // state at call time, not the snapshot in the original closure.
 
 import { db, LEAGUE_ID } from "../firebase";
-import { buildStandingsForSeed, pairNonBracketTeams, collectPriorMatchups, serializeSeedWeeks, buildPlayerCoOccurrence } from "../theme";
+import { buildStandingsForSeed, serializeSeedWeeks } from "../theme";
+import { buildPlayoffNonBracketMatches } from "./indivGroups";
 
 export async function autoSeedIfReady({
   justLockedWeek,
@@ -98,6 +99,15 @@ export async function autoSeedIfReady({
   holeScores,
   teams,
   leagueConfig,
+  // Below are only consulted when leagueConfig.individualizeEliminated is on
+  // (regroup eliminated players into individual foursomes). They're optional
+  // so existing callers/tests that don't pass them still work for the
+  // team-only consolation path.
+  players,
+  course,
+  scoringRules,
+  fetchSeasonScores,
+  fetchAllScores,
 }) {
   // ── PHASE 0: Sanity gate ──
   const isConfigRefresh = justLockedWeek === 0;
@@ -292,24 +302,31 @@ export async function autoSeedIfReady({
   }
 
   // Consolation is opt-in. When off, teams outside the bracket simply have no
-  // match that week. When on, `optimize` chooses the pairing strategy:
-  //   • optimize ON  → minimize repeat player-pair groupings across the season
-  //   • optimize OFF → pair leftover teams in standings (seed) order
-  const consolationEnabled = leagueConfig?.consolationEnabled === true;
-  const consolationOptimize = leagueConfig?.consolationOptimize === true;
-  const buildConsolation = (bracketMatches, week) => {
-    if (!consolationEnabled) return [];
-    const priorMatchups = collectPriorMatchups(projectedSchedule, week);
-    const coOccurrence = consolationOptimize
-      ? buildPlayerCoOccurrence(projectedSchedule, week, teams)
-      : null;
-    const { pairs } = pairNonBracketTeams(teams, bracketMatches, priorMatchups, {
-      optimize: consolationOptimize, coOccurrence, teams, seedOrder: playoffSeeds,
+  // match that week. When on, buildPlayoffNonBracketMatches (shared with
+  // Admin.handleSeedWeek so the two resolvers can't diverge) does the full
+  // three-way split: eliminated teams dissolve into individual foursomes when
+  // individualizeEliminated is on, still-alive bye teams pair as teams, and
+  // `optimize` chooses the team-pairing strategy. Non-bracket matches are
+  // returned in tee order (individual groups first) and tagged isConsolation
+  // so downstream code separates them from the bracket by flag, not position —
+  // letting us place them FIRST (earliest tees) while the bracket keeps the
+  // final tees.
+  const buildConsolation = async (bracketMatches, week) => {
+    if (leagueConfig?.consolationEnabled !== true) return [];
+    // Ranking eliminated players needs the season's per-hole scores + rounds
+    // history. Fetch from the caller's warm caches ONLY when actually
+    // individualizing; team-only consolation needs neither read.
+    let scores = holeScores;
+    let allRounds = null;
+    if (leagueConfig?.individualizeEliminated === true) {
+      scores = fetchSeasonScores ? await fetchSeasonScores() : holeScores;
+      allRounds = fetchAllScores ? await fetchAllScores() : null;
+    }
+    return buildPlayoffNonBracketMatches({
+      week, teams, schedule: projectedSchedule, matchResults, players,
+      scores, course, scoringRules, allRounds, leagueConfig,
+      bracketMatches, playoffSeeds,
     });
-    // Tag non-bracket matches so downstream code can separate them from the
-    // bracket by flag rather than array position — which lets us place them
-    // FIRST (earliest tee times) while the bracket keeps the final tee times.
-    return pairs.map(p => ({ ...p, isConsolation: true }));
   };
 
   for (let pi = 0; pi < playoffWeeksList.length; pi++) {
@@ -340,7 +357,7 @@ export async function autoSeedIfReady({
       }
       // Bracket (playoff) matches take the FINAL tee times of the week;
       // non-bracket matches go first. Order: [non-bracket..., bracket...].
-      const matches = [...buildConsolation(bracketMatches, pWk.week), ...bracketMatches];
+      const matches = [...(await buildConsolation(bracketMatches, pWk.week)), ...bracketMatches];
       await db.upsert("league_schedule", { ...pWk, matches, league_id: LEAGUE_ID });
       playoffCount++;
       continue;
@@ -454,7 +471,7 @@ export async function autoSeedIfReady({
 
     // Bracket (playoff) matches take the FINAL tee times of the week;
     // non-bracket matches go first. Order: [non-bracket..., bracket...].
-    const matches = [...buildConsolation(bracketMatches, pWk.week), ...bracketMatches];
+    const matches = [...(await buildConsolation(bracketMatches, pWk.week)), ...bracketMatches];
 
     await db.upsert("league_schedule", { ...pWk, matches, league_id: LEAGUE_ID });
     playoffCount++;

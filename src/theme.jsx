@@ -513,14 +513,19 @@ export function computeRegularSeasonSeeds(teams, matchResults, schedule, standin
 //                    weeks: [{ team1, team2 }...]. Both orientations are fine; we
 //                    canonicalize the pair key.
 export function pairNonBracketTeams(allTeams, bracketMatches, priorMatchups, options = {}) {
-  const { optimize = null, coOccurrence = null, teams = null, seedOrder = null } = options;
+  const { optimize = null, coOccurrence = null, teams = null, seedOrder = null, excludeTeamIds = null } = options;
 
   const bracketTeamIds = new Set();
   (bracketMatches || []).forEach(m => {
     if (m.team1) bracketTeamIds.add(m.team1);
     if (m.team2) bracketTeamIds.add(m.team2);
   });
-  const remainingRaw = (allTeams || []).map(t => t.id).filter(id => !bracketTeamIds.has(id));
+  // excludeTeamIds: teams that must NOT be paired as teams this week — used
+  // when eliminated teams have been dissolved into individual foursomes
+  // (individualizeEliminated). They're neither in the bracket nor available
+  // for a team consolation match, so drop them from the remaining pool.
+  const exclude = excludeTeamIds instanceof Set ? excludeTeamIds : new Set(excludeTeamIds || []);
+  const remainingRaw = (allTeams || []).map(t => t.id).filter(id => !bracketTeamIds.has(id) && !exclude.has(id));
 
   // ── Non-optimize: simple standings-order pairing ──
   // Order the leftover teams by the provided seed/standings order (best→worst)

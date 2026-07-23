@@ -26,7 +26,10 @@
 // history BEFORE that week, net-to-par over holes actually played, integer
 // end-to-end so per-round values sum to the cumulative totals exactly.
 
-import { calcPlayerHcp, resolveIndivRound } from "../theme";
+import {
+  calcPlayerHcp, resolveIndivRound,
+  collectPriorMatchups, buildPlayerCoOccurrence, pairNonBracketTeams,
+} from "../theme";
 import { buildStrokesMap } from "./matchCalc";
 
 // ── computeIndividualBoard ─────────────────────────────────────────
@@ -320,4 +323,66 @@ export function buildEliminatedIndivGroups({
   }));
 
   return { indivMatches, eliminatedTeamIds, eliminatedPids };
+}
+
+// ── buildPlayoffNonBracketMatches ──────────────────────────────────
+// THE single builder for a playoff week's non-bracket matches, called by BOTH
+// resolvers (scheduleAutoSeed.js auto path and Admin.handleSeedWeek manual
+// path) so they can never diverge — the exact duplicate-resolver bug class the
+// bracket logic has already been bitten by.
+//
+// Three-way split of the field for a given playoff `week`:
+//   • bracket teams        → passed in as `bracketMatches`, placed elsewhere
+//   • eliminated teams      → dissolved into individual foursomes, but ONLY
+//                             when leagueConfig.individualizeEliminated is on
+//   • still-alive bye teams → paired as TEAMS via the existing consolation
+//                             matcher (unchanged behavior)
+//
+// Returns [] when consolation is disabled. Otherwise returns the full
+// non-bracket match list in tee order: individual groups first (worst-ranked
+// tees off first), then any alive-bye team consolation matches. The caller
+// prepends this to the bracket so non-bracket play takes the earliest tees.
+//
+// Purity: this function does NOT fetch. `scores` (per-hole season map) and
+// `allRounds` (rounds history) are passed in — each caller fetches them from
+// its own cache (fetchSeasonScores / fetchAllScores) before calling.
+export function buildPlayoffNonBracketMatches({
+  week,
+  teams = [],
+  schedule = [],
+  matchResults = [],
+  players = [],
+  scores = {},
+  course = null,
+  scoringRules = null,
+  allRounds = null,
+  leagueConfig = null,
+  bracketMatches = [],
+  playoffSeeds = [],
+}) {
+  const consolationEnabled = leagueConfig?.consolationEnabled === true;
+  if (!consolationEnabled) return [];
+
+  const individualize = leagueConfig?.individualizeEliminated === true;
+
+  let indivMatches = [];
+  let excludeTeamIds = null;
+  if (individualize) {
+    const built = buildEliminatedIndivGroups({
+      week, teams, schedule, matchResults, players,
+      scores, course, scoringRules, allRounds, leagueConfig,
+    });
+    indivMatches = built.indivMatches;
+    excludeTeamIds = built.eliminatedTeamIds; // keep eliminated teams OUT of team pairing
+  }
+
+  const optimize = leagueConfig?.consolationOptimize === true;
+  const priorMatchups = collectPriorMatchups(schedule, week);
+  const coOccurrence = optimize ? buildPlayerCoOccurrence(schedule, week, teams) : null;
+  const { pairs } = pairNonBracketTeams(teams, bracketMatches, priorMatchups, {
+    optimize, coOccurrence, teams, seedOrder: playoffSeeds, excludeTeamIds,
+  });
+  const teamConsolation = pairs.map(p => ({ ...p, isConsolation: true }));
+
+  return [...indivMatches, ...teamConsolation];
 }

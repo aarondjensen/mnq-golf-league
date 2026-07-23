@@ -3,7 +3,8 @@ import { LEAGUE_ID, db, callFunction } from "../firebase";
 import { K, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   getWeekSide, formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, lastNamesOnly,
   buildStandingsForSeed as sharedBuildStandingsForSeed, buildSeedMap, buildPlayoffSeedMap, computeRegularSeasonSeeds,
-  pairNonBracketTeams, collectPriorMatchups, buildPlayerCoOccurrence, FS, FW } from "../theme";
+  FS, FW } from "../theme";
+import { buildPlayoffNonBracketMatches } from "../lib/indivGroups";
 import { ConfirmModal } from "../components/Popup";
 import NotificationsAdmin from "./NotificationsAdmin";
 
@@ -19,7 +20,7 @@ import NotificationsAdmin from "./NotificationsAdmin";
 
 
 export default function AdminView(props) {
-  const { players, savePlayer, deletePlayer, teams, saveTeam, deleteTeam, schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, course, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, members, saveMember, deleteMember, matchResults, saveMatchResult, clearWeekData } = props;
+  const { players, savePlayer, deletePlayer, teams, saveTeam, deleteTeam, schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, course, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, members, saveMember, deleteMember, matchResults, saveMatchResult, clearWeekData, fetchSeasonScores, fetchAllScores } = props;
   const [sec, setSec] = useState(null);
 
   // ── Derive actionable status for the dashboard banner ──
@@ -171,7 +172,7 @@ export default function AdminView(props) {
   if (sec === "players") return <AdminPlayers players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} course={course} teams={teams} members={members} saveMember={saveMember} onBack={() => setSec(null)} />;
   if (sec === "teams") return <AdminTeams teams={teams} saveTeam={saveTeam} players={players} onBack={() => setSec(null)} />;
   if (sec === "course") return <AdminCourse course={course} saveCourseData={saveCourseData} onBack={() => setSec(null)} />;
-  if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} applyScheduleOps={props.applyScheduleOps} teams={teams} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} autoSeedIfReady={props.autoSeedIfReady} clearWeekData={clearWeekData} onBack={() => setSec(null)} />;
+  if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} applyScheduleOps={props.applyScheduleOps} teams={teams} players={players} course={course} scoringRules={scoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} autoSeedIfReady={props.autoSeedIfReady} clearWeekData={clearWeekData} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} onBack={() => setSec(null)} />;
   if (sec === "scoring") return <AdminScoring scoring={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
   if (sec === "members") return <AdminMembers members={members} saveMember={saveMember} deleteMember={deleteMember} players={players} onBack={() => setSec(null)} />;
   if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} resetSeasonData={props.resetSeasonData} importHistoricalScores={props.importHistoricalScores} recalcHandicaps={props.recalcHandicaps} matchResults={matchResults} saveMatchResult={saveMatchResult} schedule={schedule} teams={teams} scoringRules={scoringRules} saveScoringRules={saveScoringRules} onBack={() => setSec(null)} />;
@@ -1120,7 +1121,7 @@ function AdminCourse({ course, saveCourseData, onBack }) {
 }
 
 
-function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, applyScheduleOps, teams, leagueConfig, saveLeagueConfig, matchResults, autoSeedIfReady, clearWeekData, onBack }) {
+function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, applyScheduleOps, teams, players, course, scoringRules, leagueConfig, saveLeagueConfig, matchResults, autoSeedIfReady, clearWeekData, fetchSeasonScores, fetchAllScores, onBack }) {
   const [step, setStep] = useState(schedule.length > 0 ? "view" : "setup");
 
   // Single source of truth for "derive cfg from stored leagueConfig".
@@ -1141,6 +1142,7 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
     startingSide: lc.startingSide ?? "front", // 'front' | 'back' — which nine week 1 plays
     consolationEnabled: lc.consolationEnabled === true, // opt-in: matches for eliminated teams
     consolationOptimize: lc.consolationOptimize === true, // pairing strategy when enabled
+    individualizeEliminated: lc.individualizeEliminated === true, // regroup eliminated players into individual foursomes
   });
 
   const [cfg, setCfg] = useState(() => ({
@@ -2229,10 +2231,19 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                     <input type="checkbox" checked={cfg.consolationOptimize === true} onChange={e => setCfg({ ...cfg, consolationOptimize: e.target.checked })} style={{ accentColor: K.act }} />
                     Optimize pairings
                   </label>
-                  <div style={{ fontSize: FS.xs, color: K.t3, lineHeight: 1.5 }}>
+                  <div style={{ fontSize: FS.xs, color: K.t3, lineHeight: 1.5, marginBottom: 12 }}>
                     {cfg.consolationOptimize
                       ? "Reviews every prior week and groups players who've played together the least all season."
                       : "Pairs leftover teams in standings order (1v2, 3v4, …)."}
+                  </div>
+                  <div style={{ paddingTop: 10, borderTop: `1px solid ${K.bdr}50` }}>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: FS.sm, color: K.t2, cursor: "pointer", marginBottom: 8 }}>
+                      <input type="checkbox" checked={cfg.individualizeEliminated === true} onChange={e => setCfg({ ...cfg, individualizeEliminated: e.target.checked })} style={{ accentColor: K.act }} />
+                      Regroup eliminated players individually
+                    </label>
+                    <div style={{ fontSize: FS.xs, color: K.t3, lineHeight: 1.5 }}>
+                      Once a team is knocked out of the bracket, its two players stop playing as a team and join the individual pool. Eliminated players are grouped into fresh foursomes by reverse individual-tournament standing (worst net tees off first). Still-alive bye teams keep playing as a team.
+                    </div>
                   </div>
                 </div>
               )}
@@ -3010,24 +3021,32 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
         bracketCount = matches.length;
 
-        // Add consolation matchups so teams not in the bracket still have tee
-        // times — only when the league has consolation enabled. Optimize ON
-        // minimizes repeat player-pair groupings across the whole season;
-        // OFF pairs leftover teams in standings (seed) order.
+        // Add non-bracket matchups so teams not in the bracket still have tee
+        // times — only when consolation is enabled. buildPlayoffNonBracketMatches
+        // is SHARED with the auto-seed resolver (scheduleAutoSeed.js) so the
+        // manual and automatic paths can never diverge. It does the three-way
+        // split: eliminated teams become individual foursomes when
+        // individualizeEliminated is on, still-alive bye teams pair as teams,
+        // and `optimize` chooses the team-pairing strategy.
         if (leagueConfig?.consolationEnabled === true) {
-          const optimize = leagueConfig?.consolationOptimize === true;
-          const priorMatchups = collectPriorMatchups(schedule, wk.week);
-          const coOccurrence = optimize ? buildPlayerCoOccurrence(schedule, wk.week, teams) : null;
-          // pairNonBracketTeams reads `matches` (still bracket-only here) to know
-          // which teams are already placed, so compute BEFORE reordering.
-          const { pairs: consolationPairs } = pairNonBracketTeams(teams, matches, priorMatchups, {
-            optimize, coOccurrence, teams, seedOrder: seeds,
+          // Ranking eliminated players needs the season's per-hole scores +
+          // rounds history; only fetch when actually individualizing.
+          let scores = {};
+          let allRounds = null;
+          if (leagueConfig?.individualizeEliminated === true) {
+            scores = fetchSeasonScores ? await fetchSeasonScores() : {};
+            allRounds = fetchAllScores ? await fetchAllScores() : null;
+          }
+          // `matches` is still bracket-only here, so it correctly tells the
+          // builder which teams are already placed.
+          const nonBracket = buildPlayoffNonBracketMatches({
+            week: wk.week, teams, schedule, matchResults, players,
+            scores, course, scoringRules, allRounds, leagueConfig,
+            bracketMatches: matches, playoffSeeds: seeds,
           });
           // Bracket (playoff) matches take the FINAL tee times of the week;
-          // non-bracket matches go first. Flag them and prepend so array order
-          // = tee-time order.
-          const flagged = consolationPairs.map(p => ({ ...p, isConsolation: true }));
-          matches.unshift(...flagged);
+          // non-bracket matches go first. Prepend so array order = tee order.
+          matches.unshift(...nonBracket);
         }
       } else {
         // Seeded regular season: use per-week custom matchups
@@ -3062,14 +3081,23 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
         : "seeded matchups";
 
       // Build a clear confirm message that distinguishes bracket matches from
-      // consolation pairings. Consolation exists only for playoff weeks where the
-      // bracket doesn't include every team.
-      const fmtPair = (m) => `• ${gn(m.team1)} vs ${gn(m.team2)}`;
+      // the two non-bracket kinds: individual foursomes (eliminated players)
+      // and team consolation (still-alive bye teams). Non-bracket play exists
+      // only for playoff weeks where the bracket doesn't include every team.
+      const pn = (pid) => lastNamesOnly(players.find(p => p.id === pid)?.name || "?");
+      const fmtPair = (m) =>
+        m.isIndivGroup
+          ? `• ${(m.players || []).map(pn).join(", ")}`
+          : `• ${gn(m.team1)} vs ${gn(m.team2)}`;
       let msg;
       if (isPlayoff && matches.some(m => m.isConsolation === true)) {
         const bracket = matches.filter(m => !m.isConsolation);
-        const consolation = matches.filter(m => m.isConsolation === true);
-        msg = `${roundName}:\n${bracket.map(fmtPair).join("\n")}\n\nConsolation (minimizes repeat matchups):\n${consolation.map(fmtPair).join("\n")}`;
+        const indivGroups = matches.filter(m => m.isIndivGroup === true);
+        const teamConsolation = matches.filter(m => m.isConsolation === true && !m.isIndivGroup);
+        const parts = [`${roundName}:\n${bracket.map(fmtPair).join("\n")}`];
+        if (indivGroups.length) parts.push(`Individual groups (eliminated players — worst net tees off first):\n${indivGroups.map(fmtPair).join("\n")}`);
+        if (teamConsolation.length) parts.push(`Consolation (minimizes repeat matchups):\n${teamConsolation.map(fmtPair).join("\n")}`);
+        msg = parts.join("\n\n");
       } else {
         msg = `${roundName}:\n\n${matches.map(fmtPair).join("\n")}`;
       }

@@ -27,6 +27,7 @@ import {
   rankIndividualBoard,
   computeIndividualBoard,
   buildEliminatedIndivGroups,
+  buildPlayoffNonBracketMatches,
 } from "./indivGroups";
 
 // ── computeEliminatedTeamIds ───────────────────────────────────────
@@ -197,5 +198,83 @@ describe("buildEliminatedIndivGroups", () => {
     });
     expect(out.indivMatches).toEqual([]);
     expect(out.eliminatedPids).toEqual([]);
+  });
+});
+
+// ── buildPlayoffNonBracketMatches (three-way split) ────────────────
+describe("buildPlayoffNonBracketMatches", () => {
+  // Six teams. Week 10 bracket: A/B advance (bracket week 11), J & I lost.
+  // Week 11: bracket = A vs B; non-bracket pool = {C, D (alive byes), J, I (eliminated)}.
+  const teams = [
+    { id: "A", player1: "a1", player2: "a2" },
+    { id: "B", player1: "b1", player2: "b2" },
+    { id: "C", player1: "c1", player2: "c2" },
+    { id: "D", player1: "d1", player2: "d2" },
+    { id: "J", player1: "j1", player2: "j2" },
+    { id: "I", player1: "i1", player2: "i2" },
+  ];
+  const schedule = [
+    {
+      week: 10, isPlayoff: true, matches: [
+        { team1: "A", team2: "J" },
+        { team1: "B", team2: "I" },
+      ],
+    },
+    { week: 11, isPlayoff: true, matches: [] },
+  ];
+  const matchResults = [
+    { week: 10, team1Id: "A", team2Id: "J", team1Points: 2, team2Points: 0 },
+    { week: 10, team1Id: "B", team2Id: "I", team1Points: 2, team2Points: 0 },
+  ];
+  const bracketMatches = [{ team1: "A", team2: "B" }];
+  const playoffSeeds = ["A", "B", "C", "D", "J", "I"];
+
+  it("returns [] when consolation is disabled", () => {
+    const out = buildPlayoffNonBracketMatches({
+      week: 11, teams, schedule, matchResults, players: [], scores: {},
+      leagueConfig: { consolationEnabled: false }, bracketMatches, playoffSeeds,
+    });
+    expect(out).toEqual([]);
+  });
+
+  it("pairs ALL non-bracket teams as teams when individualize is off", () => {
+    const out = buildPlayoffNonBracketMatches({
+      week: 11, teams, schedule, matchResults, players: [], scores: {},
+      leagueConfig: { consolationEnabled: true, individualizeEliminated: false },
+      bracketMatches, playoffSeeds,
+    });
+    // No individual groups; C/D/J/I all paired as teams (2 team matches).
+    expect(out.every(m => !m.isIndivGroup)).toBe(true);
+    expect(out.every(m => m.isConsolation === true)).toBe(true);
+    const placed = new Set(out.flatMap(m => [m.team1, m.team2]));
+    expect([...placed].sort()).toEqual(["C", "D", "I", "J"]);
+  });
+
+  it("splits eliminated → individual foursome, alive byes → team match, when on", () => {
+    const players = teams.flatMap(t => [
+      { id: t.player1, name: t.player1 }, { id: t.player2, name: t.player2 },
+    ]);
+    const out = buildPlayoffNonBracketMatches({
+      week: 11, teams, schedule, matchResults, players, scores: {},
+      course: null, scoringRules: null, allRounds: null,
+      leagueConfig: { consolationEnabled: true, individualizeEliminated: true },
+      bracketMatches, playoffSeeds,
+    });
+    const indiv = out.filter(m => m.isIndivGroup);
+    const teamMatches = out.filter(m => !m.isIndivGroup);
+
+    // Eliminated J + I → one four-player individual group.
+    expect(indiv).toHaveLength(1);
+    expect(indiv[0].players.slice().sort()).toEqual(["i1", "i2", "j1", "j2"]);
+
+    // Eliminated teams must NOT appear in any team consolation match.
+    const teamPlaced = new Set(teamMatches.flatMap(m => [m.team1, m.team2]));
+    expect(teamPlaced.has("J")).toBe(false);
+    expect(teamPlaced.has("I")).toBe(false);
+    // Alive byes C & D still pair as a team.
+    expect([...teamPlaced].sort()).toEqual(["C", "D"]);
+
+    // Tee order: individual groups first, then team consolation.
+    expect(out[0].isIndivGroup).toBe(true);
   });
 });

@@ -116,8 +116,8 @@ export default function GolfLeagueApp() {
   // identity any time teams or leagueConfig changed.
   const autoSeedStateRef = useRef({});
   useEffect(() => {
-    autoSeedStateRef.current = { schedule, matchResults, holeScores, teams, leagueConfig };
-  }, [schedule, matchResults, holeScores, teams, leagueConfig]);
+    autoSeedStateRef.current = { schedule, matchResults, holeScores, teams, leagueConfig, players, course: courseData, scoringRules };
+  }, [schedule, matchResults, holeScores, teams, leagueConfig, players, courseData, scoringRules]);
 
   const [members, setMembers] = useState([]);
   const [membersLoaded, setMembersLoaded] = useState(false);
@@ -972,8 +972,13 @@ export default function GolfLeagueApp() {
     return autoSeedIfReadyLib({
       justLockedWeek,
       ...autoSeedStateRef.current,
+      // fetchSeasonScores / fetchAllScores are declared below this ref; inject
+      // them here (both stable useCallbacks) rather than into the ref. Only
+      // read when individualizeEliminated is on, to rank eliminated players.
+      fetchSeasonScores,
+      fetchAllScores,
     });
-  }, []);
+  }, [fetchSeasonScores, fetchAllScores]);
 
   // Import historical scores from a [name, season, week, hole, score] array.
   // See importHistoricalData.js for the source format.
@@ -1604,7 +1609,7 @@ export default function GolfLeagueApp() {
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} leagueConfig={leagueConfig} teams={teams} matchResults={matchResults} />}
           {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} isComm={isComm} saveCtp={saveCtp} />}
           {tab === "notifications" && <NotificationsSettings leagueUser={effectiveUser} appToast={appToast} />}
-          {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} saveMatchResult={saveMatchResult} resetSeasonData={resetSeasonData} importHistoricalScores={importHistoricalScores} recalcHandicaps={recalcHandicaps} autoSeedIfReady={autoSeedIfReady} clearWeekData={clearWeekData} />}
+          {tab === "admin" && isComm && <AdminView players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} saveMatchResult={saveMatchResult} resetSeasonData={resetSeasonData} importHistoricalScores={importHistoricalScores} recalcHandicaps={recalcHandicaps} autoSeedIfReady={autoSeedIfReady} clearWeekData={clearWeekData} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} />}
           </Suspense>
           </ErrorBoundary>
           {commMode && <div style={{ height: 44 }} />}
