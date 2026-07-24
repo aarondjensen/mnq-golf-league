@@ -1255,9 +1255,17 @@ export default function GolfLeagueApp() {
       if (!allPids.includes(myPid)) return false;
       const myAttn = attendance?.[`w${r.week}_p${myPid}`]?.status;
       if (myAttn === "absent") return false;
+      // Also honor the score-side absence flag (_habsent=1). A player can be
+      // marked absent directly on the scorecard (the "ABSENT" button), which
+      // sets _habsent without writing an attendance status. isPlayerAbsent()
+      // and match calc key off _habsent everywhere else, so the attest count
+      // must too — otherwise an absent player (whose present teammate plays
+      // both positions) is wrongly asked to attest a match they sat out,
+      // firing a badge that can never be cleared.
+      if (holeScores?.[`w${r.week}_p${myPid}_habsent`] === 1) return false;
       return true;
     }).length;
-  }, [matchResults, teams, attendance, effectiveUser?.playerId]);
+  }, [matchResults, teams, attendance, holeScores, effectiveUser?.playerId]);
 
   // Sync the count to the home-screen app badge. Direct setAppBadge call
   // works on supported browsers (iOS PWA 16.4+, Chrome Android, macOS Safari
