@@ -2,7 +2,6 @@ import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } fro
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, nativeGoogleSignIn, nativeAppleSignIn, NATIVE_APPLE_ENABLED, nativeAuthSignOut, deleteAccount, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
 import { Capacitor } from "@capacitor/core";
 import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, classifyScoreHole, LoadingPanel, serializeSeedWeeks, deserializeLeagueConfig, FS, FW } from "./theme";
-import { parseScheduleDate } from "./lib/scheduleDate";
 import { usePullToRefresh } from "./lib/usePullToRefresh";
 import { autoSeedIfReady as autoSeedIfReadyLib } from "./lib/scheduleAutoSeed";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
@@ -1154,45 +1153,12 @@ export default function GolfLeagueApp() {
   const isPasswordUser = (authUser?.providerData || []).some(p => p?.providerId === "password");
   const activePlayers = useMemo(() => players.filter(p => p.status !== "inactive"), [players]);
 
-  const [minuteTick, setMinuteTick] = useState(0);
-  useEffect(() => {
-    const id = setInterval(() => setMinuteTick(t => t + 1), 60_000);
-    return () => clearInterval(id);
-  }, []);
-
-  // Live Scoring button appears from 30 minutes before the FIRST tee time of the
-  // day through 4 hours after — enough window to cover pre-round setup and a
-  // full 9-hole round with finalization. Anchored to league Eastern Time.
-  //
-  // Uses parseScheduleDate (not raw new Date()) so the date format is the single
-  // source of truth and stays in sync with the rest of the app.
-  const showLiveBtn = useMemo(() => {
-    if (!schedule.length) return false;
-    const now = new Date();
-    const et = new Date(now.toLocaleString("en-US", { timeZone: "America/New_York" }));
-    const year = leagueConfig?.year || new Date().getFullYear();
-    const todayStr = et.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    const todayWk = schedule.find(wk => {
-      if (wk.rainedOut || !wk.matches || wk.matches.length === 0) return false;
-      if (!wk.date) return false;
-      const wkDate = parseScheduleDate(wk.date, year);
-      if (!wkDate) return false;
-      return wkDate.toLocaleDateString("en-US", { month: "short", day: "numeric" }) === todayStr;
-    });
-    if (!todayWk) return false;
-
-    const startTime = leagueConfig?.startTime || "4:28 PM";
-    const [timePart, ampm] = startTime.split(' ');
-    const [h, m] = timePart.split(':').map(Number);
-    let hour24 = h;
-    if (ampm === 'PM' && h !== 12) hour24 = h + 12;
-    else if (ampm === 'AM' && h === 12) hour24 = 0;
-    const firstTeeMins = hour24 * 60 + (m || 0);
-
-    const nowMins = et.getHours() * 60 + et.getMinutes();
-
-    return nowMins >= firstTeeMins - 30 && nowMins <= firstTeeMins + 240;
-  }, [schedule, leagueConfig, minuteTick]);
+  // NOTE: the header "Live Scoring" shortcut button was removed. The scoring
+  // view is still reachable from the bottom nav (tab id "scoring") and from the
+  // "Finalize Week" banner, so no navigation path was lost. The per-minute
+  // ticker (minuteTick) and the showLiveBtn tee-time window memo existed only
+  // to drive that button's visibility and were removed with it — dropping a
+  // re-render of the whole app shell every 60 seconds.
 
   useEffect(() => { if (!commMode) setImpersonating(null); }, [commMode]);
 
@@ -1492,20 +1458,6 @@ export default function GolfLeagueApp() {
             )}
           </div>
           <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
-          {/* Right: Live Scoring button — only on match days during the play window */}
-          <div style={{ position: "absolute", right: 14, display: "flex", alignItems: "center" }}>
-            {showLiveBtn && (
-            <button onClick={() => setTab("scoring")} style={{
-              background: tab === "scoring" ? bannerGrn : "transparent",
-              border: `1.5px solid ${tab === "scoring" ? bannerGrn : bannerGrn + "50"}`,
-              borderRadius: 8, padding: "6px 10px", cursor: "pointer",
-              color: tab === "scoring" ? "#fff" : bannerGrn, fontSize: FS.sm, fontWeight: FW.heavy,
-              textTransform: "uppercase", letterSpacing: .5, lineHeight: 1.3,
-            }}>
-              Live<br/>Scoring
-            </button>
-            )}
-          </div>
         </div>
       </div>
 
