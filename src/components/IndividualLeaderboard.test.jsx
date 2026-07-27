@@ -214,25 +214,37 @@ describe("IndividualRoundsPanel", () => {
   PARS9.forEach((v, h) => { scores[`w17_pp1_h${h}`] = v + 1; });       // 45
   const posted = [{ week: 15 }, { week: 17 }];
 
-  const panel = (selected, rounds = posted) => renderToStaticMarkup(
+  const panel = (selected, rounds = posted, menuOpen = false) => renderToStaticMarkup(
     <IndividualRoundsPanel
-      pid="p1" rounds={rounds} playoffWeeks={pw} selected={selected} onSelect={() => {}}
+      pid="p1" rounds={rounds} playoffWeeks={pw} selected={selected} onSelect={() => {}} menuOpen={menuOpen}
       schedule={sched} course={c} players={[{ id: "p1", name: "Ann Alpha", handicapIndex: 4 }]}
       scoringRules={{ hcpRecentCount: 8, hcpBestCount: 6 }} leagueConfig={{ year: 2026 }}
       allRounds={rnds} scores={scores}
     />
   );
 
-  it("offers a tab per posted round, labelled by round number", () => {
+  it("hangs the picker off the card heading, not a row above it", () => {
+    // The whole point of the dropdown: no control row, so the scorecard keeps
+    // the vertical space on a phone.
     const html = panel(15);
-    expect(html).toContain(">R1<");
-    expect(html).toContain(">R3<");   // week 17 is the third playoff round
-    expect(html).toContain(">All<");
+    expect(html).toContain('aria-haspopup="listbox"');
+    expect(html).toContain("Round 1");     // heading names the round on show
+  });
+
+  it("offers every posted round plus All when the menu is open", () => {
+    const html = panel(15, posted, true);
+    expect(html).toContain("Round 1");
+    expect(html).toContain("Round 3");     // week 17 is the third playoff round
+    expect(html).toContain("All rounds");
   });
 
   it("does not offer a round the golfer never posted", () => {
-    // Week 16 is round 2 and was missed — no card exists, so no tab.
-    expect(panel(15)).not.toContain(">R2<");
+    // Week 16 is round 2 and was missed — no card exists, so no option.
+    expect(panel(15, posted, true)).not.toContain("Round 2");
+  });
+
+  it("marks the current selection in the open menu", () => {
+    expect(panel(17, posted, true)).toContain('aria-selected="true"');
   });
 
   it("shows only the selected round's card", () => {
@@ -257,9 +269,12 @@ describe("IndividualRoundsPanel", () => {
     expect(html).toContain("Round 3");
   });
 
-  it("hides the selector when there is only one round to see", () => {
-    const html = panel(15, [{ week: 15 }]);
-    expect(html).not.toContain(">All<");
+  it("leaves the heading as plain text when there is only one round", () => {
+    // Nothing to pick, so no dropdown affordance — and no "All rounds", which
+    // with a single round would just be a second name for the same card.
+    const html = panel(15, [{ week: 15 }], true);
+    expect(html).not.toContain("aria-haspopup");
+    expect(html).not.toContain("All rounds");
     expect(html).toContain(">38<");
   });
 

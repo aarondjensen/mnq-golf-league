@@ -44,7 +44,20 @@ import { computeRoundLine } from "../lib/indivGroups";
 // There is no team in the individual event, so no substitution applies. A
 // golfer either posted a round (live card, makeup card, or a total-only
 // makeup) or they didn't.
-export function IndividualRoundCard({ pid, week, schedule, course, players, scoringRules, leagueConfig, allRounds, scores }) {
+export function IndividualRoundCard({
+  pid, week, schedule, course, players, scoringRules, leagueConfig, allRounds, scores,
+  // Round selection. When more than one round is on offer the card's own
+  // heading becomes the picker — no separate control row above the scorecard,
+  // which on a phone is the difference between seeing the whole card and not.
+  roundOptions = null, selected = null, onSelect = null,
+  // Uncontrolled by default; pass menuOpen to drive it from outside. The
+  // menu's contents are otherwise unreachable from a static render, which is
+  // where the "only posted rounds are offered" rule gets verified.
+  menuOpen: menuOpenProp,
+}) {
+  const [menuOpenState, setMenuOpenState] = useState(false);
+  const menuOpen = menuOpenProp ?? menuOpenState;
+  const setMenuOpen = (v) => setMenuOpenState(typeof v === "function" ? v(menuOpen) : v);
   const wk = schedule.find(s => s.week === week);
   if (!wk || !course) return null;
   if (!allRounds) return <LoadingPanel size="compact" subtitle="scores" />;
@@ -74,15 +87,69 @@ export function IndividualRoundCard({ pid, week, schedule, course, players, scor
     .sort((a, b) => a.week - b.week);
   const roundIdxEarly = playoffWeeks.findIndex(w => w.week === week);
   const label = `${roundIdxEarly >= 0 ? `Round ${roundIdxEarly + 1}` : `Week ${week}`} · ${side === 'front' ? 'Front 9' : 'Back 9'}`;
+  const canPick = Array.isArray(roundOptions) && roundOptions.length > 1 && typeof onSelect === "function";
+  const labelStyle = {
+    fontSize: FS.sm, fontWeight: FW.bold, color: K.t2,
+    textTransform: "uppercase", letterSpacing: .6,
+  };
+
   const Header = ({ note }) => (
-    <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
-      <span style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.t3, textTransform: "uppercase", letterSpacing: .6 }}>{label}</span>
+    <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 6, flexWrap: "wrap", position: "relative" }}>
+      {canPick ? (
+        <button
+          onClick={() => setMenuOpen(o => !o)}
+          aria-haspopup="listbox"
+          aria-expanded={menuOpen}
+          style={{
+            ...labelStyle, background: "none", border: "none", padding: 0,
+            cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 4,
+          }}
+        >
+          {label}
+          <span style={{ fontSize: 8, color: K.act, transition: "transform .2s", display: "inline-block", transform: menuOpen ? "rotate(180deg)" : "rotate(0)" }}>▼</span>
+        </button>
+      ) : (
+        <span style={labelStyle}>{label}</span>
+      )}
       {note && <span style={{ fontSize: FS.micro, fontWeight: FW.heavy, color: K.act, textTransform: "uppercase", letterSpacing: .6 }}>{note}</span>}
       {line.played && (
         <span style={{ marginLeft: "auto", fontSize: FS.micro, fontWeight: FW.bold, color: K.t3 }}>
           NET <strong style={{ color: K.t1 }}>{toPar(line.netToPar)}</strong>
         </span>
       )}
+      {canPick && menuOpen && (<>
+        {/* Click-catcher. Sized to the viewport so a tap anywhere dismisses,
+            and behind the menu so the menu's own taps still land. */}
+        <div onClick={() => setMenuOpen(false)} style={{ position: "fixed", inset: 0, zIndex: 1 }} />
+        <div role="listbox" style={{
+          position: "absolute", top: "100%", left: 0, marginTop: 4, zIndex: 2,
+          background: K.card, border: `1px solid ${K.bdr}`, borderRadius: 9,
+          boxShadow: "0 6px 20px rgba(0,0,0,.28)", padding: 4, minWidth: 150,
+        }}>
+          {roundOptions.map(opt => {
+            const active = opt.key === selected;
+            return (
+              <button
+                key={opt.key}
+                role="option"
+                aria-selected={active}
+                onClick={() => { setMenuOpen(false); onSelect(opt.key); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 6, width: "100%",
+                  padding: "6px 8px", borderRadius: 6, border: "none", cursor: "pointer",
+                  background: active ? K.acc : "transparent",
+                  color: active ? K.bg : K.t2,
+                  fontSize: FS.xs, fontWeight: FW.bold, letterSpacing: .5,
+                  textAlign: "left", textTransform: "uppercase",
+                }}
+              >
+                <span style={{ width: 10, flexShrink: 0 }}>{active ? "✓" : ""}</span>
+                {opt.label}
+              </button>
+            );
+          })}
+        </div>
+      </>)}
     </div>
   );
 
@@ -179,6 +246,7 @@ export function IndividualRoundCard({ pid, week, schedule, course, players, scor
 export function IndividualRoundsPanel({
   pid, rounds, playoffWeeks, selected, onSelect,
   schedule, course, players, scoringRules, leagueConfig, allRounds, scores,
+  menuOpen,   // test seam — see IndividualRoundCard
 }) {
   const played = [...(rounds || [])].sort((a, b) => a.week - b.week);
   if (!played.length) return null;
@@ -194,32 +262,15 @@ export function IndividualRoundsPanel({
   const current = showAll ? null : (played.some(r => r.week === selected) ? selected : fallback);
   const weeksToShow = showAll ? played.map(r => r.week) : [current];
 
-  const tab = (key, label, active) => (
-    <button
-      key={key}
-      onClick={() => onSelect(key)}
-      style={{
-        padding: "4px 10px", borderRadius: 7, cursor: active ? "default" : "pointer",
-        border: "none", fontSize: FS.micro, fontWeight: FW.bold, letterSpacing: .5,
-        background: active ? K.acc : "transparent",
-        color: active ? K.bg : K.t3,
-        transition: "all .15s",
-      }}
-    >{label}</button>
-  );
+  // Options live on the card's own heading rather than a control row above it.
+  // "All" is last so the round list reads in play order.
+  const options = played.map(r => ({ key: r.week, label: `Round ${roundNo(r.week) ?? r.week}` }));
+  // "All" only means something when there's more than one round to combine —
+  // with a single round it would be a second name for the option above it.
+  if (played.length > 1) options.push({ key: "all", label: "All rounds" });
 
   return (
     <>
-      {/* The selector only earns its space once there's a choice to make — a
-          golfer with one round goes straight to the card. */}
-      {played.length > 1 && (
-        <div style={{ display: "flex", justifyContent: "center", marginTop: 10 }}>
-          <div style={{ display: "inline-flex", background: K.inp, borderRadius: 9, border: `1px solid ${K.bdr}`, padding: 3, gap: 2, flexWrap: "wrap", justifyContent: "center" }}>
-            {played.map(r => tab(r.week, `R${roundNo(r.week) ?? r.week}`, !showAll && current === r.week))}
-            {tab("all", "All", showAll)}
-          </div>
-        </div>
-      )}
       {weeksToShow.map(w => (
         <IndividualRoundCard
           key={w}
@@ -227,6 +278,10 @@ export function IndividualRoundsPanel({
           schedule={schedule} course={course} players={players}
           scoringRules={scoringRules} leagueConfig={leagueConfig}
           allRounds={allRounds} scores={scores}
+          roundOptions={options}
+          selected={selected}
+          onSelect={onSelect}
+          menuOpen={menuOpen}
         />
       ))}
     </>
