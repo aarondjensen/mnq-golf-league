@@ -89,6 +89,10 @@ export function Popup({
     <div
       onClick={handleBackdrop}
       data-popup
+      // .popup-root carries the app's typography. The portal below moves this
+      // subtree out of .app-shell, so without the class it would inherit the
+      // browser's default font, size, spacing and casing instead of the app's.
+      className="popup-root"
       style={{
         position: "fixed",
         inset: 0,

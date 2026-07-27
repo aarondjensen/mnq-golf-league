@@ -28,7 +28,7 @@
 // file's expectations are pinned correctly.
 
 import { describe, it, expect } from "vitest";
-import { buildStandingsForSeed, isIndivGroupMatch, weekFullyAttested, weekFullyScored, findGroupResult, indivGroupKey, matchPids } from "./theme";
+import { getCSS, buildStandingsForSeed, isIndivGroupMatch, weekFullyAttested, weekFullyScored, findGroupResult, indivGroupKey, matchPids } from "./theme";
 
 // Helpers that build fixtures concisely. Default values match what
 // computeMatchResult would produce for typical matches.
@@ -486,5 +486,27 @@ describe("matchPids on an individual group", () => {
       { id: "B", player1: "p3", player2: "p4" },
     ];
     expect(matchPids({ team1: "A", team2: "B" }, teams)).toEqual(["p1", "p2", "p3", "p4"]);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  App typography reaches portalled popups
+// ══════════════════════════════════════════════════════════════════
+//
+// Popups portal to <body>, outside .app-shell. The app's font face, size,
+// letter-spacing and uppercasing are inherited from that shell, so the
+// typography rule has to name BOTH roots or every popup silently renders in
+// the browser's default face. Splitting them back apart is an easy tidy-up to
+// make while refactoring the stylesheet, and the result looks "just slightly
+// off" rather than obviously broken — so it's pinned.
+describe("app typography selector", () => {
+  const css = getCSS("light");
+
+  it("applies to the popup root as well as the app shell", () => {
+    const rule = css.split("\n").find(l => l.includes(".app-shell, .popup-root"));
+    expect(rule).toBeTruthy();
+    expect(rule).toContain("League Spartan");
+    expect(rule).toContain("text-transform: uppercase");
+    expect(rule).toContain("letter-spacing");
   });
 });

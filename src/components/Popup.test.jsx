@@ -68,6 +68,15 @@ describe("Popup", () => {
     expect(html).toContain("1px solid red");
   });
 
+  it("carries the app typography class", () => {
+    // The portal moves this subtree out of .app-shell, which is where the
+    // app's font, size, letter-spacing and uppercasing are inherited from.
+    // Without .popup-root the popup silently renders in the browser default
+    // face — the regression the portal fix introduced.
+    const html = renderToStaticMarkup(<Popup onClose={() => {}}>hi</Popup>);
+    expect(html).toContain('class="popup-root"');
+  });
+
   it("omits the ✕ unless showClose is set", () => {
     const html = renderToStaticMarkup(<Popup onClose={() => {}}>hi</Popup>);
     expect(html).not.toContain('aria-label="Close"');
