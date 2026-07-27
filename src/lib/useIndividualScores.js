@@ -95,12 +95,16 @@ export function useIndividualScores({
     if (fetchAllScores) {
       fetchAllScores().then(hist => { if (!cancelled) setAllRounds(hist); });
     }
-    if (!fetchSeasonScores) { setLoading(false); return; }
-    fetchSeasonScores().then(all => {
-      if (cancelled) return;
-      setBaseScores(all || {});
-      setLoading(false);
-    }).catch(() => { if (!cancelled) setLoading(false); });
+    // Resolved-promise continuations rather than a synchronous setLoading in
+    // the effect body — a sync setState here re-renders before paint on every
+    // mount, and the "no fetcher" branch would do it for nothing.
+    Promise.resolve(fetchSeasonScores ? fetchSeasonScores() : null)
+      .then(all => {
+        if (cancelled) return;
+        if (all) setBaseScores(all);
+        setLoading(false);
+      })
+      .catch(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [enabled, fetchSeasonScores, fetchAllScores]);
 
