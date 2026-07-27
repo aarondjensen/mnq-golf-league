@@ -3,7 +3,7 @@ import { LEAGUE_ID, db, callFunction } from "../firebase";
 import { K, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   getWeekSide, formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, lastNamesOnly,
   buildStandingsForSeed as sharedBuildStandingsForSeed, buildSeedMap, buildPlayoffSeedMap, computeRegularSeasonSeeds,
-  isIndivGroupMatch, weekFullyAttested, FS, FW } from "../theme";
+  isIndivGroupMatch, weekFullyAttested, findGroupResult, FS, FW } from "../theme";
 import { buildPlayoffNonBracketMatches } from "../lib/indivGroups";
 import { ConfirmModal } from "../components/Popup";
 import NotificationsAdmin from "./NotificationsAdmin";
@@ -20,7 +20,7 @@ import NotificationsAdmin from "./NotificationsAdmin";
 
 
 export default function AdminView(props) {
-  const { players, savePlayer, deletePlayer, teams, saveTeam, deleteTeam, schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, course, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, members, saveMember, deleteMember, matchResults, saveMatchResult, clearWeekData, fetchSeasonScores, fetchAllScores } = props;
+  const { groupResults, players, savePlayer, deletePlayer, teams, saveTeam, deleteTeam, schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, course, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, members, saveMember, deleteMember, matchResults, saveMatchResult, clearWeekData, fetchSeasonScores, fetchAllScores } = props;
   const [sec, setSec] = useState(null);
 
   // ── Derive actionable status for the dashboard banner ──
@@ -58,18 +58,21 @@ export default function AdminView(props) {
     return schedule.filter(wk => {
       if (wk.rainedOut || wk.locked) return false;
       if (!wk.matches || wk.matches.length === 0) return false;
-      return weekFullyAttested(wk, matchResults);
+      return weekFullyAttested(wk, matchResults, groupResults);
     });
-  }, [schedule, matchResults]);
+  }, [schedule, matchResults, groupResults]);
 
   // Weeks with signed-but-unattested matches (commissioner may need to force-attest)
+  // Signed-but-unattested cards, of either kind. Individual groups sign into
+  // their own collection but hold up the week exactly the same way, so they
+  // belong in this nudge too.
   const weeksWithPendingAttestation = useMemo(() => {
     const weeks = new Set();
-    (matchResults || []).forEach(r => {
+    [...(matchResults || []), ...(groupResults || [])].forEach(r => {
       if (r.attested !== true && r.signedByPlayerId) weeks.add(r.week);
     });
     return Array.from(weeks).sort((a, b) => a - b);
-  }, [matchResults]);
+  }, [matchResults, groupResults]);
 
   // Current / next week (earliest playable unlocked week)
   const currentWeek = useMemo(() => {
@@ -173,7 +176,7 @@ export default function AdminView(props) {
   if (sec === "players") return <AdminPlayers players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} course={course} teams={teams} members={members} saveMember={saveMember} onBack={() => setSec(null)} />;
   if (sec === "teams") return <AdminTeams teams={teams} saveTeam={saveTeam} players={players} onBack={() => setSec(null)} />;
   if (sec === "course") return <AdminCourse course={course} saveCourseData={saveCourseData} onBack={() => setSec(null)} />;
-  if (sec === "schedule") return <AdminSchedule schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} applyScheduleOps={props.applyScheduleOps} teams={teams} players={players} course={course} scoringRules={scoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} autoSeedIfReady={props.autoSeedIfReady} clearWeekData={clearWeekData} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} onBack={() => setSec(null)} />;
+  if (sec === "schedule") return <AdminSchedule groupResults={groupResults} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} applyScheduleOps={props.applyScheduleOps} teams={teams} players={players} course={course} scoringRules={scoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} matchResults={props.matchResults} autoSeedIfReady={props.autoSeedIfReady} clearWeekData={clearWeekData} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} onBack={() => setSec(null)} />;
   if (sec === "scoring") return <AdminScoring scoring={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} onBack={() => setSec(null)} />;
   if (sec === "members") return <AdminMembers members={members} saveMember={saveMember} deleteMember={deleteMember} players={players} onBack={() => setSec(null)} />;
   if (sec === "config") return <AdminConfig config={leagueConfig} saveLeagueConfig={saveLeagueConfig} resetSeasonData={props.resetSeasonData} importHistoricalScores={props.importHistoricalScores} recalcHandicaps={props.recalcHandicaps} matchResults={matchResults} saveMatchResult={saveMatchResult} schedule={schedule} teams={teams} scoringRules={scoringRules} saveScoringRules={saveScoringRules} onBack={() => setSec(null)} />;
@@ -1122,7 +1125,7 @@ function AdminCourse({ course, saveCourseData, onBack }) {
 }
 
 
-function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, applyScheduleOps, teams, players, course, scoringRules, leagueConfig, saveLeagueConfig, matchResults, autoSeedIfReady, clearWeekData, fetchSeasonScores, fetchAllScores, onBack }) {
+function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, applyScheduleOps, teams, players, course, scoringRules, leagueConfig, saveLeagueConfig, matchResults, autoSeedIfReady, clearWeekData, fetchSeasonScores, fetchAllScores, onBack }) {
   const [step, setStep] = useState(schedule.length > 0 ? "view" : "setup");
 
   // Single source of truth for "derive cfg from stored leagueConfig".
@@ -2702,13 +2705,13 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
                 // Week state → left-bar color. At-a-glance scan of the season.
                 // Ready-to-finalize = all matches attested but not yet locked.
-                const allMatchesAttested = !isSeeded && !isRainedOut && wk.matches?.length > 0 && weekFullyAttested(wk, matchResults);
+                const allMatchesAttested = !isSeeded && !isRainedOut && wk.matches?.length > 0 && weekFullyAttested(wk, matchResults, groupResults);
                 // Current week = earliest unlocked week with pairings set. Only the first
                 // qualifying week gets the "current" color — subsequent unplayed weeks are
                 // "upcoming". We derive this by checking: this week unlocked AND no earlier
                 // unlocked-with-matches week exists.
                 const isCurrent = !isFinalized && !isRainedOut && wk.matches?.length > 0 && !allMatchesAttested &&
-                  !schedule.some(w => w.week < wk.week && !w.locked && !w.rainedOut && w.matches?.length > 0 && !weekFullyAttested(w, matchResults));
+                  !schedule.some(w => w.week < wk.week && !w.locked && !w.rainedOut && w.matches?.length > 0 && !weekFullyAttested(w, matchResults, groupResults));
 
                 const barColor =
                   isRainedOut ? K.warn :
@@ -3618,6 +3621,12 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                   const groupNames = (m.players || [])
                     .map(pid => lastNamesOnly(players.find(p => p.id === pid)?.name || "?"))
                     .join(" · ");
+                  // Signature state, so the commissioner chasing down an
+                  // unfinalizable week can see at a glance which groups
+                  // haven't turned in a card.
+                  const gRes = findGroupResult(groupResults, wk.week, m);
+                  const gDone = gRes?.attested === true;
+                  const gColor = gDone ? K.grn : gRes ? K.warn : K.t3;
                   return (
                     <div key={mi} style={{ background: K.card, borderRadius: 10, border: `1px dashed ${K.bdr}`, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, userSelect: "none" }}>
                       <div style={{ flexShrink: 0, fontSize: FS.xs, color: K.acc, fontWeight: FW.bold }}>{formatTeeTime(cfg.startTime ?? "4:28 PM", mi).replace(/\s*(AM|PM)$/i, '')}</div>
@@ -3625,6 +3634,10 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
                         <div style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.teal, letterSpacing: 1, textTransform: "uppercase", marginBottom: 2 }}>Individual Group</div>
                         <div style={{ fontSize: FS.sm, fontWeight: FW.semibold, color: K.t1, lineHeight: 1.3 }}>{groupNames || "—"}</div>
                       </div>
+                      <div style={{
+                        flexShrink: 0, fontSize: FS.micro, fontWeight: FW.heavy, letterSpacing: .6, textTransform: "uppercase",
+                        color: gColor, background: `${gColor}18`, border: `1px solid ${gColor}50`, padding: "2px 6px", borderRadius: 5,
+                      }}>{gDone ? "Final" : gRes ? "Signed" : "Unsigned"}</div>
                     </div>
                   );
                 }

@@ -216,28 +216,72 @@ export function isIndivGroupMatch(match) {
   return match?.isIndivGroup === true;
 }
 
-// The subset of a week's matches that can produce a match_result. Every
-// "is this week done / ready / complete" test in the app runs over THIS list,
-// never the raw match array — an individual group in the week would otherwise
-// pin the answer at "not done" forever, because the result it's waiting for
-// is never going to exist.
-export function scorableMatches(matches) {
-  return (matches || []).filter(m => !isIndivGroupMatch(m));
+// ── Individual-group signature records ────────────────────────────────────
+// An individual group signs and attests its scorecard exactly like a match
+// does — the individual tournament is a real competition, so a group's card
+// gets the same two-person integrity check before the week locks.
+//
+// The record lives in its own `league_group_results` collection rather than
+// in league_match_results. A group record has no team1Id/team2Id, and the app
+// is full of `find(r => r.team1Id === m.team1 && r.team2Id === m.team2)`
+// lookups; for an individual group `m.team1` is undefined, so a teamless
+// record sitting in the same collection would satisfy `undefined === undefined`
+// and get paired with the wrong row. Separate collection, no ambiguity.
+//
+// Keyed by the SORTED player set, not by array index: a group's position in
+// the week's match list shifts whenever the week is re-seeded, but its roster
+// is what identifies it. A re-seed that changes the roster produces a
+// different key, so a stale signature can never be mistaken for a current one.
+export function indivGroupKey(match) {
+  const pids = Array.isArray(match?.players) ? match.players.filter(Boolean) : [];
+  return [...pids].sort().join("-");
 }
 
-// "Every scorable match in this week has a signed AND attested result."
-// A week with no scorable matches at all (only individual groups) returns
-// false: there is nothing to attest, so it can't be *ready to finalize* on
-// the strength of attestation. Shared by App.jsx's finalize banner and
-// Admin.jsx's week list so the two can never disagree about which week the
+export function indivGroupResultId(leagueId, week, match) {
+  return `${leagueId}_w${week}_g${indivGroupKey(match)}`;
+}
+
+// Find the signature record for a given group in a given week, if any.
+export function findGroupResult(groupResults, week, match) {
+  const key = indivGroupKey(match);
+  if (!key) return null;
+  return (groupResults || []).find(g => g.week === week && indivGroupKey(g) === key) || null;
+}
+
+// "Every match AND every individual group in this week is signed and
+// attested." Both halves gate the week: the bracket decides who advances,
+// the individual groups feed the individual tournament, and neither should
+// lock on unverified cards.
+//
+// A week with nothing at all to attest returns false — there's no signature
+// to wait on, so it isn't "ready to finalize" on the strength of attestation.
+//
+// Shared by App.jsx's finalize banner, Admin.jsx's week list and Scoring's
+// finalize pre-flight so they can never disagree about which week the
 // commissioner is being told to finalize.
-export function weekFullyAttested(wk, matchResults) {
-  const scorable = scorableMatches(wk?.matches);
-  if (scorable.length === 0) return false;
-  return scorable.every(m =>
-    (matchResults || []).some(r =>
-      r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true
-    )
+export function weekFullyAttested(wk, matchResults, groupResults) {
+  const all = wk?.matches || [];
+  if (all.length === 0) return false;
+  return all.every(m => isIndivGroupMatch(m)
+    ? findGroupResult(groupResults, wk.week, m)?.attested === true
+    : (matchResults || []).some(r =>
+        r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true
+      )
+  );
+}
+
+// "Every match AND every individual group in this week has a SIGNED result."
+// Weaker than weekFullyAttested — attestation not required. Used by the
+// finalize action's safety guard, which exists to stop a week being locked
+// before it's been played.
+export function weekFullyScored(wk, matchResults, groupResults) {
+  const all = wk?.matches || [];
+  if (all.length === 0) return false;
+  return all.every(m => isIndivGroupMatch(m)
+    ? !!findGroupResult(groupResults, wk.week, m)
+    : (matchResults || []).some(r =>
+        r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2
+      )
   );
 }
 

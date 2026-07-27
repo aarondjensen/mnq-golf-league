@@ -94,6 +94,17 @@ service cloud.firestore {
       allow read: if signedIn();
       allow write: if isMember();
     }
+    // Signature + attestation for playoff individual groups. Same access as
+    // match results (any member writes; the unsign flow deletes) — these are
+    // the individual tournament's equivalent of a signed scorecard. Kept in
+    // their own collection rather than league_match_results because a group
+    // record has no team1Id/team2Id, and the many
+    // `find(r => r.team1Id === m.team1)` lookups across the app would match
+    // undefined-to-undefined and pair a group record with a real match.
+    match /league_group_results/{docId} {
+      allow read: if signedIn();
+      allow write: if isMember();
+    }
     match /league_ctp/{docId} {
       allow read: if signedIn();
       allow write: if isMember();
