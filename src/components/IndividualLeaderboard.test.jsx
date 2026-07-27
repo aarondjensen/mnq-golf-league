@@ -13,7 +13,7 @@
 
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { IndividualLeaderboard } from "./IndividualLeaderboard.jsx";
+import { IndividualLeaderboard, IndividualRoundCard } from "./IndividualLeaderboard.jsx";
 
 const PARS = [4, 4, 4, 3, 5, 4, 4, 3, 5];
 const course = {
@@ -84,6 +84,90 @@ describe("IndividualLeaderboard", () => {
     const html = render(scores);
     expect(html.length).toBeGreaterThan(0);
     expect(html).toContain("Gamma");
+  });
+
+  // ── Absent from the match, made up the individual round ────────────
+  // A golfer misses League Night. The TEAM match records them absent
+  // (_habsent), and their individual round is played later and entered into
+  // the makeup namespace (_hm0.._hm8).
+  //
+  // The expanded card used to read through readScoreEffective with the
+  // golfer's teammate supplied as the OPPOSING side. teammateOf then finds no
+  // teammate on the golfer's own side, so readScore falls through to its
+  // both-absent branch and IMPUTES a net-bogey card — par + 1 + strokes on
+  // every hole. The row above showed the correct makeup total while the card
+  // below it showed a synthetic round that was never played.
+  //
+  // Concretely, for the fixture below: the real makeup card is 33 gross / 29
+  // net; the imputed one was 49 / 45. Those are the numbers the screenshot
+  // that reported this bug showed.
+  describe("absent from the match, made up the individual round", () => {
+    // Stroke indexes chosen so a 4-handicap draws strokes on holes 1/3/5/9 —
+    // which is what makes the imputed card come out at 49 rather than 45.
+    const wkCourse = {
+      name: "Test GC",
+      frontPars: [5, 3, 4, 4, 4, 3, 4, 4, 5], backPars: [5, 3, 4, 4, 4, 3, 4, 4, 5],
+      frontHcps: [2, 8, 3, 7, 4, 6, 5, 9, 1], backHcps: [2, 8, 3, 7, 4, 6, 5, 9, 1],
+    };
+    const wkSchedule = [{ week: 16, isPlayoff: true, side: "front", locked: false, matches: [{ team1: "T1", team2: "T2" }] }];
+    const wkRounds = {
+      p1: [{ season: 2026, week: 12, gross: 40 }, { season: 2026, week: 13, gross: 40 }],
+      p2: [{ season: 2026, week: 12, gross: 45 }],
+    };
+    const scores = { "w16_pp1_habsent": 1 };
+    [4, 3, 4, 4, 4, 3, 4, 3, 4].forEach((v, h) => { scores[`w16_pp1_hm${h}`] = v; });  // real makeup: 33
+
+    const card = () => renderToStaticMarkup(
+      <IndividualRoundCard
+        pid="p1" week={16} schedule={wkSchedule} course={wkCourse}
+        players={players} scoringRules={scoringRules} leagueConfig={leagueConfig}
+        allRounds={wkRounds} scores={scores}
+      />
+    );
+
+    it("shows the round the golfer actually played", () => {
+      expect(card()).toContain(">33<");
+    });
+
+    it("does not impute a net-bogey card", () => {
+      // 49 gross / 45 net is what the both-absent impute produced here.
+      const html = card();
+      expect(html).not.toContain(">49<");
+      expect(html).not.toContain(">45<");
+    });
+
+    it("labels it a makeup, so it reads as intentionally different from the match card", () => {
+      expect(card()).toContain("Makeup");
+    });
+
+    it("still marks the round with the makeup superscript on the board", () => {
+      // Lowercase in the markup; the app's uppercase transform renders it "M".
+      const html = renderToStaticMarkup(
+        <IndividualLeaderboard
+          players={players} teams={teams} schedule={wkSchedule} course={wkCourse}
+          leagueConfig={leagueConfig} scoringRules={scoringRules}
+          scores={scores} allRounds={wkRounds} loading={false}
+        />
+      );
+      expect(html).toMatch(/<sup[^>]*>m<\/sup>/);
+      expect(html).toContain("makeup round");
+    });
+  });
+
+  it("renders a total-only makeup as a summary, not invented holes", () => {
+    // A total-only makeup has a gross and nothing else. Drawing nine cells
+    // would mean fabricating hole scores.
+    const scores = { "w15_pp1_hmtotal": 44 };
+    const html = renderToStaticMarkup(
+      <IndividualRoundCard
+        pid="p1" week={15} schedule={schedule} course={course}
+        players={players} scoringRules={scoringRules} leagueConfig={leagueConfig}
+        allRounds={allRounds} scores={scores}
+      />
+    );
+    expect(html).toContain("total only");
+    expect(html).toContain("44");
+    expect(html).not.toContain("HOLE");
   });
 
   it("survives a course doc with no hole data", () => {

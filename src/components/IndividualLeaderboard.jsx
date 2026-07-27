@@ -24,7 +24,141 @@ import { useState, useMemo, useRef, useEffect } from "react";
 import { K, EmptyState, getWeekSide, LIST_GAP, CARD_RADIUS, calcPlayerHcp, lastNamesOnly,
   resolveIndivRound, LoadingPanel, buildHistoricalPlayers, FS, FW } from "../theme";
 import { SharedScorecard } from "./SharedScorecard";
-import { readScoreEffective, getStrokesForHole, buildStrokesMap } from "../lib/matchCalc";
+import { buildStrokesMap } from "../lib/matchCalc";
+// computeRoundLine is the same per-round calc the leaderboard totals use, so
+// the number printed on an expanded card can't drift from the row above it.
+import { computeRoundLine } from "../lib/indivGroups";
+
+// ══════════════════════════════════════════════════════════════════\n//  IndividualRoundCard — one golfer's round, as the event scored it\n// ══════════════════════════════════════════════════════════════════\n//\n// Exported (rather than living as a closure inside the board) so the\n// absent-but-made-up case can be tested directly — it's reachable in the UI\n// only by expanding a row, which is internal state.\n//\n// Inline scorecard panel for an expanded player row.
+//
+// This reads the INDIVIDUAL round — the same resolveIndivRound the row's own
+// total is computed from — and nothing else. It previously went through
+// readScoreEffective/getStrokesForHole with the player's teammate supplied as
+// the opposing side, which drags in the TEAM match's absent-substitution rule:
+// when a golfer is marked absent from their match, their present teammate
+// "plays both slots" and the absent golfer's cells resolve to the teammate's
+// scores. So a golfer who missed League Night and made up their individual
+// round later showed the correct makeup total on the row and their
+// teammate's card underneath it, in absent-red, disagreeing with itself.
+//
+// There is no team in the individual event, so no substitution applies. A
+// golfer either posted a round (live card, makeup card, or a total-only
+// makeup) or they didn't.
+export function IndividualRoundCard({ pid, week, schedule, course, players, scoringRules, leagueConfig, allRounds, scores }) {
+  const wk = schedule.find(s => s.week === week);
+  if (!wk || !course) return null;
+  if (!allRounds) return <LoadingPanel size="compact" subtitle="scores" />;
+
+  const side = wk.side || getWeekSide(week);
+  const pars = side === 'front' ? course.frontPars : course.backPars;
+  const hcps = side === 'front' ? course.frontHcps : course.backHcps;
+  if (!Array.isArray(pars) || !Array.isArray(hcps)) return null;
+
+  const season = leagueConfig?.year || new Date().getFullYear();
+  const historicalPlayers = buildHistoricalPlayers({
+    players, week, season, allRoundsByPid: allRounds, scoringRules, course,
+  });
+
+  const getInitials = (x) => { const pl = players.find(pp => pp.id === x); return pl ? pl.name.split(' ').map(n => n[0]).join('') : "?"; }
+  const getHcp = (x) => { const hp = historicalPlayers.find(pp => pp.id === x); return hp ? Math.round(hp.handicapIndex || 0) : 0; }
+
+  const ir = resolveIndivRound(scores, week, pid);
+  const roundHcp = getHcp(pid);
+  // computeRoundLine is the same calc behind the row's per-round number, so
+  // the figure printed on the card can't drift from the one above it.
+  const line = computeRoundLine({ ir, pars, hcps, roundHcp });
+  const toPar = (n) => n > 0 ? `+${n}` : n === 0 ? "E" : `${n}`;
+
+  const playoffWeeks = (schedule || [])
+    .filter(w => w.isPlayoff === true && !w.rainedOut && w.matches?.length > 0)
+    .sort((a, b) => a.week - b.week);
+  const roundIdxEarly = playoffWeeks.findIndex(w => w.week === week);
+  const label = `${roundIdxEarly >= 0 ? `Round ${roundIdxEarly + 1}` : `Week ${week}`} · ${side === 'front' ? 'Front 9' : 'Back 9'}`;
+  const Header = ({ note }) => (
+    <div style={{ display: "flex", alignItems: "baseline", gap: 6, marginBottom: 6, flexWrap: "wrap" }}>
+      <span style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.t3, textTransform: "uppercase", letterSpacing: .6 }}>{label}</span>
+      {note && <span style={{ fontSize: FS.micro, fontWeight: FW.heavy, color: K.act, textTransform: "uppercase", letterSpacing: .6 }}>{note}</span>}
+      {line.played && (
+        <span style={{ marginLeft: "auto", fontSize: FS.micro, fontWeight: FW.bold, color: K.t3 }}>
+          NET <strong style={{ color: K.t1 }}>{toPar(line.netToPar)}</strong>
+        </span>
+      )}
+    </div>
+  );
+
+  if (ir.withdrawn && !line.played) {
+    return (
+      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${K.bdr}` }}>
+        <Header note="Withdrawn" />
+        <div style={{ fontSize: FS.xs, color: K.t3 }}>No round recorded for this player.</div>
+      </div>
+    );
+  }
+
+  if (!line.played) {
+    return (
+      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${K.bdr}` }}>
+        <Header />
+        <div style={{ fontSize: FS.xs, color: K.t3 }}>No round posted yet.</div>
+      </div>
+    );
+  }
+
+  // A total-only makeup has a gross and nothing else. Drawing a nine-hole
+  // grid would mean inventing hole scores, so it gets a summary instead —
+  // the same reason the Stats boards leave total-only rounds out of their
+  // per-hole distributions.
+  if (ir.totalOnly) {
+    const cell = (lbl, val) => (
+      <div style={{ flex: 1, textAlign: "center" }}>
+        <div style={{ fontSize: FS.micro, color: K.t3, fontWeight: FW.bold, letterSpacing: .6 }}>{lbl}</div>
+        <div style={{ fontSize: FS.base, color: K.t1, fontWeight: FW.heavy }}>{val}</div>
+      </div>
+    );
+    return (
+      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${K.bdr}` }}>
+        <Header note="Makeup · total only" />
+        <div style={{ display: "flex", background: K.bg, border: `1px solid ${K.bdr}60`, borderRadius: 10, padding: "8px 4px" }}>
+          {cell("Gross", ir.gross)}
+          {cell("HCP", roundHcp)}
+          {cell("Net", ir.gross - roundHcp)}
+          {cell("To Par", toPar(line.netToPar))}
+        </div>
+      </div>
+    );
+  }
+
+  // Live or makeup hole card. Scores come straight from the resolved round —
+  // no team, no opponent side, no substitution — and strokes are allocated
+  // from the into-week handicap by the same allocator the leaderboard uses.
+  const strokeMap = buildStrokesMap(roundHcp, hcps);
+  const getScore = (x, h) => (x === pid ? (ir.holes[h] || 0) : 0);
+  const getStrokes = (x, h) => (x === pid ? (strokeMap[h] || 0) : 0);
+  const t1Pids = [pid];
+
+  const sc = SharedScorecard({
+    pars, side, hcps, team1Pids: t1Pids, team2Pids: [],
+    getScore, getStrokes, getHcp, getInitials,
+    isAbsent: () => false,
+    variant: "allMatches", showTotals: true, showMatchRow: false, matchGrn: K.matchGrn,
+  });
+
+  return (
+    <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${K.bdr}` }}>
+      {/* "Makeup" is called out because this card legitimately differs from
+          the team match's card for the same week — the golfer was absent
+          there and played this round separately. */}
+      <Header note={ir.mode === "makeupHoles" ? "Makeup" : null} />
+      <div style={{ background: K.bg, border: `1px solid ${K.bdr}60`, borderRadius: 10, overflow: "hidden" }}>
+        <sc.HoleRow />
+        <sc.ParRow />
+        <sc.HcpRow />
+        {t1Pids.map(x => <sc.PlayerRow key={x} pid={x} />)}
+        <sc.TeamNetRow pids={t1Pids} isTeam1Side={true} />
+      </div>
+    </div>
+  );
+}
 
 export function IndividualLeaderboard({ players, teams, schedule, course, leagueConfig, scoringRules, scores, allRounds, loading }) {
   const [expandedPid, setExpandedPid] = useState(null); // playerId whose scorecard is expanded inline
@@ -367,65 +501,6 @@ export function IndividualLeaderboard({ players, teams, schedule, course, league
   const currentRoundWeek = leaderboard.reduce(
     (mx, p) => p.rounds.reduce((m, r) => Math.max(m, r.week), mx), 0);
 
-  // Inline scorecard panel for an expanded player row. Same builder the old
-  // popup used — SharedScorecard + into-week handicaps (buildHistoricalPlayers)
-  // and the shared lib/matchCalc score/stroke readers — so stroke dots and the
-  // net line match the team match cards and the Schedule tab exactly. Stroke
-  // play, so no opponent / match row. Returns just the panel body; the row card
-  // supplies the outer chrome, mirroring how Schedule drops its mini scorecard
-  // straight into the match card rather than a modal.
-  const renderPlayerScorecard = (pid, week) => {
-    const wk = schedule.find(s => s.week === week);
-    if (!wk || !course) return null;
-    if (!allRounds) return <LoadingPanel size="compact" subtitle="scores" />;
-
-    const side = wk.side || getWeekSide(week);
-    const pars = side === 'front' ? course.frontPars : course.backPars;
-    const hcps = side === 'front' ? course.frontHcps : course.backHcps;
-    if (!Array.isArray(pars) || !Array.isArray(hcps)) return null;
-
-    const season = leagueConfig?.year || new Date().getFullYear();
-    const historicalPlayers = buildHistoricalPlayers({
-      players, week, season, allRoundsByPid: allRounds, scoringRules, course,
-    });
-
-    // Teammate resolves the absent model (present teammate plays both slots),
-    // matching how this player's round total was computed on the leaderboard.
-    const team = teams.find(t => t.player1 === pid || t.player2 === pid);
-    const teammate = team ? (team.player1 === pid ? team.player2 : team.player1) : null;
-    const t1Pids = [pid];
-    const t2Pids = teammate ? [teammate] : [];
-
-    const getInitials = (x) => { const pl = players.find(pp => pp.id === x); return pl ? pl.name.split(' ').map(n => n[0]).join('') : "?"; };
-    const getHcp = (x) => { const hp = historicalPlayers.find(pp => pp.id === x); return hp ? Math.round(hp.handicapIndex || 0) : 0; };
-    const isAbsent = (x) => scores[`w${week}_p${x}_habsent`] === 1;
-    const getStrokes = (x, h) => getStrokesForHole({ pid: x, h, players: historicalPlayers, hcps, week, holeScores: scores, t1Pids, t2Pids });
-    const getScore = (x, h) => readScoreEffective({ pid: x, h, week, holeScores: scores, t1Pids, t2Pids, pars, hcps, players: historicalPlayers });
-
-    const sc = SharedScorecard({
-      pars, side, hcps, team1Pids: t1Pids, team2Pids: t2Pids,
-      getScore, getStrokes, getHcp, getInitials, isAbsent,
-      variant: "allMatches", showTotals: true, showMatchRow: false, matchGrn: K.matchGrn,
-    });
-
-    const roundIdx = playoffWeeks.findIndex(w => w.week === week);
-    const roundLabel = roundIdx >= 0 ? `Round ${roundIdx + 1}` : `Week ${week}`;
-
-    return (
-      <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px solid ${K.bdr}` }}>
-        <div style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.t3, textTransform: "uppercase", letterSpacing: .6, marginBottom: 6 }}>
-          {roundLabel} · {side === 'front' ? 'Front 9' : 'Back 9'}
-        </div>
-        <div style={{ background: K.bg, border: `1px solid ${K.bdr}60`, borderRadius: 10, overflow: "hidden" }}>
-          <sc.HoleRow />
-          <sc.ParRow />
-          <sc.HcpRow />
-          {t1Pids.map(x => <sc.PlayerRow key={x} pid={x} />)}
-          <sc.TeamNetRow pids={t1Pids} isTeam1Side={true} />
-        </div>
-      </div>
-    );
-  };
 
   const isGross = scoreMode === "gross";
 
@@ -675,7 +750,14 @@ export function IndividualLeaderboard({ players, teams, schedule, course, league
 
               {/* Inline scorecard — appears directly below the row when selected,
                   the way Schedule expands a match. No modal. */}
-              {isExp && scWk && renderPlayerScorecard(p.playerId, scWk)}
+              {isExp && scWk && (
+                <IndividualRoundCard
+                  pid={p.playerId} week={scWk}
+                  schedule={schedule} course={course} players={players}
+                  scoringRules={scoringRules} leagueConfig={leagueConfig}
+                  allRounds={allRounds} scores={scores}
+                />
+              )}
             </div>
           );
         })}
