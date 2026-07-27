@@ -131,6 +131,23 @@ describe("LiveScoringView renders for every viewer", () => {
     expect(html).toContain("Attest");
   });
 
+  it("shows the trophy on a playoff week and hides it otherwise", () => {
+    const html = renderFor({ playerId: "p1", isCommissioner: false });
+    expect(html).toContain("Individual tournament");
+
+    const regular = [{ ...schedule[0], isPlayoff: false, seeded: false }];
+    const off = renderFor({ playerId: "p1", isCommissioner: false }, { schedule: regular });
+    expect(off).not.toContain("Individual tournament");
+  });
+
+  it("hides the trophy when the individual event is switched off", () => {
+    const html = renderFor(
+      { playerId: "p1", isCommissioner: false },
+      { leagueConfig: { ...baseProps.leagueConfig, individualEvent: false } },
+    );
+    expect(html).not.toContain("Individual tournament");
+  });
+
   it("a locked week", () => {
     const locked = [{ ...schedule[0], locked: true }];
     const html = renderFor({ playerId: "p7", isCommissioner: false }, { schedule: locked });
