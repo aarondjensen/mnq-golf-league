@@ -86,7 +86,9 @@ describe("LiveScoringView renders for every viewer", () => {
     // in the individual group.
     const html = renderFor({ playerId: "p7", isCommissioner: false });
     expect(html.length).toBeGreaterThan(0);
-    expect(html).toContain("Individual Round");
+    // All four golfers in the group get a score card — the marker that this
+    // is the group view and not the (nonexistent) match view for p7.
+    ["Last7", "Last8", "Last9", "Last10"].forEach(n => expect(html).toContain(n));
   });
 
   it("the commissioner viewing a group they are not in", () => {

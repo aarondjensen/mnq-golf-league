@@ -3381,16 +3381,6 @@ function IndivGroupScoring({
       )}
       {header}
 
-      {/* Framing banner. Without it a player whose team just got knocked out
-          opens Scoring, sees no opponent, and reasonably assumes something
-          is broken. */}
-      <div style={{ background: K.teal + "15", border: `1px solid ${K.teal}40`, borderRadius: 8, padding: "7px 10px", marginBottom: 6 }}>
-        <div style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.teal, letterSpacing: 1, textTransform: "uppercase", marginBottom: 2 }}>Individual Round</div>
-        <div style={{ fontSize: FS.xs, color: K.t2, lineHeight: 1.4 }}>
-          No team match this week — everyone in this group posts an individual net score for the tournament.
-        </div>
-      </div>
-
       {isWeekLocked && (
         <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 4, fontSize: FS.sm, color: K.warn, fontWeight: FW.bold, textAlign: "center" }}>
           Week {week} is locked — scores are read-only
