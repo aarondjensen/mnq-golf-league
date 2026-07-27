@@ -34,6 +34,12 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
+  // Force the automatic JSX runtime for test transforms. Without it the
+  // component render tests compile to classic `React.createElement` and blow
+  // up with "React is not defined", since no source file imports React by
+  // name. The production build already uses the automatic runtime; this makes
+  // the test transform agree with it.
+  esbuild: { jsx: 'automatic', jsxImportSource: 'react' },
   test: {
     // Globals: false — keeps imports explicit (`import { describe, it,
     // expect } from "vitest"`). Avoids the "where did `expect` come

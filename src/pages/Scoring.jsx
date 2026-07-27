@@ -10,6 +10,8 @@ import { parseScheduleDate } from "../lib/scheduleDate";
 import { computeRoundLine } from "../lib/indivGroups";
 import { parseTiebreakerResult, TeamMatchupCard } from "../TeamMatchupCard";
 import { IndivGroupCard } from "../components/IndivGroupCard";
+import { IndividualLeaderboard } from "../components/IndividualLeaderboard";
+import { useIndividualScores } from "../lib/useIndividualScores";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { Popup, ConfirmModal } from "../components/Popup";
 
@@ -86,7 +88,7 @@ function computeMatchStatus(t1Pids, t2Pids, getScore, getStrokes, pars) {
 // ═══════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
-export default function LiveScoringView({ groupResults, saveGroupResult, deleteGroupResult, leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, commMode, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, applyScheduleOps, openAllMatches, onAllMatchesOpened, openFinalize, onFinalizeOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData, autoSeedIfReady, attendance, saveAttendance }) {
+export default function LiveScoringView({ groupResults, saveGroupResult, deleteGroupResult, fetchSeasonScores, fetchAllScores, leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, commMode, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, applyScheduleOps, openAllMatches, onAllMatchesOpened, openFinalize, onFinalizeOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData, autoSeedIfReady, attendance, saveAttendance }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
   // 3-way view toggle: "myMatch" (default scoring view), "allMatches" (week overview), "lowNet" (leaderboard)
@@ -113,6 +115,8 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
   const [confirmModal, setConfirmModal] = useState(null);
   const [justSigned, setJustSigned] = useState(false); // prevents flash between sign and Firestore update
   const [showCtpPopup, setShowCtpPopup] = useState(false);
+  // Individual tournament leaderboard, opened from the trophy in the header.
+  const [showEventBoard, setShowEventBoard] = useState(false);
   const [ctpSelections, setCtpSelections] = useState({}); // { holeNum: { playerId, distance } }
   // Per-hole CTP auto-prompt: fires for each group when their foursome
   // completes a par 3. See maybePromptHoleCtp.
@@ -149,8 +153,8 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
 
   // Notify App.jsx when popups open/close for body scroll lock
   useEffect(() => {
-    if (setPopupOpen) setPopupOpen(showFinalize || showScorecard || !!confirmModal || showCtpPopup || !!holeCtpPrompt);
-  }, [showFinalize, showScorecard, confirmModal, showCtpPopup, holeCtpPrompt, setPopupOpen]);
+    if (setPopupOpen) setPopupOpen(showFinalize || showScorecard || !!confirmModal || showCtpPopup || !!holeCtpPrompt || showEventBoard);
+  }, [showFinalize, showScorecard, confirmModal, showCtpPopup, holeCtpPrompt, showEventBoard, setPopupOpen]);
 
   // ── Player lookup map (O(1) instead of repeated .find()) ──
   const playerMap = useMemo(() => {
@@ -232,6 +236,21 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
       ? buildPlayoffSeedMap(teams, matchResults, schedule, leagueConfig)
       : buildSeedMap(teams, matchResults, schedule, leagueConfig);
   }, [showSeeds, weekSch?.isPlayoff, teams, matchResults, schedule, leagueConfig]);
+
+  // ── Individual tournament board (trophy popup) ──────────────────────
+  // Offered on playoff weeks whenever the individual event is running — every
+  // golfer is in it, not just the ones whose team is out of the bracket.
+  //
+  // `enabled` keeps the hook inert until the popup is actually opened, and
+  // handing it App's live hole scores means opening the board costs no
+  // Firestore reads at all: the finalized weeks come from the cached season
+  // tier and the one week still in play is already subscribed for scoring.
+  const eventBoardAvailable = weekSch?.isPlayoff === true && leagueConfig?.individualEvent !== false;
+  const eventScores = useIndividualScores({
+    schedule, leagueConfig, fetchSeasonScores, fetchAllScores,
+    liveScores: holeScores, liveWeek: week,
+    enabled: showEventBoard,
+  });
 
   const isWeekLocked = weekSch?.locked === true;
   // Every card in the week counts — team matches AND individual groups. A
@@ -969,7 +988,25 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
 
   // ── Three-way view toggle helper (used by My Match, All Matches, and Low Net views) ──
   const ViewToggle = () => (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 10 }}>
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", marginBottom: 10, position: "relative" }}>
+      {/* Trophy — absolutely positioned so the segmented toggle stays optically
+          centered regardless of whether the button is showing. */}
+      {eventBoardAvailable && (
+        <button
+          onClick={() => setShowEventBoard(true)}
+          aria-label="Individual tournament leaderboard"
+          title="Individual tournament"
+          style={{
+            position: "absolute", right: 0, top: "50%", transform: "translateY(-50%)",
+            width: 34, height: 34, borderRadius: 9,
+            background: K.card, border: `1px solid ${K.bdr}`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            cursor: "pointer", padding: 0, color: K.act,
+          }}
+        >
+          {I.trophy(18, K.act)}
+        </button>
+      )}
       <div style={{ display: "flex", background: K.inp, borderRadius: 20, border: `1px solid ${K.bdr}`, padding: 3 }}>
         {[
           { id: "myMatch", label: "My Match" },
@@ -989,6 +1026,30 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
           );
         })}
       </div>
+
+      {/* Individual tournament board. Lives inside ViewToggle so it renders
+          wherever the trophy does, and closes back to exactly where you were —
+          the point of a popup over a tab switch is not losing your place
+          mid-round. */}
+      {showEventBoard && (
+        <Popup onClose={() => setShowEventBoard(false)} maxWidth={560} padding={10} outerPadding={8} showClose zIndex="content">
+          {/* Title is passed INTO the board rather than rendered here, so it
+              sticks as one unit with the lens line and the column headers —
+              three separately-stuck rows would collide as the list scrolls. */}
+          <IndividualLeaderboard
+            title="Individual Tournament"
+            players={players}
+            teams={teams}
+            schedule={schedule}
+            course={course}
+            leagueConfig={leagueConfig}
+            scoringRules={scoringRules}
+            scores={eventScores.scores}
+            allRounds={eventScores.allRounds}
+            loading={eventScores.loading}
+          />
+        </Popup>
+      )}
     </div>
   );
 
@@ -2073,6 +2134,55 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
     );
   }
 
+  // ── Individual-group scoring view ─────────────────────────────────────
+  // Everything below this point assumes a two-team match: t1/t2, match-play
+  // hole status, Sign Scorecard, attestation. An individual group has none of
+  // that — four golfers share a tee time and each posts an individual net
+  // round — so it gets its own view rather than a pile of conditionals
+  // through the match UI. Scores go to the same hole_scores keys, which is
+  // what feeds the individual tournament board and handicaps.
+  if (isIndivGroupMatch(matchToScore)) {
+    const groupPids = (matchToScore.players || []).filter(Boolean);
+    return (
+      <IndivGroupScoring
+        // Remount when the group changes. The parent's match-change reset
+        // effect keys off `${team1}_${team2}`, which is "undefined_undefined"
+        // for every individual group — so without this, a commissioner
+        // switching from one group to another would inherit the previous
+        // group's hole position and initial-jump state.
+        key={groupPids.join("_")}
+        pids={groupPids}
+        week={week}
+        side={side}
+        pars={pars}
+        hcps={hcps}
+        playerMap={playerMap}
+        holeScores={holeScores}
+        saveScore={saveScore}
+        isWeekLocked={isWeekLocked}
+        viewerPid={leagueUser.playerId}
+        onBack={activeMatch ? () => setActiveMatch(null) : null}
+        header={<>
+          {!activeMatch && <ViewToggle />}
+          {!activeMatch && FinalizeBanner}
+        </>}
+        attendance={attendance}
+        saveAttendance={saveAttendance}
+        groupMatch={matchToScore}
+        groupResult={findGroupResult(groupResults, week, matchToScore)}
+        saveGroupResult={saveGroupResult}
+        deleteGroupResult={deleteGroupResult}
+        isComm={isComm}
+        toast={toast}
+        setToast={setToast}
+      />
+    );
+  }
+
+  // Team-match guard. Everything below needs two teams; an individual group
+  // has neither, which is why the branch above MUST stay ahead of this line —
+  // when it sat below, a golfer in a group got `return null` and a completely
+  // blank Scoring tab. Covered by Scoring.render.test.jsx.
   if (!t1 || !t2) return null;
 
   // Resolves the configured playoff tiebreaker against the in-progress live
@@ -2241,51 +2351,6 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
       variant, showTotals, matchGrn,
     });
   };
-
-  // ── Individual-group scoring view ─────────────────────────────────────
-  // Everything below this point assumes a two-team match: t1/t2, match-play
-  // hole status, Sign Scorecard, attestation. An individual group has none of
-  // that — four golfers share a tee time and each posts an individual net
-  // round — so it gets its own view rather than a pile of conditionals
-  // through the match UI. Scores go to the same hole_scores keys, which is
-  // what feeds the individual tournament board and handicaps.
-  if (isIndivGroupMatch(matchToScore)) {
-    const groupPids = (matchToScore.players || []).filter(Boolean);
-    return (
-      <IndivGroupScoring
-        // Remount when the group changes. The parent's match-change reset
-        // effect keys off `${team1}_${team2}`, which is "undefined_undefined"
-        // for every individual group — so without this, a commissioner
-        // switching from one group to another would inherit the previous
-        // group's hole position and initial-jump state.
-        key={groupPids.join("_")}
-        pids={groupPids}
-        week={week}
-        side={side}
-        pars={pars}
-        hcps={hcps}
-        playerMap={playerMap}
-        holeScores={holeScores}
-        saveScore={saveScore}
-        isWeekLocked={isWeekLocked}
-        viewerPid={leagueUser.playerId}
-        onBack={activeMatch ? () => setActiveMatch(null) : null}
-        header={<>
-          {!activeMatch && <ViewToggle />}
-          {!activeMatch && FinalizeBanner}
-        </>}
-        attendance={attendance}
-        saveAttendance={saveAttendance}
-        groupMatch={matchToScore}
-        groupResult={findGroupResult(groupResults, week, matchToScore)}
-        saveGroupResult={saveGroupResult}
-        deleteGroupResult={deleteGroupResult}
-        isComm={isComm}
-        toast={toast}
-        setToast={setToast}
-      />
-    );
-  }
 
   return (
     <div style={{ maxWidth: 420, margin: "0 auto" }}>
@@ -3376,16 +3441,6 @@ function IndivGroupScoring({
         </div>
       )}
       {header}
-
-      {/* Framing banner. Without it a player whose team just got knocked out
-          opens Scoring, sees no opponent, and reasonably assumes something
-          is broken. */}
-      <div style={{ background: K.teal + "15", border: `1px solid ${K.teal}40`, borderRadius: 8, padding: "7px 10px", marginBottom: 6 }}>
-        <div style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.teal, letterSpacing: 1, textTransform: "uppercase", marginBottom: 2 }}>Individual Round</div>
-        <div style={{ fontSize: FS.xs, color: K.t2, lineHeight: 1.4 }}>
-          No team match this week — everyone in this group posts an individual net score for the tournament.
-        </div>
-      </div>
 
       {isWeekLocked && (
         <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 4, fontSize: FS.sm, color: K.warn, fontWeight: FW.bold, textAlign: "center" }}>

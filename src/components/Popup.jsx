@@ -52,6 +52,7 @@
 // ══════════════════════════════════════════════════════════════════
 
 import { useEffect } from "react";
+import { createPortal } from "react-dom";
 import { K, FS, FW } from "../theme";
 
 const Z_MAP = { content: 500, modal: 900 };
@@ -84,10 +85,14 @@ export function Popup({
     if (!noBackdropClose && onClose) onClose();
   };
 
-  return (
+  const overlay = (
     <div
       onClick={handleBackdrop}
       data-popup
+      // .popup-root carries the app's typography. The portal below moves this
+      // subtree out of .app-shell, so without the class it would inherit the
+      // browser's default font, size, spacing and casing instead of the app's.
+      className="popup-root"
       style={{
         position: "fixed",
         inset: 0,
@@ -96,8 +101,11 @@ export function Popup({
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        // Safe-area insets keep the card clear of the notch and the home
+        // indicator on iOS, where the webview viewport spans the whole screen.
         padding: outerPadding,
-        overflowY: "auto",
+        paddingTop: `calc(${outerPadding}px + env(safe-area-inset-top, 0px))`,
+        paddingBottom: `calc(${outerPadding}px + env(safe-area-inset-bottom, 0px))`,
         overscrollBehavior: "contain",
       }}
     >
@@ -107,12 +115,14 @@ export function Popup({
           background: K.bg,
           border: `1px solid ${K.bdr}`,
           borderRadius: 14,
-          padding,
           width: "100%",
           maxWidth,
-          maxHeight: "calc(100vh - 32px)",
-          overflowY: "auto",
-          overscrollBehavior: "contain",
+          // The card is the height-capped frame; the SCROLLER is inside it.
+          // That's what keeps the ✕ reachable — see below.
+          maxHeight: "100%",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
           position: "relative",
           boxShadow: "0 12px 40px rgba(0, 0, 0, 0.4)",
           ...innerStyle,
@@ -129,7 +139,7 @@ export function Popup({
               width: 32,
               height: 32,
               borderRadius: 8,
-              background: "transparent",
+              background: K.bg,
               border: "none",
               color: K.t3,
               fontSize: FS.lg,
@@ -138,17 +148,37 @@ export function Popup({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              zIndex: 1,
+              zIndex: 2,
               lineHeight: 1,
             }}
           >
             ✕
           </button>
         )}
-        {children}
+        {/* Scrolling happens HERE, not on the card. When the card itself was
+            the scroller, the absolutely-positioned ✕ scrolled away with the
+            content — on a tall popup (the individual leaderboard) it left no
+            way to close at all. Now the ✕ is pinned to a non-scrolling frame
+            and the content moves underneath it. */}
+        <div style={{ padding, overflowY: "auto", overscrollBehavior: "contain", flex: 1, minHeight: 0 }}>
+          {children}
+        </div>
       </div>
     </div>
   );
+
+  // Portalled to <body> rather than rendered in place. Every popup is a
+  // descendant of .app-body, which scrolls inside a fixed, overflow-hidden
+  // .app-shell — and WebKit clips fixed-position descendants of a clipping
+  // ancestor, so the overlay was being cropped to the body region instead of
+  // covering the viewport. Short popups never revealed it (they fit inside the
+  // cropped area); the full-height leaderboard did, appearing tucked behind
+  // the header and the bottom nav with its close button off-screen. A portal
+  // takes the overlay out of that subtree entirely, so it covers the app
+  // chrome and its z-index competes at the document root.
+  return typeof document !== "undefined"
+    ? createPortal(overlay, document.body)
+    : overlay;
 }
 
 // ──────────────────────────────────────────────────────────────────
