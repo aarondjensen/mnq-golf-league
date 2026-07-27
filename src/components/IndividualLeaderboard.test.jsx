@@ -13,7 +13,7 @@
 
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { IndividualLeaderboard, IndividualRoundCard } from "./IndividualLeaderboard.jsx";
+import { IndividualLeaderboard, IndividualRoundCard, IndividualRoundsPanel } from "./IndividualLeaderboard.jsx";
 
 const PARS = [4, 4, 4, 3, 5, 4, 4, 3, 5];
 const course = {
@@ -179,5 +179,97 @@ describe("IndividualLeaderboard", () => {
       />
     );
     expect(html.length).toBeGreaterThan(0);
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  IndividualRoundsPanel — browsing a golfer's rounds
+// ══════════════════════════════════════════════════════════════════
+//
+// The expanded row lets a golfer step through any round they've posted, or
+// stack them all. Which rounds are OFFERED is the part worth pinning: only
+// posted ones, because an empty round has no card and a tab that does nothing
+// is worse than no tab.
+describe("IndividualRoundsPanel", () => {
+  const PARS9 = [4, 4, 4, 3, 5, 4, 4, 3, 5];
+  const c = {
+    name: "T", frontPars: PARS9, backPars: PARS9,
+    frontHcps: [1, 2, 3, 4, 5, 6, 7, 8, 9], backHcps: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+  };
+  const sched = [
+    { week: 15, isPlayoff: true, side: "front", locked: true, matches: [{ team1: "T1", team2: "T2" }] },
+    { week: 16, isPlayoff: true, side: "front", locked: true, matches: [{ team1: "T1", team2: "T2" }] },
+    { week: 17, isPlayoff: true, side: "front", locked: false, matches: [{ team1: "T1", team2: "T2" }] },
+  ];
+  const pw = sched;
+  const rnds = { p1: [{ season: 2026, week: 12, gross: 40 }] };
+
+  // Posted rounds in weeks 15 and 17; week 16 was missed. Grosses are chosen
+  // to avoid colliding with anything else the card prints — 36 would have
+  // matched the PAR row's total, which made an earlier version of these tests
+  // pass for the wrong reason.
+  const scores = {};
+  PARS9.forEach((v, h) => { scores[`w15_pp1_h${h}`] = v; });
+  scores["w15_pp1_h0"] = PARS9[0] + 2;                                 // 38
+  PARS9.forEach((v, h) => { scores[`w17_pp1_h${h}`] = v + 1; });       // 45
+  const posted = [{ week: 15 }, { week: 17 }];
+
+  const panel = (selected, rounds = posted) => renderToStaticMarkup(
+    <IndividualRoundsPanel
+      pid="p1" rounds={rounds} playoffWeeks={pw} selected={selected} onSelect={() => {}}
+      schedule={sched} course={c} players={[{ id: "p1", name: "Ann Alpha", handicapIndex: 4 }]}
+      scoringRules={{ hcpRecentCount: 8, hcpBestCount: 6 }} leagueConfig={{ year: 2026 }}
+      allRounds={rnds} scores={scores}
+    />
+  );
+
+  it("offers a tab per posted round, labelled by round number", () => {
+    const html = panel(15);
+    expect(html).toContain(">R1<");
+    expect(html).toContain(">R3<");   // week 17 is the third playoff round
+    expect(html).toContain(">All<");
+  });
+
+  it("does not offer a round the golfer never posted", () => {
+    // Week 16 is round 2 and was missed — no card exists, so no tab.
+    expect(panel(15)).not.toContain(">R2<");
+  });
+
+  it("shows only the selected round's card", () => {
+    // Week 15 was played in 36, week 17 in 45.
+    const html = panel(15);
+    expect(html).toContain(">38<");
+    expect(html).not.toContain(">45<");
+  });
+
+  it("switches to another round when selected", () => {
+    const html = panel(17);
+    expect(html).toContain(">45<");
+    expect(html).not.toContain(">38<");
+  });
+
+  it("stacks every posted round under All", () => {
+    const html = panel("all");
+    expect(html).toContain(">38<");
+    expect(html).toContain(">45<");
+    // Each card carries its own round heading, so stacked cards stay readable.
+    expect(html).toContain("Round 1");
+    expect(html).toContain("Round 3");
+  });
+
+  it("hides the selector when there is only one round to see", () => {
+    const html = panel(15, [{ week: 15 }]);
+    expect(html).not.toContain(">All<");
+    expect(html).toContain(">38<");
+  });
+
+  it("falls back to the latest round when the selection is stale", () => {
+    // A re-seed can move weeks under a selection that's already open.
+    const html = panel(99);
+    expect(html).toContain(">45<");
+  });
+
+  it("renders nothing when no rounds have been posted", () => {
+    expect(panel(15, [])).toBe("");
   });
 });

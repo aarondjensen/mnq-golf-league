@@ -160,8 +160,91 @@ export function IndividualRoundCard({ pid, week, schedule, course, players, scor
   );
 }
 
+// ══════════════════════════════════════════════════════════════════
+//  IndividualRoundsPanel — the expanded row's round browser
+// ══════════════════════════════════════════════════════════════════
+//
+// A golfer accumulates a card per playoff round, and the expanded row lets you
+// step through any of them or stack them all. Only rounds actually POSTED are
+// offered: an empty round has no card to draw, and listing it would invite a
+// tap that does nothing.
+//
+// Exported, and driven by `selected` / `onSelect` from the parent, so the
+// browsing behavior is testable — expansion is internal state and unreachable
+// from a static render otherwise.
+//
+//   rounds       — the player's posted rounds (leaderboard row's `p.rounds`)
+//   playoffWeeks — used only to label a week as "R1".."R4"
+//   selected     — a week number, or "all"
+export function IndividualRoundsPanel({
+  pid, rounds, playoffWeeks, selected, onSelect,
+  schedule, course, players, scoringRules, leagueConfig, allRounds, scores,
+}) {
+  const played = [...(rounds || [])].sort((a, b) => a.week - b.week);
+  if (!played.length) return null;
+
+  const roundNo = (w) => {
+    const i = (playoffWeeks || []).findIndex(x => x.week === w);
+    return i >= 0 ? i + 1 : null;
+  };
+  const showAll = selected === "all";
+  // An unknown or stale selection falls back to the player's latest round
+  // rather than rendering nothing — the selector can outlive a re-seed.
+  const fallback = played[played.length - 1].week;
+  const current = showAll ? null : (played.some(r => r.week === selected) ? selected : fallback);
+  const weeksToShow = showAll ? played.map(r => r.week) : [current];
+
+  const tab = (key, label, active) => (
+    <button
+      key={key}
+      onClick={() => onSelect(key)}
+      style={{
+        padding: "4px 10px", borderRadius: 7, cursor: active ? "default" : "pointer",
+        border: "none", fontSize: FS.micro, fontWeight: FW.bold, letterSpacing: .5,
+        background: active ? K.acc : "transparent",
+        color: active ? K.bg : K.t3,
+        transition: "all .15s",
+      }}
+    >{label}</button>
+  );
+
+  return (
+    <>
+      {/* The selector only earns its space once there's a choice to make — a
+          golfer with one round goes straight to the card. */}
+      {played.length > 1 && (
+        <div style={{ display: "flex", justifyContent: "center", marginTop: 10 }}>
+          <div style={{ display: "inline-flex", background: K.inp, borderRadius: 9, border: `1px solid ${K.bdr}`, padding: 3, gap: 2, flexWrap: "wrap", justifyContent: "center" }}>
+            {played.map(r => tab(r.week, `R${roundNo(r.week) ?? r.week}`, !showAll && current === r.week))}
+            {tab("all", "All", showAll)}
+          </div>
+        </div>
+      )}
+      {weeksToShow.map(w => (
+        <IndividualRoundCard
+          key={w}
+          pid={pid} week={w}
+          schedule={schedule} course={course} players={players}
+          scoringRules={scoringRules} leagueConfig={leagueConfig}
+          allRounds={allRounds} scores={scores}
+        />
+      ))}
+    </>
+  );
+}
+
 export function IndividualLeaderboard({ players, teams, schedule, course, leagueConfig, scoringRules, scores, allRounds, loading }) {
   const [expandedPid, setExpandedPid] = useState(null); // playerId whose scorecard is expanded inline
+  // Which round the expanded card is showing: a week number, "all" to stack
+  // every round the player has posted, or null to fall back to their latest.
+  // Reset whenever a different player is opened so the selector never carries
+  // a stale round — and null-not-a-week so the default follows the live round
+  // as the tournament moves on.
+  const [expandedRound, setExpandedRound] = useState(null);
+  const openPlayer = (pid) => {
+    setExpandedPid(prev => (prev === pid ? null : pid));
+    setExpandedRound(null);
+  };
   const [scoreMode, setScoreMode] = useState("net"); // "net" | "gross" — leaderboard scoring lens; defaults to Net
   // Display sort — a VIEW-only reorder. Rank badges + movement arrows always keep
   // reflecting golf position (computed by Total in the memo); this only changes
@@ -656,7 +739,7 @@ export function IndividualLeaderboard({ players, teams, schedule, course, league
                   player's scorecard inline below (Schedule-style), or collapses it.
                   Inert when there's no round to show (scWk null). */}
               <div
-                onClick={scWk ? () => setExpandedPid(isExp ? null : p.playerId) : undefined}
+                onClick={scWk ? () => openPlayer(p.playerId) : undefined}
                 style={{ display: "flex", alignItems: "center", cursor: scWk ? "pointer" : "default" }}
               >
               {/* Rank — golf-standard tie labels: T1/T2/… for tied groups, plain
@@ -751,8 +834,12 @@ export function IndividualLeaderboard({ players, teams, schedule, course, league
               {/* Inline scorecard — appears directly below the row when selected,
                   the way Schedule expands a match. No modal. */}
               {isExp && scWk && (
-                <IndividualRoundCard
-                  pid={p.playerId} week={scWk}
+                <IndividualRoundsPanel
+                  pid={p.playerId}
+                  rounds={p.rounds}
+                  playoffWeeks={playoffWeeks}
+                  selected={expandedRound ?? scWk}
+                  onSelect={setExpandedRound}
                   schedule={schedule} course={course} players={players}
                   scoringRules={scoringRules} leagueConfig={leagueConfig}
                   allRounds={allRounds} scores={scores}
