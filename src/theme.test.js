@@ -28,7 +28,7 @@
 // file's expectations are pinned correctly.
 
 import { describe, it, expect } from "vitest";
-import { buildStandingsForSeed } from "./theme";
+import { buildStandingsForSeed, isIndivGroupMatch, scorableMatches, weekFullyAttested, matchPids } from "./theme";
 
 // Helpers that build fixtures concisely. Default values match what
 // computeMatchResult would produce for typical matches.
@@ -338,5 +338,100 @@ describe("buildStandingsForSeed", () => {
       expect(a.points).toBe(10);
       expect(a.w).toBe(1);
     });
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  Individual-group guards
+// ══════════════════════════════════════════════════════════════════
+//
+// Why these are pinned
+// ────────────────────
+// A playoff individual group (eliminated players regrouped into a foursome)
+// carries `players` and NO team1/team2, and NEVER produces a match_result.
+// Every "is this week done / ready to finalize" check in the app runs over
+// scorableMatches for exactly that reason — the original bug was a week that
+// could never be finalized because it was waiting on a result that would
+// never be written.
+describe("isIndivGroupMatch", () => {
+  it("is true only for the explicit flag", () => {
+    expect(isIndivGroupMatch({ isIndivGroup: true, players: ["p1"] })).toBe(true);
+    expect(isIndivGroupMatch({ team1: "A", team2: "B" })).toBe(false);
+    // A team consolation match is NOT an individual group — it still has two
+    // teams and still produces a result.
+    expect(isIndivGroupMatch({ team1: "A", team2: "B", isConsolation: true })).toBe(false);
+    expect(isIndivGroupMatch(null)).toBe(false);
+    expect(isIndivGroupMatch(undefined)).toBe(false);
+  });
+});
+
+describe("scorableMatches", () => {
+  const bracket = { team1: "A", team2: "B" };
+  const consolation = { team1: "C", team2: "D", isConsolation: true };
+  const group = { players: ["p1", "p2", "p3", "p4"], isConsolation: true, isIndivGroup: true };
+
+  it("drops individual groups and keeps every real match", () => {
+    expect(scorableMatches([group, consolation, bracket])).toEqual([consolation, bracket]);
+  });
+
+  it("keeps team consolation matches (they do produce results)", () => {
+    expect(scorableMatches([consolation])).toEqual([consolation]);
+  });
+
+  it("tolerates null/undefined", () => {
+    expect(scorableMatches(null)).toEqual([]);
+    expect(scorableMatches(undefined)).toEqual([]);
+  });
+});
+
+describe("weekFullyAttested", () => {
+  const group = { players: ["p1", "p2", "p3", "p4"], isConsolation: true, isIndivGroup: true };
+  const attested = (week, t1, t2) => ({ week, team1Id: t1, team2Id: t2, attested: true });
+
+  it("ignores an individual group when judging the week", () => {
+    const wk = { week: 15, matches: [group, { team1: "A", team2: "B" }] };
+    // Regression: before individual groups were excluded, this returned false
+    // forever and the finalize banner never appeared for the week.
+    expect(weekFullyAttested(wk, [attested(15, "A", "B")])).toBe(true);
+  });
+
+  it("is false while any real match is unattested", () => {
+    const wk = { week: 15, matches: [group, { team1: "A", team2: "B" }, { team1: "C", team2: "D" }] };
+    expect(weekFullyAttested(wk, [attested(15, "A", "B")])).toBe(false);
+  });
+
+  it("does not count a signed-but-unattested result", () => {
+    const wk = { week: 15, matches: [{ team1: "A", team2: "B" }] };
+    const signedOnly = [{ week: 15, team1Id: "A", team2Id: "B", attested: false }];
+    expect(weekFullyAttested(wk, signedOnly)).toBe(false);
+  });
+
+  it("is false for a week with nothing to attest", () => {
+    // Only individual groups: there is no signature to wait for, so the week
+    // is not "ready to finalize" on the strength of attestation.
+    expect(weekFullyAttested({ week: 15, matches: [group] }, [])).toBe(false);
+    expect(weekFullyAttested({ week: 15, matches: [] }, [])).toBe(false);
+    expect(weekFullyAttested({ week: 15 }, [])).toBe(false);
+  });
+
+  it("does not match a result from another week", () => {
+    const wk = { week: 15, matches: [{ team1: "A", team2: "B" }] };
+    expect(weekFullyAttested(wk, [attested(14, "A", "B")])).toBe(false);
+  });
+});
+
+describe("matchPids on an individual group", () => {
+  it("returns the explicit players array, no team lookup", () => {
+    const teams = [{ id: "A", player1: "p9", player2: "p8" }];
+    const group = { players: ["p1", "p2", "p3", "p4"], isIndivGroup: true };
+    expect(matchPids(group, teams)).toEqual(["p1", "p2", "p3", "p4"]);
+  });
+
+  it("still resolves team rosters for a normal match", () => {
+    const teams = [
+      { id: "A", player1: "p1", player2: "p2" },
+      { id: "B", player1: "p3", player2: "p4" },
+    ];
+    expect(matchPids({ team1: "A", team2: "B" }, teams)).toEqual(["p1", "p2", "p3", "p4"]);
   });
 });

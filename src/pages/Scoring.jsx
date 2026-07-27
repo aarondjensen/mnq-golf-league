@@ -2,11 +2,13 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { K, I, BackBtn, Card, EmptyState,
   getWeekSide,
   formatTeeTime as fmtTeeTimeUtil, LIST_GAP,
-  buildSeedMap, buildPlayoffSeedMap, matchPids, resolveIndivRound, FS, FW } from "../theme";
+  buildSeedMap, buildPlayoffSeedMap, matchPids, resolveIndivRound, isIndivGroupMatch, scorableMatches, FS, FW } from "../theme";
 import { LEAGUE_ID } from "../firebase";
-import { computeMatchResult, resultLetterFor, readScoreEffective, readStrokesEffectiveExt, computePlayoffTiebreaker, isMatchPendingMakeup } from "../lib/matchCalc";
+import { computeMatchResult, resultLetterFor, readScoreEffective, readStrokesEffectiveExt, computePlayoffTiebreaker, isMatchPendingMakeup, buildStrokesMap } from "../lib/matchCalc";
 import { parseScheduleDate } from "../lib/scheduleDate";
+import { computeRoundLine } from "../lib/indivGroups";
 import { parseTiebreakerResult, TeamMatchupCard } from "../TeamMatchupCard";
+import { IndivGroupCard } from "../components/IndivGroupCard";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { Popup, ConfirmModal } from "../components/Popup";
 
@@ -178,7 +180,18 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   const pars = course ? (side === 'front' ? course.frontPars : course.backPars) : [4,4,4,3,5,4,4,3,5];
   const hcps = course ? (side === 'front' ? course.frontHcps : course.backHcps) : [1,3,5,7,9,11,13,15,17];
   const myTeam = teams.find(t => t.player1 === leagueUser.playerId || t.player2 === leagueUser.playerId);
-  const myMatch = myTeam ? matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id) : null;
+  // "What am I playing this week" — normally my team's match, but once my team
+  // is knocked out of the playoff bracket its players are regrouped into an
+  // individual foursome and my tee time lives there instead. Individual groups
+  // are checked first: an eliminated team is excluded from team pairing by the
+  // seeder, so the two can never both match, and checking groups first keeps
+  // this correct even if a hand-edited week ever breaks that invariant.
+  const myIndivGroup = leagueUser.playerId
+    ? matches.find(m => isIndivGroupMatch(m) && (m.players || []).includes(leagueUser.playerId))
+    : null;
+  const myMatch = myIndivGroup
+    || (myTeam ? matches.find(m => !isIndivGroupMatch(m) && (m.team1 === myTeam.id || m.team2 === myTeam.id)) : null)
+    || null;
 
   // App-level "Finalize Week N" banner click → directly open the CTP /
   // finalize popup. Pre-fills CTP selections from any prior week-CTP
@@ -220,10 +233,15 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   }, [showSeeds, weekSch?.isPlayoff, teams, matchResults, schedule, leagueConfig]);
 
   const isWeekLocked = weekSch?.locked === true;
-  const allMatchesFinalized = matches.every(m =>
+  // Only team matches produce a match_result. Individual groups (eliminated
+  // players regrouped as a foursome) are excluded from every "is the week
+  // done" test — they can't be signed or attested, so counting them would
+  // pin the week at "not ready" forever.
+  const scoredMatches = scorableMatches(matches);
+  const allMatchesFinalized = scoredMatches.every(m =>
     matchResults.some(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2)
   );
-  const allMatchesAttested = matches.every(m =>
+  const allMatchesAttested = scoredMatches.every(m =>
     matchResults.some(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true)
   );
 
@@ -243,10 +261,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   //                broken. This strip gives them a visible breadcrumb while
   //                they wait.
   //   3. Nothing to show → no banner (no matches scored yet, or not commish).
-  const attestedCount = matches.filter(m =>
+  const attestedCount = scoredMatches.filter(m =>
     matchResults.some(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true)
   ).length;
-  const matchCount = matches.length;
+  const matchCount = scoredMatches.length;
   const hasSomeProgress = attestedCount > 0 && attestedCount < matchCount;
 
   const showWaitingBanner = isComm && !allMatchesAttested && hasSomeProgress && !isWeekLocked;
@@ -1019,6 +1037,36 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
 
         <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
           {matches.map((m, mi) => {
+            // Individual group — four golfers, no opponent, no result. These
+            // used to be dropped entirely by the !rawT1 || !rawT2 guard below,
+            // which hid a whole tee time from the week's list. Tapping opens
+            // the group's scoring view, same as tapping a match.
+            if (isIndivGroupMatch(m)) {
+              const gPids = (m.players || []).filter(Boolean);
+              const rows = gPids.map(pid => {
+                const ir = resolveIndivRound(holeScores, week, pid);
+                const nineHcp = playerMap[pid] ? Math.round(playerMap[pid].handicapIndex || 0) : 0;
+                const line = computeRoundLine({ ir, pars, hcps, roundHcp: nineHcp });
+                const name = playerMap[pid]?.name || "?";
+                if (ir.withdrawn) return { pid, name, value: "WD" };
+                if (!line.played) return { pid, name };
+                return {
+                  pid, name,
+                  value: line.netToPar > 0 ? `+${line.netToPar}` : line.netToPar === 0 ? "E" : `${line.netToPar}`,
+                  sub: line.totalOnly ? "total" : `thru ${line.holesPlayed}`,
+                };
+              });
+              return (
+                <IndivGroupCard
+                  key={mi}
+                  rows={rows}
+                  teeTime={formatTeeTime(mi)}
+                  highlightSelf={gPids.includes(leagueUser.playerId)}
+                  highlightPid={leagueUser.playerId}
+                  onClick={() => { setActiveMatch(m); setShowAllMatches(false); }}
+                />
+              );
+            }
             const rawT1 = teams.find(t => t.id === m.team1);
             const rawT2 = teams.find(t => t.id === m.team2);
             if (!rawT1 || !rawT2) return null;
@@ -1601,13 +1649,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           // else (a regular-week absence covered by a teammate, an already-
           // entered makeup, a withdrawal, a partial card) is shown for
           // awareness but doesn't gate the lock.
+          // matchPids (not an inline team lookup) so golfers in an individual
+          // group are audited too — they have no team1/team2 to resolve, and
+          // a missing individual card is exactly the kind of thing this
+          // pre-flight exists to catch before the week locks.
           const isPlayoffWk = weekSch?.isPlayoff === true;
           const weekPlayerIds = [...new Set(
-            (weekSch?.matches || []).flatMap(m => {
-              const ta = teams.find(t => t.id === m.team1);
-              const tb = teams.find(t => t.id === m.team2);
-              return [ta?.player1, ta?.player2, tb?.player1, tb?.player2];
-            }).filter(Boolean)
+            (weekSch?.matches || []).flatMap(m => matchPids(m, teams)).filter(Boolean)
           )];
           // Only surface a row when it actually needs the commissioner to DO
           // something: a playoff round that's unaccounted for (blocking), a
@@ -1642,7 +1690,10 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             // FINAL with no results). Requiring a recorded result for every match
             // makes that impossible. The banner only surfaces fully-attested
             // weeks, so this never blocks a legitimate finalize.
-            const wkMatches = weekSch?.matches || [];
+            // Individual groups are excluded: they produce no match_result by
+            // design, so requiring one would make any playoff week containing
+            // a group impossible to finalize.
+            const wkMatches = scorableMatches(weekSch?.matches);
             const everyMatchHasResult = wkMatches.length > 0 && wkMatches.every(m =>
               matchResults.some(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2)
             );
@@ -2176,6 +2227,44 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
       variant, showTotals, matchGrn,
     });
   };
+
+  // ── Individual-group scoring view ─────────────────────────────────────
+  // Everything below this point assumes a two-team match: t1/t2, match-play
+  // hole status, Sign Scorecard, attestation. An individual group has none of
+  // that — four golfers share a tee time and each posts an individual net
+  // round — so it gets its own view rather than a pile of conditionals
+  // through the match UI. Scores go to the same hole_scores keys, which is
+  // what feeds the individual tournament board and handicaps.
+  if (isIndivGroupMatch(matchToScore)) {
+    const groupPids = (matchToScore.players || []).filter(Boolean);
+    return (
+      <IndivGroupScoring
+        // Remount when the group changes. The parent's match-change reset
+        // effect keys off `${team1}_${team2}`, which is "undefined_undefined"
+        // for every individual group — so without this, a commissioner
+        // switching from one group to another would inherit the previous
+        // group's hole position and initial-jump state.
+        key={groupPids.join("_")}
+        pids={groupPids}
+        week={week}
+        side={side}
+        pars={pars}
+        hcps={hcps}
+        playerMap={playerMap}
+        holeScores={holeScores}
+        saveScore={saveScore}
+        isWeekLocked={isWeekLocked}
+        viewerPid={leagueUser.playerId}
+        onBack={activeMatch ? () => setActiveMatch(null) : null}
+        header={<>
+          {!activeMatch && <ViewToggle />}
+          {!activeMatch && FinalizeBanner}
+        </>}
+        toast={toast}
+        setToast={setToast}
+      />
+    );
+  }
 
   return (
     <div style={{ maxWidth: 420, margin: "0 auto" }}>
@@ -2862,16 +2951,27 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
         onCancel: confirmModal.onCancel || (() => setConfirmModal(null)),
       }} />
       {/* Toast */}
-      {toast && (<>
-        <style>{`@keyframes toastDown { 0% { transform: translateX(-50%) translateY(-20px); opacity: 0; } 100% { transform: translateX(-50%) translateY(0); opacity: 1; } }`}</style>
-        <div style={{ position: "fixed", top: 30, left: "50%", transform: "translateX(-50%)", background: K.act, color: K.bg, padding: "12px 48px", borderRadius: 12, fontSize: FS.sm, fontWeight: FW.bold, zIndex: 1000, whiteSpace: "nowrap", minWidth: 240, textAlign: "center", boxShadow: "0 8px 32px rgba(0,0,0,0.4)", animation: "toastDown 0.3s ease" }}>
-          {toast}
-        </div>
-      </>)}
+      <ScoringToast toast={toast} animate />
     </div>
   );
 }
 
+
+// ──────────────────────────────────────────────────────────────────────────
+//  ScoringToast — the fixed-position confirmation toast
+// ──────────────────────────────────────────────────────────────────────────
+// Extracted so views that return early (the individual-group view) render the
+// same toast as the match view. Toast state lives in LiveScoringView, but each
+// view owns its own return, so the markup has to travel with them.
+function ScoringToast({ toast, animate = false }) {
+  if (!toast) return null;
+  return (<>
+    {animate && <style>{`@keyframes toastDown { 0% { transform: translateX(-50%) translateY(-20px); opacity: 0; } 100% { transform: translateX(-50%) translateY(0); opacity: 1; } }`}</style>}
+    <div style={{ position: "fixed", top: 30, left: "50%", transform: "translateX(-50%)", background: K.act, color: K.bg, padding: "12px 48px", borderRadius: 12, fontSize: FS.sm, fontWeight: FW.bold, zIndex: 1000, whiteSpace: "nowrap", minWidth: 240, textAlign: "center", boxShadow: "0 8px 32px rgba(0,0,0,0.4)", ...(animate ? { animation: "toastDown 0.3s ease" } : {}) }}>
+      {toast}
+    </div>
+  </>);
+}
 
 // ──────────────────────────────────────────────────────────────────────────
 //  Score-button labels — index-aligned with the par-relative button window
@@ -2996,6 +3096,242 @@ function MakeupAuditRow({ name, status, blocking, isPlayoff, side, onSaveHoles, 
         </>
       )}
     </Card>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════
+//  IndivGroupScoring — scoring for a playoff individual group
+// ═══════════════════════════════════════════════════════════════
+//
+// Once a team is knocked out of the bracket, its players are regrouped into an
+// individual foursome (lib/indivGroups.js). There is no match: no opponent, no
+// hole-by-hole match status, no Sign Scorecard, no attestation, and no
+// match_result document. Four golfers share a tee time and each posts an
+// individual net round for the individual tournament.
+//
+// So this view is deliberately NOT the match view with parts hidden. It keeps
+// only what applies: the hole strip, the per-hole entry cards (the same
+// PlayerScoreCard the match view uses, so the scoring gesture is identical),
+// and a full-round scorecard. Scores are written to the same
+// `w{week}_p{pid}_h{hole}` keys, which is what the individual leaderboard,
+// the Low Net board, Stats and the handicap calc all read — nothing
+// downstream needs to know the round came from a group rather than a match.
+//
+// Absent-substitution (a present teammate covering both slots) is deliberately
+// NOT applied here: it is a team rule, and there is no team. A golfer who
+// doesn't play simply has no round, which resolveIndivRound already reports as
+// mode "none".
+function IndivGroupScoring({
+  pids, week, side, pars, hcps, playerMap, holeScores, saveScore,
+  isWeekLocked, viewerPid, onBack, header, toast, setToast,
+}) {
+  const [curHole, setCurHole] = useState(0);
+  const [showCard, setShowCard] = useState(false);
+
+  const getScore = (pid, h) => holeScores[`w${week}_p${pid}_h${h}`] || 0;
+  const getHcp = (pid) => {
+    const p = playerMap[pid];
+    return p ? Math.round(p.handicapIndex || 0) : 0;
+  };
+  const getStrokes = (pid, h) => buildStrokesMap(getHcp(pid), hcps)[h] || 0;
+  const isWithdrawn = (pid) => holeScores[`w${week}_p${pid}_hindivwd`] === 1;
+
+  // Same shape PlayerScoreCard's `run` prop expects from the match view.
+  const getRunning = (pid) => {
+    let gross = 0, net = 0, parTotal = 0, thru = 0;
+    for (let h = 0; h < 9; h++) {
+      const s = getScore(pid, h);
+      if (s > 0) { gross += s; net += s - getStrokes(pid, h); parTotal += pars[h] || 4; thru++; }
+    }
+    return { gross, net, netVsPar: net - parTotal, thru };
+  };
+
+  const guardedSaveScore = (wk, pid, hole, val) => {
+    if (isWeekLocked) {
+      setToast?.("Week is locked — scores are read-only");
+      setTimeout(() => setToast?.(null), 3000);
+      return;
+    }
+    saveScore(wk, pid, hole, val);
+  };
+
+  const par = pars[curHole] || 4;
+  const holeHcp = hcps[curHole] || 1;
+  const holeLabel = side === 'front' ? curHole + 1 : curHole + 10;
+
+  const getInitials = (pid) => {
+    const p = playerMap[pid];
+    return p ? p.name.split(' ').map(n => n[0]).join('') : "?";
+  };
+
+  // ── Hole navigation parity with the match view ──────────────────────
+  // Same two behaviors the team scoring screen has, for the same reason:
+  // this is used one-handed on a course. "Live" excludes withdrawn golfers
+  // so a WD can't hold the group at hole 1 forever.
+  const livePids = pids.filter(pid => !isWithdrawn(pid));
+  const holeComplete = livePids.length > 0 && livePids.every(pid => getScore(pid, curHole) > 0);
+  const allComplete = livePids.length > 0 && livePids.every(pid => {
+    for (let h = 0; h < 9; h++) if (getScore(pid, h) <= 0) return false;
+    return true;
+  });
+  const curHoleSig = livePids.map(pid => getScore(pid, curHole)).join(",");
+
+  // Jump to the first unscored hole on the render where scores first arrive
+  // (Firestore hasn't answered on mount, so a `[]`-dep effect would miss it).
+  const initialJump = useRef(false);
+  const firstUnscored = (() => {
+    for (let h = 0; h < 9; h++) if (!livePids.every(pid => getScore(pid, h) > 0)) return h;
+    return 8;
+  })();
+  const hasAnyScores = livePids.some(pid => { for (let h = 0; h < 9; h++) if (getScore(pid, h) > 0) return true; return false; });
+  useEffect(() => {
+    if (initialJump.current) return;
+    if (hasAnyScores) {
+      if (firstUnscored > 0) setCurHole(firstUnscored);
+      initialJump.current = true;
+    }
+  }, [hasAnyScores, firstUnscored]);
+
+  // Auto-advance once every live card on this hole is in. curHoleSig is a dep
+  // so correcting a score inside the 1800ms window restarts the timer instead
+  // of letting the original one fire under the edit.
+  useEffect(() => {
+    if (!holeComplete || curHole >= 8 || allComplete) return;
+    const holeNum = side === 'front' ? curHole + 1 : curHole + 10;
+    setToast?.(`✓ Hole ${holeNum} saved — advancing...`);
+    const timer = setTimeout(() => {
+      setToast?.(null);
+      setCurHole(prev => {
+        let next = prev + 1;
+        while (next < 8 && livePids.every(pid => getScore(pid, next) > 0)) next++;
+        return next;
+      });
+    }, 1800);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [holeComplete, curHole, allComplete, curHoleSig]);
+
+  const sc = SharedScorecard({
+    pars, side, hcps, team1Pids: pids, team2Pids: [],
+    getScore, getStrokes, getHcp, getInitials,
+    isAbsent: isWithdrawn,
+    holeResults: null, runningStatus: null, clinchHole: null, clinchText: null,
+    variant: "allMatches", showTotals: true, showMatchRow: false,
+  });
+
+  return (
+    <div style={{ maxWidth: 420, margin: "0 auto" }}>
+      {onBack && (
+        <div style={{ marginBottom: 8 }}>
+          <BackBtn onClick={onBack} />
+        </div>
+      )}
+      {header}
+
+      {/* Framing banner. Without it a player whose team just got knocked out
+          opens Scoring, sees no opponent, and reasonably assumes something
+          is broken. */}
+      <div style={{ background: K.teal + "15", border: `1px solid ${K.teal}40`, borderRadius: 8, padding: "7px 10px", marginBottom: 6 }}>
+        <div style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.teal, letterSpacing: 1, textTransform: "uppercase", marginBottom: 2 }}>Individual Round</div>
+        <div style={{ fontSize: FS.xs, color: K.t2, lineHeight: 1.4 }}>
+          No team match this week — everyone in this group posts an individual net score for the tournament.
+        </div>
+      </div>
+
+      {isWeekLocked && (
+        <div style={{ background: K.warn + "18", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "6px 10px", marginBottom: 4, fontSize: FS.sm, color: K.warn, fontWeight: FW.bold, textAlign: "center" }}>
+          Week {week} is locked — scores are read-only
+        </div>
+      )}
+
+      {/* Hole strip — a hole is "done" when every golfer still in the event
+          has a score on it. Withdrawn golfers are excluded so their blank
+          card doesn't hold the strip open. */}
+      <div style={{ display: "flex", gap: 3, marginBottom: 2 }}>
+        {Array.from({ length: 9 }, (_, i) => {
+          const live = pids.filter(pid => !isWithdrawn(pid));
+          const done = live.length > 0 && live.every(pid => getScore(pid, i) > 0);
+          const cur = i === curHole;
+          return <button key={i} onClick={() => setCurHole(i)} style={{ flex: 1, height: 32, borderRadius: done || cur ? 8 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: FS.base, fontWeight: FW.bold, cursor: "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{side === 'front' ? i + 1 : i + 10}</button>;
+        })}
+      </div>
+
+      <button onClick={() => setShowCard(v => !v)} style={{ width: "100%", padding: "5px 0", borderRadius: 8, marginBottom: 4, cursor: "pointer", background: K.card, border: `1px solid ${K.bdr}60`, color: K.t2, fontSize: FS.xs, fontWeight: FW.bold, letterSpacing: .5 }}>
+        {showCard ? "Hide Scorecard" : "Full Scorecard"}
+      </button>
+
+      {showCard && (
+        <div style={{ marginBottom: 6 }}>
+          <sc.HoleRow />
+          <sc.ParRow />
+          <sc.HcpRow />
+          {pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
+            {pids.map(pid => {
+              const ir = resolveIndivRound(holeScores, week, pid);
+              const line = computeRoundLine({ ir, pars, hcps, roundHcp: getHcp(pid) });
+              const label = ir.withdrawn ? "WD"
+                : !line.played ? "—"
+                : line.netToPar > 0 ? `+${line.netToPar}` : line.netToPar === 0 ? "E" : `${line.netToPar}`;
+              return (
+                <div key={pid} style={{ fontSize: FS.micro, fontWeight: FW.semibold, color: K.t3, background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 5, padding: "2px 6px" }}>
+                  {getInitials(pid)} net <strong style={{ color: K.t1 }}>{label}</strong>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      <div style={{ background: K.acc, borderRadius: 10, padding: "4px 8px", marginBottom: 4, display: "flex", alignItems: "center" }}>
+        <button onClick={() => setCurHole(h => Math.max(0, h - 1))} disabled={curHole === 0} style={{ width: 28, height: 36, borderRadius: 8, background: "none", border: "none", cursor: curHole === 0 ? "default" : "pointer", color: curHole === 0 ? K.bg + "40" : K.bg, fontSize: FS.lg, fontWeight: FW.bold, display: "flex", alignItems: "center", justifyContent: "center" }}>‹</button>
+        <div style={{ flex: 1, display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 8px" }}>
+          <div style={{ textAlign: "center", minWidth: 32 }}><div style={{ fontSize: 8, color: K.bg, fontWeight: FW.semibold, opacity: 0.7 }}>Par</div><div style={{ fontSize: FS.base, fontWeight: FW.heavy, color: K.bg }}>{par}</div></div>
+          <div style={{ textAlign: "center" }}><div style={{ fontSize: 8, color: K.bg, fontWeight: FW.semibold, textTransform: "uppercase", letterSpacing: 1, opacity: 0.7 }}>Hole</div><div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: FS.xxl, fontWeight: FW.bold, color: K.bg, lineHeight: 1 }}>{holeLabel}</div></div>
+          <div style={{ textAlign: "center", minWidth: 32 }}><div style={{ fontSize: 8, color: K.bg, fontWeight: FW.semibold, opacity: 0.7 }}>HCP</div><div style={{ fontSize: FS.base, fontWeight: FW.heavy, color: K.bg }}>{holeHcp}</div></div>
+        </div>
+        <button onClick={() => setCurHole(h => Math.min(8, h + 1))} disabled={curHole === 8} style={{ width: 28, height: 36, borderRadius: 8, background: "none", border: "none", cursor: curHole === 8 ? "default" : "pointer", color: curHole === 8 ? K.bg + "40" : K.bg, fontSize: FS.lg, fontWeight: FW.bold, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
+      </div>
+
+      {pids.map(pid => {
+        const pl = playerMap[pid];
+        if (!pl) return null;
+        if (isWithdrawn(pid)) {
+          return (
+            <Card key={pid} style={{ marginBottom: 3, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 14, fontWeight: FW.bold, flex: 1, minWidth: 0, color: K.t3 }}>{pl.name}</span>
+              <span style={{ fontSize: FS.micro, fontWeight: FW.heavy, color: K.red, background: K.red + "18", border: `1px solid ${K.red}40`, borderRadius: 5, padding: "2px 6px", letterSpacing: .5 }}>WITHDRAWN</span>
+            </Card>
+          );
+        }
+        return (
+          // Thin maize rail on the viewer's own card. The group is listed in
+          // tee order (worst net first), so "mine" isn't a fixed position and
+          // needs a marker to find at a glance mid-round.
+          <div key={pid} style={viewerPid && pid === viewerPid
+            ? { borderLeft: `3px solid ${K.act}`, borderRadius: 4, paddingLeft: 3, marginLeft: -6 }
+            : undefined}>
+            <PlayerScoreCard
+              pl={pl}
+              score={getScore(pid, curHole)}
+              strokes={getStrokes(pid, curHole)}
+              nh={getHcp(pid)}
+              run={getRunning(pid)}
+              btns={[par - 1, par, par + 1, par + 2, par + 3]}
+              par={par}
+              pid={pid}
+              week={week}
+              curHole={curHole}
+              saveScore={guardedSaveScore}
+              K={K}
+              absentBtn={null}
+            />
+          </div>
+        );
+      })}
+
+      <ScoringToast toast={toast} />
+    </div>
   );
 }
 
