@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE, FS, FW, buildSeedMap, buildPlayoffSeedMap, LoadingPanel, SkeletonList, buildHistoricalPlayers, isIndivGroupMatch, scorableMatches, resolveIndivRound } from "../theme";
+import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE, FS, FW, buildSeedMap, buildPlayoffSeedMap, LoadingPanel, SkeletonList, buildHistoricalPlayers, isIndivGroupMatch, findGroupResult, weekFullyScored, resolveIndivRound } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { Popup } from "../components/Popup";
@@ -31,7 +31,7 @@ const MY_SCHEDULE_COLS = {
   status: 80,  // Stacked Absent / Making Up buttons, or active status pill
 };
 
-export default function ScheduleView({ schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, fetchAllScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen, appToast, dataLoaded, attendance, saveAttendance }) {
+export default function ScheduleView({ groupResults, schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, fetchAllScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen, appToast, dataLoaded, attendance, saveAttendance }) {
   const [showAll, setShowAll] = useState(false);
   const [myOnly, setMyOnly] = useState(true);
   const [expandedWeeks, setExpandedWeeks] = useState({});
@@ -541,16 +541,11 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
   const isWeekComplete = (wk) => {
     if (!wk.matches || wk.matches.length === 0) return false;
-    // A week is complete if it's locked OR if all matches have results.
-    // Individual groups produce no match_result, so they're excluded from the
-    // "all matches have results" test — otherwise a playoff week with one
-    // could never read as complete.
+    // A week is complete if it's locked OR if every card in it — team match
+    // or individual group — has a signed result. Groups sign into their own
+    // collection; weekFullyScored knows how to check both.
     if (wk.locked) return true;
-    const scored = scorableMatches(wk.matches);
-    if (scored.length === 0) return false;
-    return scored.every(m =>
-      matchResults.some(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2)
-    );
+    return weekFullyScored(wk, matchResults, groupResults);
   };
 
   const fmtTeeTime = (idx) => {
@@ -777,7 +772,25 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
               </span>
             </div>
             <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
-              <div style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.teal, letterSpacing: 1, textTransform: "uppercase", marginBottom: 1 }}>Individual</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 5, marginBottom: 1 }}>
+                <span style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.teal, letterSpacing: 1, textTransform: "uppercase" }}>Individual</span>
+                {/* Signature state — the thing I most want to know when I open
+                    My Schedule after a round: did our card get submitted? */}
+                {(() => {
+                  const g = findGroupResult(groupResults, wk.week, myGroup);
+                  if (!g) return null;
+                  const done = g.attested === true;
+                  return (
+                    <span style={{
+                      fontSize: FS.micro, fontWeight: FW.heavy, letterSpacing: .6, textTransform: "uppercase",
+                      color: done ? K.grn : K.warn,
+                      background: `${done ? K.grn : K.warn}18`,
+                      border: `1px solid ${done ? K.grn : K.warn}50`,
+                      padding: "1px 5px", borderRadius: 4,
+                    }}>{done ? "Final" : "Signed"}</span>
+                  );
+                })()}
+              </div>
               <div style={{ fontSize: FS.sm, fontWeight: FW.semibold, color: K.t1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {others.length ? `with ${others.map(dn).join(", ")}` : "Solo"}
               </div>
@@ -1246,7 +1259,11 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
       const histP = histPlayers.find(p => p.id === pid);
       const roundHcp = histP ? Math.round(histP.handicapIndex || 0) : 0;
       const line = computeRoundLine({ ir, pars, hcps, roundHcp });
-      if (ir.withdrawn) return { pid, name, value: "WD", sub: null };
+      // An absent golfer is out of the individual event for the week (the
+      // group's Absent button writes the withdrawal sentinel); a making-up
+      // golfer posts later. Both read as "no number yet" with the reason.
+      if (ir.withdrawn) return { pid, name, value: "—", sub: "absent" };
+      if (getAttendance(wk.week, pid)?.status === "makeup") return { pid, name, value: "—", sub: "makeup" };
       if (!line.played) return { pid, name };
       return {
         pid, name,
@@ -1410,10 +1427,19 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
                   const origIdxIndiv = wk.matches.indexOf(m);
                   const isGroupExp = expandedMatchKey === `${wk.week}_${mi}`;
                   const pids = (m.players || []).filter(Boolean);
+                  // Signature state replaces the tee time once the group's
+                  // card is in, mirroring how a match row swaps its tee time
+                  // for the result.
+                  const gRes = findGroupResult(groupResults, wk.week, m);
+                  const gLabel = gRes?.attested === true ? "Final"
+                    : gRes ? "Signed"
+                    : null;
                   return (
                     <IndivGroupCard
                       key={mi}
                       rows={indivLinesFor(wk, pids)}
+                      status={gLabel}
+                      statusColor={gRes?.attested === true ? K.grn : K.warn}
                       teeTime={fmtTeeTime(origIdxIndiv)}
                       highlightSelf={!!(myPlayerId && pids.includes(myPlayerId))}
                       highlightPid={myPlayerId}

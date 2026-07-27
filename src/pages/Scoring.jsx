@@ -2,7 +2,8 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { K, I, BackBtn, Card, EmptyState,
   getWeekSide,
   formatTeeTime as fmtTeeTimeUtil, LIST_GAP,
-  buildSeedMap, buildPlayoffSeedMap, matchPids, resolveIndivRound, isIndivGroupMatch, scorableMatches, FS, FW } from "../theme";
+  buildSeedMap, buildPlayoffSeedMap, matchPids, resolveIndivRound, isIndivGroupMatch,
+  indivGroupResultId, findGroupResult, weekFullyScored, IND_WITHDRAW, FS, FW } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 import { computeMatchResult, resultLetterFor, readScoreEffective, readStrokesEffectiveExt, computePlayoffTiebreaker, isMatchPendingMakeup, buildStrokesMap } from "../lib/matchCalc";
 import { parseScheduleDate } from "../lib/scheduleDate";
@@ -85,7 +86,7 @@ function computeMatchStatus(t1Pids, t2Pids, getScore, getStrokes, pars) {
 // ═══════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
-export default function LiveScoringView({ leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, commMode, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, applyScheduleOps, openAllMatches, onAllMatchesOpened, openFinalize, onFinalizeOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData, autoSeedIfReady, attendance, saveAttendance }) {
+export default function LiveScoringView({ groupResults, saveGroupResult, deleteGroupResult, leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, commMode, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, applyScheduleOps, openAllMatches, onAllMatchesOpened, openFinalize, onFinalizeOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData, autoSeedIfReady, attendance, saveAttendance }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
   // 3-way view toggle: "myMatch" (default scoring view), "allMatches" (week overview), "lowNet" (leaderboard)
@@ -233,17 +234,19 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   }, [showSeeds, weekSch?.isPlayoff, teams, matchResults, schedule, leagueConfig]);
 
   const isWeekLocked = weekSch?.locked === true;
-  // Only team matches produce a match_result. Individual groups (eliminated
-  // players regrouped as a foursome) are excluded from every "is the week
-  // done" test — they can't be signed or attested, so counting them would
-  // pin the week at "not ready" forever.
-  const scoredMatches = scorableMatches(matches);
-  const allMatchesFinalized = scoredMatches.every(m =>
-    matchResults.some(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2)
-  );
-  const allMatchesAttested = scoredMatches.every(m =>
-    matchResults.some(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true)
-  );
+  // Every card in the week counts — team matches AND individual groups. A
+  // group's signature lives in its own collection (see theme.jsx), but the
+  // integrity bar is the same: signed by one player, attested by another,
+  // because the individual tournament is a real competition too.
+  const isCardSigned = (m) => isIndivGroupMatch(m)
+    ? !!findGroupResult(groupResults, week, m)
+    : matchResults.some(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2);
+  const isCardAttested = (m) => isIndivGroupMatch(m)
+    ? findGroupResult(groupResults, week, m)?.attested === true
+    : matchResults.some(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true);
+
+  const allMatchesFinalized = matches.every(isCardSigned);
+  const allMatchesAttested = matches.every(isCardAttested);
 
   // Two banner states for the commish (all hidden when week is already locked):
   //   1. Ready → handled at app level (gold strip above tab nav). This file
@@ -261,10 +264,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
   //                broken. This strip gives them a visible breadcrumb while
   //                they wait.
   //   3. Nothing to show → no banner (no matches scored yet, or not commish).
-  const attestedCount = scoredMatches.filter(m =>
-    matchResults.some(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true)
-  ).length;
-  const matchCount = scoredMatches.length;
+  const attestedCount = matches.filter(isCardAttested).length;
+  const matchCount = matches.length;
   const hasSomeProgress = attestedCount > 0 && attestedCount < matchCount;
 
   const showWaitingBanner = isComm && !allMatchesAttested && hasSomeProgress && !isWeekLocked;
@@ -925,19 +926,28 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
     }
   }
 
+  // Commissioner escape hatch: force-attest everything signed but unattested
+  // in this week. Covers individual groups as well as matches — a group whose
+  // other golfers have left without attesting blocks the week identically, and
+  // an escape hatch that only unblocks half the week isn't one.
   const handleAttestAllWeek = () => {
-    const pending = matchResults.filter(r => r.week === week && !r.attested);
-    if (pending.length === 0) {
-      setToast("No signed matches pending attestation");
+    const pendingMatches = matchResults.filter(r => r.week === week && !r.attested);
+    const pendingGroups = (groupResults || []).filter(r => r.week === week && !r.attested);
+    const total = pendingMatches.length + pendingGroups.length;
+    if (total === 0) {
+      setToast("No signed cards pending attestation");
       setTimeout(() => setToast(null), 2000);
       return;
     }
+    const parts = [];
+    if (pendingMatches.length) parts.push(`${pendingMatches.length} match${pendingMatches.length === 1 ? "" : "es"}`);
+    if (pendingGroups.length) parts.push(`${pendingGroups.length} individual group${pendingGroups.length === 1 ? "" : "s"}`);
     setConfirmModal({
-      title: `Force-attest ${pending.length} match${pending.length === 1 ? "" : "es"}?`,
-      message: `This bypasses the opposing-team signature requirement for all signed matches in Week ${week}. Use when the normal attestation flow is blocked.`,
+      title: `Force-attest ${parts.join(" + ")}?`,
+      message: `This bypasses the second-signature requirement for every signed card in Week ${week}. Use when the normal attestation flow is blocked.`,
       onConfirm: async () => {
         setConfirmModal(null);
-        for (const r of pending) {
+        for (const r of pendingMatches) {
           // Populate attestedBy with all non-signer player IDs so downstream UI checks
           // (e.g., isFullyAttested, "N of M attested" badges) stay internally consistent
           // with attested:true.
@@ -947,7 +957,11 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           const nonSignerPids = allPids.filter(pid => pid !== r.signedByPlayerId);
           await saveMatchResult({ ...r, attested: true, attestedBy: nonSignerPids });
         }
-        setToast(`${pending.length} match${pending.length === 1 ? "" : "es"} attested`);
+        for (const g of pendingGroups) {
+          const nonSigners = (g.players || []).filter(pid => pid !== g.signedByPlayerId);
+          await saveGroupResult({ ...g, attested: true, attestedBy: nonSigners });
+        }
+        setToast(`${total} card${total === 1 ? "" : "s"} attested`);
         setTimeout(() => setToast(null), 2000);
       },
     });
@@ -1048,7 +1062,8 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                 const nineHcp = playerMap[pid] ? Math.round(playerMap[pid].handicapIndex || 0) : 0;
                 const line = computeRoundLine({ ir, pars, hcps, roundHcp: nineHcp });
                 const name = playerMap[pid]?.name || "?";
-                if (ir.withdrawn) return { pid, name, value: "WD" };
+                if (ir.withdrawn) return { pid, name, value: "—", sub: "absent" };
+                if (attendance?.[`w${week}_p${pid}`]?.status === "makeup") return { pid, name, value: "—", sub: "makeup" };
                 if (!line.played) return { pid, name };
                 return {
                   pid, name,
@@ -1056,10 +1071,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
                   sub: line.totalOnly ? "total" : `thru ${line.holesPlayed}`,
                 };
               });
+              const gRes = findGroupResult(groupResults, week, m);
               return (
                 <IndivGroupCard
                   key={mi}
                   rows={rows}
+                  status={gRes?.attested === true ? "Final" : gRes ? "Signed" : null}
+                  statusColor={gRes?.attested === true ? K.grn : K.warn}
                   teeTime={formatTeeTime(mi)}
                   highlightSelf={gPids.includes(leagueUser.playerId)}
                   highlightPid={leagueUser.playerId}
@@ -1690,16 +1708,12 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
             // FINAL with no results). Requiring a recorded result for every match
             // makes that impossible. The banner only surfaces fully-attested
             // weeks, so this never blocks a legitimate finalize.
-            // Individual groups are excluded: they produce no match_result by
-            // design, so requiring one would make any playoff week containing
-            // a group impossible to finalize.
-            const wkMatches = scorableMatches(weekSch?.matches);
-            const everyMatchHasResult = wkMatches.length > 0 && wkMatches.every(m =>
-              matchResults.some(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2)
-            );
-            if (!everyMatchHasResult) {
+            // Individual groups count here too: their signed scorecard is what
+            // the individual tournament rests on, so a week isn't fully scored
+            // until every group has signed as well as every match.
+            if (!weekFullyScored(weekSch, matchResults, groupResults)) {
               setShowCtpPopup(false);
-              setToast(`Week ${week} isn't fully scored yet — every match needs a signed result before it can be finalized.`);
+              setToast(`Week ${week} isn't fully scored yet — every match and individual group needs a signed scorecard before it can be finalized.`);
               setTimeout(() => setToast(null), 3500);
               return;
             }
@@ -2260,6 +2274,13 @@ export default function LiveScoringView({ leagueUser, players, teams, course, sc
           {!activeMatch && <ViewToggle />}
           {!activeMatch && FinalizeBanner}
         </>}
+        attendance={attendance}
+        saveAttendance={saveAttendance}
+        groupMatch={matchToScore}
+        groupResult={findGroupResult(groupResults, week, matchToScore)}
+        saveGroupResult={saveGroupResult}
+        deleteGroupResult={deleteGroupResult}
+        isComm={isComm}
         toast={toast}
         setToast={setToast}
       />
@@ -3124,9 +3145,16 @@ function MakeupAuditRow({ name, status, blocking, isPlayoff, side, onSaveHoles, 
 function IndivGroupScoring({
   pids, week, side, pars, hcps, playerMap, holeScores, saveScore,
   isWeekLocked, viewerPid, onBack, header, toast, setToast,
+  attendance, saveAttendance,
+  groupMatch, groupResult, saveGroupResult, deleteGroupResult, isComm,
 }) {
   const [curHole, setCurHole] = useState(0);
   const [showCard, setShowCard] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [confirmUnsign, setConfirmUnsign] = useState(false);
+  // Own confirm state: this view returns before the parent renders its
+  // ConfirmModal, so it needs its own instance of the shared component.
+  const [groupConfirm, setGroupConfirm] = useState(null);
 
   const getScore = (pid, h) => holeScores[`w${week}_p${pid}_h${h}`] || 0;
   const getHcp = (pid) => {
@@ -3134,7 +3162,55 @@ function IndivGroupScoring({
     return p ? Math.round(p.handicapIndex || 0) : 0;
   };
   const getStrokes = (pid, h) => buildStrokesMap(getHcp(pid), hcps)[h] || 0;
-  const isWithdrawn = (pid) => holeScores[`w${week}_p${pid}_hindivwd`] === 1;
+  // ── Attendance within the group ─────────────────────────────────────
+  // Anyone in the foursome can flag anyone else — there's no commissioner in
+  // the group and no opposing team to arbitrate, so the golfers standing on
+  // the tee are the only people who know who showed up.
+  //
+  // ABSENT is the individual event's withdrawal. A team match handles an
+  // absence by having the present teammate cover both slots (`_habsent`);
+  // there is no teammate here, so an absent golfer simply has no round, which
+  // is exactly what the `_hindivwd` sentinel means. Writing it is what lets
+  // the group finish its card and the week finalize — otherwise one no-show
+  // pins the group below a complete scorecard forever.
+  //
+  // MAKING UP means the round happens later, so the golfer drops out of this
+  // group's completeness check (the other three can sign tonight) but stays
+  // unaccounted for in the finalize pre-flight until their makeup is entered.
+  // That's the same treatment the team-match makeup flow gets.
+  const isWithdrawn = (pid) => holeScores[`w${week}_p${pid}_h${IND_WITHDRAW}`] === 1;
+  const attnStatus = (pid) => attendance?.[`w${week}_p${pid}`]?.status || null;
+  const isMakingUp = (pid) => attnStatus(pid) === "makeup" && !isWithdrawn(pid);
+
+  const guardAttendance = () => {
+    if (!isWeekLocked) return true;
+    setToast?.("Week is locked — attendance cannot be changed");
+    setTimeout(() => setToast?.(null), 3000);
+    return false;
+  };
+
+  const markAbsent = (pid) => {
+    if (!guardAttendance()) return;
+    // Both writes: the sentinel is what the individual event reads, the
+    // attendance record is what Schedule's tags and the push notification read.
+    saveScore(week, pid, IND_WITHDRAW, 1);
+    saveAttendance?.(week, pid, "absent");
+  };
+
+  const markMakingUp = (pid) => {
+    if (!guardAttendance()) return;
+    // Clear any withdrawal — "making up" and "out of the event" are mutually
+    // exclusive, and flipping absent → makeup must not leave the golfer
+    // silently withdrawn.
+    if (isWithdrawn(pid)) saveScore(week, pid, IND_WITHDRAW, 0);
+    saveAttendance?.(week, pid, "makeup");
+  };
+
+  const clearAttendance = (pid) => {
+    if (!guardAttendance()) return;
+    if (isWithdrawn(pid)) saveScore(week, pid, IND_WITHDRAW, 0);
+    saveAttendance?.(week, pid, null);
+  };
 
   // Same shape PlayerScoreCard's `run` prop expects from the match view.
   const getRunning = (pid) => {
@@ -3146,9 +3222,13 @@ function IndivGroupScoring({
     return { gross, net, netVsPar: net - parTotal, thru };
   };
 
+  // scoresLocked is declared below (it depends on the signature state); this
+  // reads it at call time, not at definition time, so the ordering is fine.
   const guardedSaveScore = (wk, pid, hole, val) => {
-    if (isWeekLocked) {
-      setToast?.("Week is locked — scores are read-only");
+    if (scoresLocked) {
+      setToast?.(isWeekLocked
+        ? "Week is locked — scores are read-only"
+        : "Scorecard attested — unsign it to edit scores");
       setTimeout(() => setToast?.(null), 3000);
       return;
     }
@@ -3166,9 +3246,11 @@ function IndivGroupScoring({
 
   // ── Hole navigation parity with the match view ──────────────────────
   // Same two behaviors the team scoring screen has, for the same reason:
-  // this is used one-handed on a course. "Live" excludes withdrawn golfers
-  // so a WD can't hold the group at hole 1 forever.
-  const livePids = pids.filter(pid => !isWithdrawn(pid));
+  // this is used one-handed on a course. "Live" is the golfers actually
+  // playing right now — an absent (withdrawn) or making-up golfer has no card
+  // tonight and must not hold the group at hole 1, block the sign button, or
+  // be waited on for an attestation.
+  const livePids = pids.filter(pid => !isWithdrawn(pid) && !isMakingUp(pid));
   const holeComplete = livePids.length > 0 && livePids.every(pid => getScore(pid, curHole) > 0);
   const allComplete = livePids.length > 0 && livePids.every(pid => {
     for (let h = 0; h < 9; h++) if (getScore(pid, h) <= 0) return false;
@@ -3219,6 +3301,73 @@ function IndivGroupScoring({
     variant: "allMatches", showTotals: true, showMatchRow: false,
   });
 
+  // ── Signature + attestation ─────────────────────────────────────────
+  // Same integrity model as a match scorecard: one golfer signs, the others
+  // attest. The individual tournament is scored off these cards, so they get
+  // the same verification a bracket match's card gets before the week locks.
+  //
+  // Withdrawn golfers are excluded from the attester list — they have no round
+  // to vouch for, and waiting on them would deadlock the group.
+  const isSigned = !!groupResult;
+  const signedByPlayerId = groupResult?.signedByPlayerId || null;
+  const attestedBy = groupResult?.attestedBy || [];
+  const nonSignerPids = livePids.filter(pid => pid !== signedByPlayerId);
+  const isFullyAttested = isSigned && (nonSignerPids.length === 0 || nonSignerPids.every(pid => attestedBy.includes(pid)));
+  const iAmInGroup = pids.includes(viewerPid);
+  const iAmSigner = signedByPlayerId === viewerPid;
+  const iHaveAttested = attestedBy.includes(viewerPid);
+  const needsMyAttestation = isSigned && !isFullyAttested && iAmInGroup && !iAmSigner && !iHaveAttested && !isWithdrawn(viewerPid);
+
+  const signGroup = async () => {
+    if (busy || !saveGroupResult) return;
+    setBusy(true);
+    // Solo / all-others-withdrawn: nobody is left to attest, so the signature
+    // self-attests. Mirrors finalizeMatch's autoAttest path — without it a
+    // one-golfer group would block the week forever.
+    const others = livePids.filter(pid => pid !== viewerPid);
+    const autoAttest = others.length === 0;
+    await saveGroupResult({
+      id: indivGroupResultId(LEAGUE_ID, week, groupMatch),
+      week,
+      players: pids,
+      signedByPlayerId: viewerPid || null,
+      attestedBy: autoAttest ? others : [],
+      attested: autoAttest,
+    });
+    setBusy(false);
+    setToast?.(autoAttest ? "Scorecard signed ✓" : "Scorecard signed — waiting on attestation");
+    setTimeout(() => setToast?.(null), 2500);
+  };
+
+  const attestGroup = async () => {
+    if (busy || !groupResult || !saveGroupResult) return;
+    setBusy(true);
+    const nextAttestedBy = [...new Set([...attestedBy, viewerPid])];
+    const allDone = nonSignerPids.every(pid => nextAttestedBy.includes(pid));
+    await saveGroupResult({ ...groupResult, attestedBy: nextAttestedBy, attested: allDone });
+    setBusy(false);
+    setToast?.(allDone ? "Scorecard fully attested ✓" : "Attestation recorded ✓");
+    setTimeout(() => setToast?.(null), 2000);
+  };
+
+  const unsignGroup = async () => {
+    if (!groupResult?.id || !deleteGroupResult) return;
+    setConfirmUnsign(false);
+    await deleteGroupResult(groupResult.id);
+    setToast?.("Scorecard unsigned — scores can be edited again");
+    setTimeout(() => setToast?.(null), 2500);
+  };
+
+  // Scores lock down once the card is fully attested or the week is locked —
+  // same rule the match view applies, and for the same reason: edits after
+  // verification would silently invalidate the signature.
+  const scoresLocked = isWeekLocked || isFullyAttested;
+  // isComm can sign a group they aren't in — matching the match view, where
+  // the commissioner can sign any match. Without it, a group that all went
+  // home without signing would block the week with no way to unblock it
+  // (force-attest only works on cards that HAVE a signature).
+  const canSign = !isSigned && !isWeekLocked && (iAmInGroup || isComm) && allComplete;
+
   return (
     <div style={{ maxWidth: 420, margin: "0 auto" }}>
       {onBack && (
@@ -3256,8 +3405,13 @@ function IndivGroupScoring({
         })}
       </div>
 
-      <button onClick={() => setShowCard(v => !v)} style={{ width: "100%", padding: "5px 0", borderRadius: 8, marginBottom: 4, cursor: "pointer", background: K.card, border: `1px solid ${K.bdr}60`, color: K.t2, fontSize: FS.xs, fontWeight: FW.bold, letterSpacing: .5 }}>
-        {showCard ? "Hide Scorecard" : "Full Scorecard"}
+      {/* Full Scorecard doubles as the sign entry point once every live card
+          is complete — same promotion the match view's button does, so the
+          gesture is identical whichever kind of round you're playing. */}
+      <button onClick={() => setShowCard(v => !v)} style={canSign && !showCard
+        ? { width: "100%", padding: 10, borderRadius: 10, marginBottom: 4, cursor: "pointer", background: K.hcpBlue + "15", border: `1.5px solid ${K.hcpBlue}50`, color: K.hcpBlue, fontSize: FS.base, fontWeight: FW.bold, letterSpacing: .3 }
+        : { width: "100%", padding: "5px 0", borderRadius: 8, marginBottom: 4, cursor: "pointer", background: K.card, border: `1px solid ${K.bdr}60`, color: K.t2, fontSize: FS.xs, fontWeight: FW.bold, letterSpacing: .5 }}>
+        {showCard ? "Hide Scorecard" : canSign ? "Complete — Review & Sign" : "Full Scorecard"}
       </button>
 
       {showCard && (
@@ -3270,7 +3424,8 @@ function IndivGroupScoring({
             {pids.map(pid => {
               const ir = resolveIndivRound(holeScores, week, pid);
               const line = computeRoundLine({ ir, pars, hcps, roundHcp: getHcp(pid) });
-              const label = ir.withdrawn ? "WD"
+              const label = ir.withdrawn ? "ABS"
+                : isMakingUp(pid) ? "MU"
                 : !line.played ? "—"
                 : line.netToPar > 0 ? `+${line.netToPar}` : line.netToPar === 0 ? "E" : `${line.netToPar}`;
               return (
@@ -3293,17 +3448,123 @@ function IndivGroupScoring({
         <button onClick={() => setCurHole(h => Math.min(8, h + 1))} disabled={curHole === 8} style={{ width: 28, height: 36, borderRadius: 8, background: "none", border: "none", cursor: curHole === 8 ? "default" : "pointer", color: curHole === 8 ? K.bg + "40" : K.bg, fontSize: FS.lg, fontWeight: FW.bold, display: "flex", alignItems: "center", justifyContent: "center" }}>›</button>
       </div>
 
+      {/* ── Signature / attestation panel ────────────────────────────────
+          Placed above the score cards so the state of the card is the first
+          thing you see when you reopen the round after signing. */}
+      {(isSigned || canSign) && (
+        <div style={{ background: K.card, border: `1px solid ${isFullyAttested ? K.grn + "50" : K.bdr}60`, borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
+          {!isSigned ? (<>
+            <div style={{ fontSize: FS.xs, color: K.t2, marginBottom: 8, lineHeight: 1.4 }}>
+              All cards are in. Sign to submit this group's rounds to the individual tournament — someone else in the group then attests.
+            </div>
+            <button onClick={signGroup} disabled={busy} style={{ width: "100%", padding: 12, borderRadius: 10, background: busy ? K.t3 : K.hcpBlue, border: "none", color: "#fff", fontSize: 14, fontWeight: FW.heavy, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1 }}>
+              Sign Scorecard
+            </button>
+          </>) : (<>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+              <span style={{ fontSize: FS.micro, fontWeight: FW.heavy, letterSpacing: .8, textTransform: "uppercase", color: isFullyAttested ? K.grn : K.warn }}>
+                {isFullyAttested ? "✓ Signed & Attested" : "Signed — awaiting attestation"}
+              </span>
+            </div>
+            {signedByPlayerId && playerMap[signedByPlayerId] && (
+              <div style={{ fontSize: FS.micro, color: K.t3, fontWeight: FW.semibold, marginBottom: 6 }}>
+                Signed by {playerMap[signedByPlayerId].name}
+              </div>
+            )}
+            {/* Per-attester chips, same as the match view's attest row. */}
+            {nonSignerPids.length > 0 && (
+              <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap" }}>
+                {nonSignerPids.map(pid => {
+                  const done = attestedBy.includes(pid);
+                  return (
+                    <div key={pid} style={{ fontSize: 10, fontWeight: FW.semibold, padding: "3px 8px", borderRadius: 4, background: done ? K.grn + "18" : K.inp, border: `1px solid ${done ? K.grn + "40" : K.bdr}`, color: done ? K.grn : K.t3 }}>
+                      {done ? "✓ " : ""}{playerMap[pid]?.name?.split(' ').pop() || "?"}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {needsMyAttestation && (
+              <button onClick={attestGroup} disabled={busy} style={{ width: "100%", padding: 12, borderRadius: 10, background: busy ? K.t3 : K.hcpBlue, border: "none", color: "#fff", fontSize: 14, fontWeight: FW.heavy, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1 }}>
+                Attest Scorecard
+              </button>
+            )}
+            {iHaveAttested && !isFullyAttested && (
+              <div style={{ textAlign: "center", fontSize: 12, color: K.t3, fontWeight: FW.semibold, padding: "6px 0" }}>
+                You attested — waiting for others
+              </div>
+            )}
+            {/* Unsign — anyone in the group before it's fully attested, and the
+                commissioner after, matching the match view's escape hatch.
+                Blocked once the week is locked; that's a re-open, not an edit. */}
+            {!isWeekLocked && (iAmInGroup || isComm) && (!isFullyAttested || isComm) && (
+              confirmUnsign ? (
+                <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+                  <button onClick={unsignGroup} style={{ flex: 1, padding: 9, borderRadius: 8, background: K.warn, border: "none", color: K.bg, fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer" }}>Unsign</button>
+                  <button onClick={() => setConfirmUnsign(false)} style={{ padding: "9px 14px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer" }}>Cancel</button>
+                </div>
+              ) : (
+                <button onClick={() => setConfirmUnsign(true)} style={{ width: "100%", padding: "7px 0", borderRadius: 8, marginTop: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: FS.xs, fontWeight: FW.bold, cursor: "pointer" }}>
+                  Unsign &amp; Edit
+                </button>
+              )
+            )}
+          </>)}
+        </div>
+      )}
+
       {pids.map(pid => {
         const pl = playerMap[pid];
         if (!pl) return null;
-        if (isWithdrawn(pid)) {
+        // Flagged golfers collapse to a status row — there's no card to score
+        // tonight, so the score buttons would be dead weight.
+        const flagged = isWithdrawn(pid) ? "absent" : isMakingUp(pid) ? "makeup" : null;
+        if (flagged) {
+          const isAbs = flagged === "absent";
+          const color = isAbs ? K.red : K.act;
           return (
             <Card key={pid} style={{ marginBottom: 3, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 14, fontWeight: FW.bold, flex: 1, minWidth: 0, color: K.t3 }}>{pl.name}</span>
-              <span style={{ fontSize: FS.micro, fontWeight: FW.heavy, color: K.red, background: K.red + "18", border: `1px solid ${K.red}40`, borderRadius: 5, padding: "2px 6px", letterSpacing: .5 }}>WITHDRAWN</span>
+              <span style={{ fontSize: 14, fontWeight: FW.bold, flex: 1, minWidth: 0, color: K.t3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{pl.name}</span>
+              <span style={{ flexShrink: 0, fontSize: FS.micro, fontWeight: FW.heavy, color, background: `${color}18`, border: `1px solid ${color}40`, borderRadius: 5, padding: "2px 6px", letterSpacing: .5 }}>
+                {isAbs ? "ABSENT" : "MAKING UP"}
+              </span>
+              {!scoresLocked && (
+                <button onClick={() => clearAttendance(pid)} style={{ flexShrink: 0, padding: "3px 8px", borderRadius: 5, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: FS.micro, fontWeight: FW.bold, cursor: "pointer" }}>
+                  Undo
+                </button>
+              )}
             </Card>
           );
         }
+        // Absent / Making Up — offered only while the golfer has no scores, so
+        // a mis-tap can't silently discard a played round. Once a card is
+        // started the round exists; changing it is a commissioner edit via
+        // Schedule → Edit Scores.
+        const hasAnyScore = (() => { for (let h = 0; h < 9; h++) if (getScore(pid, h) > 0) return true; return false; })();
+        const attnBtns = (!scoresLocked && !hasAnyScore) ? (
+          <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+            <button
+              onClick={() => setGroupConfirm({
+                title: `Mark ${pl.name} as making up?`,
+                message: `${pl.name} will post their individual round later. The rest of the group can sign tonight; their makeup is entered when it's played.`,
+                onConfirm: () => { markMakingUp(pid); setGroupConfirm(null); },
+              })}
+              style={{ fontSize: FS.xs, fontWeight: FW.semibold, color: K.t3, background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, padding: "3px 8px", cursor: "pointer", flexShrink: 0 }}
+            >
+              Makeup
+            </button>
+            <button
+              onClick={() => setGroupConfirm({
+                title: `Mark ${pl.name} as absent?`,
+                message: `${pl.name} is out of the individual tournament for Week ${week} — no round is recorded and the group can sign without them.`,
+                onConfirm: () => { markAbsent(pid); setGroupConfirm(null); },
+              })}
+              style={{ fontSize: FS.xs, fontWeight: FW.semibold, color: K.t3, background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, padding: "3px 8px", cursor: "pointer", flexShrink: 0 }}
+            >
+              Absent
+            </button>
+          </div>
+        ) : null;
         return (
           // Thin maize rail on the viewer's own card. The group is listed in
           // tee order (worst net first), so "mine" isn't a fixed position and
@@ -3324,12 +3585,13 @@ function IndivGroupScoring({
               curHole={curHole}
               saveScore={guardedSaveScore}
               K={K}
-              absentBtn={null}
+              absentBtn={attnBtns}
             />
           </div>
         );
       })}
 
+      <ConfirmModal modal={groupConfirm && { ...groupConfirm, onCancel: () => setGroupConfirm(null) }} />
       <ScoringToast toast={toast} />
     </div>
   );

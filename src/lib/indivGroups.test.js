@@ -365,3 +365,87 @@ describe("computeRoundLine", () => {
     expect(out.gross).toBe(4);
   });
 });
+
+// ── Withdrawal is final ────────────────────────────────────────────
+// A golfer marked absent in a knocked-out foursome is withdrawn from the
+// individual tournament (the Absent button writes the _hindivwd sentinel).
+// The rule the commissioner confirmed: the withdrawal is FINAL. They may
+// still tee off in later weeks — they're still in the eliminated pool and
+// still get a tee time — but nothing they post from that point counts toward
+// the individual tournament, and they rank below everyone still in it.
+//
+// Both halves are load-bearing and easy to break: dropping the `withdrew`
+// latch would silently re-admit them on the strength of a later round, and
+// dropping the ranking bucket would leave a withdrawn golfer sitting mid-table
+// on a truncated total.
+describe("withdrawal is final", () => {
+  const course = {
+    frontPars: [4, 4, 4, 3, 5, 4, 4, 3, 5],
+    backPars: [4, 4, 4, 3, 5, 4, 4, 3, 5],
+    frontHcps: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    backHcps: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+  };
+  const playoffWeeks = [
+    { week: 15, isPlayoff: true, side: "front" },
+    { week: 16, isPlayoff: true, side: "front" },
+  ];
+  const scoringRules = { hcpRecentCount: 8, hcpBestCount: 6 };
+  // Scratch golfers so net === gross-to-par and the arithmetic is obvious.
+  const players = [{ id: "quit", name: "Quinn Quit" }, { id: "stay", name: "Sam Stay" }];
+  const allRounds = { quit: [], stay: [] };
+
+  // Week 15: both play even par (36). Quinn is then marked absent in week 15.
+  // Week 16: both play even par again — Quinn really did tee off.
+  const scores = {};
+  for (const pid of ["quit", "stay"]) {
+    for (const wk of [15, 16]) {
+      course.frontPars.forEach((par, h) => { scores[`w${wk}_p${pid}_h${h}`] = par; });
+    }
+  }
+  scores["w15_pquit_hindivwd"] = 1;
+
+  const boardFor = (pid) => computeIndividualBoard({
+    players, scores, playoffWeeks, course, scoringRules, allRounds,
+    leagueConfig: { year: 2026 },
+  }).find(r => r.pid === pid);
+
+  it("counts nothing from the withdrawal week onward", () => {
+    const quit = boardFor("quit");
+    expect(quit.withdrew).toBe(true);
+    expect(quit.wdRound).toBe(15);
+    // Week 15 is the withdrawal week and week 16 is after it — neither counts,
+    // even though week 16 has a full 9-hole card on file.
+    expect(quit.roundsPlayed).toBe(0);
+    expect(quit.totalGross).toBe(0);
+    expect(quit.totalNetToPar).toBe(0);
+  });
+
+  it("still counts both rounds for a golfer who didn't withdraw", () => {
+    const stay = boardFor("stay");
+    expect(stay.withdrew).toBe(false);
+    expect(stay.roundsPlayed).toBe(2);
+    expect(stay.totalGross).toBe(72);
+  });
+
+  it("ranks the withdrawn golfer last, below players with no rounds at all", () => {
+    const board = computeIndividualBoard({
+      players: [...players, { id: "never", name: "Ned Never" }],
+      scores, playoffWeeks, course, scoringRules,
+      allRounds: { ...allRounds, never: [] },
+      leagueConfig: { year: 2026 },
+    });
+    // Best → worst: posted a round, then no rounds yet, then withdrawn.
+    expect(rankIndividualBoard(board)).toEqual(["stay", "never", "quit"]);
+  });
+
+  it("does not withdraw a golfer whose sentinel is on a different week", () => {
+    // Per-week sentinel: the flag written in week 15 must not leak backwards
+    // into a board that only covers week 16.
+    const laterOnly = computeIndividualBoard({
+      players, scores, playoffWeeks: [{ week: 16, isPlayoff: true, side: "front" }],
+      course, scoringRules, allRounds, leagueConfig: { year: 2026 },
+    }).find(r => r.pid === "quit");
+    expect(laterOnly.withdrew).toBe(false);
+    expect(laterOnly.roundsPlayed).toBe(1);
+  });
+});

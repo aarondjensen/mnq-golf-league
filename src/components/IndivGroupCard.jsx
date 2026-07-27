@@ -29,6 +29,11 @@ import { K, FS, FW, NAME_SIZE } from "../theme";
 //                   Both optional — before anyone tees off there's nothing to
 //                   show and the rows render as names alone.
 //   teeTime       — formatted tee time string for the top-right corner.
+//   status        — when set, a pill replaces the tee time ("Signed",
+//                   "Final"). The card's signature state is the more useful
+//                   thing to show once the round is in, exactly as a match
+//                   row swaps its tee time for the result.
+//   statusColor   — pill color; defaults to the muted text color.
 //   label         — eyebrow text (default "Individual Group").
 //   highlightSelf — maize border, matching TeamMatchupCard's "your match".
 //   highlightPid  — one row rendered in maize: the viewer's own line.
@@ -40,6 +45,8 @@ import { K, FS, FW, NAME_SIZE } from "../theme";
 export function IndivGroupCard({
   rows = [],
   teeTime,
+  status = null,
+  statusColor = null,
   label = "Individual Group",
   highlightSelf = false,
   highlightPid = null,
@@ -70,12 +77,21 @@ export function IndivGroupCard({
           letterSpacing: 1, textTransform: "uppercase", whiteSpace: "nowrap",
         }}>{label}</span>
         <div style={{ flex: 1, height: 1, background: `${K.bdr}60` }} />
-        {teeTime && (
+        {status ? (
+          <span style={{
+            fontSize: FS.micro, fontWeight: FW.heavy, letterSpacing: .8,
+            textTransform: "uppercase", whiteSpace: "nowrap",
+            color: statusColor || K.t3,
+            background: `${statusColor || K.t3}18`,
+            border: `1px solid ${statusColor || K.t3}50`,
+            padding: "2px 6px", borderRadius: 5,
+          }}>{status}</span>
+        ) : teeTime ? (
           <span style={{
             fontSize: FS.sm, fontWeight: FW.heavy, color: K.act,
             letterSpacing: .3, whiteSpace: "nowrap",
           }}>{teeTime}</span>
-        )}
+        ) : null}
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
