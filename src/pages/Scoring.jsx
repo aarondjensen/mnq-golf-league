@@ -1062,7 +1062,8 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
                 const nineHcp = playerMap[pid] ? Math.round(playerMap[pid].handicapIndex || 0) : 0;
                 const line = computeRoundLine({ ir, pars, hcps, roundHcp: nineHcp });
                 const name = playerMap[pid]?.name || "?";
-                if (ir.withdrawn) return { pid, name, value: "WD" };
+                if (ir.withdrawn) return { pid, name, value: "—", sub: "absent" };
+                if (attendance?.[`w${week}_p${pid}`]?.status === "makeup") return { pid, name, value: "—", sub: "makeup" };
                 if (!line.played) return { pid, name };
                 return {
                   pid, name,
@@ -2273,6 +2274,8 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
           {!activeMatch && <ViewToggle />}
           {!activeMatch && FinalizeBanner}
         </>}
+        attendance={attendance}
+        saveAttendance={saveAttendance}
         groupMatch={matchToScore}
         groupResult={findGroupResult(groupResults, week, matchToScore)}
         saveGroupResult={saveGroupResult}
@@ -3142,12 +3145,16 @@ function MakeupAuditRow({ name, status, blocking, isPlayoff, side, onSaveHoles, 
 function IndivGroupScoring({
   pids, week, side, pars, hcps, playerMap, holeScores, saveScore,
   isWeekLocked, viewerPid, onBack, header, toast, setToast,
+  attendance, saveAttendance,
   groupMatch, groupResult, saveGroupResult, deleteGroupResult, isComm,
 }) {
   const [curHole, setCurHole] = useState(0);
   const [showCard, setShowCard] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirmUnsign, setConfirmUnsign] = useState(false);
+  // Own confirm state: this view returns before the parent renders its
+  // ConfirmModal, so it needs its own instance of the shared component.
+  const [groupConfirm, setGroupConfirm] = useState(null);
 
   const getScore = (pid, h) => holeScores[`w${week}_p${pid}_h${h}`] || 0;
   const getHcp = (pid) => {
@@ -3155,23 +3162,54 @@ function IndivGroupScoring({
     return p ? Math.round(p.handicapIndex || 0) : 0;
   };
   const getStrokes = (pid, h) => buildStrokesMap(getHcp(pid), hcps)[h] || 0;
+  // ── Attendance within the group ─────────────────────────────────────
+  // Anyone in the foursome can flag anyone else — there's no commissioner in
+  // the group and no opposing team to arbitrate, so the golfers standing on
+  // the tee are the only people who know who showed up.
+  //
+  // ABSENT is the individual event's withdrawal. A team match handles an
+  // absence by having the present teammate cover both slots (`_habsent`);
+  // there is no teammate here, so an absent golfer simply has no round, which
+  // is exactly what the `_hindivwd` sentinel means. Writing it is what lets
+  // the group finish its card and the week finalize — otherwise one no-show
+  // pins the group below a complete scorecard forever.
+  //
+  // MAKING UP means the round happens later, so the golfer drops out of this
+  // group's completeness check (the other three can sign tonight) but stays
+  // unaccounted for in the finalize pre-flight until their makeup is entered.
+  // That's the same treatment the team-match makeup flow gets.
   const isWithdrawn = (pid) => holeScores[`w${week}_p${pid}_h${IND_WITHDRAW}`] === 1;
+  const attnStatus = (pid) => attendance?.[`w${week}_p${pid}`]?.status || null;
+  const isMakingUp = (pid) => attnStatus(pid) === "makeup" && !isWithdrawn(pid);
 
-  // ── Withdrawal ──────────────────────────────────────────────────────
-  // The individual event's equivalent of marking a player absent. It has to
-  // exist here or a no-show deadlocks the week: the group can't reach a
-  // complete card, so it can never sign, so the week can never finalize.
-  // (`_habsent` is NOT the right flag — that means "my teammate covers both
-  // slots", and there is no teammate here.) resolveIndivRound and the
-  // individual leaderboard already treat this sentinel as the single source
-  // of truth for "out of the event".
-  const setWithdrawn = (pid, out) => {
-    if (isWeekLocked) {
-      setToast?.("Week is locked — scores are read-only");
-      setTimeout(() => setToast?.(null), 3000);
-      return;
-    }
-    saveScore(week, pid, IND_WITHDRAW, out ? 1 : 0);
+  const guardAttendance = () => {
+    if (!isWeekLocked) return true;
+    setToast?.("Week is locked — attendance cannot be changed");
+    setTimeout(() => setToast?.(null), 3000);
+    return false;
+  };
+
+  const markAbsent = (pid) => {
+    if (!guardAttendance()) return;
+    // Both writes: the sentinel is what the individual event reads, the
+    // attendance record is what Schedule's tags and the push notification read.
+    saveScore(week, pid, IND_WITHDRAW, 1);
+    saveAttendance?.(week, pid, "absent");
+  };
+
+  const markMakingUp = (pid) => {
+    if (!guardAttendance()) return;
+    // Clear any withdrawal — "making up" and "out of the event" are mutually
+    // exclusive, and flipping absent → makeup must not leave the golfer
+    // silently withdrawn.
+    if (isWithdrawn(pid)) saveScore(week, pid, IND_WITHDRAW, 0);
+    saveAttendance?.(week, pid, "makeup");
+  };
+
+  const clearAttendance = (pid) => {
+    if (!guardAttendance()) return;
+    if (isWithdrawn(pid)) saveScore(week, pid, IND_WITHDRAW, 0);
+    saveAttendance?.(week, pid, null);
   };
 
   // Same shape PlayerScoreCard's `run` prop expects from the match view.
@@ -3208,9 +3246,11 @@ function IndivGroupScoring({
 
   // ── Hole navigation parity with the match view ──────────────────────
   // Same two behaviors the team scoring screen has, for the same reason:
-  // this is used one-handed on a course. "Live" excludes withdrawn golfers
-  // so a WD can't hold the group at hole 1 forever.
-  const livePids = pids.filter(pid => !isWithdrawn(pid));
+  // this is used one-handed on a course. "Live" is the golfers actually
+  // playing right now — an absent (withdrawn) or making-up golfer has no card
+  // tonight and must not hold the group at hole 1, block the sign button, or
+  // be waited on for an attestation.
+  const livePids = pids.filter(pid => !isWithdrawn(pid) && !isMakingUp(pid));
   const holeComplete = livePids.length > 0 && livePids.every(pid => getScore(pid, curHole) > 0);
   const allComplete = livePids.length > 0 && livePids.every(pid => {
     for (let h = 0; h < 9; h++) if (getScore(pid, h) <= 0) return false;
@@ -3384,7 +3424,8 @@ function IndivGroupScoring({
             {pids.map(pid => {
               const ir = resolveIndivRound(holeScores, week, pid);
               const line = computeRoundLine({ ir, pars, hcps, roundHcp: getHcp(pid) });
-              const label = ir.withdrawn ? "WD"
+              const label = ir.withdrawn ? "ABS"
+                : isMakingUp(pid) ? "MU"
                 : !line.played ? "—"
                 : line.netToPar > 0 ? `+${line.netToPar}` : line.netToPar === 0 ? "E" : `${line.netToPar}`;
               return (
@@ -3475,28 +3516,54 @@ function IndivGroupScoring({
       {pids.map(pid => {
         const pl = playerMap[pid];
         if (!pl) return null;
-        if (isWithdrawn(pid)) {
+        // Flagged golfers collapse to a status row — there's no card to score
+        // tonight, so the score buttons would be dead weight.
+        const flagged = isWithdrawn(pid) ? "absent" : isMakingUp(pid) ? "makeup" : null;
+        if (flagged) {
+          const isAbs = flagged === "absent";
+          const color = isAbs ? K.red : K.act;
           return (
             <Card key={pid} style={{ marginBottom: 3, padding: "8px 10px", display: "flex", alignItems: "center", gap: 8 }}>
-              <span style={{ fontSize: 14, fontWeight: FW.bold, flex: 1, minWidth: 0, color: K.t3 }}>{pl.name}</span>
-              <span style={{ fontSize: FS.micro, fontWeight: FW.heavy, color: K.red, background: K.red + "18", border: `1px solid ${K.red}40`, borderRadius: 5, padding: "2px 6px", letterSpacing: .5 }}>WITHDRAWN</span>
+              <span style={{ fontSize: 14, fontWeight: FW.bold, flex: 1, minWidth: 0, color: K.t3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{pl.name}</span>
+              <span style={{ flexShrink: 0, fontSize: FS.micro, fontWeight: FW.heavy, color, background: `${color}18`, border: `1px solid ${color}40`, borderRadius: 5, padding: "2px 6px", letterSpacing: .5 }}>
+                {isAbs ? "ABSENT" : "MAKING UP"}
+              </span>
               {!scoresLocked && (
-                <button onClick={() => setWithdrawn(pid, false)} style={{ flexShrink: 0, padding: "3px 8px", borderRadius: 5, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: FS.micro, fontWeight: FW.bold, cursor: "pointer" }}>
+                <button onClick={() => clearAttendance(pid)} style={{ flexShrink: 0, padding: "3px 8px", borderRadius: 5, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: FS.micro, fontWeight: FW.bold, cursor: "pointer" }}>
                   Undo
                 </button>
               )}
             </Card>
           );
         }
-        // Withdraw button — offered only while the golfer has no scores, so a
-        // mis-tap can't silently discard a played round. Once they've started
-        // a card, the round exists and withdrawal is a commissioner decision
-        // via Schedule → Edit Scores.
+        // Absent / Making Up — offered only while the golfer has no scores, so
+        // a mis-tap can't silently discard a played round. Once a card is
+        // started the round exists; changing it is a commissioner edit via
+        // Schedule → Edit Scores.
         const hasAnyScore = (() => { for (let h = 0; h < 9; h++) if (getScore(pid, h) > 0) return true; return false; })();
-        const wdBtn = (!scoresLocked && !hasAnyScore) ? (
-          <button onClick={() => setWithdrawn(pid, true)} style={{ flexShrink: 0, padding: "3px 8px", borderRadius: 5, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t3, fontSize: FS.micro, fontWeight: FW.bold, cursor: "pointer" }}>
-            WD
-          </button>
+        const attnBtns = (!scoresLocked && !hasAnyScore) ? (
+          <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+            <button
+              onClick={() => setGroupConfirm({
+                title: `Mark ${pl.name} as making up?`,
+                message: `${pl.name} will post their individual round later. The rest of the group can sign tonight; their makeup is entered when it's played.`,
+                onConfirm: () => { markMakingUp(pid); setGroupConfirm(null); },
+              })}
+              style={{ fontSize: FS.xs, fontWeight: FW.semibold, color: K.t3, background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, padding: "3px 8px", cursor: "pointer", flexShrink: 0 }}
+            >
+              Makeup
+            </button>
+            <button
+              onClick={() => setGroupConfirm({
+                title: `Mark ${pl.name} as absent?`,
+                message: `${pl.name} is out of the individual tournament for Week ${week} — no round is recorded and the group can sign without them.`,
+                onConfirm: () => { markAbsent(pid); setGroupConfirm(null); },
+              })}
+              style={{ fontSize: FS.xs, fontWeight: FW.semibold, color: K.t3, background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, padding: "3px 8px", cursor: "pointer", flexShrink: 0 }}
+            >
+              Absent
+            </button>
+          </div>
         ) : null;
         return (
           // Thin maize rail on the viewer's own card. The group is listed in
@@ -3518,12 +3585,13 @@ function IndivGroupScoring({
               curHole={curHole}
               saveScore={guardedSaveScore}
               K={K}
-              absentBtn={wdBtn}
+              absentBtn={attnBtns}
             />
           </div>
         );
       })}
 
+      <ConfirmModal modal={groupConfirm && { ...groupConfirm, onCancel: () => setGroupConfirm(null) }} />
       <ScoringToast toast={toast} />
     </div>
   );

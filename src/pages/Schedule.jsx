@@ -1259,7 +1259,11 @@ export default function ScheduleView({ groupResults, schedule, teams, players, m
       const histP = histPlayers.find(p => p.id === pid);
       const roundHcp = histP ? Math.round(histP.handicapIndex || 0) : 0;
       const line = computeRoundLine({ ir, pars, hcps, roundHcp });
-      if (ir.withdrawn) return { pid, name, value: "WD", sub: null };
+      // An absent golfer is out of the individual event for the week (the
+      // group's Absent button writes the withdrawal sentinel); a making-up
+      // golfer posts later. Both read as "no number yet" with the reason.
+      if (ir.withdrawn) return { pid, name, value: "—", sub: "absent" };
+      if (getAttendance(wk.week, pid)?.status === "makeup") return { pid, name, value: "—", sub: "makeup" };
       if (!line.played) return { pid, name };
       return {
         pid, name,
