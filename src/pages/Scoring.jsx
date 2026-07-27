@@ -2073,6 +2073,55 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
     );
   }
 
+  // ── Individual-group scoring view ─────────────────────────────────────
+  // Everything below this point assumes a two-team match: t1/t2, match-play
+  // hole status, Sign Scorecard, attestation. An individual group has none of
+  // that — four golfers share a tee time and each posts an individual net
+  // round — so it gets its own view rather than a pile of conditionals
+  // through the match UI. Scores go to the same hole_scores keys, which is
+  // what feeds the individual tournament board and handicaps.
+  if (isIndivGroupMatch(matchToScore)) {
+    const groupPids = (matchToScore.players || []).filter(Boolean);
+    return (
+      <IndivGroupScoring
+        // Remount when the group changes. The parent's match-change reset
+        // effect keys off `${team1}_${team2}`, which is "undefined_undefined"
+        // for every individual group — so without this, a commissioner
+        // switching from one group to another would inherit the previous
+        // group's hole position and initial-jump state.
+        key={groupPids.join("_")}
+        pids={groupPids}
+        week={week}
+        side={side}
+        pars={pars}
+        hcps={hcps}
+        playerMap={playerMap}
+        holeScores={holeScores}
+        saveScore={saveScore}
+        isWeekLocked={isWeekLocked}
+        viewerPid={leagueUser.playerId}
+        onBack={activeMatch ? () => setActiveMatch(null) : null}
+        header={<>
+          {!activeMatch && <ViewToggle />}
+          {!activeMatch && FinalizeBanner}
+        </>}
+        attendance={attendance}
+        saveAttendance={saveAttendance}
+        groupMatch={matchToScore}
+        groupResult={findGroupResult(groupResults, week, matchToScore)}
+        saveGroupResult={saveGroupResult}
+        deleteGroupResult={deleteGroupResult}
+        isComm={isComm}
+        toast={toast}
+        setToast={setToast}
+      />
+    );
+  }
+
+  // Team-match guard. Everything below needs two teams; an individual group
+  // has neither, which is why the branch above MUST stay ahead of this line —
+  // when it sat below, a golfer in a group got `return null` and a completely
+  // blank Scoring tab. Covered by Scoring.render.test.jsx.
   if (!t1 || !t2) return null;
 
   // Resolves the configured playoff tiebreaker against the in-progress live
@@ -2241,51 +2290,6 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
       variant, showTotals, matchGrn,
     });
   };
-
-  // ── Individual-group scoring view ─────────────────────────────────────
-  // Everything below this point assumes a two-team match: t1/t2, match-play
-  // hole status, Sign Scorecard, attestation. An individual group has none of
-  // that — four golfers share a tee time and each posts an individual net
-  // round — so it gets its own view rather than a pile of conditionals
-  // through the match UI. Scores go to the same hole_scores keys, which is
-  // what feeds the individual tournament board and handicaps.
-  if (isIndivGroupMatch(matchToScore)) {
-    const groupPids = (matchToScore.players || []).filter(Boolean);
-    return (
-      <IndivGroupScoring
-        // Remount when the group changes. The parent's match-change reset
-        // effect keys off `${team1}_${team2}`, which is "undefined_undefined"
-        // for every individual group — so without this, a commissioner
-        // switching from one group to another would inherit the previous
-        // group's hole position and initial-jump state.
-        key={groupPids.join("_")}
-        pids={groupPids}
-        week={week}
-        side={side}
-        pars={pars}
-        hcps={hcps}
-        playerMap={playerMap}
-        holeScores={holeScores}
-        saveScore={saveScore}
-        isWeekLocked={isWeekLocked}
-        viewerPid={leagueUser.playerId}
-        onBack={activeMatch ? () => setActiveMatch(null) : null}
-        header={<>
-          {!activeMatch && <ViewToggle />}
-          {!activeMatch && FinalizeBanner}
-        </>}
-        attendance={attendance}
-        saveAttendance={saveAttendance}
-        groupMatch={matchToScore}
-        groupResult={findGroupResult(groupResults, week, matchToScore)}
-        saveGroupResult={saveGroupResult}
-        deleteGroupResult={deleteGroupResult}
-        isComm={isComm}
-        toast={toast}
-        setToast={setToast}
-      />
-    );
-  }
 
   return (
     <div style={{ maxWidth: 420, margin: "0 auto" }}>
