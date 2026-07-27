@@ -14,6 +14,7 @@ import {
   isStandalonePWA,
   isIOSPushCapable,
   checkSubscriptionStatus,
+  getCachedSubscriptionStatus,
 } from "../lib/notifications";
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -128,8 +129,15 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
     // the user previously enabled notifications on this device, killed
     // the app, and reopened it. We want the UI to show "On" instead
     // of asking them to re-enable when they've already done so.
+    // Paint the device-local last-known answer first so the card doesn't
+    // read "Off" for the length of the round-trip, and ignore a null
+    // result (the read failed) rather than flipping a subscribed user Off.
     if (leagueUser?.playerId) {
-      checkSubscriptionStatus(leagueUser.playerId).then(setSubscribed);
+      const cached = getCachedSubscriptionStatus(leagueUser.playerId);
+      if (cached !== null) setSubscribed(cached);
+      checkSubscriptionStatus(leagueUser.playerId).then(sub => {
+        if (sub !== null) setSubscribed(sub);
+      });
     }
   }, [leagueUser?.playerId]);
 

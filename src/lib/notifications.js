@@ -87,6 +87,7 @@ const registerForPushNative = async (playerId) => {
     if (!token) return { success: false, state: "no_token" };
     await storeNativeToken(playerId, token);
     _lastRegisteredPlayerId = playerId;
+    setCachedSubscriptionStatus(playerId, true);
     return { success: true, state: "granted", token };
   } catch (e) {
     console.error("native registerForPush failed:", e);
@@ -253,8 +254,35 @@ export const registerForPush = async (playerId) => {
     registeredAt: Date.now(),
     lastSeenAt: Date.now(),
   });
+  setCachedSubscriptionStatus(playerId, true);
 
   return { success: true, state: "granted", token };
+};
+
+// ─── Subscription status cache (device-local) ───────────────────────────
+// checkSubscriptionStatus is a Firestore round-trip, so on a cold start the
+// answer isn't known for a few hundred ms. Anything that renders "you're not
+// subscribed" UI in the meantime (the App-level nudge banner) would flash at
+// an already-subscribed user. We mirror the last known answer per player in
+// localStorage so that UI can start from the truth and only correct itself
+// if the server disagrees.
+//
+// Per player (not global) because commissioner impersonation swaps playerId
+// mid-session, and the answer is genuinely per (device, player).
+const SUB_CACHE_PREFIX = "mnq_notif_sub_";
+
+// Returns true / false / null — null means "no cached answer on this device".
+export const getCachedSubscriptionStatus = (playerId) => {
+  if (!playerId || typeof localStorage === "undefined") return null;
+  try {
+    const v = localStorage.getItem(SUB_CACHE_PREFIX + playerId);
+    return v === "1" ? true : v === "0" ? false : null;
+  } catch { return null; }
+};
+
+const setCachedSubscriptionStatus = (playerId, subscribed) => {
+  if (!playerId || typeof localStorage === "undefined") return;
+  try { localStorage.setItem(SUB_CACHE_PREFIX + playerId, subscribed ? "1" : "0"); } catch { /* private mode */ }
 };
 
 // ─── Subscription status check ──────────────────────────────────────────
@@ -262,17 +290,25 @@ export const registerForPush = async (playerId) => {
 // player. Used by the settings page on mount to show the correct state
 // — distinct from browser permission, which stays "granted" forever once
 // given and can't tell us whether the user actively unsubscribed.
+//
+// Returns null when the read FAILED (offline, rules, transient error) so
+// callers can leave their existing state alone instead of treating a failed
+// read as "not subscribed" and nagging a subscribed user. getStrict (not
+// get) because db.get swallows errors into [], which is indistinguishable
+// from a genuine empty result.
 export const checkSubscriptionStatus = async (playerId) => {
   if (!playerId) return false;
   try {
-    const docs = await db.get("league_notifications_tokens", [
+    const docs = await db.getStrict("league_notifications_tokens", [
       { field: "league_id", op: "==", value: LEAGUE_ID },
       { field: "playerId", op: "==", value: playerId },
     ]);
-    return docs.length > 0;
+    const subscribed = docs.length > 0;
+    setCachedSubscriptionStatus(playerId, subscribed);
+    return subscribed;
   } catch (e) {
     console.warn("checkSubscriptionStatus failed:", e);
-    return false;
+    return null;
   }
 };
 
@@ -337,6 +373,7 @@ export const unsubscribeFromPush = async (playerId) => {
       { field: "playerId", op: "==", value: playerId },
     ]);
     await Promise.all(docs.map(d => db.deleteDoc("league_notifications_tokens", d.id)));
+    setCachedSubscriptionStatus(playerId, false);
   }
   return { success: true };
 };

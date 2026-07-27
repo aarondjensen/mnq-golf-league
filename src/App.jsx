@@ -1279,21 +1279,38 @@ export default function GolfLeagueApp() {
   // Runs once the user is linked to a player. Dynamic-imports the lib (same
   // pattern as the foreground-notifications effect) so the FCM/SW code isn't
   // pulled into the initial bundle. Re-checks if the linked player changes
-  // (e.g. commish impersonation). Sets `checked` last so the banner's first
-  // paint reflects real state instead of flashing.
+  // (e.g. commish impersonation).
+  //
+  // `checked` is reset to false on every run — including the early ones where
+  // auth hasn't resolved a playerId yet. It previously flipped to TRUE in the
+  // no-playerId case, which is why an already-subscribed user saw the banner
+  // flash on load: by the time the player resolved, the banner was ungated
+  // while `subscribed` still held its false initial value, so it rendered for
+  // the length of the Firestore round-trip and then vanished. `checked` must
+  // mean "we know THIS player's answer", never "there was nothing to check".
+  //
+  // Second guard: seed from the device-local cache of the last known answer,
+  // so a returning subscriber is gated out before the network read even
+  // starts. A failed read returns null and leaves that seeded state alone
+  // rather than nagging a subscribed user because they were briefly offline.
   useEffect(() => {
     let cancelled = false;
     const pid = effectiveUser?.playerId;
-    if (!pid) { setNotifChecked(true); return; }
+    setNotifChecked(false);
+    if (!pid) return;
     import("./lib/notifications").then(mod => {
       if (cancelled) return;
       setNotifPerm(mod.getNotificationPermissionState());
-      mod.checkSubscriptionStatus(pid).then(sub => {
-        if (cancelled) return;
-        setNotifSubscribed(!!sub);
+      const cached = mod.getCachedSubscriptionStatus(pid);
+      if (cached !== null) {
+        setNotifSubscribed(cached);
         setNotifChecked(true);
-      }).catch(() => { if (!cancelled) setNotifChecked(true); });
-    }).catch(() => { if (!cancelled) setNotifChecked(true); });
+      }
+      mod.checkSubscriptionStatus(pid).then(sub => {
+        if (cancelled || sub === null) return; // null = read failed; keep cache
+        setNotifSubscribed(sub);
+      }).finally(() => { if (!cancelled) setNotifChecked(true); });
+    }).catch(() => { /* lib failed to load — leave the banner gated off */ });
     return () => { cancelled = true; };
   }, [effectiveUser?.playerId]);
 
