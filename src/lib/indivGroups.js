@@ -30,7 +30,7 @@ import {
   calcPlayerHcp, resolveIndivRound,
   collectPriorMatchups, buildPlayerCoOccurrence, pairNonBracketTeams,
 } from "../theme";
-import { buildStrokesMap } from "./matchCalc";
+import { buildStrokesMap, bracketOutcome } from "./matchCalc";
 
 // ── computeRoundLine ───────────────────────────────────────────────
 // Net / gross to par for ONE player's ONE round, given the round already
@@ -227,8 +227,12 @@ export function rankIndividualBoard(board = []) {
 // count — only real bracket matches feed elimination, mirroring how bracket
 // progression already isolates them (isConsolation / isIndivGroup flags).
 //
-// Tie handling matches the bracket: a TIED result advances team1 (the higher
-// seed), so team2 is the loser on a tie.
+// Who lost comes from bracketOutcome — the SAME resolver the round-seeding
+// resolvers use, so "eliminated" and "didn't advance" can never disagree. It
+// reads matchWinnerId (canonical, and what every W-L-T display shows) rather
+// than comparing points, which under lowHighBonus can read a TIED match with
+// asymmetric points as a clean win. Tie handling is unchanged: a TIED result
+// advances team1 (the higher seed), so team2 is the loser on a tie.
 //
 // Returns a Set of eliminated team ids.
 export function computeEliminatedTeamIds({ schedule = [], matchResults = [], uptoWeek }) {
@@ -246,8 +250,7 @@ export function computeEliminatedTeamIds({ schedule = [], matchResults = [], upt
         x => x.week === wk.week && x.team1Id === m.team1 && x.team2Id === m.team2
       );
       if (!r) continue;
-      const d = (r.team1Points || 0) - (r.team2Points || 0);
-      const loser = d >= 0 ? m.team2 : m.team1;
+      const { loser } = bracketOutcome(r, m.team1, m.team2);
       if (loser) elim.add(loser);
     }
   }
@@ -266,15 +269,42 @@ export function computeEliminatedTeamIds({ schedule = [], matchResults = [], upt
 // purely defensive (bad data): a stray odd player merges up rather than tee
 // off alone.
 //
+// Standing tiers
+// ──────────────
+// "Worst tees off first" only means something for a golfer who HAS a net
+// score. rankIndividualBoard sorts the two kinds who don't — no rounds posted,
+// and withdrawn — to the BOTTOM of the leaderboard, which reversing then
+// promotes to the FRONT of the tee sheet. That put withdrawn golfers, who
+// aren't playing at all, in the first group ahead of the whole live field.
+//
+// So the reverse-leaderboard order applies within a tier, and the tiers seat
+// in this order:
+//   0. has a standing (roundsPlayed > 0)      → reverse leaderboard, worst first
+//   1. no rounds posted yet, still in the event → after the ranked field
+//   2. withdrawn                               → last; they have no round to play
+//
+// Callers that don't pass `options` get the old single-tier behavior, which is
+// correct whenever every eliminated golfer has a standing.
+//
+//   options.noStandingPids — pids with zero posted rounds (tier 1)
+//   options.withdrawnPids  — pids who have withdrawn from the event (tier 2)
+//
 // Returns an array of groups, each an array of 2–4 pids, in tee order
 // (worst-ranked group first).
-export function pairEliminatedIndividuals(eliminatedPids = [], rankOrderPids = []) {
+export function pairEliminatedIndividuals(eliminatedPids = [], rankOrderPids = [], options = {}) {
   const clean = (eliminatedPids || []).filter(Boolean);
   if (clean.length === 0) return [];
+
+  const asSet = (v) => (v instanceof Set ? v : new Set(v || []));
+  const noStanding = asSet(options.noStandingPids);
+  const withdrawn = asSet(options.withdrawnPids);
+  const tierOf = (pid) => withdrawn.has(pid) ? 2 : noStanding.has(pid) ? 1 : 0;
 
   // Lower rank index = better (nearer the top of the leaderboard).
   const rank = new Map((rankOrderPids || []).map((pid, i) => [pid, i]));
   const ordered = [...clean].sort((a, b) => {
+    const ta = tierOf(a), tb = tierOf(b);
+    if (ta !== tb) return ta - tb;
     const ra = rank.has(a) ? rank.get(a) : Infinity;
     const rb = rank.has(b) ? rank.get(b) : Infinity;
     // REVERSE leaderboard: worst (highest rank index) first.
@@ -343,7 +373,18 @@ export function buildEliminatedIndivGroups({
   });
   const rankOrderPids = rankIndividualBoard(board);
 
-  const groups = pairEliminatedIndividuals(eliminatedPids, rankOrderPids);
+  // Tier the field so golfers with no net score don't get promoted to the
+  // front of the tee sheet by the reverse ordering — see
+  // pairEliminatedIndividuals. Withdrawn golfers in particular were landing in
+  // the first group despite having no round to play.
+  const withdrawnPids = new Set(board.filter(r => r.withdrew).map(r => r.pid));
+  const noStandingPids = new Set(
+    board.filter(r => !r.withdrew && r.roundsPlayed === 0).map(r => r.pid)
+  );
+
+  const groups = pairEliminatedIndividuals(eliminatedPids, rankOrderPids, {
+    withdrawnPids, noStandingPids,
+  });
   const indivMatches = groups.map(g => ({
     players: g,
     isConsolation: true,

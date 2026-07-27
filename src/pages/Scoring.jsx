@@ -3251,8 +3251,17 @@ function IndivGroupScoring({
   // tonight and must not hold the group at hole 1, block the sign button, or
   // be waited on for an attestation.
   const livePids = pids.filter(pid => !isWithdrawn(pid) && !isMakingUp(pid));
-  const holeComplete = livePids.length > 0 && livePids.every(pid => getScore(pid, curHole) > 0);
-  const allComplete = livePids.length > 0 && livePids.every(pid => {
+  // Nobody playing tonight — every golfer in the group is absent or making up.
+  // The card is then VACUOUSLY complete: there's nothing to fill in, but the
+  // group still has to be signed off or weekFullyScored never goes true and the
+  // week can never be finalized. (Force-attest is no escape either: it only
+  // reaches cards that already carry a signature.) An eliminated foursome all
+  // skipping the night is an ordinary playoff occurrence, so this must resolve.
+  // `every` on an empty array is already true; the `length > 0` guard that used
+  // to sit in front of it is precisely what created the deadlock.
+  const nobodyPlaying = livePids.length === 0;
+  const holeComplete = !nobodyPlaying && livePids.every(pid => getScore(pid, curHole) > 0);
+  const allComplete = livePids.every(pid => {
     for (let h = 0; h < 9; h++) if (getScore(pid, h) <= 0) return false;
     return true;
   });
@@ -3321,9 +3330,10 @@ function IndivGroupScoring({
   const signGroup = async () => {
     if (busy || !saveGroupResult) return;
     setBusy(true);
-    // Solo / all-others-withdrawn: nobody is left to attest, so the signature
-    // self-attests. Mirrors finalizeMatch's autoAttest path — without it a
-    // one-golfer group would block the week forever.
+    // Solo / all-others-withdrawn / nobody playing at all: no one is left to
+    // attest, so the signature self-attests. Mirrors finalizeMatch's autoAttest
+    // path — without it a one-golfer group (or a group that all skipped the
+    // night) would block the week forever.
     const others = livePids.filter(pid => pid !== viewerPid);
     const autoAttest = others.length === 0;
     await saveGroupResult({
@@ -3335,7 +3345,9 @@ function IndivGroupScoring({
       attested: autoAttest,
     });
     setBusy(false);
-    setToast?.(autoAttest ? "Scorecard signed ✓" : "Scorecard signed — waiting on attestation");
+    setToast?.(nobodyPlaying ? "Group closed out ✓"
+      : autoAttest ? "Scorecard signed ✓"
+      : "Scorecard signed — waiting on attestation");
     setTimeout(() => setToast?.(null), 2500);
   };
 
@@ -3411,7 +3423,9 @@ function IndivGroupScoring({
       <button onClick={() => setShowCard(v => !v)} style={canSign && !showCard
         ? { width: "100%", padding: 10, borderRadius: 10, marginBottom: 4, cursor: "pointer", background: K.hcpBlue + "15", border: `1.5px solid ${K.hcpBlue}50`, color: K.hcpBlue, fontSize: FS.base, fontWeight: FW.bold, letterSpacing: .3 }
         : { width: "100%", padding: "5px 0", borderRadius: 8, marginBottom: 4, cursor: "pointer", background: K.card, border: `1px solid ${K.bdr}60`, color: K.t2, fontSize: FS.xs, fontWeight: FW.bold, letterSpacing: .5 }}>
-        {showCard ? "Hide Scorecard" : canSign ? "Complete — Review & Sign" : "Full Scorecard"}
+        {showCard ? "Hide Scorecard"
+          : canSign ? (nobodyPlaying ? "No Rounds Tonight — Sign Off" : "Complete — Review & Sign")
+          : "Full Scorecard"}
       </button>
 
       {showCard && (
@@ -3455,10 +3469,12 @@ function IndivGroupScoring({
         <div style={{ background: K.card, border: `1px solid ${isFullyAttested ? K.grn + "50" : K.bdr}60`, borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
           {!isSigned ? (<>
             <div style={{ fontSize: FS.xs, color: K.t2, marginBottom: 8, lineHeight: 1.4 }}>
-              All cards are in. Sign to submit this group's rounds to the individual tournament — someone else in the group then attests.
+              {nobodyPlaying
+                ? "Nobody in this group is playing tonight. Sign to close the group out so the week can be finalized — no rounds are recorded."
+                : "All cards are in. Sign to submit this group's rounds to the individual tournament — someone else in the group then attests."}
             </div>
             <button onClick={signGroup} disabled={busy} style={{ width: "100%", padding: 12, borderRadius: 10, background: busy ? K.t3 : K.hcpBlue, border: "none", color: "#fff", fontSize: 14, fontWeight: FW.heavy, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1 }}>
-              Sign Scorecard
+              {nobodyPlaying ? "Sign Off Group" : "Sign Scorecard"}
             </button>
           </>) : (<>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>

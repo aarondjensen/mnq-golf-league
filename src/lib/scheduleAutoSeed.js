@@ -91,6 +91,7 @@
 import { db, LEAGUE_ID } from "../firebase";
 import { buildStandingsForSeed, serializeSeedWeeks } from "../theme";
 import { buildPlayoffNonBracketMatches } from "./indivGroups";
+import { bracketOutcome } from "./matchCalc";
 
 export async function autoSeedIfReady({
   justLockedWeek,
@@ -311,6 +312,24 @@ export async function autoSeedIfReady({
   // so downstream code separates them from the bracket by flag, not position —
   // letting us place them FIRST (earliest tees) while the bracket keeps the
   // final tees.
+  // Individualizing the eliminated field is only meaningful if we can actually
+  // rank it, which needs the season's per-hole scores and the rounds history.
+  // Both are injected by App.jsx and are always present in the app; a missing
+  // one means a caller (or a test) wired this up partially. Bail out of the
+  // whole playoff phase rather than write a tee order derived from no data —
+  // an unseeded week is visible and recoverable (Admin → Seed Week explains
+  // the problem), a wrong-but-plausible one is neither.
+  if (leagueConfig?.consolationEnabled === true
+      && leagueConfig?.individualizeEliminated === true
+      && !(fetchSeasonScores && fetchAllScores)) {
+    console.error(
+      "[autoSeedIfReady] individualizeEliminated is on but fetchSeasonScores / " +
+      "fetchAllScores were not provided — refusing to seed playoff weeks, " +
+      "because the eliminated field can't be ranked by individual standing."
+    );
+    return { seeded: seededCount, playoff: 0 };
+  }
+
   const buildConsolation = async (bracketMatches, week) => {
     if (leagueConfig?.consolationEnabled !== true) return [];
     // Ranking eliminated players needs the season's per-hole scores + rounds
@@ -319,8 +338,13 @@ export async function autoSeedIfReady({
     let scores = holeScores;
     let allRounds = null;
     if (leagueConfig?.individualizeEliminated === true) {
-      scores = fetchSeasonScores ? await fetchSeasonScores() : holeScores;
-      allRounds = fetchAllScores ? await fetchAllScores() : null;
+      // No silent fallback to `holeScores` — that's the LIVE week's map only,
+      // so the individual board would compute as near-all-zeros and the tee
+      // order would degrade to alphabetical while looking like a real
+      // standings-based pairing. The gate above (canIndividualize) means we
+      // never reach here without both fetchers.
+      scores = await fetchSeasonScores();
+      allRounds = await fetchAllScores();
     }
     return buildPlayoffNonBracketMatches({
       week, teams, schedule: projectedSchedule, matchResults, players,
@@ -390,9 +414,12 @@ export async function autoSeedIfReady({
       prevBracketMatches.forEach((m) => {
         const r = prevResults.find(pr => pr.team1Id === m.team1 && pr.team2Id === m.team2);
         if (r) {
-          const d = (r.team1Points || 0) - (r.team2Points || 0);
-          prevWinners.push(d >= 0 ? r.team1Id : r.team2Id);
-          prevLosers.push(d >= 0 ? r.team2Id : r.team1Id);
+          // bracketOutcome, not a points compare — shared with Admin's manual
+          // resolver and with elimination detection so all three agree on who
+          // advanced. See matchCalc.js for why points can lie on a tie.
+          const { winner, loser } = bracketOutcome(r, m.team1, m.team2);
+          if (winner) prevWinners.push(winner);
+          if (loser) prevLosers.push(loser);
         }
       });
     }

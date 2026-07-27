@@ -33,7 +33,71 @@
 // those test suites — add them as new `describe` blocks below.
 
 import { describe, it, expect } from "vitest";
-import { resultLetterFor, isMatchPendingMakeup } from "../lib/matchCalc";
+import { resultLetterFor, isMatchPendingMakeup, bracketOutcome } from "../lib/matchCalc";
+
+// ── bracketOutcome ─────────────────────────────────────────────────
+// The shared "who advanced / who is out" resolver. Three consumers depend on
+// it agreeing with what the app DISPLAYS (resultLetterFor), which is why it
+// reads matchWinnerId rather than comparing points.
+describe("bracketOutcome", () => {
+  it("advances the matchWinnerId regardless of the points split", () => {
+    // lowHighBonus can hand the LOSER more total points than the winner. A
+    // points compare would advance the wrong team; matchWinnerId cannot.
+    const r = {
+      team1Id: "A", team2Id: "B",
+      team1Points: 1, team2Points: 4,
+      matchResultText: "2UP", matchWinnerId: "A",
+    };
+    expect(bracketOutcome(r, "A", "B")).toEqual({ winner: "A", loser: "B" });
+  });
+
+  it("advances team2 when team2 won", () => {
+    const r = { team1Id: "A", team2Id: "B", team1Points: 0, team2Points: 3, matchWinnerId: "B" };
+    expect(bracketOutcome(r, "A", "B")).toEqual({ winner: "B", loser: "A" });
+  });
+
+  it("advances the higher seed (team1) on a TIED match with asymmetric points", () => {
+    // The exact case a points compare gets wrong in the other direction:
+    // TIED text, but team2 carries more points from the bonus lines.
+    const r = {
+      team1Id: "A", team2Id: "B",
+      team1Points: 1, team2Points: 3,
+      matchResultText: "TIED", matchWinnerId: null,
+    };
+    expect(bracketOutcome(r, "A", "B")).toEqual({ winner: "A", loser: "B" });
+  });
+
+  it("uses the playoff tiebreaker winner, not the TIE text", () => {
+    // Playoff ties are broken and matchWinnerId is overridden; the text still
+    // reads "TIE (...)" but that is NOT the bare "TIED" of a halved match.
+    const r = {
+      team1Id: "A", team2Id: "B",
+      team1Points: 2, team2Points: 0,
+      matchResultText: "TIE (Hole 3)", matchWinnerId: "B",
+    };
+    expect(bracketOutcome(r, "A", "B")).toEqual({ winner: "B", loser: "A" });
+  });
+
+  it("falls back to a points compare for legacy rows with no matchWinnerId", () => {
+    const r = { team1Id: "A", team2Id: "B", team1Points: 0, team2Points: 2 };
+    expect(bracketOutcome(r, "A", "B")).toEqual({ winner: "B", loser: "A" });
+  });
+
+  it("gives a legacy points tie to team1", () => {
+    const r = { team1Id: "A", team2Id: "B", team1Points: 2, team2Points: 2 };
+    expect(bracketOutcome(r, "A", "B")).toEqual({ winner: "A", loser: "B" });
+  });
+
+  it("ignores a winner id matching neither side and falls back to points", () => {
+    const r = { team1Id: "A", team2Id: "B", team1Points: 0, team2Points: 2, matchWinnerId: "ZZ" };
+    expect(bracketOutcome(r, "A", "B")).toEqual({ winner: "B", loser: "A" });
+  });
+
+  it("returns nulls with no result or a missing side", () => {
+    expect(bracketOutcome(null, "A", "B")).toEqual({ winner: null, loser: null });
+    expect(bracketOutcome({ matchWinnerId: "A" }, "A", null)).toEqual({ winner: null, loser: null });
+  });
+});
 
 // Helper: build a minimal matchResult record. Mirrors the fixture
 // shape used in theme.test.js so consumers of both files read the

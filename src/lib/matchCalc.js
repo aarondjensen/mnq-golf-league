@@ -596,6 +596,44 @@ export function resultLetterFor(matchResult, teamId) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  bracketOutcome — who advances and who is knocked out, for ONE bracket match
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// The single answer to "who won this playoff match" for every consumer of
+// bracket progression: round seeding (scheduleAutoSeed.js and
+// Admin.handleSeedWeek) and elimination detection (lib/indivGroups.js). Those
+// three each had their own `(team1Points - team2Points) >= 0` inline, which is
+// NOT equivalent to what the rest of the app shows: lowHighBonus awards three
+// independent point lines, so a match-play TIED can carry asymmetric points and
+// read as a clean win to a naive points compare. `matchWinnerId` is canonical —
+// it's what resultLetterFor and every W-L-T display already use, and it's what
+// the playoff tiebreaker overrides.
+//
+// A genuine tie advances team1. Bracket matchups are always written higher seed
+// first, so this is the standard "tie goes to the higher seed" rule — the same
+// behavior the three inline versions had, now stated once.
+//
+// Returns { winner, loser }, both null when there's no usable result.
+export function bracketOutcome(result, team1Id, team2Id) {
+  if (!result || !team1Id || !team2Id) return { winner: null, loser: null };
+  const advance = (winnerId) => winnerId === team2Id
+    ? { winner: team2Id, loser: team1Id }
+    : { winner: team1Id, loser: team2Id };
+
+  // True match-play tie — higher seed advances.
+  if (result.matchResultText === "TIED") return advance(team1Id);
+  // Modern path. Guarded against a winner id that matches neither side (bad
+  // data) so it falls through to the points compare rather than silently
+  // advancing team1.
+  if (result.matchWinnerId === team1Id || result.matchWinnerId === team2Id) {
+    return advance(result.matchWinnerId);
+  }
+  // Legacy rows written before matchWinnerId existed.
+  const d = (result.team1Points || 0) - (result.team2Points || 0);
+  return advance(d >= 0 ? team1Id : team2Id);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  isMatchPendingMakeup — attendance-aware helper used by every match-result
 //  display surface (Scoring's All Matches tile, Schedule's match rows,
 //  Standings' Recent Matches). Returns true when any of the match's four

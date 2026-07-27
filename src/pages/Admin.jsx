@@ -5,6 +5,7 @@ import { K, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   buildStandingsForSeed as sharedBuildStandingsForSeed, buildSeedMap, buildPlayoffSeedMap, computeRegularSeasonSeeds,
   isIndivGroupMatch, weekFullyAttested, findGroupResult, FS, FW } from "../theme";
 import { buildPlayoffNonBracketMatches } from "../lib/indivGroups";
+import { bracketOutcome } from "../lib/matchCalc";
 import { ConfirmModal } from "../components/Popup";
 import NotificationsAdmin from "./NotificationsAdmin";
 
@@ -2869,14 +2870,17 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
             : (prevBracketCount > 0
                 ? prevPlayoffWeek.matches.slice(0, prevBracketCount)
                 : prevPlayoffWeek.matches);
-          // Get winners and losers in match order
-          prevBracketMatches.forEach((m, mi) => {
+          // Get winners and losers in match order. bracketOutcome is shared
+          // with the auto-seed resolver and with elimination detection, so all
+          // three agree on who advanced — it reads matchWinnerId rather than
+          // comparing points (which can misread a tie; see matchCalc.js). Tie
+          // still goes to the higher seed (team1 is always higher seed).
+          prevBracketMatches.forEach((m) => {
             const r = prevResults.find(pr => pr.team1Id === m.team1 && pr.team2Id === m.team2);
             if (r) {
-              const d = (r.team1Points || 0) - (r.team2Points || 0);
-              // Tie goes to higher seed (team1 is always higher seed)
-              prevWinners.push(d >= 0 ? r.team1Id : r.team2Id);
-              prevLosers.push(d >= 0 ? r.team2Id : r.team1Id);
+              const { winner, loser } = bracketOutcome(r, m.team1, m.team2);
+              if (winner) prevWinners.push(winner);
+              if (loser) prevLosers.push(loser);
             }
           });
         }
@@ -3034,8 +3038,24 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
           let scores = {};
           let allRounds = null;
           if (leagueConfig?.individualizeEliminated === true) {
-            scores = fetchSeasonScores ? await fetchSeasonScores() : {};
-            allRounds = fetchAllScores ? await fetchAllScores() : null;
+            // Hard requirement, not a fallback. Without the season scores the
+            // individual board computes as all zeros and the tee order silently
+            // degrades to alphabetical — a plausible-looking pairing that has
+            // nothing to do with the standings it claims to be built from.
+            // Better to refuse than to write a bogus order the commissioner
+            // has no way to spot.
+            if (!fetchSeasonScores || !fetchAllScores) {
+              alert(
+                "Can't seed this week — score history isn't available, so the " +
+                "eliminated field can't be ranked by individual standing.\n\n" +
+                "Reload the app and try again. If it keeps failing, turn off " +
+                "\"Regroup eliminated players individually\" in Edit Setup and " +
+                "seed with team consolation pairings instead."
+              );
+              return;
+            }
+            scores = await fetchSeasonScores();
+            allRounds = await fetchAllScores();
           }
           // `matches` is still bracket-only here, so it correctly tells the
           // builder which teams are already placed.

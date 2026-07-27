@@ -78,6 +78,34 @@ describe("computeEliminatedTeamIds", () => {
     const out = computeEliminatedTeamIds({ schedule, matchResults, uptoWeek: 12 });
     expect([...out].sort()).toEqual(["A", "I", "J"]);
   });
+
+  // Elimination reads matchWinnerId (via bracketOutcome), the same field every
+  // W-L-T display uses. A points compare disagrees with the app in both
+  // directions under lowHighBonus, which awards three independent point lines.
+  it("eliminates the side matchWinnerId says lost, not the one with fewer points", () => {
+    const sch = [{ week: 10, isPlayoff: true, matches: [{ team1: "A", team2: "J" }] }];
+    // A won the match but J walked away with more total points.
+    const res = [{
+      week: 10, team1Id: "A", team2Id: "J",
+      team1Points: 1, team2Points: 4,
+      matchResultText: "2UP", matchWinnerId: "A",
+    }];
+    const out = computeEliminatedTeamIds({ schedule: sch, matchResults: res, uptoWeek: 11 });
+    expect(out.has("J")).toBe(true);
+    expect(out.has("A")).toBe(false);
+  });
+
+  it("does not eliminate the higher seed on a TIED match that gave team2 more points", () => {
+    const sch = [{ week: 10, isPlayoff: true, matches: [{ team1: "A", team2: "J" }] }];
+    const res = [{
+      week: 10, team1Id: "A", team2Id: "J",
+      team1Points: 1, team2Points: 3,
+      matchResultText: "TIED", matchWinnerId: null,
+    }];
+    const out = computeEliminatedTeamIds({ schedule: sch, matchResults: res, uptoWeek: 11 });
+    expect(out.has("J")).toBe(true);   // tie → higher seed advances
+    expect(out.has("A")).toBe(false);
+  });
 });
 
 // ── pairEliminatedIndividuals ──────────────────────────────────────
@@ -118,6 +146,45 @@ describe("pairEliminatedIndividuals", () => {
     const groups = pairEliminatedIndividuals(elim, rankOrder);
     expect(groups).toHaveLength(1);
     expect(groups[0]).toEqual(["b5", "b4", "b3", "b2", "b1"]);
+  });
+
+  // ── Standing tiers ───────────────────────────────────────────────
+  // rankIndividualBoard sorts golfers with no net score to the BOTTOM of the
+  // leaderboard; reversing then promoted them to the FRONT of the tee sheet,
+  // seating withdrawn golfers — who aren't playing at all — in the first group
+  // ahead of the entire live field.
+  it("seats withdrawn golfers last instead of first", () => {
+    // b7 and b8 are the two worst nets, but both have withdrawn.
+    const groups = pairEliminatedIndividuals(rankOrder.slice(), rankOrder, {
+      withdrawnPids: ["b7", "b8"],
+    });
+    expect(groups[0]).toEqual(["b6", "b5", "b4", "b3"]);
+    expect(groups[1]).toEqual(["b2", "b1", "b8", "b7"]);
+  });
+
+  it("seats golfers with no standing after the ranked field but ahead of withdrawals", () => {
+    const groups = pairEliminatedIndividuals(rankOrder.slice(), rankOrder, {
+      noStandingPids: ["b6"],
+      withdrawnPids: ["b8"],
+    });
+    // Ranked worst-first (b7, b5..b1), then the no-standing golfer, then the
+    // withdrawal at the very back of the tee sheet.
+    expect([...groups[0], ...groups[1]]).toEqual(
+      ["b7", "b5", "b4", "b3", "b2", "b1", "b6", "b8"]
+    );
+  });
+
+  it("accepts Sets as well as arrays for the tier options", () => {
+    const groups = pairEliminatedIndividuals(rankOrder.slice(), rankOrder, {
+      withdrawnPids: new Set(["b7", "b8"]),
+    });
+    expect(groups[0]).toEqual(["b6", "b5", "b4", "b3"]);
+  });
+
+  it("is unchanged from plain reverse order when no options are passed", () => {
+    const withOpts = pairEliminatedIndividuals(rankOrder.slice(), rankOrder, {});
+    const without = pairEliminatedIndividuals(rankOrder.slice(), rankOrder);
+    expect(withOpts).toEqual(without);
   });
 });
 
@@ -447,5 +514,65 @@ describe("withdrawal is final", () => {
     }).find(r => r.pid === "quit");
     expect(laterOnly.withdrew).toBe(false);
     expect(laterOnly.roundsPlayed).toBe(1);
+  });
+});
+
+// ── Tee order end-to-end (withdrawn golfers seated last) ───────────
+// The unit test above pins pairEliminatedIndividuals' tier logic; this pins
+// that buildEliminatedIndivGroups actually DERIVES the tiers from the board
+// and passes them through. Without the wiring the tier options default to
+// empty and the reverse ordering promotes withdrawals to the first group —
+// the bug this covers.
+describe("buildEliminatedIndivGroups tee order", () => {
+  const course = {
+    frontPars: [4, 4, 4, 3, 5, 4, 4, 3, 5],
+    backPars: [4, 4, 4, 3, 5, 4, 4, 3, 5],
+    frontHcps: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+    backHcps: [1, 2, 3, 4, 5, 6, 7, 8, 9],
+  };
+  const scoringRules = { hcpRecentCount: 8, hcpBestCount: 6 };
+  // Two teams, both knocked out in week 15. Scratch golfers, so net to par is
+  // just (gross - 36) and the intended order is unambiguous.
+  const teams = [
+    { id: "J", player1: "hi", player2: "lo" },
+    { id: "I", player1: "wd", player2: "mid" },
+  ];
+  const players = [
+    { id: "hi", name: "Hy Score" },    // +9 — worst net, should tee off FIRST
+    { id: "lo", name: "Lo Score" },    // -4 — best net, should tee off LAST
+    { id: "mid", name: "Mid Dell" },   // +2
+    { id: "wd", name: "Willa Drew" },  // withdrew — no standing at all
+  ];
+  const allRounds = { hi: [], lo: [], mid: [], wd: [] };
+
+  const schedule = [
+    { week: 15, isPlayoff: true, side: "front", matches: [
+      { team1: "A", team2: "J" },
+      { team1: "B", team2: "I" },
+    ] },
+    { week: 16, isPlayoff: true, side: "front", matches: [] },
+  ];
+  const matchResults = [
+    { week: 15, team1Id: "A", team2Id: "J", matchWinnerId: "A", matchResultText: "3UP" },
+    { week: 15, team1Id: "B", team2Id: "I", matchWinnerId: "B", matchResultText: "2UP" },
+  ];
+
+  // Week 15 cards: par on every hole, then adjust hole 0 to set each net.
+  const scores = {};
+  for (const pid of ["hi", "lo", "mid", "wd"]) {
+    course.frontPars.forEach((par, h) => { scores[`w15_p${pid}_h${h}`] = par; });
+  }
+  scores["w15_phi_h0"] = 4 + 9;    // +9
+  scores["w15_plo_h0"] = 4 - 4;    // -4
+  scores["w15_pmid_h0"] = 4 + 2;   // +2
+  scores["w15_pwd_hindivwd"] = 1;  // withdrew — her card doesn't count
+
+  it("orders worst-net first and puts the withdrawn golfer at the back", () => {
+    const { indivMatches } = buildEliminatedIndivGroups({
+      week: 16, teams, schedule, matchResults, players, scores,
+      course, scoringRules, allRounds, leagueConfig: { year: 2026 },
+    });
+    expect(indivMatches).toHaveLength(1);
+    expect(indivMatches[0].players).toEqual(["hi", "mid", "lo", "wd"]);
   });
 });
