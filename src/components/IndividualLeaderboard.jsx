@@ -288,7 +288,12 @@ export function IndividualRoundsPanel({
   );
 }
 
-export function IndividualLeaderboard({ players, teams, schedule, course, leagueConfig, scoringRules, scores, allRounds, loading }) {
+export function IndividualLeaderboard({ players, teams, schedule, course, leagueConfig, scoringRules, scores, allRounds, loading, title = null }) {
+  // Sticky header block; measured so an expanded row can scroll clear of it.
+  const headerRef = useRef(null);
+  // The expanded row's outer element, so opening one near the bottom of a long
+  // board can bring its scorecard into view instead of leaving it off-screen.
+  const expandedRowRef = useRef(null);
   const [expandedPid, setExpandedPid] = useState(null); // playerId whose scorecard is expanded inline
   // Which round the expanded card is showing: a week number, "all" to stack
   // every round the player has posted, or null to fall back to their latest.
@@ -296,6 +301,28 @@ export function IndividualLeaderboard({ players, teams, schedule, course, league
   // a stale round — and null-not-a-week so the default follows the live round
   // as the tournament moves on.
   const [expandedRound, setExpandedRound] = useState(null);
+  // Opening a row near the bottom of a long board would otherwise drop the
+  // scorecard below the fold with no hint it had appeared. Scroll it into view
+  // instead — `nearest` scrolls the minimum needed, so a card that fits gets
+  // its bottom brought to the bottom edge (the list slides up under it), and a
+  // card taller than the viewport aligns to its top so the player's own row
+  // stays visible rather than being pushed off. scrollMarginTop is set from
+  // the measured sticky header so that top-aligned case doesn't tuck the row
+  // underneath it.
+  useEffect(() => {
+    if (!expandedPid) return;
+    const el = expandedRowRef.current;
+    if (!el || typeof el.scrollIntoView !== "function") return;
+    if (typeof requestAnimationFrame !== "function") return;
+    // One frame so the expanded card has been laid out before we measure.
+    const id = requestAnimationFrame(() => {
+      const headerH = headerRef.current?.offsetHeight || 0;
+      el.style.scrollMarginTop = `${headerH + 4}px`;
+      el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+    return () => cancelAnimationFrame(id);
+  }, [expandedPid, expandedRound]);
+
   const openPlayer = (pid) => {
     setExpandedPid(prev => (prev === pid ? null : pid));
     setExpandedRound(null);
@@ -719,25 +746,35 @@ export function IndividualLeaderboard({ players, teams, schedule, course, league
 
   return (
     <div style={{ padding: "0 2px" }}>
-      {/* Header — reads "Net · N rounds · All players". This is a Net event and
-          Gross is just a curiosity, so the lens control is deliberately quiet: the
-          leading word itself is tappable and flips Net⇄Gross (a faint dashed
-          underline is the only hint), rather than a prominent segmented control. */}
-      <div style={{ textAlign: "center", marginBottom: 12, fontSize: FS.xs, color: K.t3 }}>
-        <span
-          onClick={() => setScoreMode(isGross ? "net" : "gross")}
-          role="button"
-          tabIndex={0}
-          style={{
-            color: K.t2, fontWeight: FW.bold, cursor: "pointer",
-            borderBottom: `1px dashed ${K.t3}`, paddingBottom: 1,
-          }}
-        >{isGross ? "Gross" : "Net"}</span>
-        {" · "}{totalRounds} round{totalRounds !== 1 ? "s" : ""} · All players
-      </div>
+      {/* Everything above the rows travels together as ONE sticky block: the
+          caller's title, the lens line, and the column headers. Sticking the
+          column headers alone would leave them colliding with a title stuck
+          separately above them, and a long board is exactly where you stop
+          being able to remember which column is which. */}
+      <div ref={headerRef} data-board-header style={{ position: "sticky", top: 0, zIndex: 3, background: K.bg, paddingBottom: 6 }}>
+        {title && (
+          <div style={{ textAlign: "center", fontSize: FS.xs, fontWeight: FW.bold, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", padding: "2px 34px 8px" }}>
+            {title}
+          </div>
+        )}
+        {/* Reads "Net · N rounds · All players". This is a Net event and Gross
+            is just a curiosity, so the lens control is deliberately quiet: the
+            leading word itself is tappable and flips Net⇄Gross (a faint dashed
+            underline is the only hint), rather than a prominent segmented
+            control. */}
+        <div style={{ textAlign: "center", marginBottom: 10, fontSize: FS.xs, color: K.t3 }}>
+          <span
+            onClick={() => setScoreMode(isGross ? "net" : "gross")}
+            role="button"
+            tabIndex={0}
+            style={{
+              color: K.t2, fontWeight: FW.bold, cursor: "pointer",
+              borderBottom: `1px dashed ${K.t3}`, paddingBottom: 1,
+            }}
+          >{isGross ? "Gross" : "Net"}</span>
+          {" · "}{totalRounds} round{totalRounds !== 1 ? "s" : ""} · All players
+        </div>
 
-      {/* Leaderboard */}
-      <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
         {/* Column header — click any header to sort (asc, then desc). */}
         <div style={{ display: "flex", padding: `0 ${PAD_X}px`, fontSize: FS.micro, fontWeight: FW.bold, color: K.logoBright, textTransform: "uppercase", letterSpacing: .8 }}>
           <div style={{ width: POS_W }} />
@@ -748,6 +785,10 @@ export function IndividualLeaderboard({ players, teams, schedule, course, league
             th(`r${i + 1}`, `R${i + 1}`, { width: RND_W, keyId: `rhdr${i + 1}` })
           )}
         </div>
+      </div>
+
+      {/* Leaderboard */}
+      <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
 
         {displayBoard.map((p, i) => {
           // Payout is 1st place only, so 1st is the ONLY chip that reads
@@ -784,7 +825,7 @@ export function IndividualLeaderboard({ players, teams, schedule, course, league
           const isExp = expandedPid === p.playerId;
 
           return (
-            <div key={p.playerId} style={{
+            <div key={p.playerId} ref={isExp ? expandedRowRef : null} style={{
               display: "flex", flexDirection: "column", background: K.card,
               borderRadius: CARD_RADIUS, border: `1px solid ${p.posRank === 1 && showRank ? K.act + "30" : K.bdr}`,
               padding: `10px ${PAD_X}px`,

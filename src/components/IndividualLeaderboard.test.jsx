@@ -288,3 +288,59 @@ describe("IndividualRoundsPanel", () => {
     expect(panel(15, [])).toBe("");
   });
 });
+
+// ══════════════════════════════════════════════════════════════════
+//  Board header — one sticky block
+// ══════════════════════════════════════════════════════════════════
+//
+// The title, the Net/Gross lens line and the column headers all travel
+// together as a single sticky element. Sticking them separately puts two or
+// three elements at top:0 fighting for the same space, and a long board is
+// exactly where you stop being able to remember which column is which.
+//
+// Note: the auto-scroll that brings a newly-expanded row into view runs in an
+// effect, so it isn't covered here — server rendering doesn't run effects.
+describe("board header", () => {
+  const PARS9 = [4, 4, 4, 3, 5, 4, 4, 3, 5];
+  const c = { name: "T", frontPars: PARS9, backPars: PARS9, frontHcps: [1,2,3,4,5,6,7,8,9], backHcps: [1,2,3,4,5,6,7,8,9] };
+  const sched = [{ week: 15, isPlayoff: true, side: "front", locked: false, matches: [{ team1: "T1", team2: "T2" }] }];
+  const board = (extra = {}) => renderToStaticMarkup(
+    <IndividualLeaderboard
+      players={players} teams={teams} schedule={sched} course={c}
+      leagueConfig={{ year: 2026, playoffRounds: [{ name: "R1" }] }}
+      scoringRules={{ hcpRecentCount: 8, hcpBestCount: 6 }}
+      scores={{}} allRounds={allRounds} loading={false} {...extra}
+    />
+  );
+
+  it("carries the column headers inside the sticky block", () => {
+    const html = board();
+    const hdr = html.indexOf("data-board-header");
+    expect(hdr).toBeGreaterThan(-1);
+    expect(html).toContain("position:sticky");
+    // Column labels come after the sticky opener and before the first row.
+    const player = html.indexOf(">Player<");
+    const firstRow = html.indexOf("Alpha");
+    expect(player).toBeGreaterThan(hdr);
+    expect(player).toBeLessThan(firstRow);
+    ["Total", "Thru", "R1"].forEach(l => expect(html).toContain(`>${l}<`));
+  });
+
+  it("renders a centered title when the caller supplies one", () => {
+    const html = board({ title: "Individual Tournament" });
+    expect(html).toContain("Individual Tournament");
+    const i = html.indexOf("Individual Tournament");
+    // The title's own wrapper is centered, and sits inside the sticky block.
+    expect(html.lastIndexOf("text-align:center", i)).toBeGreaterThan(html.indexOf("data-board-header"));
+  });
+
+  it("omits the title entirely when the caller has its own", () => {
+    // Standings renders the board under its own page chrome.
+    expect(board()).not.toContain("Individual Tournament");
+  });
+
+  it("sticks exactly one element, not a title and a header separately", () => {
+    const html = board({ title: "Individual Tournament" });
+    expect(html.split("position:sticky").length - 1).toBe(1);
+  });
+});

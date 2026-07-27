@@ -1033,13 +1033,11 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
           mid-round. */}
       {showEventBoard && (
         <Popup onClose={() => setShowEventBoard(false)} maxWidth={560} padding={10} outerPadding={8} showClose zIndex="content">
-          {/* Sticky so the title stays with the pinned ✕ as the board scrolls,
-              and so the ✕ always has an opaque backdrop behind it rather than
-              sitting on top of a leaderboard row. */}
-          <div style={{ position: "sticky", top: 0, zIndex: 1, background: K.bg, fontSize: FS.xs, fontWeight: FW.bold, color: K.act, letterSpacing: 1.5, textTransform: "uppercase", padding: "2px 0 8px", paddingRight: 28 }}>
-            Individual Tournament
-          </div>
+          {/* Title is passed INTO the board rather than rendered here, so it
+              sticks as one unit with the lens line and the column headers —
+              three separately-stuck rows would collide as the list scrolls. */}
           <IndividualLeaderboard
+            title="Individual Tournament"
             players={players}
             teams={teams}
             schedule={schedule}
