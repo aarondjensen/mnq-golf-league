@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, nativeGoogleSignIn, nativeAppleSignIn, NATIVE_APPLE_ENABLED, nativeAuthSignOut, deleteAccount, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
 import { Capacitor } from "@capacitor/core";
-import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, classifyScoreHole, LoadingPanel, serializeSeedWeeks, deserializeLeagueConfig, FS, FW } from "./theme";
+import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, classifyScoreHole, LoadingPanel, serializeSeedWeeks, deserializeLeagueConfig, weekFullyAttested, FS, FW } from "./theme";
 import { usePullToRefresh } from "./lib/usePullToRefresh";
 import { autoSeedIfReady as autoSeedIfReadyLib } from "./lib/scheduleAutoSeed";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
@@ -1136,8 +1136,14 @@ export default function GolfLeagueApp() {
     // week (byes + eliminated). Toggling them must regenerate the affected
     // unlocked/unplayed weeks, or the change only takes effect on brand-new
     // weeks while already-seeded weeks keep their old (or empty) pairings.
+    // individualizeEliminated belongs here for the same reason as the other
+    // two: it changes the three-way split of the non-bracket field (eliminated
+    // teams dissolve into individual foursomes instead of pairing as teams).
+    // It was previously omitted, so turning it on saved the flag but left
+    // every already-seeded playoff week showing the old team pairings.
     const consolationChanged = (prev?.consolationEnabled === true) !== (data.consolationEnabled === true)
-      || (prev?.consolationOptimize === true) !== (data.consolationOptimize === true);
+      || (prev?.consolationOptimize === true) !== (data.consolationOptimize === true)
+      || (prev?.individualizeEliminated === true) !== (data.individualizeEliminated === true);
     if (playoffChanged || customSeedChanged || standingsMethodChanged || playoffSeedsChanged || lockedSeedsChanged || consolationChanged) {
       setTimeout(() => { autoSeedIfReady(0); }, 0);
     }
@@ -1361,10 +1367,11 @@ export default function GolfLeagueApp() {
     for (const wk of schedule) {
       if (wk.rainedOut || wk.locked) continue;
       if (!wk.matches || wk.matches.length === 0) continue;
-      const allAttested = wk.matches.every(m =>
-        matchResults.some(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true)
-      );
-      if (allAttested) return wk.week;
+      // weekFullyAttested skips individual groups (eliminated players
+      // regrouped as a foursome): they never produce a match_result, so
+      // counting them would hold this banner hostage forever on any playoff
+      // week that has one.
+      if (weekFullyAttested(wk, matchResults)) return wk.week;
     }
     return null;
   })() : null;

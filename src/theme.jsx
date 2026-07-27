@@ -195,6 +195,52 @@ export function matchPids(match, teams) {
   return [t1?.player1, t1?.player2, t2?.player1, t2?.player2].filter(Boolean);
 }
 
+// ── Individual-group predicate ────────────────────────────────────────────
+// An individual group is a playoff tee time for players whose TEAM has been
+// knocked out of the bracket (see lib/indivGroups.js). It carries a `players`
+// array and NO team1/team2, because there is no head-to-head match — the four
+// golfers just post individual net rounds for the individual tournament.
+//
+// Consequences every caller has to respect:
+//   • There is no match_result document, and there never will be. Any
+//     "does every match have a result / is every match attested" check must
+//     skip these or the week can never be finalized.
+//   • Team-shaped rendering (two halves, seeds, W-L-T records, match-play
+//     center strip) has nothing to draw — `teams.find(t => t.id === undefined)`
+//     resolves to undefined and the card renders as "TBD".
+//
+// Lives here rather than in lib/indivGroups.js so the cheap predicate is
+// available to App.jsx / Admin.jsx / Schedule.jsx without pulling in the
+// individual-board math those files never use.
+export function isIndivGroupMatch(match) {
+  return match?.isIndivGroup === true;
+}
+
+// The subset of a week's matches that can produce a match_result. Every
+// "is this week done / ready / complete" test in the app runs over THIS list,
+// never the raw match array — an individual group in the week would otherwise
+// pin the answer at "not done" forever, because the result it's waiting for
+// is never going to exist.
+export function scorableMatches(matches) {
+  return (matches || []).filter(m => !isIndivGroupMatch(m));
+}
+
+// "Every scorable match in this week has a signed AND attested result."
+// A week with no scorable matches at all (only individual groups) returns
+// false: there is nothing to attest, so it can't be *ready to finalize* on
+// the strength of attestation. Shared by App.jsx's finalize banner and
+// Admin.jsx's week list so the two can never disagree about which week the
+// commissioner is being told to finalize.
+export function weekFullyAttested(wk, matchResults) {
+  const scorable = scorableMatches(wk?.matches);
+  if (scorable.length === 0) return false;
+  return scorable.every(m =>
+    (matchResults || []).some(r =>
+      r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true
+    )
+  );
+}
+
 // ── Individual-event makeup rounds & withdrawals (Path 2 namespace) ────────
 // Playoff edge case: a player who can't play on League Night is marked absent
 // so their TEAM match proceeds with the present teammate covering both slots

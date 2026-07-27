@@ -1,11 +1,13 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE, FS, FW, buildSeedMap, buildPlayoffSeedMap, LoadingPanel, SkeletonList, buildHistoricalPlayers } from "../theme";
+import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE, FS, FW, buildSeedMap, buildPlayoffSeedMap, LoadingPanel, SkeletonList, buildHistoricalPlayers, isIndivGroupMatch, scorableMatches, resolveIndivRound } from "../theme";
 import { LEAGUE_ID } from "../firebase";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { Popup } from "../components/Popup";
 import { computeMatchResult, readScoreEffective, getStrokesForHole, resultLetterFor, buildStrokesMap, isMatchPendingMakeup } from "../lib/matchCalc";
 import { parseScheduleDate } from "../lib/scheduleDate";
 import { autoHealMatchResults } from "../lib/autoHealMatchResults";
+import { computeRoundLine } from "../lib/indivGroups";
+import { IndivGroupCard } from "../components/IndivGroupCard";
 import { parseTiebreakerResult, TeamMatchupCard, ResultCenter } from "../TeamMatchupCard";
 import { EditConfirmationPopup } from "../components/EditConfirmationPopup";
 
@@ -539,9 +541,14 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
 
   const isWeekComplete = (wk) => {
     if (!wk.matches || wk.matches.length === 0) return false;
-    // A week is complete if it's locked OR if all matches have results
+    // A week is complete if it's locked OR if all matches have results.
+    // Individual groups produce no match_result, so they're excluded from the
+    // "all matches have results" test — otherwise a playoff week with one
+    // could never read as complete.
     if (wk.locked) return true;
-    return wk.matches.every(m =>
+    const scored = scorableMatches(wk.matches);
+    if (scored.length === 0) return false;
+    return scored.every(m =>
       matchResults.some(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2)
     );
   };
@@ -719,10 +726,72 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     // plus any non-bracket golf pairings), render the real matchups even before
     // the week is played.
     const isSeeded = (!wk.matches || wk.matches.length === 0) && (wk.seeded === true || isPlayoff);
-    const myMatch = !isSeeded ? wk.matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id) : null;
+    const myMatch = !isSeeded ? wk.matches.find(m => !isIndivGroupMatch(m) && (m.team1 === myTeam.id || m.team2 === myTeam.id)) : null;
     const origIdx = myMatch ? wk.matches.indexOf(myMatch) : 0;
     const side = wk.side || getWeekSide(wk.week);
     const isRainedOut = wk.rainedOut === true;
+
+    // ── Individual-group row ────────────────────────────────────────────
+    // Once my team is knocked out of the bracket I have no match, but I do
+    // have a tee time in an individual group. Without this branch the rest of
+    // this function resolves an opponent that doesn't exist and My Schedule
+    // shows "TBD" for the remainder of the playoffs.
+    //
+    // Purpose-built compact row rather than a pass through the match row: the
+    // columns it would fill (opponent, W/L result, teammate attendance) have
+    // no meaning for an individual round.
+    const myGroup = (!isSeeded && !isRainedOut && myPlayerId)
+      ? wk.matches.find(m => isIndivGroupMatch(m) && (m.players || []).includes(myPlayerId))
+      : null;
+    if (!myMatch && myGroup) {
+      const groupIdx = wk.matches.indexOf(myGroup);
+      const gPids = (myGroup.players || []).filter(Boolean);
+      const others = gPids.filter(pid => pid !== myPlayerId);
+      const isGroupExp = expandedMatchKey === `${wk.week}_${groupIdx}`;
+      const isCurrentWk = wk.week === schedule[currentWeekIdx]?.week;
+      const myLine = indivLinesFor(wk, [myPlayerId])[0];
+      return (
+        <div key={wk.week} style={{ borderRadius: CARD_RADIUS, overflow: "hidden", border: `1px solid ${isCurrentWk ? K.matchGrn + "40" : K.bdr}` }}>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => toggleMatchExpand(wk.week, groupIdx)}
+            onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggleMatchExpand(wk.week, groupIdx); } }}
+            style={{
+              display: "flex", alignItems: "center", padding: "11px 14px", width: "100%",
+              background: isCurrentWk ? K.matchGrn + "12" : K.card,
+              border: "none", cursor: "pointer", gap: 10, textAlign: "left",
+            }}
+          >
+            <div style={{ width: MY_SCHEDULE_COLS.weekDate, flexShrink: 0, display: "flex", flexDirection: "column", gap: 1, lineHeight: 1.15 }}>
+              <span style={{ fontSize: FS.xs, fontWeight: FW.semibold, color: K.t2 }}>{wk.date || "—"}</span>
+              <span style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.t1 }}>Week {wk.week}</span>
+            </div>
+            {/* Result column: my net-to-par once I've posted, tee time before. */}
+            <div style={{ width: MY_SCHEDULE_COLS.result, flexShrink: 0, display: "flex", flexDirection: "column", gap: 1, lineHeight: 1.1 }}>
+              <span style={{ fontSize: FS.base, fontWeight: FW.bold, color: myLine?.value ? K.t1 : K.act }}>
+                {myLine?.value || fmtTeeTime(groupIdx).replace(/\s*(AM|PM)$/i, '')}
+              </span>
+              <span style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.logoBright, letterSpacing: .5, textTransform: "uppercase" }}>
+                {myLine?.value ? "Net" : (side === 'front' ? 'Front 9' : 'Back 9')}
+              </span>
+            </div>
+            <div style={{ flex: 1, minWidth: 0, overflow: "hidden" }}>
+              <div style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.teal, letterSpacing: 1, textTransform: "uppercase", marginBottom: 1 }}>Individual</div>
+              <div style={{ fontSize: FS.sm, fontWeight: FW.semibold, color: K.t1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {others.length ? `with ${others.map(dn).join(", ")}` : "Solo"}
+              </div>
+            </div>
+            <div style={{ flexShrink: 0, color: K.t3, fontSize: FS.micro }}>{isGroupExp ? "▾" : "›"}</div>
+          </div>
+          {isGroupExp && (
+            <div style={{ background: K.inp, borderTop: `1px solid ${K.bdr}`, padding: "6px 8px" }}>
+              {renderIndivGroupScorecard(wk, myGroup)}
+            </div>
+          )}
+        </div>
+      );
+    }
     const res = myMatch ? matchResults.find(r => r.week === wk.week && r.team1Id === myMatch.team1 && r.team2Id === myMatch.team2) : null;
 
     let oppName = "TBD";
@@ -1146,6 +1215,101 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     </>);
   };
 
+  // ── Individual-group helpers ──────────────────────────────────────────
+  // An individual group has no match, no result and no team net — just four
+  // golfers posting individual net rounds. `indivLinesFor` produces the
+  // per-player summary both the collapsed card and the expanded scorecard
+  // show; `renderIndivGroupScorecard` is the expansion panel.
+  //
+  // Handicaps come from buildHistoricalPlayers (the handicap going INTO this
+  // week), same as every other scorecard here, so a past week's numbers don't
+  // silently re-rate when handicaps move.
+  const indivLinesFor = (wk, pids) => {
+    const wkScores = matchScores[wk.week];
+    const side = wk.side || getWeekSide(wk.week);
+    const pars = course ? (side === 'front' ? course.frontPars : course.backPars) : null;
+    const hcps = course ? (side === 'front' ? course.frontHcps : course.backHcps) : null;
+    const histPlayers = buildHistoricalPlayers({
+      players,
+      week: wk.week,
+      season: leagueConfig?.year || new Date().getFullYear(),
+      allRoundsByPid: allRounds,
+      scoringRules,
+      course,
+    });
+    return pids.map(pid => {
+      const name = dn(pid);
+      // Scores for this week load lazily (on expand). Until they arrive the
+      // row is just the name — no fabricated "E".
+      if (!wkScores || !pars || !hcps) return { pid, name };
+      const ir = resolveIndivRound(wkScores, wk.week, pid);
+      const histP = histPlayers.find(p => p.id === pid);
+      const roundHcp = histP ? Math.round(histP.handicapIndex || 0) : 0;
+      const line = computeRoundLine({ ir, pars, hcps, roundHcp });
+      if (ir.withdrawn) return { pid, name, value: "WD", sub: null };
+      if (!line.played) return { pid, name };
+      return {
+        pid, name,
+        value: line.netToPar > 0 ? `+${line.netToPar}` : line.netToPar === 0 ? "E" : `${line.netToPar}`,
+        sub: line.totalOnly ? "total" : `thru ${line.holesPlayed}`,
+      };
+    });
+  };
+
+  const renderIndivGroupScorecard = (wk, m) => {
+    if (!course) return null;
+    const wkScores = matchScores[wk.week];
+    if (!wkScores) return <LoadingPanel subtitle="scores" size="compact" />;
+    const side = wk.side || getWeekSide(wk.week);
+    const pars = side === 'front' ? course.frontPars : course.backPars;
+    const hcps = side === 'front' ? course.frontHcps : course.backHcps;
+    const pids = (m.players || []).filter(Boolean);
+
+    const histPlayers = buildHistoricalPlayers({
+      players,
+      week: wk.week,
+      season: leagueConfig?.year || new Date().getFullYear(),
+      allRoundsByPid: allRounds,
+      scoringRules,
+      course,
+    });
+    const getHcp = (pid) => { const p = histPlayers.find(pl => pl.id === pid); return p ? Math.round(p.handicapIndex || 0) : 0; };
+    const getInitials = (pid) => { const p = players.find(pl => pl.id === pid); return p ? p.name.split(' ').map(n => n[0]).join('') : "?"; };
+    // Raw reads, deliberately NOT readScoreEffective: absent-substitution is a
+    // TEAM rule (a present teammate covers both slots). There is no team here,
+    // so an absent golfer's row is simply empty.
+    const getScore = (pid, h) => wkScores[`w${wk.week}_p${pid}_h${h}`] || 0;
+    const getStrokes = (pid, h) => buildStrokesMap(getHcp(pid), hcps)[h] || 0;
+
+    const sc = SharedScorecard({
+      pars, side, hcps, team1Pids: pids, team2Pids: [],
+      getScore, getStrokes, getHcp, getInitials,
+      isAbsent: () => false,
+      holeResults: null, runningStatus: null, clinchHole: null, clinchText: null,
+      variant: "allMatches", showTotals: true, showMatchRow: false,
+    });
+
+    const lines = indivLinesFor(wk, pids);
+
+    return (
+      <div style={{ margin: "4px 0 2px" }}>
+        <sc.HoleRow />
+        <sc.ParRow />
+        <sc.HcpRow />
+        {pids.map(pid => <sc.PlayerRow key={pid} pid={pid} />)}
+        {/* Net-to-par summary. The scorecard grid's TOT column is gross; the
+            individual tournament ranks on net, so it gets its own line. */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "6px 2px 0" }}>
+          {lines.map(l => (
+            <div key={l.pid} style={{ fontSize: FS.micro, fontWeight: FW.semibold, color: K.t3, background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 5, padding: "2px 6px" }}>
+              {l.name} <strong style={{ color: K.t1 }}>{l.value ?? "—"}</strong>{l.sub ? ` · ${l.sub}` : ""}
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   // ── Full week view ──
   const renderWeek = (wk, isDone) => {
     const isPlayoff = wk.isPlayoff === true;
@@ -1163,6 +1327,9 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
     const side = wk.side || getWeekSide(wk.week);
     const isExp = getExpanded(wk.week);
 
+    // Full League view always shows the whole tee sheet. (My Schedule is
+    // rendered by renderMyWeek, which resolves my own match — or my
+    // individual group — itself.)
     const matches = myOnly
       ? wk.matches.filter(m => myTeam && (m.team1 === myTeam.id || m.team2 === myTeam.id))
       : wk.matches;
@@ -1234,6 +1401,32 @@ export default function ScheduleView({ schedule, teams, players, matchResults, l
           }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
               {matches.map((m, mi) => {
+                // Individual group — no teams, no result, no head-to-head.
+                // Rendered by its own card; feeding it to TeamMatchupCard
+                // produced "TBD vs TBD" because there is no team1/team2 to
+                // resolve. Tapping expands the group's scorecard (and loads
+                // the week's scores, same as a match row).
+                if (isIndivGroupMatch(m)) {
+                  const origIdxIndiv = wk.matches.indexOf(m);
+                  const isGroupExp = expandedMatchKey === `${wk.week}_${mi}`;
+                  const pids = (m.players || []).filter(Boolean);
+                  return (
+                    <IndivGroupCard
+                      key={mi}
+                      rows={indivLinesFor(wk, pids)}
+                      teeTime={fmtTeeTime(origIdxIndiv)}
+                      highlightSelf={!!(myPlayerId && pids.includes(myPlayerId))}
+                      highlightPid={myPlayerId}
+                      isExpanded={isGroupExp}
+                      onClick={() => toggleMatchExpand(wk.week, mi)}
+                      expanded={isGroupExp ? (
+                        <div style={{ padding: "0 6px 8px", borderTop: `1px solid ${K.bdr}30` }}>
+                          {renderIndivGroupScorecard(wk, m)}
+                        </div>
+                      ) : null}
+                    />
+                  );
+                }
                 const rawT1 = teams.find(t => t.id === m.team1);
                 const rawT2 = teams.find(t => t.id === m.team2);
                 const res = matchResults.find(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2);

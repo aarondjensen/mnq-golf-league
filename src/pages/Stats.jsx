@@ -149,9 +149,25 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
       .sort((a, b) => a.week - b.week);
     const consolationKeys = new Set();
     playoffWeeks.forEach((wk, ri) => {
-      const bracketSize = (playoffRounds[ri]?.matchups || []).length;
-      if (bracketSize <= 0) return;                 // can't split → exclude nothing
-      (wk.matches || []).slice(bracketSize).forEach(m => {
+      const all = wk.matches || [];
+      // Prefer the isConsolation flag over array position — same reasoning as
+      // Standings' bracketData split. Non-bracket matches are PREPENDED at
+      // seed time (they take the earliest tee times), so `slice(bracketSize)`
+      // returns the bracket, not the consolation block, and excluded exactly
+      // the wrong matches. Position-splitting survives only as the fallback
+      // for weeks seeded before the flag existed.
+      const hasFlag = all.some(m => m.isConsolation === true);
+      let consolation;
+      if (hasFlag) {
+        consolation = all.filter(m => m.isConsolation === true);
+      } else {
+        const bracketSize = (playoffRounds[ri]?.matchups || []).length;
+        if (bracketSize <= 0) return;               // can't split → exclude nothing
+        consolation = all.slice(bracketSize);
+      }
+      consolation.forEach(m => {
+        // Individual groups have no team1/team2 and no result to exclude.
+        if (!m.team1 || !m.team2) return;
         consolationKeys.add(`${wk.week}|${m.team1}|${m.team2}`);
         consolationKeys.add(`${wk.week}|${m.team2}|${m.team1}`);
       });

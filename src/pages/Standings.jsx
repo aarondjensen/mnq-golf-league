@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, calcPlayerHcp, buildSeedMap, buildPlayoffSeedMap, buildStandingsForSeed, recordPoints, resolveIndivRound, LoadingPanel, SkeletonList, buildHistoricalPlayers, FS, FW } from "../theme";
+import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, calcPlayerHcp, buildSeedMap, buildPlayoffSeedMap, buildStandingsForSeed, recordPoints, resolveIndivRound, LoadingPanel, SkeletonList, buildHistoricalPlayers, isIndivGroupMatch, FS, FW } from "../theme";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { readScoreEffective, getStrokesForHole, resultLetterFor, buildStrokesMap } from "../lib/matchCalc";
 import { db, LF } from "../firebase";
@@ -171,9 +171,17 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
     const bracketMatches = hasConsolationFlag
       ? allMatches.filter(m => !m.isConsolation)
       : allMatches.slice(0, bracketSize);
-    const consolationMatches = hasConsolationFlag
+    // Individual groups are dropped from BOTH buckets. They carry `players`
+    // and no team1/team2, so a team-vs-team bracket card has nothing to draw
+    // (it renders as blank/TBD), and they're not part of the bracket in any
+    // case — those golfers are competing on the individual leaderboard, which
+    // is where their rounds surface. Excluding them also keeps the bracket's
+    // card-index geometry (advCount / consolationIdx offsets below) counting
+    // only real matchups.
+    const consolationMatches = (hasConsolationFlag
       ? allMatches.filter(m => m.isConsolation === true)
-      : allMatches.slice(bracketSize);
+      : allMatches.slice(bracketSize)
+    ).filter(m => !isIndivGroupMatch(m));
     const results = roundWeek ? matchResults.filter(r => r.week === roundWeek.week) : [];
     const isLocked = roundWeek?.locked === true;
 

@@ -28,6 +28,7 @@ import {
   computeIndividualBoard,
   buildEliminatedIndivGroups,
   buildPlayoffNonBracketMatches,
+  computeRoundLine,
 } from "./indivGroups";
 
 // ── computeEliminatedTeamIds ───────────────────────────────────────
@@ -276,5 +277,91 @@ describe("buildPlayoffNonBracketMatches", () => {
 
     // Tee order: individual groups first, then team consolation.
     expect(out[0].isIndivGroup).toBe(true);
+  });
+});
+
+// ── computeRoundLine ───────────────────────────────────────────────
+// The per-round net calc shared by the group card, the group scorecard and
+// the cumulative leaderboard. The rule that carries the risk: a PARTIAL round
+// scores against the par of the holes actually played and only the strokes
+// falling on those holes — otherwise a card thru 5 reads as a fictional -12
+// and an in-progress group card lies about who's leading.
+describe("computeRoundLine", () => {
+  const pars = [4, 4, 4, 3, 5, 4, 4, 3, 5];       // par 36
+  const hcps = [1, 2, 3, 4, 5, 6, 7, 8, 9];       // stroke order = hole order
+
+  const irFrom = (holes, extra = {}) => ({
+    withdrawn: false, mode: "live", holes,
+    gross: Object.values(holes).reduce((a, b) => a + b, 0),
+    holesPlayed: Object.keys(holes).length,
+    totalOnly: false,
+    ...extra,
+  });
+
+  it("returns an unplayed line for mode 'none'", () => {
+    const out = computeRoundLine({ ir: { mode: "none", holes: {}, gross: 0, holesPlayed: 0 }, pars, hcps, roundHcp: 5 });
+    expect(out.played).toBe(false);
+    expect(out.gross).toBe(0);
+    expect(out.netToPar).toBe(0);
+  });
+
+  it("scores a full scratch round against full par", () => {
+    const holes = {};
+    pars.forEach((p, i) => { holes[i] = p; });
+    const out = computeRoundLine({ ir: irFrom(holes), pars, hcps, roundHcp: 0 });
+    expect(out.gross).toBe(36);
+    expect(out.grossToPar).toBe(0);
+    expect(out.netToPar).toBe(0);
+    expect(out.holesPlayed).toBe(9);
+  });
+
+  it("applies handicap strokes to a full round", () => {
+    const holes = {};
+    pars.forEach((p, i) => { holes[i] = p + 1; });   // bogey every hole → 45
+    const out = computeRoundLine({ ir: irFrom(holes), pars, hcps, roundHcp: 4 });
+    expect(out.gross).toBe(45);
+    expect(out.grossToPar).toBe(9);
+    expect(out.netToPar).toBe(5);                    // 9 over, 4 strokes back
+  });
+
+  it("scores a partial round against only the holes played", () => {
+    // Holes 0-2 (par 4/4/4 = 12), bogey each → gross 15. Handicap 9 gives a
+    // stroke on every hole, so 3 strokes land on the 3 holes played.
+    const out = computeRoundLine({ ir: irFrom({ 0: 5, 1: 5, 2: 5 }), pars, hcps, roundHcp: 9 });
+    expect(out.gross).toBe(15);
+    expect(out.grossToPar).toBe(3);
+    expect(out.netToPar).toBe(0);
+    expect(out.holesPlayed).toBe(3);
+  });
+
+  it("counts only the strokes that fall on holes played", () => {
+    // Handicap 2 → strokes on holes with hcp index 1 and 2 (holes 0 and 1).
+    // Playing holes 5-7 only means NO strokes apply.
+    const out = computeRoundLine({ ir: irFrom({ 5: 4, 6: 4, 7: 3 }), pars, hcps, roundHcp: 2 });
+    expect(out.grossToPar).toBe(0);
+    expect(out.netToPar).toBe(0);                    // no strokes on 6,7,8
+  });
+
+  it("uses full par and the whole handicap for a total-only makeup", () => {
+    const ir = { withdrawn: false, mode: "makeupTotal", holes: {}, gross: 44, holesPlayed: 9, totalOnly: true };
+    const out = computeRoundLine({ ir, pars, hcps, roundHcp: 6 });
+    expect(out.grossToPar).toBe(8);                  // 44 - 36
+    expect(out.netToPar).toBe(2);                    // 8 - 6
+    expect(out.totalOnly).toBe(true);
+  });
+
+  it("subtracts strokes for a plus handicap instead of adding them", () => {
+    // roundHcp < 0 → the golfer GIVES strokes back, so net is worse than gross.
+    const holes = {};
+    pars.forEach((p, i) => { holes[i] = p; });
+    const out = computeRoundLine({ ir: irFrom(holes), pars, hcps, roundHcp: -2 });
+    expect(out.grossToPar).toBe(0);
+    expect(out.netToPar).toBe(2);
+  });
+
+  it("falls back to standard pars/hcps when the course is missing", () => {
+    const out = computeRoundLine({ ir: irFrom({ 0: 4 }), pars: null, hcps: null, roundHcp: 0 });
+    expect(out.played).toBe(true);
+    expect(out.gross).toBe(4);
   });
 });

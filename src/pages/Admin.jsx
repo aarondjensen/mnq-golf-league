@@ -3,7 +3,7 @@ import { LEAGUE_ID, db, callFunction } from "../firebase";
 import { K, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   getWeekSide, formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, lastNamesOnly,
   buildStandingsForSeed as sharedBuildStandingsForSeed, buildSeedMap, buildPlayoffSeedMap, computeRegularSeasonSeeds,
-  FS, FW } from "../theme";
+  isIndivGroupMatch, weekFullyAttested, FS, FW } from "../theme";
 import { buildPlayoffNonBracketMatches } from "../lib/indivGroups";
 import { ConfirmModal } from "../components/Popup";
 import NotificationsAdmin from "./NotificationsAdmin";
@@ -50,14 +50,15 @@ export default function AdminView(props) {
     return activePlayers.filter(p => !assigned.has(p.id));
   }, [activePlayers, teams]);
 
-  // Weeks ready to finalize (all matches attested but week not yet locked)
+  // Weeks ready to finalize (all matches attested but week not yet locked).
+  // Individual groups are excluded — they have no match_result to attest, so
+  // counting them would make the week permanently "not ready". Mirrors the
+  // same filter in App.jsx's weekToFinalize banner.
   const weeksReadyToFinalize = useMemo(() => {
     return schedule.filter(wk => {
       if (wk.rainedOut || wk.locked) return false;
       if (!wk.matches || wk.matches.length === 0) return false;
-      return wk.matches.every(m =>
-        (matchResults || []).some(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true)
-      );
+      return weekFullyAttested(wk, matchResults);
     });
   }, [schedule, matchResults]);
 
@@ -2701,17 +2702,13 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
 
                 // Week state → left-bar color. At-a-glance scan of the season.
                 // Ready-to-finalize = all matches attested but not yet locked.
-                const allMatchesAttested = !isSeeded && !isRainedOut && wk.matches?.length > 0 && wk.matches.every(m =>
-                  (matchResults || []).some(r => r.week === wk.week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true)
-                );
+                const allMatchesAttested = !isSeeded && !isRainedOut && wk.matches?.length > 0 && weekFullyAttested(wk, matchResults);
                 // Current week = earliest unlocked week with pairings set. Only the first
                 // qualifying week gets the "current" color — subsequent unplayed weeks are
                 // "upcoming". We derive this by checking: this week unlocked AND no earlier
                 // unlocked-with-matches week exists.
                 const isCurrent = !isFinalized && !isRainedOut && wk.matches?.length > 0 && !allMatchesAttested &&
-                  !schedule.some(w => w.week < wk.week && !w.locked && !w.rainedOut && w.matches?.length > 0 && !w.matches.every(m =>
-                    (matchResults || []).some(r => r.week === w.week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true)
-                  ));
+                  !schedule.some(w => w.week < wk.week && !w.locked && !w.rainedOut && w.matches?.length > 0 && !weekFullyAttested(w, matchResults));
 
                 const barColor =
                   isRainedOut ? K.warn :
@@ -3612,6 +3609,25 @@ function AdminSchedule({ schedule, saveWeekSchedule, setWeekSchedule, deleteWeek
               };
 
               return wk.matches.map((m, mi) => {
+                // Individual group — eliminated players regrouped as a
+                // foursome. There are no team slots to swap (the whole point
+                // is that these players are no longer playing as teams), so
+                // this row is read-only: tee time + the four names. Re-seeding
+                // the week is how you change it.
+                if (isIndivGroupMatch(m)) {
+                  const groupNames = (m.players || [])
+                    .map(pid => lastNamesOnly(players.find(p => p.id === pid)?.name || "?"))
+                    .join(" · ");
+                  return (
+                    <div key={mi} style={{ background: K.card, borderRadius: 10, border: `1px dashed ${K.bdr}`, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, userSelect: "none" }}>
+                      <div style={{ flexShrink: 0, fontSize: FS.xs, color: K.acc, fontWeight: FW.bold }}>{formatTeeTime(cfg.startTime ?? "4:28 PM", mi).replace(/\s*(AM|PM)$/i, '')}</div>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.teal, letterSpacing: 1, textTransform: "uppercase", marginBottom: 2 }}>Individual Group</div>
+                        <div style={{ fontSize: FS.sm, fontWeight: FW.semibold, color: K.t1, lineHeight: 1.3 }}>{groupNames || "—"}</div>
+                      </div>
+                    </div>
+                  );
+                }
                 const badgeSeedMap = wk.isPlayoff ? playoffSeedMap : seedMap;
                 const seed1 = badgeSeedMap[m.team1] || "—";
                 const seed2 = badgeSeedMap[m.team2] || "—";

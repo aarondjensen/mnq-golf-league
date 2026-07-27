@@ -32,6 +32,55 @@ import {
 } from "../theme";
 import { buildStrokesMap } from "./matchCalc";
 
+// ── computeRoundLine ───────────────────────────────────────────────
+// Net / gross to par for ONE player's ONE round, given the round already
+// resolved by resolveIndivRound. Extracted from computeIndividualBoard so the
+// live group card, the group scorecard and the cumulative leaderboard all
+// derive a player's number the same way — the alternative was a third copy of
+// the "strokes on holes actually played" rule, which is exactly the drift this
+// file's header warns about.
+//
+// Partial rounds are handled by scoring against the par of the holes actually
+// played and only the strokes falling on those holes, so a card thru 5 reads
+// as a real +2 rather than a fictional -12.
+//
+//   ir       — resolveIndivRound(scores, week, pid) output
+//   pars     — 9 pars for the side being played
+//   hcps     — 9 hole handicap indexes for that side
+//   roundHcp — the player's 9-hole handicap for THIS round
+//
+// Returns { gross, netToPar, grossToPar, holesPlayed, totalOnly, played }.
+export function computeRoundLine({ ir, pars, hcps, roundHcp = 0 }) {
+  const empty = { gross: 0, netToPar: 0, grossToPar: 0, holesPlayed: 0, totalOnly: false, played: false };
+  if (!ir || ir.mode === "none") return empty;
+
+  const safePars = (Array.isArray(pars) && pars.length === 9) ? pars : [4, 4, 4, 3, 5, 4, 4, 3, 5];
+  const safeHcps = (Array.isArray(hcps) && hcps.length === 9) ? hcps : [1, 2, 3, 4, 5, 6, 7, 8, 9];
+  const playedHoles = Object.keys(ir.holes || {}).map(Number);
+
+  let parPlayed, signedStrokes;
+  if (ir.totalOnly) {
+    parPlayed = safePars.reduce((a, b) => a + b, 0);
+    signedStrokes = roundHcp;
+  } else {
+    const strokeMap = buildStrokesMap(roundHcp, safeHcps);
+    let strokesOnPlayed = 0;
+    for (const h of playedHoles) strokesOnPlayed += strokeMap[h] || 0;
+    signedStrokes = roundHcp < 0 ? -strokesOnPlayed : strokesOnPlayed;
+    parPlayed = 0;
+    for (const h of playedHoles) parPlayed += safePars[h] || 4;
+  }
+
+  return {
+    gross: ir.gross,
+    netToPar: ir.gross - parPlayed - signedStrokes,
+    grossToPar: ir.gross - parPlayed,
+    holesPlayed: ir.holesPlayed,
+    totalOnly: ir.totalOnly,
+    played: true,
+  };
+}
+
 // ── computeIndividualBoard ─────────────────────────────────────────
 // Canonical individual-tournament board. Returns ONE row per player with the
 // cumulative ranking metrics; the caller decides how to sort/slice.
@@ -122,39 +171,18 @@ export function computeIndividualBoard({
       if (withdrew) continue;
       if (ir.mode === "none") continue;
 
-      const gross = ir.gross;
-      const holesPlayed = ir.holesPlayed;
-      const playedHoles = Object.keys(ir.holes || {}).map(Number);
       const roundHcp = handicapBeforeWeek(p, season, wk.week);
+      const line = computeRoundLine({
+        ir,
+        pars: side === "front" ? course?.frontPars : course?.backPars,
+        hcps: side === "front" ? course?.frontHcps : course?.backHcps,
+        roundHcp,
+      });
 
-      const sideHcps = side === "front" ? course?.frontHcps : course?.backHcps;
-      const hcps = (Array.isArray(sideHcps) && sideHcps.length === 9)
-        ? sideHcps
-        : [1, 2, 3, 4, 5, 6, 7, 8, 9];
-      const sidePars = side === "front" ? course?.frontPars : course?.backPars;
-      const pars = (Array.isArray(sidePars) && sidePars.length === 9)
-        ? sidePars
-        : [4, 4, 4, 3, 5, 4, 4, 3, 5];
-
-      let parPlayed, signedStrokes;
-      if (ir.totalOnly) {
-        parPlayed = pars.reduce((a, b) => a + b, 0);
-        signedStrokes = roundHcp;
-      } else {
-        const strokeMap = buildStrokesMap(roundHcp, hcps);
-        let strokesOnPlayed = 0;
-        for (const h of playedHoles) strokesOnPlayed += strokeMap[h] || 0;
-        signedStrokes = roundHcp < 0 ? -strokesOnPlayed : strokesOnPlayed;
-        parPlayed = 0;
-        for (const h of playedHoles) parPlayed += pars[h] || 4;
-      }
-      const netToPar = gross - parPlayed - signedStrokes;
-      const grossToPar = gross - parPlayed;
-
-      totalGross += gross;
-      totalNetToPar += netToPar;
-      totalGrossToPar += grossToPar;
-      totalHolesPlayed += holesPlayed;
+      totalGross += line.gross;
+      totalNetToPar += line.netToPar;
+      totalGrossToPar += line.grossToPar;
+      totalHolesPlayed += line.holesPlayed;
       roundsPlayed++;
     }
 
