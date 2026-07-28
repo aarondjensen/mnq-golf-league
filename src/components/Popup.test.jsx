@@ -77,6 +77,24 @@ describe("Popup", () => {
     expect(html).toContain('class="popup-root"');
   });
 
+  it("isolates the scrolling region so content can't paint over the ✕", () => {
+    // Being a sibling of the scroller keeps the ✕ on screen, but not
+    // necessarily VISIBLE: the individual tournament board sticks its header
+    // at z-index 3 over an opaque background, and as a plain sibling of the ✕
+    // (z-index 2) that header covered the button completely. The scroller is a
+    // stacking context so every z-index inside the content is capped below it.
+    const html = renderToStaticMarkup(
+      <Popup onClose={() => {}} showClose>
+        <div style={{ position: "sticky", top: 0, zIndex: 3, background: "#000" }}>header</div>
+        {tall}
+      </Popup>
+    );
+    const scroller = html.slice(html.indexOf("overflow-y:auto"));
+    const decls = scroller.slice(0, scroller.indexOf('"'));
+    expect(decls).toContain("position:relative");
+    expect(decls).toContain("z-index:0");
+  });
+
   it("omits the ✕ unless showClose is set", () => {
     const html = renderToStaticMarkup(<Popup onClose={() => {}}>hi</Popup>);
     expect(html).not.toContain('aria-label="Close"');

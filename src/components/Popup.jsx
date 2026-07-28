@@ -148,6 +148,7 @@ export function Popup({
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
+              // Above the scroller, which is its own stacking context — see below.
               zIndex: 2,
               lineHeight: 1,
             }}
@@ -159,8 +160,17 @@ export function Popup({
             the scroller, the absolutely-positioned ✕ scrolled away with the
             content — on a tall popup (the individual leaderboard) it left no
             way to close at all. Now the ✕ is pinned to a non-scrolling frame
-            and the content moves underneath it. */}
-        <div style={{ padding, overflowY: "auto", overscrollBehavior: "contain", flex: 1, minHeight: 0 }}>
+            and the content moves underneath it.
+
+            position:relative + zIndex:0 makes the scroller its own stacking
+            context, which is what keeps the ✕ VISIBLE as well as present. The
+            individual tournament board sticks its title + column headers at
+            zIndex 3 over an opaque background; as a plain sibling of the ✕
+            (zIndex 2) that header simply painted over the button, hiding it
+            entirely. Isolating the scroller caps every z-index inside the
+            content — sticky headers, dropdown menus, whatever a future popup
+            puts in here — below the close affordance, so no child can bury it. */}
+        <div style={{ padding, overflowY: "auto", overscrollBehavior: "contain", flex: 1, minHeight: 0, position: "relative", zIndex: 0 }}>
           {children}
         </div>
       </div>
