@@ -3,6 +3,7 @@ import { db, LF, LEAGUE_ID, _auth, _googleProvider, nativeGoogleSignIn, nativeAp
 import { Capacitor } from "@capacitor/core";
 import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, classifyScoreHole, LoadingPanel, serializeSeedWeeks, deserializeLeagueConfig, weekFullyAttested, FS, FW } from "./theme";
 import { usePullToRefresh } from "./lib/usePullToRefresh";
+import { computeUpcomingBanner } from "./lib/upcomingBanner";
 import { autoSeedIfReady as autoSeedIfReadyLib } from "./lib/scheduleAutoSeed";
 import { LoadingScreen, AuthScreen, JoinScreen } from "./pages/Auth";
 import ErrorBoundary from "./ErrorBoundary";
@@ -1403,36 +1404,16 @@ export default function GolfLeagueApp() {
     return null;
   })() : null;
 
-  // Find upcoming match info for banner. Tee time computation uses the same
-  // base time + interval as the Schedule's tee time formatter.
-  const myTeam = teams.find(t => t.player1 === leagueUser.playerId || t.player2 === leagueUser.playerId);
-  const upcomingBanner = (() => {
-    if (!myTeam || !schedule.length) return null;
-    for (const wk of schedule) {
-      if (wk.rainedOut) continue;
-      if (!wk.matches || wk.matches.length === 0) continue;
-      if (wk.locked) continue;
-      const myMatch = wk.matches.find(m => m.team1 === myTeam.id || m.team2 === myTeam.id);
-      if (!myMatch) return null;
-      const oppId = myMatch.team1 === myTeam.id ? myMatch.team2 : myMatch.team1;
-      const opp = teams.find(t => t.id === oppId);
-      const matchIdx = wk.matches.indexOf(myMatch);
-      const base = leagueConfig?.startTime ?? "4:28 PM";
-      const interval = leagueConfig?.teeInterval ?? 8;
-      const [timePart, ampm] = base.split(' ');
-      const [h, m] = timePart.split(':').map(Number);
-      let mins = (ampm === 'PM' && h !== 12 ? h + 12 : h) * 60 + m + matchIdx * interval;
-      const hr = Math.floor(mins / 60) % 12 || 12;
-      const mn = mins % 60;
-      const teeTime = `${hr}:${String(mn).padStart(2, '0')}`;
-      const oppP1 = opp ? activePlayers.find(p => p.id === opp.player1) : null;
-      const oppP2 = opp ? activePlayers.find(p => p.id === opp.player2) : null;
-      const oppName1 = oppP1 ? oppP1.name.split(' ').pop() : "TBD";
-      const oppName2 = oppP2 ? oppP2.name.split(' ').pop() : "TBD";
-      return { week: wk.week, date: wk.date, teeTime, teeMinutes: mins, opp: opp?.name || "TBD", oppName1, oppName2, side: wk.side };
-    }
-    return null;
-  })();
+  // Current-week banner data. The lookup lives in lib/upcomingBanner.js so the
+  // "team match OR individual group" rule is testable — an eliminated player
+  // still has a tee time, and this banner is where they look for it.
+  const upcomingBanner = computeUpcomingBanner({
+    schedule,
+    teams,
+    players: activePlayers,
+    playerId: leagueUser.playerId,
+    leagueConfig,
+  });
 
   const bannerGrn = K.matchGrn;
 
@@ -1585,10 +1566,23 @@ export default function GolfLeagueApp() {
                   <div style={{ fontSize: FS.base, color: K.t1, fontWeight: FW.bold }}>Week {upcomingBanner.week}</div>
                 </div>
                 <div style={{ minWidth: 80, flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 6 }}>
-                  <div style={{ textAlign: "right", lineHeight: 1.3 }}>
-                    <div style={{ fontSize: FS.base, fontWeight: FW.bold, color: K.t1 }}>{upcomingBanner.oppName1}</div>
-                    <div style={{ fontSize: FS.base, fontWeight: FW.bold, color: K.t1 }}>{upcomingBanner.oppName2}</div>
-                  </div>
+                  {/* An individual group has no opponent — it's three playing
+                      partners, so the right column lists them under the same
+                      teal "Individual" eyebrow the group card on Schedule
+                      uses. Names drop a size because there can be three. */}
+                  {upcomingBanner.isIndivGroup ? (
+                    <div style={{ textAlign: "right", lineHeight: 1.3 }}>
+                      <div style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.teal, letterSpacing: 1, textTransform: "uppercase" }}>Individual</div>
+                      {upcomingBanner.groupNames.map((n, i) => (
+                        <div key={i} style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.t1 }}>{n}</div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ textAlign: "right", lineHeight: 1.3 }}>
+                      <div style={{ fontSize: FS.base, fontWeight: FW.bold, color: K.t1 }}>{upcomingBanner.oppName1}</div>
+                      <div style={{ fontSize: FS.base, fontWeight: FW.bold, color: K.t1 }}>{upcomingBanner.oppName2}</div>
+                    </div>
+                  )}
                 </div>
               </div>
             );
