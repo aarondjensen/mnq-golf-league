@@ -1,7 +1,6 @@
 import { initializeApp } from "firebase/app";
-import { getFirestore, collection, doc, setDoc, getDocs, query, where, writeBatch, onSnapshot, deleteDoc } from "firebase/firestore";
+import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, setDoc, getDocs, query, where, writeBatch, onSnapshot, deleteDoc } from "firebase/firestore";
 import { getAuth, initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithCredential, linkWithCredential, linkWithPopup, GoogleAuthProvider, OAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, onAuthStateChanged, signOut, updateProfile, sendPasswordResetEmail, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
-import { getFunctions, httpsCallable } from "firebase/functions";
 import { Capacitor } from "@capacitor/core";
 
 const FIREBASE_CONFIG = {
@@ -27,7 +26,49 @@ const FIREBASE_CONFIG = {
 export const LEAGUE_ID = "league_2026";
 
 const _app = initializeApp(FIREBASE_CONFIG);
-const _db = getFirestore(_app);
+
+// ─── Firestore local cache — IndexedDB, not memory ──────────────────────
+// Bare getFirestore() gives Firestore a MEMORY-only cache: every cold start
+// throws away everything and re-reads all ten league collections over the
+// network before a single pixel of real data can render. On the app's own
+// boot path that's the long pole — App.jsx gates the whole UI on
+// `membersLoaded`, which can't flip until league_members comes back from
+// Firestore's servers. On a phone on course wifi that's seconds of
+// LoadingScreen, every single time.
+//
+// persistentLocalCache backs the cache with IndexedDB, so onSnapshot fires
+// SYNCHRONOUSLY from disk on the next launch (with `fromCache: true`) and
+// the server response arrives later as a second, usually identical,
+// snapshot. Same data flow, same callbacks — the subscriptions in App.jsx
+// need no changes; they just get called sooner. Repeat cold starts go from
+// "wait for the network" to "paint now, reconcile in the background."
+//
+// persistentMultipleTabManager (rather than the single-tab default) is
+// required because MnQ is routinely open in more than one place at once —
+// a browser tab plus the installed PWA, or two tabs during scoring. With
+// the single-tab manager the second context fails to acquire the exclusive
+// IndexedDB lease and falls back to no persistence at all, silently.
+//
+// Cache size is left at the default 40 MB. The league's entire dataset is
+// a few hundred KB, so the LRU eviction ceiling is never approached.
+//
+// FALLBACK: persistence is unavailable in some environments (private-mode
+// Safari with IndexedDB blocked, storage-pressure eviction, hard-locked
+// enterprise profiles). initializeFirestore itself is synchronous and won't
+// throw for those — Firestore degrades to memory internally and logs a
+// warning — but we still guard the call so a genuinely hostile environment
+// (or a duplicate-initialization error during HMR) can never white-screen
+// the app on a performance optimization.
+let _dbInstance;
+try {
+  _dbInstance = initializeFirestore(_app, {
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+  });
+} catch (e) {
+  console.warn("Firestore persistent cache unavailable; using memory cache:", e?.message || e);
+  _dbInstance = getFirestore(_app);
+}
+const _db = _dbInstance;
 // ─── Auth persistence — explicit and durable ────────────────────────────
 // Bare getAuth() resolves persistence through a SILENT fallback chain:
 // [indexedDB → localStorage → sessionStorage → in-memory]. It picks the
@@ -424,9 +465,27 @@ export const deleteAccount = async (memberDocId, opts = {}) => {
 // callers get the unwrapped `.data` payload and a single place to evolve
 // error handling. (The notifications lib wires its own callable for the
 // test push; this is the general-purpose helper for everything else.)
-const _functions = getFunctions(_app);
+//
+// LAZY: firebase/functions is dynamically imported on first use rather than
+// at module scope. This module is on the app's critical path (App.jsx imports
+// it synchronously), but the only caller of callFunction is the commissioner-
+// only "revoke session" action in Admin.jsx — which already lives in a lazy
+// route chunk. A static import put the whole Functions SDK in the initial
+// bundle for a button that virtually no session ever presses. The instance is
+// memoized so repeated calls pay the import cost once.
+let _functionsPromise = null;
+const _getFunctions = () => {
+  if (!_functionsPromise) {
+    _functionsPromise = import("firebase/functions").then(({ getFunctions }) => getFunctions(_app));
+  }
+  return _functionsPromise;
+};
 export const callFunction = async (name, payload = {}) => {
-  const fn = httpsCallable(_functions, name);
+  const [{ httpsCallable }, functions] = await Promise.all([
+    import("firebase/functions"),
+    _getFunctions(),
+  ]);
+  const fn = httpsCallable(functions, name);
   const res = await fn(payload);
   return res.data;
 };

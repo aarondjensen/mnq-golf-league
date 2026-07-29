@@ -49,6 +49,47 @@ const CTPView = lazyWithRetry(() => import("./pages/CTP"));
 const AdminView = lazyWithRetry(() => import("./pages/Admin"));
 const NotificationsSettings = lazyWithRetry(() => import("./pages/NotificationsSettings"));
 
+// ── Route chunk warm-up ──────────────────────────────────────────────────
+// Code splitting cut the initial bundle, but it also put the landing tab's
+// chunk behind a SERIAL round trip: React can't request Standings-<hash>.js
+// until the app has booted, auth has resolved, league_members has come back
+// and the <Suspense> boundary actually mounts. On a phone that's an extra
+// fetch tacked onto the end of the slowest part of startup — and the user
+// stares at the Suspense fallback for it.
+//
+// Kicking the import off here, at module scope, moves that fetch to the
+// front and lets it run CONCURRENTLY with auth and the Firestore
+// subscriptions. Nothing awaits it: `lazy()` and a bare `import()` of the
+// same specifier resolve to the same module-registry entry, so React picks
+// up whatever is already in flight (or done) when it mounts. By the time
+// membersLoaded flips, the chunk is usually already parsed.
+//
+// We warm the tab the URL hash actually points at, not just Standings —
+// notification deep links open #scoring, and warming the wrong chunk would
+// be strictly worse than warming none.
+const ROUTE_CHUNKS = {
+  standings: () => import("./pages/Standings"),
+  scoring: () => import("./pages/Scoring"),
+  schedule: () => import("./pages/Schedule"),
+  players: () => import("./pages/Players"),
+  stats: () => import("./pages/Stats"),
+  ctp: () => import("./pages/CTP"),
+  admin: () => import("./pages/Admin"),
+  notifications: () => import("./pages/NotificationsSettings"),
+};
+
+// Swallow rejections: this is a speculative fetch. A failure here must not
+// surface as an unhandled rejection — lazyWithRetry still owns the real
+// load, with its own retry/backoff, when the boundary mounts.
+const warmRouteChunk = (tab) => { ROUTE_CHUNKS[tab]?.().catch(() => {}); };
+
+{
+  const hash = typeof window !== "undefined"
+    ? window.location.hash.replace("#", "").toLowerCase()
+    : "";
+  warmRouteChunk(ROUTE_CHUNKS[hash] ? hash : "standings");
+}
+
 
 export default function GolfLeagueApp() {
   const [authUser, setAuthUser] = useState(undefined);
@@ -361,6 +402,33 @@ export default function GolfLeagueApp() {
     });
     return unsub;
   }, []);
+
+  // ── Idle prefetch of the remaining tab chunks ────────────────────────
+  // Once the landing tab is on screen and the app is idle, quietly pull the
+  // other route chunks into cache so tapping a tab is instant instead of
+  // showing the Suspense fallback for a network fetch.
+  //
+  // Deliberately gated on membersLoaded and deferred to idle: during startup
+  // every byte of bandwidth belongs to the critical path, and prefetching
+  // Admin (the largest chunk by far) alongside it would make the thing this
+  // is meant to improve worse. requestIdleCallback fires only when the main
+  // thread has nothing better to do; the setTimeout fallback covers Safari
+  // versions that still lack it.
+  useEffect(() => {
+    if (!membersLoaded) return;
+    const prefetchRest = () => {
+      const current = window.location.hash.replace("#", "").toLowerCase();
+      for (const t of Object.keys(ROUTE_CHUNKS)) {
+        if (t !== current) warmRouteChunk(t);
+      }
+    };
+    if (typeof window.requestIdleCallback === "function") {
+      const id = window.requestIdleCallback(prefetchRest, { timeout: 5000 });
+      return () => window.cancelIdleCallback?.(id);
+    }
+    const id = setTimeout(prefetchRest, 2500);
+    return () => clearTimeout(id);
+  }, [membersLoaded]);
 
   // Real-time subscriptions
   useEffect(() => {
@@ -1472,7 +1540,7 @@ export default function GolfLeagueApp() {
               </>
             )}
           </div>
-          <img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
+          <img src="/MnQ_logo_transparent_bg.webp" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
         </div>
       </div>
 

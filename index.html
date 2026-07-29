@@ -11,13 +11,87 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icons/icon-192.webp" />
     <link rel="manifest" href="/manifest.webmanifest" />
+
+    <!-- The splash below shows the logo before any JS runs, so fetch it at
+         highest priority alongside the HTML rather than after layout. -->
+    <link rel="preload" as="image" href="/MnQ_logo_transparent_bg.webp" fetchpriority="high" />
+
+    <!-- ── Fonts: loaded, but NOT render-blocking ─────────────────────────
+         A plain <link rel="stylesheet"> to fonts.googleapis.com blocks first
+         paint on a cross-origin DNS + TLS + request round trip — on a phone
+         that is easily 300-600ms of blank screen before anything at all can
+         render, and it happens BEFORE the app bundle even starts executing.
+         The print/onload swap makes the browser fetch the stylesheet at low
+         priority without blocking rendering, then promote it to `all` once it
+         lands. Combined with the font-face's own `display=swap`, text paints
+         immediately in the fallback and reflows to League Spartan on arrival.
+         The <noscript> copy keeps the font working with JS disabled. -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@400;600;700&display=swap" rel="stylesheet" />
+    <link
+      href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@400;600;700&display=swap"
+      rel="stylesheet"
+      media="print"
+      onload="this.media='all'; this.onload=null;"
+    />
+    <noscript>
+      <link href="https://fonts.googleapis.com/css2?family=League+Spartan:wght@400;600;700&display=swap" rel="stylesheet" />
+    </noscript>
+
     <title>MnQ Golf</title>
+
+    <!-- ── Pre-JS splash ───────────────────────────────────────────────────
+         All of MnQ's styling is injected from JS (theme.jsx getCSS), and the
+         first React render can't happen until the whole app bundle has
+         downloaded, parsed and executed. Without a static shell that window is
+         a white screen — the single most visible part of "slow initial load,"
+         and the part that has nothing to do with how fast the data arrives.
+         This markup paints on the HTML's first frame and is identical in
+         layout to <LoadingScreen /> in pages/Auth.jsx, so the handoff to React
+         is invisible: same background, same logo at the same size, same
+         "Loading..." caption in the same place.
+
+         React's createRoot().render() clears #root on its first commit, so the
+         splash removes itself — there is no teardown code to keep in sync.
+
+         The inline script mirrors theme.jsx's own localStorage read so a
+         dark-mode user doesn't get a white flash before the theme applies. It
+         is deliberately tiny and runs before paint. -->
+    <style>
+      html, body { margin: 0; padding: 0; background: #f0f2f5; }
+      #mnq-splash {
+        position: fixed; inset: 0;
+        display: flex; flex-direction: column;
+        align-items: center; justify-content: center; gap: 16px;
+        background: #f0f2f5;
+      }
+      #mnq-splash img { width: 220px; max-width: 60vw; object-fit: contain; }
+      #mnq-splash span {
+        font-family: 'League Spartan', system-ui, -apple-system, sans-serif;
+        font-size: 14px; letter-spacing: 0.8px; text-transform: uppercase;
+        color: #9ca3af;
+      }
+      html[data-mnq-theme="dark"] body,
+      html[data-mnq-theme="dark"] #mnq-splash { background: #0b1829; }
+      html[data-mnq-theme="dark"] #mnq-splash span { color: #475569; }
+    </style>
+    <script>
+      try {
+        if (localStorage.getItem("mnq_theme") === "dark") {
+          document.documentElement.setAttribute("data-mnq-theme", "dark");
+          var m = document.querySelector('meta[name="theme-color"]');
+          if (m) m.setAttribute("content", "#0b1829");
+        }
+      } catch (e) {}
+    </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div id="mnq-splash">
+        <img src="/MnQ_logo_transparent_bg.webp" alt="MnQ Golf" />
+        <span>Loading...</span>
+      </div>
+    </div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
 </html>
