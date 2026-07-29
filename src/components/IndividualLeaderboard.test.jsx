@@ -140,8 +140,10 @@ describe("IndividualLeaderboard", () => {
       expect(card()).toContain("Makeup");
     });
 
-    it("still marks the round with the makeup superscript on the board", () => {
-      // Lowercase in the markup; the app's uppercase transform renders it "M".
+    it("counts the round on the board without flagging it as a makeup", () => {
+      // The board is a leaderboard, not an audit trail: the round counts the
+      // same as any other, so it carries no m/t superscript and the legend
+      // that explained them is gone.
       const html = renderToStaticMarkup(
         <IndividualLeaderboard
           players={players} teams={teams} schedule={wkSchedule} course={wkCourse}
@@ -149,8 +151,10 @@ describe("IndividualLeaderboard", () => {
           scores={scores} allRounds={wkRounds} loading={false}
         />
       );
-      expect(html).toMatch(/<sup[^>]*>m<\/sup>/);
-      expect(html).toContain("makeup round");
+      expect(html).toContain("Alpha");
+      expect(html).not.toMatch(/<sup[^>]*>[mt]<\/sup>/);
+      expect(html).not.toContain("makeup round");
+      expect(html).not.toContain("makeup (total only)");
     });
   });
 

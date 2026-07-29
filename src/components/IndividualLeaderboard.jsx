@@ -532,10 +532,6 @@ export function IndividualLeaderboard({ players, teams, schedule, course, league
           week: wk.week, date: wk.date, side, gross,
           netToPar, grossToPar,
           holesPlayed, nineHcp: roundHcp,
-          // Cell markers: makeup = played another day; totalOnly = entered as a
-          // bare gross (no per-hole detail, so it's absent from per-hole Stats).
-          makeup: ir.mode === 'makeupHoles' || ir.mode === 'makeupTotal',
-          totalOnly: ir.totalOnly,
         });
       }
 
@@ -653,7 +649,7 @@ export function IndividualLeaderboard({ players, teams, schedule, course, league
   // centers sit at an even rhythm — equal gaps require equal interior widths, and
   // right-aligning Total (the old layout) was what jammed it against Thru. 32px
   // holds a 3-char total ("+12"/"WD") at FS.base with room to spare.
-  const POS_W = 30;   // rank badge cell (+4px over the badge for the ▲/▼ arrow gutter)
+  const POS_W = 34;   // rank badge cell (+8px over the badge for the ▲/▼ arrow gutter, +4px of breathing room before the name)
   const STAT_W = 32;  // every numeric column (Total, Thru, each R#) — uniform for even spacing
   const THRU_W = STAT_W;
   const RND_W = STAT_W;
@@ -854,10 +850,11 @@ export function IndividualLeaderboard({ players, teams, schedule, course, league
                 )}
                 {/* Live ▲/▼ — sits in the gutter to the right of the badge (absolutely
                     positioned so it never squeezes the badge or the Player column).
+                    Inset from the cell edge so it doesn't crowd the name beside it.
                     Green ▲ for a climb, red ▼ for a drop; cleared on the next reshuffle. */}
                 {mov && (
                   <span style={{
-                    position: "absolute", right: 0, top: "50%", transform: "translateY(-50%)",
+                    position: "absolute", right: 4, top: "50%", transform: "translateY(-50%)",
                     fontSize: 8, lineHeight: 1, fontWeight: FW.heavy,
                     color: mov === "up" ? K.grn : K.red,
                   }}>{mov === "up" ? "▲" : "▼"}</span>
@@ -912,16 +909,7 @@ export function IndividualLeaderboard({ players, teams, schedule, course, league
                     fontWeight: isWDRound ? FW.heavy : FW.semibold,
                     color: isWDRound ? K.red : round ? (roundVal < 0 ? K.red : K.t1) : K.t3 + "40",
                   }}>
-                    {isWDRound ? "WD" : round ? (
-                      <>
-                        {fmtToPar(roundVal)}
-                        {round.makeup && (
-                          <sup style={{ fontSize: FS.micro, color: K.act, fontWeight: FW.bold, marginLeft: 1 }}>
-                            {round.totalOnly ? "t" : "m"}
-                          </sup>
-                        )}
-                      </>
-                    ) : "–"}
+                    {isWDRound ? "WD" : round ? fmtToPar(roundVal) : "–"}
                   </div>
                 );
               })}
@@ -944,12 +932,6 @@ export function IndividualLeaderboard({ players, teams, schedule, course, league
             </div>
           );
         })}
-        {leaderboard.some(p => p.rounds.some(r => r.makeup)) && (
-          <div style={{ padding: "8px 4px 2px", fontSize: FS.micro, color: K.t3, display: "flex", gap: 10, justifyContent: "flex-end" }}>
-            <span><sup style={{ color: K.act, fontWeight: FW.bold }}>m</sup> makeup round</span>
-            <span><sup style={{ color: K.act, fontWeight: FW.bold }}>t</sup> makeup (total only)</span>
-          </div>
-        )}
       </div>
     </div>
   );
