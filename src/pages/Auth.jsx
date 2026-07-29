@@ -9,7 +9,7 @@ import { K, FS, FW } from "../theme";
 export function LoadingScreen() {
   return (
     <div style={{ minHeight: "100vh", background: K.bg, display: "flex", alignItems: "center", justifyContent: "center", flexDirection: "column", gap: 16 }}>
-      <div style={{ fontSize: 52 }}><img src="/MnQ_logo_transparent_bg.png" alt="MnQ Golf" style={{ width: 220, objectFit: "contain" }} /></div>
+      <div style={{ fontSize: 52 }}><img src="/MnQ_logo_transparent_bg.webp" alt="MnQ Golf" style={{ width: 220, objectFit: "contain" }} /></div>
       <div className="pu" style={{ fontFamily: "'League Spartan', sans-serif", color: K.t3, fontSize: FS.sm }}>Loading...</div>
     </div>
   );
@@ -88,7 +88,7 @@ export function AuthScreen({ onGoogle, onApple, appleEnabled, onEmail, onPasswor
   return (
     <div style={{ minHeight: "100vh", background: K.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'League Spartan', sans-serif" }}>
       <div style={{ width: 340, textAlign: "center" }} className="fi">
-        <img src="/MnQ_logo_transparent_bg.png" alt="Maize-N-Que Golf" style={{ width: 280, objectFit: "contain", marginBottom: 8 }} />
+        <img src="/MnQ_logo_transparent_bg.webp" alt="Maize-N-Que Golf" style={{ width: 280, objectFit: "contain", marginBottom: 8 }} />
         <div style={{ color: K.t3, fontSize: FS.sm, marginBottom: 32 }}>
           {mode === "reset" ? "Reset your password" :
            mode === "reset_sent" ? "Check your email" :
@@ -189,7 +189,7 @@ export function JoinScreen({ authUser, members, players, saveMember, doSignOut, 
   return (
     <div style={{ minHeight: "100vh", background: K.bg, display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "'League Spartan', sans-serif" }}>
       <div style={{ width: 340, textAlign: "center" }} className="fi">
-        <img src="/MnQ_logo_transparent_bg.png" alt="Maize-N-Que Golf" style={{ width: 240, objectFit: "contain", marginBottom: 8 }} />
+        <img src="/MnQ_logo_transparent_bg.webp" alt="Maize-N-Que Golf" style={{ width: 240, objectFit: "contain", marginBottom: 8 }} />
         <div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: FS.xxl, color: K.acc, letterSpacing: 1, marginBottom: 4 }}>{title}</div>
         <div style={{ color: K.t3, fontSize: FS.sm, marginBottom: 6 }}>Signed in as <span style={{ color: K.t2, fontWeight: FW.semibold }}>{authUser.email}</span></div>
         <div style={{ color: K.t2, fontSize: FS.sm, marginBottom: 16, lineHeight: 1.5, padding: "0 12px" }}>{subtitle}</div>
