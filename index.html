@@ -8,8 +8,16 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="MnQ Golf" />
     <meta name="mobile-web-app-capable" content="yes" />
+    <!-- Icons live at the site root, which is where browsers probe for them
+         when no link tag applies (/favicon.ico for legacy browsers, bookmark
+         tools and crawlers; /apple-touch-icon.png for iOS home-screen adds).
+         The explicit tags below cover everything modern; the root placement is
+         the fallback for clients that never read them.
+         apple-touch-icon points at the 180x180 PNG — Apple's canonical size
+         and format — rather than a manifest icon. -->
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="apple-touch-icon" href="/icons/icon-192.webp" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="manifest" href="/manifest.webmanifest" />
 
     <!-- The splash below shows the logo before any JS runs, so fetch it at
