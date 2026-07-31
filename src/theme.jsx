@@ -285,6 +285,30 @@ export function weekFullyScored(wk, matchResults, groupResults) {
   );
 }
 
+// ── Which playoff round is "now"? ─────────────────────────────────────────
+// The first round whose week hasn't been finalized; once every round is done,
+// the last round that has one. `playoffWeeks` is the playoff schedule in week
+// order, index-aligned to `playoffRounds` exactly the way the bracket view
+// aligns them when it builds its columns.
+//
+// Drives the bracket's opening scroll position. By Round 4 the current round
+// sits well off-screen to the right of a horizontally-scrolling bracket, and
+// opening on Round 1 mid-playoffs is never what anyone wants. Rounds
+// configured without a scheduled week are skipped rather than treated as
+// current — opening on an empty column helps nobody.
+export function currentPlayoffRoundIdx(playoffRounds = [], playoffWeeks = []) {
+  const n = playoffRounds.length;
+  if (n <= 1) return 0;
+  let lastWithWeek = 0;
+  for (let i = 0; i < n; i++) {
+    const wk = playoffWeeks[i];
+    if (!wk) continue;
+    lastWithWeek = i;
+    if (wk.locked !== true) return i;
+  }
+  return lastWithWeek;
+}
+
 // ── Individual-event makeup rounds & withdrawals (Path 2 namespace) ────────
 // Playoff edge case: a player who can't play on League Night is marked absent
 // so their TEAM match proceeds with the present teammate covering both slots
