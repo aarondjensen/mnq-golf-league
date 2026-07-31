@@ -191,6 +191,54 @@ describe("buildEliminatedIndivGroups", () => {
     expect(indivMatches[0].players.slice().sort()).toEqual(["i1", "i2", "j1", "j2"]);
   });
 
+  // An eliminated team the bracket draws back in — a third-place match — is
+  // still a TEAM that week. Dissolving it anyway put a player in an individual
+  // group at 4:28 AND in his own third-place match at 5:08, apart from his
+  // teammate, in the same week.
+  it("keeps an eliminated team intact when the bracket has a match for it", () => {
+    const teams = [
+      { id: "A", player1: "a1", player2: "a2" },
+      { id: "B", player1: "b1", player2: "b2" },
+      { id: "J", player1: "j1", player2: "j2" }, // lost week 10 → third-place match
+      { id: "I", player1: "i1", player2: "i2" }, // lost week 10 → third-place match
+      { id: "X", player1: "x1", player2: "x2" }, // lost week 10, nothing left to play
+      { id: "Y", player1: "y1", player2: "y2" }, // lost week 10, nothing left to play
+    ];
+    const schedule = [
+      {
+        week: 10, isPlayoff: true, matches: [
+          { team1: "A", team2: "J" },
+          { team1: "B", team2: "I" },
+          { team1: "X", team2: "Y" },
+        ],
+      },
+      { week: 11, isPlayoff: true, matches: [] },
+    ];
+    const matchResults = [
+      { week: 10, team1Id: "A", team2Id: "J", team1Points: 2, team2Points: 0 },
+      { week: 10, team1Id: "B", team2Id: "I", team1Points: 2, team2Points: 0 },
+      { week: 10, team1Id: "X", team2Id: "Y", team1Points: 2, team2Points: 0 },
+    ];
+    const out = buildEliminatedIndivGroups({
+      week: 11, teams, schedule, matchResults,
+      players: teams.flatMap(t => [
+        { id: t.player1, name: t.player1 },
+        { id: t.player2, name: t.player2 },
+      ]),
+      scores: {}, course: null, scoringRules: null, allRounds: null, leagueConfig: null,
+      // Week 11's bracket: A vs B for the title, J vs I for third.
+      bracketTeamIds: new Set(["A", "B", "J", "I"]),
+    });
+    // All four losers are out of the championship…
+    expect([...out.eliminatedTeamIds].sort()).toEqual(["I", "J", "Y"]);
+    // …but only the one with no match left is broken up.
+    expect([...out.dissolvedTeamIds].sort()).toEqual(["Y"]);
+    expect(out.indivMatches).toHaveLength(1);
+    expect(out.indivMatches[0].players.slice().sort()).toEqual(["y1", "y2"]);
+    const grouped = out.indivMatches.flatMap(m => m.players);
+    ["j1", "j2", "i1", "i2"].forEach(pid => expect(grouped).not.toContain(pid));
+  });
+
   it("returns nothing when no team has been eliminated yet", () => {
     const out = buildEliminatedIndivGroups({
       week: 10, teams: [{ id: "A", player1: "a1", player2: "a2" }],
@@ -277,6 +325,29 @@ describe("buildPlayoffNonBracketMatches", () => {
 
     // Tee order: individual groups first, then team consolation.
     expect(out[0].isIndivGroup).toBe(true);
+  });
+
+  it("leaves a third-place match's teams alone instead of individualizing them", () => {
+    const players = teams.flatMap(t => [
+      { id: t.player1, name: t.player1 }, { id: t.player2, name: t.player2 },
+    ]);
+    // Week 11 bracket: A vs B for the title, and the two losers meet for third.
+    const withThirdPlace = [{ team1: "A", team2: "B" }, { team1: "J", team2: "I" }];
+    const out = buildPlayoffNonBracketMatches({
+      week: 11, teams, schedule, matchResults, players, scores: {},
+      course: null, scoringRules: null, allRounds: null,
+      leagueConfig: { consolationEnabled: true, individualizeEliminated: true },
+      bracketMatches: withThirdPlace, playoffSeeds,
+    });
+    // Nobody in a bracket match may appear in an individual group — that's the
+    // double-booking this guards against.
+    const groupedPids = out.filter(m => m.isIndivGroup).flatMap(m => m.players || []);
+    ["j1", "j2", "i1", "i2"].forEach(pid => expect(groupedPids).not.toContain(pid));
+    expect(out.filter(m => m.isIndivGroup)).toHaveLength(0);
+    // The bracket teams aren't re-paired as consolation teams either; only the
+    // alive byes C & D are left to pair.
+    const teamPlaced = new Set(out.filter(m => !m.isIndivGroup).flatMap(m => [m.team1, m.team2]));
+    expect([...teamPlaced].sort()).toEqual(["C", "D"]);
   });
 });
 

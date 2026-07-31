@@ -4,12 +4,15 @@
 //
 // Why this file exists
 // ────────────────────
-// Once a TEAM is knocked out of the match-play bracket, its two players are
-// no longer a "team" for pairing purposes. The commissioner can opt to
-// dissolve every eliminated team into the INDIVIDUAL pool and regroup those
-// players into fresh foursomes ordered by REVERSE individual-tournament
-// standing (worst cumulative net tees off first). Still-alive bye teams keep
-// playing as teams; only eliminated teams individualize. See the three-way
+// Once a TEAM is knocked out of the match-play bracket AND has no match left
+// to play, its two players are no longer a "team" for pairing purposes. The
+// commissioner can opt to dissolve those teams into the INDIVIDUAL pool and
+// regroup the players into fresh foursomes ordered by REVERSE
+// individual-tournament standing (worst cumulative net tees off first).
+// Still-alive bye teams keep playing as teams; so does any eliminated team the
+// bracket has drawn back in — a third-place match, a consolation-bracket game.
+// Losing the championship is not the same as being done for the season, and a
+// team the bracket still has a match for plays it TOGETHER. See the three-way
 // split in scheduleAutoSeed.js / Admin.handleSeedWeek.
 //
 // Everything here is pure (no React, no Firestore) so it can be unit-tested
@@ -307,7 +310,16 @@ export function pairEliminatedIndividuals(eliminatedPids = [], rankOrderPids = [
 // never feeds progression); isIndivGroup drives the individual rendering /
 // scoring path. There is NO team1/team2 and NO match result.
 //
-// Returns { indivMatches, eliminatedTeamIds, eliminatedPids }.
+// `bracketTeamIds` is the set of teams the BRACKET has a match for in THIS
+// week. Those teams are never dissolved, however long ago they lost: the
+// bracket has drawn them back in for a third-place match or similar, and a
+// team with a match plays it as a team. Omitting this was the bug that put a
+// player in an individual group AND in his own third-place match in the same
+// week, at two different tee times.
+//
+// Returns { indivMatches, eliminatedTeamIds, dissolvedTeamIds, eliminatedPids }
+// — `eliminatedTeamIds` is every team out of the championship;
+// `dissolvedTeamIds` is the subset actually broken into foursomes.
 export function buildEliminatedIndivGroups({
   week,
   teams = [],
@@ -319,17 +331,24 @@ export function buildEliminatedIndivGroups({
   scoringRules = null,
   allRounds = null,
   leagueConfig = null,
+  bracketTeamIds = null,
 }) {
   const eliminatedTeamIds = computeEliminatedTeamIds({ schedule, matchResults, uptoWeek: week });
+  const playingThisWeek = bracketTeamIds instanceof Set
+    ? bracketTeamIds
+    : new Set(bracketTeamIds || []);
+  const dissolvedTeamIds = new Set(
+    [...eliminatedTeamIds].filter(id => !playingThisWeek.has(id))
+  );
 
   const eliminatedPids = [];
   for (const t of teams || []) {
-    if (!eliminatedTeamIds.has(t.id)) continue;
+    if (!dissolvedTeamIds.has(t.id)) continue;
     if (t.player1) eliminatedPids.push(t.player1);
     if (t.player2) eliminatedPids.push(t.player2);
   }
   if (eliminatedPids.length === 0) {
-    return { indivMatches: [], eliminatedTeamIds, eliminatedPids: [] };
+    return { indivMatches: [], eliminatedTeamIds, dissolvedTeamIds, eliminatedPids: [] };
   }
 
   // Rank off the SAME cumulative-net calc the leaderboard uses, accumulated
@@ -350,7 +369,7 @@ export function buildEliminatedIndivGroups({
     isIndivGroup: true,
   }));
 
-  return { indivMatches, eliminatedTeamIds, eliminatedPids };
+  return { indivMatches, eliminatedTeamIds, dissolvedTeamIds, eliminatedPids };
 }
 
 // ── buildPlayoffNonBracketMatches ──────────────────────────────────
@@ -360,8 +379,12 @@ export function buildEliminatedIndivGroups({
 // bracket logic has already been bitten by.
 //
 // Three-way split of the field for a given playoff `week`:
-//   • bracket teams        → passed in as `bracketMatches`, placed elsewhere
-//   • eliminated teams      → dissolved into individual foursomes, but ONLY
+//   • bracket teams        → passed in as `bracketMatches`, placed elsewhere.
+//                             Never touched here, whether they're playing for
+//                             the title or for third — a team with a bracket
+//                             match this week plays it as a team.
+//   • eliminated teams with no match this week
+//                          → dissolved into individual foursomes, but ONLY
 //                             when leagueConfig.individualizeEliminated is on
 //   • still-alive bye teams → paired as TEAMS via the existing consolation
 //                             matcher (unchanged behavior)
@@ -393,15 +416,28 @@ export function buildPlayoffNonBracketMatches({
 
   const individualize = leagueConfig?.individualizeEliminated === true;
 
+  // Teams the bracket has a match for this week — the ones that must survive
+  // intact no matter what happened to them in earlier rounds.
+  const bracketTeamIds = new Set();
+  (bracketMatches || []).forEach(m => {
+    if (m.team1) bracketTeamIds.add(m.team1);
+    if (m.team2) bracketTeamIds.add(m.team2);
+  });
+
   let indivMatches = [];
   let excludeTeamIds = null;
   if (individualize) {
     const built = buildEliminatedIndivGroups({
       week, teams, schedule, matchResults, players,
       scores, course, scoringRules, allRounds, leagueConfig,
+      bracketTeamIds,
     });
     indivMatches = built.indivMatches;
-    excludeTeamIds = built.eliminatedTeamIds; // keep eliminated teams OUT of team pairing
+    // Only the teams actually dissolved leave the team-pairing pool. An
+    // eliminated team still in this week's bracket is excluded by
+    // pairNonBracketTeams on its own bracket membership, and must not be
+    // dropped for the wrong reason.
+    excludeTeamIds = built.dissolvedTeamIds;
   }
 
   const optimize = leagueConfig?.consolationOptimize === true;
