@@ -376,7 +376,6 @@ export async function autoSeedIfReady({
       if (!prevPWk.locked && prevPWk.week !== justLockedWeek) break;
       if (!prevPWk.matches || prevPWk.matches.length === 0) break;
       const prevResults = (matchResults || []).filter(r => r.week === prevPWk.week);
-      if (prevResults.length < prevPWk.matches.length) break;
       const prevRoundDef = playoffRoundsCfg[pi - 1];
       const prevBracketCount = (prevRoundDef?.matchups || []).length;
       // Prefer the isConsolation flag to isolate the bracket matches; fall back
@@ -387,14 +386,26 @@ export async function autoSeedIfReady({
       const prevBracketMatches = prevHasFlag
         ? prevPWk.matches.filter(m => !m.isConsolation)
         : (prevBracketCount > 0 ? prevPWk.matches.slice(0, prevBracketCount) : prevPWk.matches);
-      prevBracketMatches.forEach((m) => {
+      // Readiness is "every BRACKET match of the prior round has a result" —
+      // deliberately not a count against prevPWk.matches.length.
+      //
+      // That count was the bug that stalled a bracket mid-playoffs: an
+      // individual group records its card in league_group_results, never in
+      // league_match_results, so a round containing even one group could never
+      // reach results >= matches and every later round silently broke out of
+      // this loop. The week showed FINAL, the next week stayed TBD with no
+      // tee times, and nothing logged. Consolation team matches don't feed
+      // progression either — only the bracket does, so only the bracket gates
+      // it.
+      let prevComplete = prevBracketMatches.length > 0;
+      for (const m of prevBracketMatches) {
         const r = prevResults.find(pr => pr.team1Id === m.team1 && pr.team2Id === m.team2);
-        if (r) {
-          const d = (r.team1Points || 0) - (r.team2Points || 0);
-          prevWinners.push(d >= 0 ? r.team1Id : r.team2Id);
-          prevLosers.push(d >= 0 ? r.team2Id : r.team1Id);
-        }
-      });
+        if (!r) { prevComplete = false; break; }
+        const d = (r.team1Points || 0) - (r.team2Points || 0);
+        prevWinners.push(d >= 0 ? r.team1Id : r.team2Id);
+        prevLosers.push(d >= 0 ? r.team2Id : r.team1Id);
+      }
+      if (!prevComplete) break;
     }
 
     // Slot resolver: turns a roundDef matchup spec like
