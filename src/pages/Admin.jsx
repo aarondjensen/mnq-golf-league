@@ -2853,10 +2853,6 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
             return;
           }
           const prevResults = (matchResults || []).filter(r => r.week === prevPlayoffWeek.week);
-          if (prevResults.length < prevPlayoffWeek.matches.length) {
-            alert(`Previous playoff round (Week ${prevPlayoffWeek.week}) must be finalized first.`);
-            return;
-          }
           // Isolate the prior round's BRACKET matches when building
           // prevWinners/prevLosers — consolation matches share the array but must
           // not feed bracket progression. Prefer the isConsolation flag; fall
@@ -2869,16 +2865,32 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
             : (prevBracketCount > 0
                 ? prevPlayoffWeek.matches.slice(0, prevBracketCount)
                 : prevPlayoffWeek.matches);
-          // Get winners and losers in match order
-          prevBracketMatches.forEach((m, mi) => {
+          // Get winners and losers in match order. What this round needs is a
+          // result for every BRACKET match — checking `prevResults.length`
+          // against the whole week rejected any round containing an individual
+          // group, whose card lives in league_group_results and never appears
+          // in matchResults. That made "must be finalized first" fire on a week
+          // that was finalized, with no way to seed the next round by hand.
+          const unresolved = [];
+          prevBracketMatches.forEach((m) => {
             const r = prevResults.find(pr => pr.team1Id === m.team1 && pr.team2Id === m.team2);
-            if (r) {
-              const d = (r.team1Points || 0) - (r.team2Points || 0);
-              // Tie goes to higher seed (team1 is always higher seed)
-              prevWinners.push(d >= 0 ? r.team1Id : r.team2Id);
-              prevLosers.push(d >= 0 ? r.team2Id : r.team1Id);
+            if (!r) {
+              const nm = (id) => teams.find(t => t.id === id)?.name || id;
+              unresolved.push(`${nm(m.team1)} vs ${nm(m.team2)}`);
+              return;
             }
+            const d = (r.team1Points || 0) - (r.team2Points || 0);
+            // Tie goes to higher seed (team1 is always higher seed)
+            prevWinners.push(d >= 0 ? r.team1Id : r.team2Id);
+            prevLosers.push(d >= 0 ? r.team2Id : r.team1Id);
           });
+          if (unresolved.length) {
+            alert(
+              `Previous playoff round (Week ${prevPlayoffWeek.week}) has no result yet for: ` +
+              `${unresolved.join(", ")}. Finalize those matches first.`
+            );
+            return;
+          }
         }
 
         // Resolve "winner", "loser", and "seed" references
