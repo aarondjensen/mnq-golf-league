@@ -3316,11 +3316,19 @@ function IndivGroupScoring({
   // tonight and must not hold the group at hole 1, block the sign button, or
   // be waited on for an attestation.
   const livePids = pids.filter(pid => !isWithdrawn(pid) && !isMakingUp(pid));
-  const holeComplete = livePids.length > 0 && livePids.every(pid => getScore(pid, curHole) > 0);
-  const allComplete = livePids.length > 0 && livePids.every(pid => {
+  const hasFullRound = (pid) => {
     for (let h = 0; h < 9; h++) if (getScore(pid, h) <= 0) return false;
     return true;
-  });
+  };
+  // Display hole numbers still owed by a golfer, front/back aware — the same
+  // "you forgot a hole" list the match view surfaces before signing.
+  const missingHolesFor = (pid) => {
+    const out = [];
+    for (let h = 0; h < 9; h++) if (getScore(pid, h) <= 0) out.push(side === 'front' ? h + 1 : h + 10);
+    return out;
+  };
+  const holeComplete = livePids.length > 0 && livePids.every(pid => getScore(pid, curHole) > 0);
+  const allComplete = livePids.length > 0 && livePids.every(hasFullRound);
   const curHoleSig = livePids.map(pid => getScore(pid, curHole)).join(",");
 
   // Jump to the first unscored hole on the render where scores first arrive
@@ -3376,12 +3384,60 @@ function IndivGroupScoring({
   const isSigned = !!groupResult;
   const signedByPlayerId = groupResult?.signedByPlayerId || null;
   const attestedBy = groupResult?.attestedBy || [];
-  const nonSignerPids = livePids.filter(pid => pid !== signedByPlayerId);
-  const isFullyAttested = isSigned && (nonSignerPids.length === 0 || nonSignerPids.every(pid => attestedBy.includes(pid)));
+
+  // ── Which rounds does the signature actually cover? ──────────────────
+  // `roundPids` records the golfers whose cards were on the scorecard at the
+  // moment it was signed. It exists because a golfer can join the card AFTER
+  // it is signed: the common case is an absence undone days later so a makeup
+  // round can be posted. That golfer owes the card a ROUND, not an
+  // attestation — they weren't there for the round they'd be vouching for.
+  // Prompting them to attest the moment they undo their absence (which is
+  // what happened before this field existed) is nonsense, and it also lets a
+  // card with an outstanding round read as fully attested.
+  //
+  // Cards signed before `roundPids` shipped infer it: signing required every
+  // live golfer to hold a full round, so whoever holds one now was covered.
+  // If NOBODY holds a full round the inference is meaningless — that's scores
+  // not loaded yet, not four late golfers — so fall back to "everyone", which
+  // is exactly the pre-`roundPids` behavior.
+  const inferredCoveredPids = livePids.filter(hasFullRound);
+  const coveredPids = Array.isArray(groupResult?.roundPids)
+    ? groupResult.roundPids
+    : (inferredCoveredPids.length > 0 ? inferredCoveredPids : livePids);
+  // Back in the event, but not on the signed card. Withdrawn and making-up
+  // golfers are already out of livePids, so this is precisely the
+  // "undid an absence to post a makeup" case.
+  const latePids = isSigned ? livePids.filter(pid => !coveredPids.includes(pid)) : [];
+  const attesterPids = livePids.filter(pid => pid !== signedByPlayerId && coveredPids.includes(pid));
+  // An outstanding round keeps the card open just as an outstanding
+  // attestation does — otherwise the card locks (scoresLocked) before the
+  // makeup golfer can enter the very scores everyone is waiting on.
+  const isFullyAttested = isSigned && latePids.length === 0
+    && (attesterPids.length === 0 || attesterPids.every(pid => attestedBy.includes(pid)));
   const iAmInGroup = pids.includes(viewerPid);
   const iAmSigner = signedByPlayerId === viewerPid;
   const iHaveAttested = attestedBy.includes(viewerPid);
-  const needsMyAttestation = isSigned && !isFullyAttested && iAmInGroup && !iAmSigner && !iHaveAttested && !isWithdrawn(viewerPid);
+  const iAmLate = latePids.includes(viewerPid);
+  const myMissingHoles = iAmLate ? missingHolesFor(viewerPid) : [];
+  // A late golfer is scoring, not attesting — their action comes back once
+  // their own card is full, and it's a signature on their round.
+  const needsMyAttestation = isSigned && !isFullyAttested && iAmInGroup && !iAmSigner && !iHaveAttested && !isWithdrawn(viewerPid) && !iAmLate;
+  const canSignMyRound = iAmLate && !isWeekLocked && myMissingHoles.length === 0;
+
+  // One-time backfill for cards signed before `roundPids` existed. Freezing
+  // the covered set the first time such a card is opened is what keeps a
+  // makeup golfer from silently turning back into an "attester" the instant
+  // their ninth hole lands (the inference above can't tell the two apart once
+  // the round is complete). Idempotent, and skipped entirely until scores
+  // have loaded.
+  useEffect(() => {
+    if (!groupResult || !saveGroupResult) return;
+    if (Array.isArray(groupResult.roundPids)) return;
+    if (isWeekLocked) return;
+    if (inferredCoveredPids.length === 0) return;
+    saveGroupResult({ ...groupResult, roundPids: inferredCoveredPids });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [groupResult, isWeekLocked, inferredCoveredPids.join(",")]);
 
   const signGroup = async () => {
     if (busy || !saveGroupResult) return;
@@ -3395,6 +3451,8 @@ function IndivGroupScoring({
       id: indivGroupResultId(LEAGUE_ID, week, groupMatch),
       week,
       players: pids,
+      // The rounds this signature covers — see the coveredPids comment above.
+      roundPids: livePids,
       signedByPlayerId: viewerPid || null,
       attestedBy: autoAttest ? others : [],
       attested: autoAttest,
@@ -3408,11 +3466,32 @@ function IndivGroupScoring({
     if (busy || !groupResult || !saveGroupResult) return;
     setBusy(true);
     const nextAttestedBy = [...new Set([...attestedBy, viewerPid])];
-    const allDone = nonSignerPids.every(pid => nextAttestedBy.includes(pid));
-    await saveGroupResult({ ...groupResult, attestedBy: nextAttestedBy, attested: allDone });
+    // A card still owed a makeup round isn't done, however many attestations
+    // are in — the round it's waiting on isn't on it yet.
+    const allDone = latePids.length === 0 && attesterPids.every(pid => nextAttestedBy.includes(pid));
+    await saveGroupResult({ ...groupResult, roundPids: coveredPids, attestedBy: nextAttestedBy, attested: allDone });
     setBusy(false);
     setToast?.(allDone ? "Scorecard fully attested ✓" : "Attestation recorded ✓");
     setTimeout(() => setToast?.(null), 2000);
+  };
+
+  // A golfer posting a round onto an already-signed card signs for it
+  // themselves: nobody else in the group was there for a round played days
+  // later, so there is no one to attest it. The signature adds them to the
+  // card's covered set, which is what releases the card to go final once the
+  // original attesters are in.
+  const signMyRound = async () => {
+    if (busy || !groupResult || !saveGroupResult || !viewerPid) return;
+    setBusy(true);
+    const nextRoundPids = [...new Set([...coveredPids, viewerPid])];
+    const nextAttestedBy = [...new Set([...attestedBy, viewerPid])];
+    const stillLate = livePids.filter(pid => !nextRoundPids.includes(pid));
+    const nextAttesters = livePids.filter(pid => pid !== signedByPlayerId && nextRoundPids.includes(pid));
+    const allDone = stillLate.length === 0 && nextAttesters.every(pid => nextAttestedBy.includes(pid));
+    await saveGroupResult({ ...groupResult, roundPids: nextRoundPids, attestedBy: nextAttestedBy, attested: allDone });
+    setBusy(false);
+    setToast?.(allDone ? "Round signed — scorecard complete ✓" : "Round signed ✓");
+    setTimeout(() => setToast?.(null), 2500);
   };
 
   const unsignGroup = async () => {
@@ -3518,7 +3597,9 @@ function IndivGroupScoring({
           </>) : (<>
             <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
               <span style={{ fontSize: FS.micro, fontWeight: FW.heavy, letterSpacing: .8, textTransform: "uppercase", color: isFullyAttested ? K.grn : K.warn }}>
-                {isFullyAttested ? "✓ Signed & Attested" : "Signed — awaiting attestation"}
+                {isFullyAttested ? "✓ Signed & Attested"
+                  : latePids.length > 0 ? "Signed — awaiting a makeup round"
+                  : "Signed — awaiting attestation"}
               </span>
             </div>
             {signedByPlayerId && playerMap[signedByPlayerId] && (
@@ -3526,10 +3607,14 @@ function IndivGroupScoring({
                 Signed by {playerMap[signedByPlayerId].name}
               </div>
             )}
-            {/* Per-attester chips, same as the match view's attest row. */}
-            {nonSignerPids.length > 0 && (
+            {/* Per-golfer chips. Attesters read the same as the match view's
+                attest row; a golfer who joined the card after it was signed
+                gets a gold "round pending" chip instead — the card is waiting
+                on their SCORES, not their signature, and the two shouldn't
+                look alike. */}
+            {(attesterPids.length > 0 || latePids.length > 0) && (
               <div style={{ display: "flex", gap: 4, marginBottom: 8, flexWrap: "wrap" }}>
-                {nonSignerPids.map(pid => {
+                {attesterPids.map(pid => {
                   const done = attestedBy.includes(pid);
                   return (
                     <div key={pid} style={{ fontSize: 10, fontWeight: FW.semibold, padding: "3px 8px", borderRadius: 4, background: done ? K.grn + "18" : K.inp, border: `1px solid ${done ? K.grn + "40" : K.bdr}`, color: done ? K.grn : K.t3 }}>
@@ -3537,11 +3622,34 @@ function IndivGroupScoring({
                     </div>
                   );
                 })}
+                {latePids.map(pid => (
+                  <div key={pid} style={{ fontSize: 10, fontWeight: FW.semibold, padding: "3px 8px", borderRadius: 4, background: K.act + "18", border: `1px solid ${K.act}40`, color: K.act }}>
+                    {playerMap[pid]?.name?.split(' ').pop() || "?"} · round pending
+                  </div>
+                ))}
               </div>
             )}
             {needsMyAttestation && (
               <button onClick={attestGroup} disabled={busy} style={{ width: "100%", padding: 12, borderRadius: 10, background: busy ? K.t3 : K.hcpBlue, border: "none", color: "#fff", fontSize: 14, fontWeight: FW.heavy, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1 }}>
                 Attest Scorecard
+              </button>
+            )}
+            {/* Late golfer, card not full yet — the only thing being asked of
+                them is the round. Same "missing scores" language the match
+                view uses so the two screens read alike. */}
+            {iAmLate && myMissingHoles.length > 0 && !isWeekLocked && (
+              <div style={{ background: K.warn + "15", border: `1px solid ${K.warn}40`, borderRadius: 8, padding: "8px 10px", fontSize: FS.xs, color: K.warn, fontWeight: FW.bold, lineHeight: 1.4 }}>
+                <div style={{ marginBottom: 3 }}>⚠️ Missing scores — can't sign yet</div>
+                <div style={{ color: K.t2, fontWeight: FW.semibold }}>
+                  Enter your round: {myMissingHoles.length === 9
+                    ? "holes " + myMissingHoles[0] + "–" + myMissingHoles[8]
+                    : (myMissingHoles.length === 1 ? "hole " : "holes ") + myMissingHoles.join(", ")}
+                </div>
+              </div>
+            )}
+            {canSignMyRound && (
+              <button onClick={signMyRound} disabled={busy} style={{ width: "100%", padding: 12, borderRadius: 10, background: busy ? K.t3 : K.hcpBlue, border: "none", color: "#fff", fontSize: 14, fontWeight: FW.heavy, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1 }}>
+                Sign Scorecard
               </button>
             )}
             {iHaveAttested && !isFullyAttested && (

@@ -131,6 +131,73 @@ describe("LiveScoringView renders for every viewer", () => {
     expect(html).toContain("Attest");
   });
 
+  // ── Undo an absence after the group card is signed ──────────────────
+  // The bug: a golfer marked absent, whose group played and signed without
+  // them, tapped Undo days later so they could post a makeup round — and the
+  // scoring screen immediately asked them to ATTEST a card they were never
+  // on. What they owe is scores. The attest prompt only makes sense for the
+  // golfers whose rounds the signature actually covered.
+  const signedCard = (extra = {}) => ({
+    week: WEEK, players: ["p7", "p8", "p9", "p10"],
+    signedByPlayerId: "p7", attestedBy: [], attested: false,
+    ...extra,
+  });
+  // Full 9-hole cards for the three who played; p10 was the absent one.
+  const playedScores = {};
+  ["p7", "p8", "p9"].forEach(pid => {
+    for (let h = 0; h < 9; h++) playedScores[`w${WEEK}_p${pid}_h${h}`] = 5;
+  });
+
+  it("asks a golfer who undid an absence for scores, not an attestation", () => {
+    const html = renderFor(
+      { playerId: "p10", isCommissioner: false },
+      {
+        holeScores: playedScores,
+        groupResults: [signedCard({ roundPids: ["p7", "p8", "p9"] })],
+      },
+    );
+    expect(html).toContain("Missing scores");
+    expect(html).not.toContain("Attest Scorecard");
+    // The card can't be final while a round is still outstanding.
+    expect(html).toContain("awaiting a makeup round");
+  });
+
+  it("infers the covered rounds on a card signed before roundPids existed", () => {
+    const html = renderFor(
+      { playerId: "p10", isCommissioner: false },
+      { holeScores: playedScores, groupResults: [signedCard()] },
+    );
+    expect(html).toContain("Missing scores");
+    expect(html).not.toContain("Attest Scorecard");
+  });
+
+  it("offers the makeup golfer a signature once their card is full", () => {
+    const withMakeup = { ...playedScores };
+    for (let h = 0; h < 9; h++) withMakeup[`w${WEEK}_p${"p10"}_h${h}`] = 4;
+    const html = renderFor(
+      { playerId: "p10", isCommissioner: false },
+      {
+        holeScores: withMakeup,
+        groupResults: [signedCard({ roundPids: ["p7", "p8", "p9"] })],
+      },
+    );
+    expect(html).toContain("Sign Scorecard");
+    expect(html).not.toContain("Attest Scorecard");
+    expect(html).not.toContain("Missing scores");
+  });
+
+  it("still asks the golfers the signature covered to attest", () => {
+    const html = renderFor(
+      { playerId: "p8", isCommissioner: false },
+      {
+        holeScores: playedScores,
+        groupResults: [signedCard({ roundPids: ["p7", "p8", "p9"] })],
+      },
+    );
+    expect(html).toContain("Attest Scorecard");
+    expect(html).not.toContain("Missing scores");
+  });
+
   it("shows the trophy on a playoff week and hides it otherwise", () => {
     const html = renderFor({ playerId: "p1", isCommissioner: false });
     expect(html).toContain("Individual tournament");
