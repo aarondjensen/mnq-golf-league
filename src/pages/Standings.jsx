@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, buildSeedMap, buildPlayoffSeedMap, buildStandingsForSeed, recordPoints, LoadingPanel, SkeletonList, buildHistoricalPlayers, isIndivGroupMatch, currentPlayoffRoundIdx, FS, FW } from "../theme";
+import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, buildSeedMap, buildPlayoffSeedMap, buildStandingsForSeed, recordPoints, LoadingPanel, SkeletonList, buildHistoricalPlayers, isIndivGroupMatch, currentPlayoffRoundIdx, orderByBracketIdx, FS, FW } from "../theme";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/matchCalc";
 import { autoHealMatchResults } from "../lib/autoHealMatchResults";
@@ -198,9 +198,13 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
     // final tee times. Fall back to the old first-N-are-bracket split for weeks
     // seeded before the flag existed.
     const hasConsolationFlag = allMatches.some(m => m.isConsolation === true);
-    const bracketMatches = hasConsolationFlag
+    // orderByBracketIdx restores CONFIG order — the stored array is tee order,
+    // and the championship deliberately tees LAST. Without this the podium
+    // would read the last tee time's match as matchups[0] and crown the winner
+    // of the 3rd-place game.
+    const bracketMatches = orderByBracketIdx(hasConsolationFlag
       ? allMatches.filter(m => !m.isConsolation)
-      : allMatches.slice(0, bracketSize);
+      : allMatches.slice(0, bracketSize));
     // Individual groups are dropped from BOTH buckets. They carry `players`
     // and no team1/team2, so a team-vs-team bracket card has nothing to draw
     // (it renders as blank/TBD), and they're not part of the bracket in any
