@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, buildSeedMap, buildPlayoffSeedMap, buildStandingsForSeed, recordPoints, LoadingPanel, SkeletonList, buildHistoricalPlayers, isIndivGroupMatch, FS, FW } from "../theme";
+import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, buildSeedMap, buildPlayoffSeedMap, buildStandingsForSeed, recordPoints, LoadingPanel, SkeletonList, buildHistoricalPlayers, isIndivGroupMatch, currentPlayoffRoundIdx, FS, FW } from "../theme";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/matchCalc";
 import { autoHealMatchResults } from "../lib/autoHealMatchResults";
@@ -39,6 +39,8 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
   // size this spacer in JS (see snap effect) to exactly the gap needed so every
   // column — including the podium — can be snapped flush-left.
   const bracketSpacerRef = useRef(null);
+
+  const currentRoundIdx = currentPlayoffRoundIdx(playoffRounds, playoffWeeks);
 
   // Deterministic horizontal snap. CSS scroll-snap (`mandatory`) proved
   // unreliable on iOS here — momentum scrolling rides past the snap point and
@@ -99,6 +101,22 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
       if (Math.abs(target - left) > 1) el.scrollTo({ left: target, behavior: "smooth" });
     };
 
+    // Jump the current round flush-left, the same resting position the snap
+    // above produces. Assignment rather than scrollTo({behavior:"smooth"}) so
+    // the bracket is already in place on first paint instead of animating
+    // across four rounds while the user watches.
+    const scrollToRound = (idx) => {
+      const cols = columns();
+      const col = cols[idx];
+      if (!col) return false;
+      const elRect = el.getBoundingClientRect();
+      const refLeft = elRect.left + el.clientLeft + (parseFloat(getComputedStyle(el).paddingLeft) || 0);
+      const maxLeft = el.scrollWidth - el.clientWidth;
+      const target = el.scrollLeft + (col.getBoundingClientRect().left - refLeft);
+      el.scrollLeft = Math.max(0, Math.min(target, maxLeft));
+      return true;
+    };
+
     let settleTimer = null;
     const onScroll = () => {
       clearTimeout(settleTimer);
@@ -111,16 +129,27 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
     // mounts before layout settles (clientWidth starts at 0) — a single rAF
     // would size to 0 and never correct itself, capping the scroll short of
     // the final rounds (the bug where Round 4 couldn't reach the left edge).
-    const ro = new ResizeObserver(() => sizeSpacer());
+    //
+    // The opening jump rides along with it for the same reason: it needs a
+    // measured container AND a sized spacer (without one the last round can't
+    // reach the left edge and the jump lands short). `jumped` keeps it to once
+    // per entry into the bracket view, so a later resize — rotation, keyboard
+    // — doesn't yank a reader back from wherever they scrolled to.
+    let jumped = false;
+    const settle = () => {
+      sizeSpacer();
+      if (!jumped && el.clientWidth) jumped = scrollToRound(currentRoundIdx);
+    };
+    const ro = new ResizeObserver(settle);
     ro.observe(el);
-    sizeSpacer();
+    settle();
     el.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       clearTimeout(settleTimer);
       ro.disconnect();
       el.removeEventListener("scroll", onScroll);
     };
-  }, [view, playoffRounds.length]);
+  }, [view, playoffRounds.length, currentRoundIdx]);
 
   // Bracket seed badges use the PLAYOFF seed map (full regular season, frozen
   // at RS end), NOT the round-robin-only lockedSeeds. This is the order that

@@ -912,16 +912,12 @@ export function IndividualLeaderboard({ players, teams, schedule, course, league
                     fontWeight: isWDRound ? FW.heavy : FW.semibold,
                     color: isWDRound ? K.red : round ? (roundVal < 0 ? K.red : K.t1) : K.t3 + "40",
                   }}>
-                    {isWDRound ? "WD" : round ? (
-                      <>
-                        {fmtToPar(roundVal)}
-                        {round.makeup && (
-                          <sup style={{ fontSize: FS.micro, color: K.act, fontWeight: FW.bold, marginLeft: 1 }}>
-                            {round.totalOnly ? "t" : "m"}
-                          </sup>
-                        )}
-                      </>
-                    ) : "–"}
+                    {/* No makeup marker. A round played on a different day is
+                        still just that golfer's round for the week, and the
+                        superscript m/t only added noise to a column of
+                        numbers. `round.makeup` / `round.totalOnly` are still
+                        carried on the round for the expanded scorecard. */}
+                    {isWDRound ? "WD" : round ? fmtToPar(roundVal) : "–"}
                   </div>
                 );
               })}
@@ -944,12 +940,6 @@ export function IndividualLeaderboard({ players, teams, schedule, course, league
             </div>
           );
         })}
-        {leaderboard.some(p => p.rounds.some(r => r.makeup)) && (
-          <div style={{ padding: "8px 4px 2px", fontSize: FS.micro, color: K.t3, display: "flex", gap: 10, justifyContent: "flex-end" }}>
-            <span><sup style={{ color: K.act, fontWeight: FW.bold }}>m</sup> makeup round</span>
-            <span><sup style={{ color: K.act, fontWeight: FW.bold }}>t</sup> makeup (total only)</span>
-          </div>
-        )}
       </div>
     </div>
   );

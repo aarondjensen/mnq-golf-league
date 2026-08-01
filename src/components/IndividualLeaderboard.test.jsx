@@ -140,8 +140,11 @@ describe("IndividualLeaderboard", () => {
       expect(card()).toContain("Makeup");
     });
 
-    it("still marks the round with the makeup superscript on the board", () => {
-      // Lowercase in the markup; the app's uppercase transform renders it "M".
+    it("scores the round on the board with no makeup marker", () => {
+      // The board used to superscript m / t on a made-up round (rendered M / T
+      // by the app's uppercase transform) plus a legend under the table. A
+      // round played on a different day still counts exactly the same, so the
+      // column shows the number and nothing else.
       const html = renderToStaticMarkup(
         <IndividualLeaderboard
           players={players} teams={teams} schedule={wkSchedule} course={wkCourse}
@@ -149,8 +152,11 @@ describe("IndividualLeaderboard", () => {
           scores={scores} allRounds={wkRounds} loading={false}
         />
       );
-      expect(html).toMatch(/<sup[^>]*>m<\/sup>/);
-      expect(html).toContain("makeup round");
+      // The round is on the board — 33 gross off a 4 handicap on a par-36 nine.
+      expect(html).toContain(">-7<");
+      expect(html).not.toMatch(/<sup[^>]*>[mt]<\/sup>/);
+      expect(html).not.toContain("makeup round");
+      expect(html).not.toContain("makeup (total only)");
     });
   });
 
