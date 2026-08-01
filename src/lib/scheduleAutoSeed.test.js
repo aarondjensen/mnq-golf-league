@@ -73,28 +73,30 @@ const LEAGUE_CONFIG = {
 
 // Week 13 as played: the two bracket matches plus whatever non-bracket
 // matches the caller wants alongside them.
-const week13 = (extraMatches = []) => ({
+const week13 = (extraMatches = [], bracket = null) => ({
   id: "w13", week: 13, isPlayoff: true, locked: true,
   matches: [
     ...extraMatches,
-    { team1: "T1", team2: "T4" },
-    { team1: "T2", team2: "T3" },
+    ...(bracket ?? [
+      { team1: "T1", team2: "T4" },
+      { team1: "T2", team2: "T3" },
+    ]),
   ],
 });
 const week14 = { id: "w14", week: 14, isPlayoff: true, locked: false, matches: [] };
 
 const INDIV_GROUP = { players: ["p11", "p12", "p13", "p14"], isIndivGroup: true, isConsolation: true };
 
-const run = ({ extraMatches = [], results, justLockedWeek = 13 }) => autoSeedIfReady({
+const run = ({ extraMatches = [], bracket = null, results, justLockedWeek = 13, rounds = ROUNDS }) => autoSeedIfReady({
   justLockedWeek,
-  schedule: [...rrWeeks, week13(extraMatches), week14],
+  schedule: [...rrWeeks, week13(extraMatches, bracket), week14],
   matchResults: results ?? [
     bracketResult(13, "T1", "T4", "T1"),
     bracketResult(13, "T2", "T3", "T3"),
   ],
   holeScores: {},
   teams: TEAMS,
-  leagueConfig: LEAGUE_CONFIG,
+  leagueConfig: { ...LEAGUE_CONFIG, playoffRounds: rounds },
 });
 
 const seededWeek = (week) => upserts
@@ -111,13 +113,13 @@ describe("autoSeedIfReady — advancing a playoff bracket", () => {
     const out = await run({ extraMatches: [INDIV_GROUP] });
     expect(out.playoff).toBe(1);
     const wk14 = seededWeek(14);
-    expect(wk14.matches).toEqual([{ team1: "T1", team2: "T3" }]);
+    expect(wk14.matches).toEqual([{ team1: "T1", team2: "T3", bracketIdx: 0 }]);
   });
 
   it("advances a round with no individual groups the same way", async () => {
     const out = await run({});
     expect(out.playoff).toBe(1);
-    expect(seededWeek(14).matches).toEqual([{ team1: "T1", team2: "T3" }]);
+    expect(seededWeek(14).matches).toEqual([{ team1: "T1", team2: "T3", bracketIdx: 0 }]);
   });
 
   it("still waits when a bracket match has no result", async () => {
@@ -134,6 +136,64 @@ describe("autoSeedIfReady — advancing a playoff bracket", () => {
     // signal — the path that heals a bracket already stuck on a locked week.
     const out = await run({ extraMatches: [INDIV_GROUP], justLockedWeek: 0 });
     expect(out.playoff).toBe(1);
-    expect(seededWeek(14).matches).toEqual([{ team1: "T1", team2: "T3" }]);
+    expect(seededWeek(14).matches).toEqual([{ team1: "T1", team2: "T3", bracketIdx: 0 }]);
+  });
+});
+
+// ── Tee order vs. bracket position ─────────────────────────────────
+// The array is tee order; `bracketIdx` is bracket position. They used to be
+// the same thing, which meant dragging the championship to the last tee slot
+// in Admin re-pointed the next round's winner references — the bracket
+// changed because someone moved a tee time.
+describe("autoSeedIfReady — the championship tees last", () => {
+  beforeEach(() => { upserts.length = 0; });
+
+  // A placement round: matchup 0 is the championship, matchup 1 the
+  // third-place game between the two losers.
+  const FINAL_ROUNDS = [
+    ROUNDS[0],
+    { name: "Round 2", matchups: [
+      { s1type: "winner", s1: "winner_0", s2type: "winner", s2: "winner_1" },
+      { s1type: "loser", s1: "loser_0", s2type: "loser", s2: "loser_1" },
+    ] },
+  ];
+
+  it("puts the championship in the last tee slot, still flagged as matchup 0", async () => {
+    await run({ rounds: FINAL_ROUNDS });
+    const matches = seededWeek(14).matches;
+    // Third place (matchup 1) tees first, championship (matchup 0) last.
+    expect(matches).toEqual([
+      { team1: "T4", team2: "T2", bracketIdx: 1 },
+      { team1: "T1", team2: "T3", bracketIdx: 0 },
+    ]);
+    expect(matches[matches.length - 1].bracketIdx).toBe(0);
+  });
+
+  it("resolves winner_N by bracket position, not by who teed off first", async () => {
+    // Week 13 stored with its tee order reversed — matchup 1 first, exactly
+    // what the seeder now writes and what a commissioner dragging rows
+    // produces. winner_0 must still mean "winner of matchup 0" (T1).
+    const out = await run({
+      bracket: [
+        { team1: "T2", team2: "T3", bracketIdx: 1 },
+        { team1: "T1", team2: "T4", bracketIdx: 0 },
+      ],
+    });
+    expect(out.playoff).toBe(1);
+    expect(seededWeek(14).matches).toEqual([{ team1: "T1", team2: "T3", bracketIdx: 0 }]);
+  });
+
+  it("reads a legacy round with no bracketIdx in stored order", async () => {
+    // Weeks seeded before the field existed meant tee order = bracket order,
+    // so array position is the right fallback and nothing shifts under them.
+    const out = await run({
+      bracket: [
+        { team1: "T2", team2: "T3" },
+        { team1: "T1", team2: "T4" },
+      ],
+    });
+    expect(out.playoff).toBe(1);
+    // winner_0 = winner of the FIRST stored match (T2 vs T3 → T3).
+    expect(seededWeek(14).matches).toEqual([{ team1: "T3", team2: "T1", bracketIdx: 0 }]);
   });
 });

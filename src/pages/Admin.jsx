@@ -3,7 +3,7 @@ import { LEAGUE_ID, db, callFunction } from "../firebase";
 import { K, I, Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState,
   getWeekSide, formatTeeTime as fmtTeeTimeUtil, LIST_GAP, CARD_RADIUS, lastNamesOnly,
   buildStandingsForSeed as sharedBuildStandingsForSeed, buildSeedMap, buildPlayoffSeedMap, computeRegularSeasonSeeds,
-  isIndivGroupMatch, weekFullyAttested, findGroupResult, FS, FW } from "../theme";
+  isIndivGroupMatch, weekFullyAttested, findGroupResult, orderByBracketIdx, FS, FW } from "../theme";
 import { buildPlayoffNonBracketMatches } from "../lib/indivGroups";
 import { ConfirmModal } from "../components/Popup";
 import NotificationsAdmin from "./NotificationsAdmin";
@@ -1164,6 +1164,10 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
   const [dragIdx, setDragIdx] = useState(null);
   const [dragTeam, setDragTeam] = useState(null); // { matchIdx, slot: "team1"|"team2", teamId, ghostPos? }
   const dragTeamRef = useRef(null); // ref mirror for touch handlers (avoids stale closures)
+  // Whole-row drag — reorders TEE TIMES, a different job from dragTeam's
+  // "who plays whom". { rowIdx, startY, curY, overIdx }
+  const [dragRow, setDragRow] = useState(null);
+  const dragRowRef = useRef(null);
   const [generating, setGenerating] = useState(false);
   const [setupDirty, setSetupDirty] = useState(false);
   const [savingSetup, setSavingSetup] = useState(false);
@@ -2860,11 +2864,14 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
           const prevRoundDef = (leagueConfig.playoffRounds || [])[playoffRound - 2];
           const prevBracketCount = (prevRoundDef?.matchups || []).length;
           const prevHasFlag = prevPlayoffWeek.matches.some(m => m.isConsolation === true);
-          const prevBracketMatches = prevHasFlag
+          // Back into CONFIG order via bracketIdx — winner_0 is the winner of
+          // the round's first configured matchup, not of whatever teed off
+          // first. Tee order is the commissioner's to rearrange.
+          const prevBracketMatches = orderByBracketIdx(prevHasFlag
             ? prevPlayoffWeek.matches.filter(m => !m.isConsolation)
             : (prevBracketCount > 0
                 ? prevPlayoffWeek.matches.slice(0, prevBracketCount)
-                : prevPlayoffWeek.matches);
+                : prevPlayoffWeek.matches));
           // Get winners and losers in match order. What this round needs is a
           // result for every BRACKET match — checking `prevResults.length`
           // against the whole week rejected any round containing an individual
@@ -2942,7 +2949,8 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
 
         const usedTeamIds = new Set();
         const duplicateInfo = [];
-        for (const mu of roundDef.matchups) {
+        for (let muIdx = 0; muIdx < roundDef.matchups.length; muIdx++) {
+          const mu = roundDef.matchups[muIdx];
           const t1 = resolveSlot(mu, "s1");
           const t2 = resolveSlot(mu, "s2");
           if (!t1 || !t2) continue;
@@ -2956,7 +2964,10 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
           }
           usedTeamIds.add(t1);
           usedTeamIds.add(t2);
-          matches.push({ team1: t1, team2: t2 });
+          // bracketIdx pins this match to its configured bracket position, so
+          // tee order (this array's order) can be rearranged freely afterwards
+          // without moving the championship or repointing winner_N.
+          matches.push({ team1: t1, team2: t2, bracketIdx: muIdx });
         }
 
         if (matches.length !== roundDef.matchups.length) {
@@ -3059,6 +3070,14 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
           // Bracket (playoff) matches take the FINAL tee times of the week;
           // non-bracket matches go first. Prepend so array order = tee order.
           matches.unshift(...nonBracket);
+        }
+        // Top of the bracket goes off last — the championship is the match
+        // everyone stays for. Only the bracket tail is reversed; the
+        // non-bracket field keeps its (earlier) tee slots.
+        const firstBracket = matches.findIndex(m => !m.isConsolation);
+        if (firstBracket >= 0) {
+          const bracketTail = matches.splice(firstBracket);
+          matches.push(...bracketTail.reverse());
         }
       } else {
         // Seeded regular season: use per-week custom matchups
@@ -3563,9 +3582,19 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
             </button>
           )}
 
-          <div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 12 }}>
-            {dragTeam && !dragTeam.dragging ? "Tap another team to swap" : "Tap to select · Hold and drag to move"}
+          <div style={{ fontSize: FS.xs, color: K.t3, marginBottom: wk.isPlayoff ? 6 : 12, lineHeight: 1.5 }}>
+            {dragTeam && !dragTeam.dragging
+              ? "Tap another team to swap"
+              : <>Drag <span style={{ color: K.t2, fontWeight: FW.bold }}>⠿</span> to move a group's tee time · tap or drag a team to change who plays whom</>}
           </div>
+          {/* The two gestures are easy to confuse, and on a playoff week the
+              consequences are very different: moving a group is cosmetic,
+              swapping teams rewrites the bracket the next round reads. */}
+          {wk.isPlayoff && (
+            <div style={{ fontSize: FS.xs, color: K.warn, marginBottom: 12, lineHeight: 1.5 }}>
+              Swapping teams here changes the bracket itself, not the tee times — use <span style={{ fontWeight: FW.bold }}>⠿</span> to re-order tee times.
+            </div>
+          )}
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {(() => {
               // doSwap: swap two team slots identified by (matchIdx, slot).
@@ -3623,6 +3652,130 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
                 return best;
               };
 
+              // ── Whole-row drag: move a foursome to a different tee time ──
+              // Separate gesture, separate handle (⠿), separate meaning from the
+              // team-card drag above — that one swaps WHO PLAYS WHOM, which on a
+              // playoff week rewrites the bracket. This one moves an entire group
+              // (both twosomes of a match, or all four players of an individual
+              // group) up or down the tee sheet and changes nothing else. Tee
+              // times are just this array's order, and a bracket match carries
+              // its identity in `bracketIdx`, so the championship dragged to the
+              // last slot is still the championship.
+              const moveRow = (from, to) => {
+                if (from == null || to == null || from === to) return;
+                const next = wk.matches.map(mm => ({ ...mm }));
+                if (from < 0 || from >= next.length || to < 0 || to >= next.length) return;
+                const [moved] = next.splice(from, 1);
+                next.splice(to, 0, moved);
+                setLocalWk({ ...wk, matches: next });
+                setWeekDirty(true);
+              };
+
+              // Rows are full-width, so the pointer's Y alone decides the target
+              // — forgiving on a phone. The dragged row is skipped: it's
+              // translated under the finger and would otherwise always win.
+              const findRowTarget = (ty, skipIdx) => {
+                let best = null;
+                document.querySelectorAll('[data-match-row]').forEach(row => {
+                  const idx = parseInt(row.getAttribute('data-match-row'), 10);
+                  if (!Number.isInteger(idx) || idx === skipIdx) return;
+                  const r = row.getBoundingClientRect();
+                  if (ty >= r.top && ty <= r.bottom) best = idx;
+                });
+                return best;
+              };
+
+              const beginRowDrag = (mi, clientY) => {
+                const dt = { rowIdx: mi, startY: clientY, curY: clientY, overIdx: null };
+                dragRowRef.current = dt;
+                setDragRow(dt);
+              };
+              const trackRowDrag = (clientY) => {
+                if (!dragRowRef.current) return;
+                const over = findRowTarget(clientY, dragRowRef.current.rowIdx);
+                dragRowRef.current = { ...dragRowRef.current, curY: clientY, overIdx: over };
+                setDragRow({ ...dragRowRef.current });
+              };
+              const endRowDrag = (clientY) => {
+                const dt = dragRowRef.current;
+                dragRowRef.current = null;
+                setDragRow(null);
+                if (!dt) return;
+                const target = findRowTarget(clientY, dt.rowIdx);
+                if (target != null) moveRow(dt.rowIdx, target);
+              };
+
+              // Dedicated handle, so no long-press delay is needed to tell a
+              // drag apart from a tap — grabbing ⠿ can only mean "move this".
+              const renderRowHandle = (mi) => (
+                <div
+                  title="Drag to change this group's tee time"
+                  onMouseDown={(e) => {
+                    if (e.button !== 0) return;
+                    e.preventDefault();
+                    beginRowDrag(mi, e.clientY);
+                    const onMove = (ev) => trackRowDrag(ev.clientY);
+                    const onUp = (ev) => {
+                      document.removeEventListener('mousemove', onMove);
+                      document.removeEventListener('mouseup', onUp);
+                      endRowDrag(ev.clientY);
+                    };
+                    document.addEventListener('mousemove', onMove);
+                    document.addEventListener('mouseup', onUp);
+                  }}
+                  onTouchStart={(e) => {
+                    const t = e.touches[0];
+                    beginRowDrag(mi, t.clientY);
+                    if (navigator.vibrate) navigator.vibrate(15);
+                    const onMove = (ev) => {
+                      if (!dragRowRef.current) return;
+                      ev.preventDefault();   // hold the page still while dragging
+                      trackRowDrag(ev.touches[0].clientY);
+                    };
+                    const onEnd = (ev) => {
+                      document.removeEventListener('touchmove', onMove, { passive: false });
+                      document.removeEventListener('touchend', onEnd);
+                      document.removeEventListener('touchcancel', onCancel);
+                      endRowDrag(ev.changedTouches[0].clientY);
+                    };
+                    const onCancel = () => {
+                      document.removeEventListener('touchmove', onMove, { passive: false });
+                      document.removeEventListener('touchend', onEnd);
+                      document.removeEventListener('touchcancel', onCancel);
+                      dragRowRef.current = null;
+                      setDragRow(null);
+                    };
+                    document.addEventListener('touchmove', onMove, { passive: false });
+                    document.addEventListener('touchend', onEnd);
+                    document.addEventListener('touchcancel', onCancel);
+                  }}
+                  style={{
+                    flexShrink: 0, width: 22, alignSelf: "stretch", minHeight: 28,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    cursor: "grab", color: dragRow?.rowIdx === mi ? K.act : K.t3,
+                    fontSize: 14, lineHeight: 1, letterSpacing: -1,
+                    touchAction: "none", WebkitUserSelect: "none", userSelect: "none",
+                  }}
+                >⠿</div>
+              );
+
+              // Lift the row under the finger, and outline whichever row it
+              // would land on, so the drop is never a guess.
+              const rowDragStyle = (mi) => {
+                const isDragged = dragRow?.rowIdx === mi;
+                const isOver = dragRow && dragRow.overIdx === mi && !isDragged;
+                if (isDragged) {
+                  return {
+                    position: "relative", zIndex: 50,
+                    transform: `translateY(${dragRow.curY - dragRow.startY}px)`,
+                    boxShadow: "0 8px 24px rgba(0,0,0,.3)",
+                    borderColor: K.act,
+                  };
+                }
+                if (isOver) return { borderColor: K.act, background: K.act + "10" };
+                return null;
+              };
+
               return wk.matches.map((m, mi) => {
                 // Individual group — eliminated players regrouped as a
                 // foursome. There are no team slots to swap (the whole point
@@ -3640,7 +3793,8 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
                   const gDone = gRes?.attested === true;
                   const gColor = gDone ? K.grn : gRes ? K.warn : K.t3;
                   return (
-                    <div key={mi} style={{ background: K.card, borderRadius: 10, border: `1px dashed ${K.bdr}`, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, userSelect: "none" }}>
+                    <div key={mi} data-match-row={mi} style={{ background: K.card, borderRadius: 10, border: `1px dashed ${K.bdr}`, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, userSelect: "none", ...rowDragStyle(mi) }}>
+                      {renderRowHandle(mi)}
                       <div style={{ flexShrink: 0, fontSize: FS.xs, color: K.acc, fontWeight: FW.bold }}>{formatTeeTime(cfg.startTime ?? "4:28 PM", mi).replace(/\s*(AM|PM)$/i, '')}</div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.teal, letterSpacing: 1, textTransform: "uppercase", marginBottom: 2 }}>Individual Group</div>
@@ -3817,7 +3971,8 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
                 };
 
                 return (
-                  <div key={mi} style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, userSelect: "none" }}>
+                  <div key={mi} data-match-row={mi} style={{ background: K.card, borderRadius: 10, border: `1px solid ${K.bdr}`, padding: "10px 12px", display: "flex", alignItems: "center", gap: 8, userSelect: "none", ...rowDragStyle(mi) }}>
+                    {renderRowHandle(mi)}
                     <div style={{ flexShrink: 0, fontSize: FS.xs, color: K.acc, fontWeight: FW.bold }}>{formatTeeTime(cfg.startTime ?? "4:28 PM", mi).replace(/\s*(AM|PM)$/i, '')}</div>
                     {renderTeamCard(m.team1, seed1, "team1")}
                     <div style={{ fontSize: FS.xs, color: K.t3, fontWeight: FW.heavy, flexShrink: 0 }}>VS</div>

@@ -285,6 +285,32 @@ export function weekFullyScored(wk, matchResults, groupResults) {
   );
 }
 
+// ── Bracket position vs. tee position ─────────────────────────────────────
+// A playoff week's `matches` array is TEE ORDER: index 0 tees first. It used
+// to double as BRACKET order — matchups[0] was the championship, and the next
+// round's `winner_0` meant "winner of the first bracket match in the array".
+// Those two meanings collided the moment anyone reordered tee times: dragging
+// the championship to the last tee slot in Admin silently made it the 3rd-place
+// game on the podium and re-pointed the next round's winner references.
+//
+// `bracketIdx` is now stamped on every bracket match at seed time and holds its
+// index in the round's configured matchups. Tee order is free to be anything;
+// bracket identity travels with the match. Legacy matches seeded before the
+// field existed fall back to array position, which is exactly what they meant.
+//
+// Callers: the seeders (winner_N / loser_N resolution), and the bracket view
+// (matchups[0] is the championship, later ones are placement games).
+export function orderByBracketIdx(matches = []) {
+  return (matches || [])
+    .map((m, i) => ({ m, i }))
+    .sort((a, b) => {
+      const ai = Number.isInteger(a.m?.bracketIdx) ? a.m.bracketIdx : a.i;
+      const bi = Number.isInteger(b.m?.bracketIdx) ? b.m.bracketIdx : b.i;
+      return ai !== bi ? ai - bi : a.i - b.i;
+    })
+    .map(x => x.m);
+}
+
 // ── Which playoff round is "now"? ─────────────────────────────────────────
 // The first round whose week hasn't been finalized; once every round is done,
 // the last round that has one. `playoffWeeks` is the playoff schedule in week

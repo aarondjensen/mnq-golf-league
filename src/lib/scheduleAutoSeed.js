@@ -89,8 +89,20 @@
 // state at call time, not the snapshot in the original closure.
 
 import { db, LEAGUE_ID } from "../firebase";
-import { buildStandingsForSeed, serializeSeedWeeks } from "../theme";
+import { buildStandingsForSeed, serializeSeedWeeks, orderByBracketIdx } from "../theme";
 import { buildPlayoffNonBracketMatches } from "./indivGroups";
+
+// ── Tee order within the bracket ────────────────────────────────────────
+// The top of the bracket — matchup 0, the championship in the final round —
+// goes off LAST. It's the match everyone stays to watch, and the placement
+// games ahead of it clear the hole first. Bracket matches already tee after
+// the non-bracket field, so reversing their configured order is the whole
+// rule. `bracketIdx` carries each match's real bracket position, so shuffling
+// tee times here (or by hand in Admin afterwards) doesn't move the
+// championship on the podium or repoint the next round's winner references.
+function inTeeOrder(bracketMatches) {
+  return [...bracketMatches].reverse();
+}
 
 export async function autoSeedIfReady({
   justLockedWeek,
@@ -353,11 +365,11 @@ export async function autoSeedIfReady({
       if (pairCount < 1) break;
       const bracketMatches = [];
       for (let i = 0; i < pairCount; i++) {
-        bracketMatches.push({ team1: playoffSeeds[i], team2: playoffSeeds[n - 1 - i] });
+        bracketMatches.push({ team1: playoffSeeds[i], team2: playoffSeeds[n - 1 - i], bracketIdx: i });
       }
       // Bracket (playoff) matches take the FINAL tee times of the week;
       // non-bracket matches go first. Order: [non-bracket..., bracket...].
-      const matches = [...(await buildConsolation(bracketMatches, pWk.week)), ...bracketMatches];
+      const matches = [...(await buildConsolation(bracketMatches, pWk.week)), ...inTeeOrder(bracketMatches)];
       await db.upsert("league_schedule", { ...pWk, matches, league_id: LEAGUE_ID });
       playoffCount++;
       continue;
@@ -383,9 +395,12 @@ export async function autoSeedIfReady({
       // flag existed. Bracket matches keep their config order either way, so
       // winner_0/winner_1/… still line up with the prior round's matchups.
       const prevHasFlag = prevPWk.matches.some(m => m.isConsolation === true);
-      const prevBracketMatches = prevHasFlag
+      // orderByBracketIdx puts them back in CONFIG order regardless of the tee
+      // order they're stored in — winner_0 means "winner of the round's first
+      // configured matchup", never "winner of whatever teed off first".
+      const prevBracketMatches = orderByBracketIdx(prevHasFlag
         ? prevPWk.matches.filter(m => !m.isConsolation)
-        : (prevBracketCount > 0 ? prevPWk.matches.slice(0, prevBracketCount) : prevPWk.matches);
+        : (prevBracketCount > 0 ? prevPWk.matches.slice(0, prevBracketCount) : prevPWk.matches));
       // Readiness is "every BRACKET match of the prior round has a result" —
       // deliberately not a count against prevPWk.matches.length.
       //
@@ -458,7 +473,8 @@ export async function autoSeedIfReady({
     const bracketMatches = [];
     const usedTeamIds = new Set();
     let hasDuplicate = false;
-    for (const mu of roundDef.matchups) {
+    for (let mi = 0; mi < roundDef.matchups.length; mi++) {
+      const mu = roundDef.matchups[mi];
       const t1 = resolveSlot(mu, "s1");
       const t2 = resolveSlot(mu, "s2");
       if (!t1 || !t2) continue;
@@ -473,7 +489,7 @@ export async function autoSeedIfReady({
       }
       usedTeamIds.add(t1);
       usedTeamIds.add(t2);
-      bracketMatches.push({ team1: t1, team2: t2 });
+      bracketMatches.push({ team1: t1, team2: t2, bracketIdx: mi });
     }
 
     // Don't write a partial bracket: bail unless all matchups resolved
@@ -482,7 +498,7 @@ export async function autoSeedIfReady({
 
     // Bracket (playoff) matches take the FINAL tee times of the week;
     // non-bracket matches go first. Order: [non-bracket..., bracket...].
-    const matches = [...(await buildConsolation(bracketMatches, pWk.week)), ...bracketMatches];
+    const matches = [...(await buildConsolation(bracketMatches, pWk.week)), ...inTeeOrder(bracketMatches)];
 
     await db.upsert("league_schedule", { ...pWk, matches, league_id: LEAGUE_ID });
     playoffCount++;

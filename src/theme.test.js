@@ -28,7 +28,7 @@
 // file's expectations are pinned correctly.
 
 import { describe, it, expect } from "vitest";
-import { getCSS, buildStandingsForSeed, isIndivGroupMatch, weekFullyAttested, weekFullyScored, findGroupResult, indivGroupKey, matchPids, currentPlayoffRoundIdx } from "./theme";
+import { getCSS, buildStandingsForSeed, isIndivGroupMatch, weekFullyAttested, weekFullyScored, findGroupResult, indivGroupKey, matchPids, currentPlayoffRoundIdx, orderByBracketIdx } from "./theme";
 
 // Helpers that build fixtures concisely. Default values match what
 // computeMatchResult would produce for typical matches.
@@ -367,6 +367,47 @@ describe("isIndivGroupMatch", () => {
     expect(isIndivGroupMatch({ team1: "A", team2: "B", isConsolation: true })).toBe(false);
     expect(isIndivGroupMatch(null)).toBe(false);
     expect(isIndivGroupMatch(undefined)).toBe(false);
+  });
+});
+
+// ── orderByBracketIdx ──────────────────────────────────────────────
+// Tee order and bracket position are different things. A week's `matches`
+// array is tee order — the championship deliberately tees LAST — while
+// `bracketIdx` says where a match sits in the round's configured bracket.
+// Reading bracket meaning off array position is what made a reordered tee
+// sheet crown the wrong team and repoint winner_N.
+describe("orderByBracketIdx", () => {
+  it("restores config order from a reordered tee sheet", () => {
+    const out = orderByBracketIdx([
+      { team1: "C", team2: "D", bracketIdx: 1 },
+      { team1: "A", team2: "B", bracketIdx: 0 },
+    ]);
+    expect(out.map(m => m.team1)).toEqual(["A", "C"]);
+  });
+
+  it("leaves matches without the field in their stored order", () => {
+    // Legacy weeks: tee order WAS bracket order, so position is the answer.
+    const out = orderByBracketIdx([{ team1: "C" }, { team1: "A" }]);
+    expect(out.map(m => m.team1)).toEqual(["C", "A"]);
+  });
+
+  it("does not mutate the array it is given", () => {
+    const input = [{ team1: "C", bracketIdx: 1 }, { team1: "A", bracketIdx: 0 }];
+    orderByBracketIdx(input);
+    expect(input.map(m => m.team1)).toEqual(["C", "A"]);
+  });
+
+  it("is stable for matches that share a position", () => {
+    const out = orderByBracketIdx([
+      { team1: "X", bracketIdx: 0 },
+      { team1: "Y", bracketIdx: 0 },
+    ]);
+    expect(out.map(m => m.team1)).toEqual(["X", "Y"]);
+  });
+
+  it("handles empty and missing input", () => {
+    expect(orderByBracketIdx([])).toEqual([]);
+    expect(orderByBracketIdx()).toEqual([]);
   });
 });
 
