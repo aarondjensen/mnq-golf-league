@@ -15,6 +15,13 @@ import { useIndividualScores } from "../lib/useIndividualScores";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { Popup, ConfirmModal } from "../components/Popup";
 
+// Delay between a hole becoming fully scored and the view jumping to the next
+// hole. Shared by the match-play card and the individual-group card so the two
+// never drift apart. The toast safety-clear below must stay LONGER than this,
+// or "advancing..." vanishes before the advance actually happens.
+const AUTO_ADVANCE_MS = 3600;
+const TOAST_SAFETY_MS = AUTO_ADVANCE_MS + 600;
+
 // ═══════════════════════════════════════════════════════════════
 //  Helper: compute strokes map for a given handicap
 // ═══════════════════════════════════════════════════════════════
@@ -872,10 +879,10 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
         let next = curHole + 1;
         while (next < 8 && allP.every(pid => getS(pid, next) > 0)) next++;
         setCurHole(next);
-      }, 1800);
+      }, AUTO_ADVANCE_MS);
       return () => clearTimeout(timer);
     }
-    // Include curHoleScoreSig so that editing a score within the 1800ms window
+    // Include curHoleScoreSig so that editing a score within the advance window
     // (e.g. correcting a 2 to a 3 before auto-advance fires) cancels the old
     // timer and starts a fresh one. Without this dep, the timer latches at the
     // moment of first completion and can't be interrupted by subsequent edits
@@ -886,7 +893,7 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
 
   useEffect(() => {
     if (toast) {
-      const safety = setTimeout(() => setToast(null), 3000);
+      const safety = setTimeout(() => setToast(null), TOAST_SAFETY_MS);
       return () => clearTimeout(safety);
     }
   }, [toast]);
@@ -3348,7 +3355,7 @@ function IndivGroupScoring({
   }, [hasAnyScores, firstUnscored]);
 
   // Auto-advance once every live card on this hole is in. curHoleSig is a dep
-  // so correcting a score inside the 1800ms window restarts the timer instead
+  // so correcting a score inside the advance window restarts the timer instead
   // of letting the original one fire under the edit.
   useEffect(() => {
     if (!holeComplete || curHole >= 8 || allComplete) return;
@@ -3361,7 +3368,7 @@ function IndivGroupScoring({
         while (next < 8 && livePids.every(pid => getScore(pid, next) > 0)) next++;
         return next;
       });
-    }, 1800);
+    }, AUTO_ADVANCE_MS);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [holeComplete, curHole, allComplete, curHoleSig]);
