@@ -3788,6 +3788,14 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
   // entry) we just hide them. Empty-string label slot still reserves vertical
   // space so the row height doesn't shift between default and recentered.
   const showLabels = btns === defaultBtns;
+  // The + nudge is the escape hatch for scores past the visible range, so from
+  // an EMPTY card it jumps one past the highest button on screen — a par 4
+  // shows up to 7 (Triple), so + lands on 8. It used to go to par+1, which
+  // burned a tap landing on Bogey, a button already sitting right there.
+  // Once a score is in, + is a plain +1 nudge again so corrections still walk
+  // one stroke at a time (and the recentered window keeps it in step: an 8 on
+  // a par 4 shifts btns to [4..8], so the next + is still "one past the top").
+  const plusTarget = score > 0 ? score + 1 : btns[btns.length - 1] + 1;
   // Last name + first initial — matches the rest of the app's last-name
   // display convention but adds a tiny initial in front so teammates with
   // the same last name (or simply different players with similar names)
@@ -3883,7 +3891,7 @@ function PlayerScoreCard({ pl, score, strokes, nh, run, btns: defaultBtns, par, 
             </div>
           );
         })}
-        <button onClick={() => handleScore((score || par) + 1)} style={{ width: 30, height: 44, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: FW.bold, cursor: "pointer", flexShrink: 0 }}>+</button>
+        <button onClick={() => handleScore(plusTarget)} style={{ width: 30, height: 44, borderRadius: 8, background: K.inp, border: "none", color: K.t3, fontSize: 14, fontWeight: FW.bold, cursor: "pointer", flexShrink: 0 }}>+</button>
       </div>
     </Card>
   );
