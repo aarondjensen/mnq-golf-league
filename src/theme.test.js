@@ -28,7 +28,7 @@
 // file's expectations are pinned correctly.
 
 import { describe, it, expect } from "vitest";
-import { getCSS, buildStandingsForSeed, isIndivGroupMatch, weekFullyAttested, weekFullyScored, findGroupResult, indivGroupKey, matchPids, currentPlayoffRoundIdx, orderByBracketIdx } from "./theme";
+import { getCSS, buildStandingsForSeed, regularSeasonResults, isIndivGroupMatch, weekFullyAttested, weekFullyScored, findGroupResult, indivGroupKey, matchPids, currentPlayoffRoundIdx, orderByBracketIdx } from "./theme";
 
 // Helpers that build fixtures concisely. Default values match what
 // computeMatchResult would produce for typical matches.
@@ -338,6 +338,75 @@ describe("buildStandingsForSeed", () => {
       expect(a.points).toBe(10);
       expect(a.w).toBe(1);
     });
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  Regular-season result filter
+// ══════════════════════════════════════════════════════════════════
+//
+// Why this is pinned
+// ──────────────────
+// The Standings table used to build its season record from every LOCKED
+// week, playoff weeks included. Locking a bracket round therefore pushed
+// playoff wins, points, and holes won into the regular-season record —
+// teams climbed past 9-0 on a 9-week schedule, and the standings order kept
+// shifting (along with the position-change arrows) under a bracket that had
+// already been seeded off a frozen order.
+//
+// regularSeasonResults is now the one filter feeding the Standings table,
+// buildPlayoffSeedMap's live-preview fallback, and computeRegularSeasonSeeds.
+// Both conditions below are load-bearing and independently regressible, so
+// each gets its own test.
+describe("regularSeasonResults", () => {
+  const schedule = [
+    { week: 1, locked: true },                     // regular season, locked
+    { week: 2, locked: true, isPlayoff: false },   // explicit false counts too
+    { week: 3, locked: false },                    // still being scored
+    { week: 4, locked: true, isPlayoff: true },    // playoff round, locked
+  ];
+  const results = [
+    result(1, "a", "b"), result(2, "a", "b"),
+    result(3, "a", "b"), result(4, "a", "b"),
+  ];
+
+  it("keeps locked regular-season weeks", () => {
+    expect(regularSeasonResults(results, schedule).map(r => r.week)).toEqual([1, 2]);
+  });
+
+  it("excludes playoff weeks even when locked", () => {
+    expect(regularSeasonResults(results, schedule).some(r => r.week === 4)).toBe(false);
+  });
+
+  it("excludes unlocked weeks", () => {
+    expect(regularSeasonResults(results, schedule).some(r => r.week === 3)).toBe(false);
+  });
+
+  it("drops results for weeks missing from the schedule entirely", () => {
+    expect(regularSeasonResults([result(99, "a", "b")], schedule)).toEqual([]);
+  });
+
+  it("tolerates null inputs and null rows", () => {
+    expect(regularSeasonResults(null, schedule)).toEqual([]);
+    expect(regularSeasonResults(results, null)).toEqual([]);
+    expect(regularSeasonResults([null, result(1, "a", "b")], schedule)).toHaveLength(1);
+  });
+
+  // The freeze property stated end-to-end: standings built off this filter
+  // must be byte-identical before and after a playoff week is locked.
+  it("leaves standings unchanged when a playoff week is locked", () => {
+    const teams = [team("a"), team("b")];
+    const regOnly = [result(1, "a", "b", { t1Pts: 3, t1Hw: 5, text: "3&2", winnerId: "a" })];
+    const withPlayoff = [
+      ...regOnly,
+      result(4, "b", "a", { t1Pts: 3, t1Hw: 6, text: "4&3", winnerId: "b" }),
+    ];
+    const before = buildStandingsForSeed(teams, regularSeasonResults(regOnly, schedule), schedule, "record", false);
+    const after = buildStandingsForSeed(teams, regularSeasonResults(withPlayoff, schedule), schedule, "record", false);
+    expect(after).toEqual(before);
+    // and specifically: team a stays 1-0 with 5 holes won, not 1-1 with 5.
+    const a = after.find(s => s.teamId === "a");
+    expect({ w: a.w, l: a.l, hw: a.hw, gp: a.gp }).toEqual({ w: 1, l: 0, hw: 5, gp: 1 });
   });
 });
 

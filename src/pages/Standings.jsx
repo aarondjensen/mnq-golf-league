@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, buildSeedMap, buildPlayoffSeedMap, buildStandingsForSeed, recordPoints, LoadingPanel, SkeletonList, buildHistoricalPlayers, isIndivGroupMatch, currentPlayoffRoundIdx, orderByBracketIdx, FS, FW } from "../theme";
+import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, buildSeedMap, buildPlayoffSeedMap, buildStandingsForSeed, regularSeasonResults, recordPoints, LoadingPanel, SkeletonList, buildHistoricalPlayers, isIndivGroupMatch, currentPlayoffRoundIdx, orderByBracketIdx, FS, FW } from "../theme";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/matchCalc";
 import { autoHealMatchResults } from "../lib/autoHealMatchResults";
@@ -1199,16 +1199,29 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     });
   }, [matchResults, weekScores, course, scoringRules, leagueConfig, saveMatchResult, schedule, teams, players, seedMap, playoffSeedMap, allRounds]);
 
+  // Regular-season weeks ONLY — playoff weeks are deliberately excluded so the
+  // standings freeze the moment the last regular-season week is locked. Before
+  // this filter, locking a playoff round pushed bracket wins, points, and holes
+  // won into the season record: a 9-week schedule showed teams at 10-4 in
+  // November, and the standings order (and therefore the position-change
+  // arrows) kept shifting under a bracket that had already been seeded.
   const lockedWeeks = useMemo(() => {
     const set = new Set();
-    (schedule || []).forEach(wk => { if (wk.locked) set.add(wk.week); });
+    (schedule || []).forEach(wk => { if (wk.locked && wk.isPlayoff !== true) set.add(wk.week); });
     return set;
   }, [schedule]);
 
-  const lockedResults = useMemo(() => {
-    return matchResults.filter(r => r && lockedWeeks.has(r.week));
-  }, [matchResults, lockedWeeks]);
+  // Shares theme.regularSeasonResults with buildPlayoffSeedMap and
+  // computeRegularSeasonSeeds so the table can't disagree with the seeding
+  // computed off the same season.
+  const lockedResults = useMemo(
+    () => regularSeasonResults(matchResults, schedule),
+    [matchResults, schedule]
+  );
 
+  // Pinned to the last locked REGULAR-SEASON week (lockedWeeks excludes playoff
+  // weeks), so the "moved up/down N" arrows keep showing the final regular-
+  // season movement all postseason instead of resetting to flat.
   const latestLockedWeek = useMemo(() => {
     let max = 0;
     lockedWeeks.forEach(w => { if (w > max) max = w; });
@@ -1264,8 +1277,10 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
         return { week: r.week, date: wk?.date || "", oppName: lastNamesOnly(opp?.name || "TBD"), myPts, oppPts, result: wResult, holesWon, resultDisplay, matchResult: r, rainedOut: false };
       });
 
+    // Playoff weeks excluded to match matchRows above — a rained-out playoff
+    // round is not a regular-season RAIN row.
     const rainRows = schedule
-      .filter(wk => wk.rainedOut && wk.week > 0)
+      .filter(wk => wk.rainedOut && wk.week > 0 && wk.isPlayoff !== true)
       .map(wk => ({
         week: wk.week, date: wk.date || "", oppName: "", myPts: 0, oppPts: 0,
         result: "R", holesWon: "", resultDisplay: "RAIN", matchResult: null, rainedOut: true,
