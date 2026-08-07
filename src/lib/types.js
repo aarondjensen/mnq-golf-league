@@ -116,6 +116,36 @@
  */
 
 /**
+ * A "fun" round — a casual tee time OUTSIDE the official schedule.
+ * Stored in `league_fun_rounds`.
+ *
+ * Note what this typedef does NOT have: a `week`. That absence is the
+ * design. Fun rounds are a separate collection with no week number
+ * precisely so that no `schedule.filter(...)` anywhere in the app can
+ * accidentally sweep one into standings, handicaps, or the playoff seed
+ * order. See src/lib/funRounds.js for the full rationale.
+ *
+ * `signups` is ordered: join order determines group and tee time
+ * (group N tees at startTime + N × teeInterval). Never sort it.
+ *
+ * @typedef {Object} FunRound
+ * @property {string} id
+ * @property {number} season                 Year; also the year used to parse `date`.
+ * @property {string} date                   "Sep 1" — same format as ScheduleWeek.date.
+ * @property {string} startTime              "4:28 PM" — first group's tee time.
+ * @property {number} teeInterval            Minutes between groups.
+ * @property {number} groupSize              Players per group (2–6; 4 is the default).
+ * @property {"front" | "back"} side
+ * @property {string[]} signups              Player.ids in join order.
+ * @property {string} [title]                Optional name, e.g. "Labor Day Scramble".
+ * @property {string} [notes]
+ * @property {boolean} [cancelled]           Hidden from both upcoming and past when true.
+ * @property {string} [createdBy]            Player.id of the commissioner who created it.
+ * @property {number} [createdAt]            Timestamp ms; breaks same-day sort ties.
+ * @property {string} [league_id]
+ */
+
+/**
  * A persisted match-play result. Stored in `league_match_results`.
  * The matchResultText string is the human-readable result like "3&2",
  * "1UP", "TIED", or "TIE (Hole 5)" for tiebreakers. matchWinnerId is

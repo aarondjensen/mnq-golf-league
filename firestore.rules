@@ -12,7 +12,8 @@ rules_version = '2';
 //   • league member (has a league_members doc): write gameplay data —
 //     hole scores (live scoring), match results (finalize / attest /
 //     auto-heal, which runs on every client), CTP claims, attendance,
-//     and their own push-notification tokens.
+//     and their own push-notification tokens. Plus the `signups` field
+//     (and only that field) on a fun round.
 //   • commissioner (member doc with isCommissioner: true): everything else —
 //     players, teams, schedule, config, course, scoring rules, and other
 //     users' member docs. All commissioner-only UI flows (Admin pages,
@@ -108,6 +109,36 @@ service cloud.firestore {
     match /league_ctp/{docId} {
       allow read: if signedIn();
       allow write: if isMember();
+    }
+
+    // ── Fun rounds — split access, and the only collection with one ──
+    // Casual tee times outside the official schedule (src/lib/funRounds.js).
+    // The commissioner owns the ROUND (create it, change its date / tee
+    // time / group size, delete it); any member owns their own SIGNUP.
+    //
+    // That split is why this can't be a plain `isMember()` write like the
+    // gameplay collections above: a member who could write the whole doc
+    // could move the tee time or repoint the date, and the commissioner is
+    // the one talking to the course. The diff() check pins a member's
+    // write to the `signups` field and nothing else.
+    //
+    // Note this permits a member to add or remove ANOTHER player from the
+    // list, not just themselves. Validating "only your own playerId moved"
+    // would mean resolving uid → playerId and diffing list membership in
+    // rules, and the league already trusts members to mark a teammate
+    // absent (league_attendance above) — someone signing a buddy up for a
+    // casual round is the same trust level, and the UI only ever writes
+    // the acting player.
+    //
+    // The client writes signups via a merge upsert of { id, signups,
+    // league_id }; unchanged fields don't appear in affectedKeys(), so a
+    // signup write diffs to exactly ['signups'].
+    match /league_fun_rounds/{docId} {
+      allow read: if signedIn();
+      allow create, delete: if isCommissioner();
+      allow update: if isCommissioner()
+        || (isMember()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['signups']));
     }
     match /league_attendance/{docId} {
       allow read: if signedIn();

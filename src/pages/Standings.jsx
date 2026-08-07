@@ -4,6 +4,7 @@ import { SharedScorecard } from "../components/SharedScorecard";
 import { readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/matchCalc";
 import { autoHealMatchResults } from "../lib/autoHealMatchResults";
 import { IndividualLeaderboard } from "../components/IndividualLeaderboard";
+import { FunRounds } from "../components/FunRounds";
 import { useIndividualScores } from "../lib/useIndividualScores";
 import { TeamMatchupCard } from "../TeamMatchupCard";
 
@@ -991,7 +992,7 @@ function IndividualBoard({ players, teams, schedule, course, leagueConfig, scori
   );
 }
 
-export default function StandingsView({ teams, players, matchResults, leagueConfig, schedule, fetchSeasonScores, course, fetchWeekScores, scoringRules, fetchAllScores, saveMatchResult, dataLoaded }) {
+export default function StandingsView({ teams, players, matchResults, leagueConfig, schedule, fetchSeasonScores, course, fetchWeekScores, scoringRules, fetchAllScores, saveMatchResult, dataLoaded, leagueUser, isComm, funRounds, saveFunRound, deleteFunRound, appToast, setPopupOpen, season }) {
   // Note: no local isRecord flag anymore — the standings rows render the
   // same column set (W-L-T · Pts/HW) in both modes; standingsMethod only
   // affects the sort, which buildStandingsForSeed receives as a string.
@@ -1035,6 +1036,13 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   );
 
   const hasIndividualEvent = leagueConfig?.individualEvent !== false; // default on
+
+  // FUN tab gate. Same principle as the Postseason gate above — don't
+  // offer a tab that lands on nothing. A player only sees FUN once the
+  // commissioner has actually posted a round; the commissioner always
+  // sees it, because for them the empty state IS the entry point (it
+  // holds the "+ Tee Time" button).
+  const showFun = isComm === true || (funRounds || []).some(r => r && r.cancelled !== true);
   // Default tab on first mount, strictly aligned to season phase. The
   // switchover point is the START OF THE POSTSEASON, defined as "the final
   // regular-season week has been finalized (locked)". Not "a playoff round
@@ -1092,9 +1100,10 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     const validIds = new Set([
       "standings",
       ...(hasPlayoffs ? ["bracket", ...(hasIndividualEvent ? ["individual"] : [])] : []),
+      ...(showFun ? ["fun"] : []),
     ]);
     if (!validIds.has(view)) setView("standings");
-  }, [view, hasPlayoffs, hasIndividualEvent]);
+  }, [view, hasPlayoffs, hasIndividualEvent, showFun]);
 
   const handleExpand = (teamId) => {
     const next = expanded === teamId ? null : teamId;
@@ -1403,17 +1412,24 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   const wltHwStyle = { minWidth: "3.4em", textAlign: "center", fontFamily: "'League Spartan', sans-serif", fontSize: NAME_SIZE, lineHeight: 1.2 };
 
   // ── Toggle structure ──────────────────────────────────────────────
-  // PRIMARY toggle: Regular Season | Postseason.
+  // PRIMARY toggle: Regular Season | Postseason | Fun.
   //   - "Regular Season" → standings view (always meaningful).
   //   - "Postseason"     → playoff content. Only surfaced once the league
-  //     actually has playoff weeks configured (hasPlayoffs); otherwise the
-  //     primary toggle bar collapses and only standings shows.
+  //     actually has playoff weeks configured (hasPlayoffs).
+  //   - "Fun"            → casual tee times outside the official schedule.
+  //     Nothing there feeds standings, handicaps, or stats — it sits on
+  //     this bar because it's the third *kind of golf* the league plays,
+  //     not because it's a third phase of the season. Gated by showFun.
   // SECONDARY toggle (Postseason only): Team Bracket | Individual. The
   //   individual tournament runs concurrently with the team playoff bracket,
   //   so it lives nested under Postseason rather than as a top-level tab.
   //   Only shown when the league runs an individual event alongside playoffs.
+  //
+  // The bar itself collapses when there'd be only one thing on it — a
+  // lone "Regular Season" button is noise.
   const inPostseason = view === "bracket" || view === "individual";
-  const showPostseason = hasPlayoffs;                       // primary toggle gate
+  const showPostseason = hasPlayoffs;                       // Postseason button gate
+  const showToggleBar = showPostseason || showFun;          // primary bar gate
   const showSubToggle = inPostseason && hasPlayoffs && hasIndividualEvent;
 
   // Jump into Postseason, restoring the user's last sub-view (or Team Bracket
@@ -1439,12 +1455,17 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
 
   return (
     <div style={{ padding: "0 2px" }}>
-      {/* PRIMARY toggle — Regular Season | Postseason */}
-      {showPostseason && (
+      {/* PRIMARY toggle — Regular Season | Postseason | Fun */}
+      {showToggleBar && (
         <div style={{ display: "flex", justifyContent: "center", marginBottom: showSubToggle ? 8 : 14 }}>
           <div style={{ display: "inline-flex", background: K.inp, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: 3 }}>
-            <button onClick={() => pickTab("standings")} style={segBtn(!inPostseason)}>REGULAR SEASON</button>
-            <button onClick={goPostseason} style={segBtn(inPostseason)}>POSTSEASON</button>
+            {/* Active-state is an explicit `view === "standings"` test, not
+                `!inPostseason` — with a third tab on the bar, "not in the
+                postseason" no longer means "in the regular season", and the
+                negation would light up Regular Season while Fun is open. */}
+            <button onClick={() => pickTab("standings")} style={segBtn(view === "standings")}>REGULAR SEASON</button>
+            {showPostseason && <button onClick={goPostseason} style={segBtn(inPostseason)}>POSTSEASON</button>}
+            {showFun && <button onClick={() => pickTab("fun")} style={segBtn(view === "fun")}>FUN</button>}
           </div>
         </div>
       )}
@@ -1457,6 +1478,16 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
             <button onClick={() => pickTab("individual")} style={segBtn(view === "individual", false)}>INDIVIDUAL</button>
           </div>
         </div>
+      )}
+
+      {/* Fun rounds view — casual tee times, no league math attached. */}
+      {view === "fun" && (
+        <FunRounds
+          funRounds={funRounds} players={players} leagueUser={leagueUser} isComm={isComm}
+          saveFunRound={saveFunRound} deleteFunRound={deleteFunRound}
+          leagueConfig={leagueConfig} season={season}
+          appToast={appToast} setPopupOpen={setPopupOpen}
+        />
       )}
 
       {/* Playoff Bracket view */}
