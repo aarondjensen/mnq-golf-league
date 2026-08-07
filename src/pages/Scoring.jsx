@@ -11,6 +11,9 @@ import { computeRoundLine } from "../lib/indivGroups";
 import { parseTiebreakerResult, TeamMatchupCard } from "../TeamMatchupCard";
 import { IndivGroupCard } from "../components/IndivGroupCard";
 import { IndividualLeaderboard } from "../components/IndividualLeaderboard";
+import { FunRounds } from "../components/FunRounds";
+import { hasUpcomingFunRound } from "../lib/funRounds";
+import { isSeasonComplete } from "../lib/seasonPhase";
 import { useIndividualScores } from "../lib/useIndividualScores";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { Popup, ConfirmModal } from "../components/Popup";
@@ -88,14 +91,38 @@ function computeMatchStatus(t1Pids, t2Pids, getScore, getStrokes, pars) {
 // ═══════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
-export default function LiveScoringView({ groupResults, saveGroupResult, deleteGroupResult, fetchSeasonScores, fetchAllScores, leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, commMode, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, applyScheduleOps, openAllMatches, onAllMatchesOpened, openFinalize, onFinalizeOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData, autoSeedIfReady, attendance, saveAttendance }) {
+export default function LiveScoringView({ groupResults, saveGroupResult, deleteGroupResult, fetchSeasonScores, fetchAllScores, leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, commMode, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, applyScheduleOps, openAllMatches, onAllMatchesOpened, openFinalize, onFinalizeOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData, autoSeedIfReady, attendance, saveAttendance, funRounds, saveFunRound, deleteFunRound, funScores, saveFunScores, season, appToast }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
-  // 3-way view toggle: "myMatch" (default scoring view), "allMatches" (week overview), "lowNet" (leaderboard)
-  // Kept as derived alias for backward-compat with existing code paths.
-  const [view, setView] = useState("myMatch");
+  // 4-way view toggle: "myMatch" (default scoring view), "allMatches" (week
+  // overview), "lowNet" (leaderboard), "fun" (casual tee times).
+  // Kept as derived aliases for backward-compat with existing code paths.
+  //
+  // The Fun default. `currentWeek` below falls back to the LAST playable
+  // week once nothing is unlocked, so after the season ends this page
+  // parks on a finalized week forever — week 16's locked scores, with no
+  // way to score anything. When the postseason is finalized and a fun
+  // round is still to be played, that round is the only live golf left,
+  // so it becomes the landing view. The other three stay one tap away.
+  const funDefault = useMemo(
+    () => isSeasonComplete(schedule) && hasUpcomingFunRound(funRounds, season || leagueConfig?.year),
+    [schedule, funRounds, season, leagueConfig]
+  );
+  // Seeded from the default so the first paint is already right rather
+  // than flashing a stale week and then swapping — same reasoning as
+  // Schedule's fun default.
+  const [view, setView] = useState(() => (funDefault ? "fun" : "myMatch"));
+  // Yields to the user permanently once they pick a view themselves.
+  const userPickedView = useRef(false);
+  useEffect(() => {
+    if (!userPickedView.current) setView(funDefault ? "fun" : "myMatch");
+  }, [funDefault]);
   const showAllMatches = view === "allMatches";
   const showLowNet = view === "lowNet";
+  const showFun = view === "fun";
+  // Fun is offered whenever a round exists at all (not just an upcoming
+  // one) so a group can still post scores for a round played yesterday.
+  const showFunTab = (funRounds || []).some(r => r && r.cancelled !== true);
   const setShowAllMatches = (b) => setView(b ? "allMatches" : "myMatch");
   const [expandedMatch, setExpandedMatch] = useState(null);
   const [toast, setToast] = useState(null);
@@ -1012,10 +1039,11 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
           { id: "myMatch", label: "My Match" },
           { id: "allMatches", label: "All Matches" },
           { id: "lowNet", label: "Low Net" },
+          ...(showFunTab ? [{ id: "fun", label: "Fun" }] : []),
         ].map(opt => {
           const isActive = view === opt.id;
           return (
-            <button key={opt.id} onClick={() => { if (!isActive) setView(opt.id); }} style={{
+            <button key={opt.id} onClick={() => { if (!isActive) { userPickedView.current = true; setView(opt.id); } }} style={{
               padding: "6px 14px", borderRadius: 17,
               cursor: isActive ? "default" : "pointer",
               fontSize: 12, fontWeight: FW.bold, border: "none",
@@ -1931,6 +1959,24 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
   // Shows every player in the league this week, ranked by net (best to worst).
   // Players without a complete 9-hole round sit at the bottom with em-dashes.
   // Strokes use the player's stored handicap mapped to the course's stroke-index allocation.
+  // Fun view — the whole page becomes the tee sheet. Placed with the
+  // other view branches, and ahead of them, because once the season is
+  // over the league-week machinery below has nothing live to show.
+  if (showFun && !activeMatch) {
+    return (
+      <div style={{ maxWidth: 540, margin: "0 auto" }}>
+        <ViewToggle />
+        <FunRounds
+          funRounds={funRounds} players={players} leagueUser={leagueUser} isComm={isComm}
+          saveFunRound={saveFunRound} deleteFunRound={deleteFunRound}
+          leagueConfig={leagueConfig} season={season}
+          course={course} funScores={funScores} saveFunScores={saveFunScores}
+          appToast={appToast} setPopupOpen={setPopupOpen}
+        />
+      </div>
+    );
+  }
+
   if (showLowNet && !activeMatch) {
     // Build the set of players actually scheduled this week (across all matches).
     // matchPids resolves explicit consolation players too, so re-paired knocked-out

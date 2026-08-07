@@ -5,6 +5,8 @@ import { readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/m
 import { autoHealMatchResults } from "../lib/autoHealMatchResults";
 import { IndividualLeaderboard } from "../components/IndividualLeaderboard";
 import { FunRounds } from "../components/FunRounds";
+import { hasUpcomingFunRound } from "../lib/funRounds";
+import { isSeasonComplete } from "../lib/seasonPhase";
 import { useIndividualScores } from "../lib/useIndividualScores";
 import { TeamMatchupCard } from "../TeamMatchupCard";
 
@@ -1059,6 +1061,14 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   // hold the postseason default hostage once the finale is in the books.
   const defaultView = useMemo(() => {
     const wks = schedule || [];
+    // Once the final postseason round is finalized the season is over,
+    // and a fun round still to be played is the only live golf left —
+    // so it outranks the champion/podium view from that point on. Gated
+    // on an UPCOMING round for the same reason Schedule is: a played-out
+    // round must not hijack the default forever.
+    if (isSeasonComplete(wks) && hasUpcomingFunRound(funRounds, season || leagueConfig?.year)) {
+      return "fun";
+    }
     const playoffWks = wks.filter(wk => wk.isPlayoff === true && !wk.rainedOut);
     if (!playoffWks.length) return "standings";
     const regWks = wks
@@ -1069,7 +1079,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     if (!regWks.length) return "standings";
     const finalRegWeek = regWks[regWks.length - 1];
     return finalRegWeek.locked === true ? "bracket" : "standings";
-  }, [schedule]);
+  }, [schedule, funRounds, season, leagueConfig]);
   const [view, setView] = useState(defaultView); // "standings" | "bracket" | "individual"
   // If the schedule loads after first mount (common — subscriptions arrive async)
   // and the default changes, respect the new default — but ONLY while the user

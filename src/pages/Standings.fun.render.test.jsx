@@ -29,8 +29,12 @@ const teams = [
   { id: "T2", name: "Three / Four", player1: "p3", player2: "p4" },
 ];
 
+// Base fixture is a season IN PROGRESS — week 1 unfinalized. It has to
+// be, now that a finished season changes the default view: a lone locked
+// week with no playoffs configured IS a complete season, and would send
+// every test below to the Fun tab.
 const regularOnlySchedule = [
-  { week: 1, side: "front", date: "Apr 21", locked: true, matches: [{ team1: "T1", team2: "T2" }] },
+  { week: 1, side: "front", date: "Apr 21", locked: false, matches: [{ team1: "T1", team2: "T2" }] },
 ];
 
 const withPlayoffs = [
@@ -38,10 +42,20 @@ const withPlayoffs = [
   { week: 2, side: "back", date: "Aug 4", isPlayoff: true, matches: [{ team1: "T1", team2: "T2" }] },
 ];
 
+// Same, but the final postseason round has been finalized — the season
+// is over.
+const seasonOver = [
+  ...regularOnlySchedule,
+  { week: 2, side: "back", date: "Aug 4", isPlayoff: true, locked: true, matches: [{ team1: "T1", team2: "T2" }] },
+];
+
+
 const funRound = {
   id: "r1", season: YEAR, date: "Dec 30", startTime: "4:28 PM",
   teeInterval: 8, groupCount: 3, groupSize: 4, side: "front", slots: {}, createdAt: 1,
 };
+
+const pastFunRound = { ...funRound, id: "old", date: "Jan 2" };
 
 const baseProps = {
   teams, players,
@@ -97,6 +111,31 @@ describe("Standings primary toggle — FUN", () => {
     expect(html).toContain("REGULAR SEASON");
     expect(html).toContain("POSTSEASON");
     expect(html).toContain("FUN");
+  });
+
+  it("lands on FUN once the postseason is finalized and a round is upcoming", () => {
+    // The champion/podium view is the season's payoff, but a fun round
+    // still to be played is the only live golf left — so it outranks it.
+    const html = render({ schedule: seasonOver, funRounds: [funRound] });
+    expect(html).toContain("standings, handicaps, or stats");   // the fun body
+    expect(html).not.toContain("Pts");                          // not the standings table
+  });
+
+  it("stays on the bracket when the season ends with no fun round posted", () => {
+    const html = render({ schedule: seasonOver, funRounds: [] });
+    expect(html).not.toContain("standings, handicaps, or stats");
+  });
+
+  it("does not land on FUN for a round that has already been played", () => {
+    const html = render({ schedule: seasonOver, funRounds: [pastFunRound] });
+    expect(html).not.toContain("standings, handicaps, or stats");
+  });
+
+  it("does not land on FUN while the postseason is still being played", () => {
+    // Mid-playoffs the bracket is what matters, even with a fun round
+    // already on the board.
+    const html = render({ schedule: withPlayoffs, funRounds: [funRound] });
+    expect(html).not.toContain("standings, handicaps, or stats");
   });
 
   it("still renders the standings body with the bar present", () => {

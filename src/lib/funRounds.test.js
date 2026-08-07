@@ -19,6 +19,7 @@ import {
   releaseSlotPatch,
   pruneSlotsPatch,
   splitFunRounds,
+  hasUpcomingFunRound,
   isoToScheduleDate,
   scheduleDateToIso,
   validateFunRound,
@@ -347,6 +348,33 @@ describe("splitFunRounds", () => {
 
   it("handles a null list", () => {
     expect(splitFunRounds(null, 2026, today)).toEqual({ upcoming: [], past: [] });
+  });
+});
+
+describe("hasUpcomingFunRound", () => {
+  const today = new Date(2026, 8, 10); // Sep 10, 2026
+
+  it("is true when a round is still to be played", () => {
+    expect(hasUpcomingFunRound([round({ date: "Sep 20" })], 2026, today)).toBe(true);
+  });
+
+  it("is false when every round is in the past", () => {
+    // The gate is upcoming, not "any round exists" — otherwise an old
+    // round would hijack a tab's default forever.
+    expect(hasUpcomingFunRound([round({ date: "Aug 1" })], 2026, today)).toBe(false);
+  });
+
+  it("counts today's round as upcoming", () => {
+    expect(hasUpcomingFunRound([round({ date: "Sep 10" })], 2026, today)).toBe(true);
+  });
+
+  it("ignores cancelled rounds", () => {
+    expect(hasUpcomingFunRound([round({ date: "Sep 20", cancelled: true })], 2026, today)).toBe(false);
+  });
+
+  it("is false for no rounds at all", () => {
+    expect(hasUpcomingFunRound([], 2026, today)).toBe(false);
+    expect(hasUpcomingFunRound(null, 2026, today)).toBe(false);
   });
 });
 

@@ -298,6 +298,16 @@ export function splitFunRounds(rounds, fallbackYear, today = new Date()) {
   return { upcoming, past };
 }
 
+/**
+ * Is there a fun round still to be played? This is the gate every tab
+ * uses to decide whether to DEFAULT to the Fun view, and it is
+ * deliberately about upcoming rounds rather than "any round exists" —
+ * a round from three months ago must not hijack a tab forever.
+ */
+export function hasUpcomingFunRound(funRounds, fallbackYear, today = new Date()) {
+  return splitFunRounds(funRounds, fallbackYear, today).upcoming.length > 0;
+}
+
 // ── Form helpers ──────────────────────────────────────────────────
 //
 // <input type="date"> speaks ISO ("2026-09-01"); storage speaks the

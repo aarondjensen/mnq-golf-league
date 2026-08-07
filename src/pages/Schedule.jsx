@@ -11,7 +11,7 @@ import { IndivGroupCard } from "../components/IndivGroupCard";
 import { parseTiebreakerResult, TeamMatchupCard, ResultCenter } from "../TeamMatchupCard";
 import { EditConfirmationPopup } from "../components/EditConfirmationPopup";
 import { FunRounds } from "../components/FunRounds";
-import { splitFunRounds } from "../lib/funRounds";
+import { hasUpcomingFunRound } from "../lib/funRounds";
 
 // Column widths for the "My Schedule" compact row + its header bars.
 // Defined once so the row and its header always line up; the audit found
@@ -58,7 +58,7 @@ export default function ScheduleView({ groupResults, schedule, teams, players, m
   // playoff bracket.
   const funYear = season || leagueConfig?.year || new Date().getFullYear();
   const hasUpcomingFun = useMemo(
-    () => splitFunRounds(funRounds, funYear).upcoming.length > 0,
+    () => hasUpcomingFunRound(funRounds, funYear),
     [funRounds, funYear]
   );
   // Seeded from the default rather than assigned by the effect below, so
