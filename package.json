@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "test": "vitest",
     "test:run": "vitest run",
-    "coverage": "vitest run --coverage"
+    "coverage": "vitest run --coverage",
+    "rules": "firebase deploy --only firestore:rules"
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^8.3.0",
