@@ -12,10 +12,12 @@
 //
 // Roles
 // ─────
-//   • Commissioner creates a round, activates N tee times, and can edit
-//     or delete it or clear anyone's spot.
-//   • Any linked player claims or gives up a spot, and any member can
-//     enter scores for a group.
+//   • Commissioner creates a round and activates N tee times, can edit
+//     or delete it, and runs the tee sheet: tapping ANY spot opens the
+//     manager, where they assign a player, swap two players, or clear a
+//     spot.
+//   • Any linked player claims an open spot, gives up their own, or
+//     moves between groups. Any member can enter scores for a group.
 //
 // The logic lives in two libs, where the tests are: lib/funRounds.js
 // owns the tee sheet (slots, claims, tee times, ordering) and
@@ -34,9 +36,11 @@ import { Popup, ConfirmModal } from "./Popup";
 import {
   splitFunRounds,
   buildFunGroups,
+  readSlots,
   findPlayerSlot,
   funRoundCounts,
   claimSlotPatch,
+  assignSlotPatch,
   releaseSlotPatch,
   pruneSlotsPatch,
   validateFunRound,
@@ -251,15 +255,20 @@ function FunRoundForm({ round, season, defaults, onSave, onCancel, saving }) {
 //   • open, but you can't           → dashed and inert (past round, or
 //                                      a viewer with no linked player)
 //   • yours                         → teal, tap to give it up
-//   • someone else's                → plain name; a tap does nothing
-//                                      unless you're the commissioner,
-//                                      who can clear it
+//   • someone else's                → plain name, inert
+//
+// A COMMISSIONER overrides all of that: every spot on a live round opens
+// the spot manager instead, since assigning, swapping and clearing are
+// all things they may want to do to any spot, occupied or not. They
+// reach their own claim through the same picker — one extra tap, in
+// exchange for one predictable behavior rather than "sometimes it
+// claims, sometimes it manages."
 //
 // `mine` is styling and `canRelease` is permission, and they are
 // separate on purpose: on a PAST round your spot still reads as yours
 // (teal, "You're In") but nothing on the sheet is tappable any more.
-function Spot({ pid, name, mine, canClaim, canRelease, canClear, busy, onClaim, onClear }) {
-  const interactive = (!pid && canClaim) || (pid && ((mine && canRelease) || canClear));
+function Spot({ pid, name, mine, canClaim, canRelease, canManage, busy, onClaim, onRelease, onManage }) {
+  const interactive = canManage || (!pid && canClaim) || (pid && mine && canRelease);
   const label = pid ? name : "Open";
 
   const base = {
@@ -285,20 +294,108 @@ function Spot({ pid, name, mine, canClaim, canRelease, canClear, busy, onClaim, 
 
   if (!interactive) return <div style={style}>{label}</div>;
 
+  const ariaLabel = canManage
+    ? `${label} — tap to manage spot`
+    : pid ? `${label} — tap to give up` : "Open spot — tap to claim";
+
   return (
     <button
-      onClick={pid ? onClear : onClaim}
+      onClick={canManage ? onManage : (pid ? onRelease : onClaim)}
       disabled={busy}
-      aria-label={pid ? `${label} — tap to remove` : "Open spot — tap to claim"}
+      aria-label={ariaLabel}
       style={{ ...style, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1 }}
     >{label}</button>
+  );
+}
+
+// ── Commissioner spot manager ─────────────────────────────────────
+//
+// One popup covering assign, swap and remove, because from the
+// commissioner's side they're the same question: "who should be in this
+// spot?" Picking someone already on the sheet swaps the two; picking
+// someone who isn't seats them (bumping the current occupant off);
+// Clear empties it.
+//
+// Players stay listed even when they're already seated — that IS the
+// swap affordance, so hiding them would remove the feature.
+export function SpotManager({ round, g, s, players, grid, onAssign, onClear, onClose }) {
+  const occupant = grid?.[g]?.[s] || null;
+  const teeTime = buildFunGroups(round)[g]?.teeTime || "";
+
+  // Where each player currently sits, so the list can say so rather than
+  // making the commissioner cross-reference the sheet behind the popup.
+  const seatOf = useMemo(() => {
+    const m = {};
+    (grid || []).forEach((row, gi) => row.forEach(pid => { if (pid) m[pid] = gi; }));
+    return m;
+  }, [grid]);
+
+  const sorted = useMemo(
+    () => [...(players || [])].sort((a, b) => (a.name || "").localeCompare(b.name || "")),
+    [players]
+  );
+
+  return (
+    <Popup onClose={onClose} maxWidth={380} padding={16} showClose>
+      <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: K.teal, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 4 }}>
+        {teeTime} · Spot {s + 1}
+      </div>
+      <div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 12 }}>
+        {occupant
+          ? "Pick someone else to swap or replace them."
+          : "Pick a player for this spot."}
+      </div>
+
+      {occupant && (
+        <button
+          onClick={onClear}
+          style={{
+            width: "100%", padding: "10px 12px", borderRadius: 8, marginBottom: 12,
+            background: "transparent", border: `1px solid ${K.red}40`, color: K.red,
+            fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer",
+          }}
+        >Clear this spot</button>
+      )}
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {sorted.map(p => {
+          const here = p.id === occupant;
+          const seated = seatOf[p.id];
+          return (
+            <button
+              key={p.id}
+              onClick={() => { if (!here) onAssign(p.id); }}
+              disabled={here}
+              style={{
+                display: "flex", alignItems: "center", gap: 8, width: "100%",
+                padding: "9px 10px", borderRadius: 8, textAlign: "left",
+                background: here ? K.teal + "14" : K.inp,
+                border: `1px solid ${here ? K.teal + "60" : K.bdr}`,
+                color: here ? K.teal : K.t1,
+                fontSize: FS.sm, fontWeight: FW.semibold,
+                cursor: here ? "default" : "pointer",
+              }}
+            >
+              <span style={{ flex: 1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{p.name}</span>
+              {here ? (
+                <span style={{ fontSize: FS.micro, color: K.teal }}>here now</span>
+              ) : seated !== undefined ? (
+                // Tapping this one is a swap, and it should say so before
+                // the tap rather than surprise you after it.
+                <span style={{ fontSize: FS.micro, color: K.act }}>swap · group {seated + 1}</span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+    </Popup>
   );
 }
 
 // ── One round's card ──────────────────────────────────────────────
 function FunRoundCard({
   round, players, myPid, isComm, isPast, course, funScoreIndex,
-  onClaim, onRelease, onEdit, onDelete, onScore, busy,
+  onClaim, onRelease, onManage, onEdit, onDelete, onScore, busy,
 }) {
   const groups = useMemo(() => buildFunGroups(round), [round]);
   const { filled, total } = funRoundCounts(round);
@@ -362,10 +459,11 @@ function FunRoundCard({
                       mine={!!pid && pid === myPid}
                       canClaim={!isPast && !!myPid}
                       canRelease={!isPast}
-                      canClear={isComm && !isPast}
+                      canManage={isComm && !isPast}
                       busy={busy}
                       onClaim={() => onClaim(round, g.idx, s)}
-                      onClear={() => onRelease(round, g.idx, s, pid)}
+                      onRelease={() => onRelease(round, g.idx, s, pid)}
+                      onManage={() => onManage(round, g.idx, s)}
                     />
                   ))}
                 </div>
@@ -469,8 +567,8 @@ export function FunRounds({
 }) {
   const [formFor, setFormFor] = useState(null);   // round object | "new" | null
   const [confirmDelete, setConfirmDelete] = useState(null);
-  // { round, g, s, name } — commissioner clearing someone else's spot.
-  const [confirmClear, setConfirmClear] = useState(null);
+  // { round, g, s } — the spot whose commissioner manager is open.
+  const [managing, setManaging] = useState(null);
   // { round, groupIdx, pids } — the group whose card is open for entry.
   const [scoring, setScoring] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -487,8 +585,8 @@ export function FunRounds({
   // Popups suppress pull-to-refresh app-side, same as every other page
   // that opens one.
   useEffect(() => {
-    if (setPopupOpen) setPopupOpen(!!formFor || !!confirmDelete || !!confirmClear || !!scoring);
-  }, [formFor, confirmDelete, confirmClear, scoring, setPopupOpen]);
+    if (setPopupOpen) setPopupOpen(!!formFor || !!confirmDelete || !!managing || !!scoring);
+  }, [formFor, confirmDelete, managing, scoring, setPopupOpen]);
 
   // Flat card lookup keyed `${roundId}_${pid}`, rebuilt when the score
   // subscription fires. Every card on the page reads from this one index
@@ -564,15 +662,9 @@ export function FunRounds({
     }
   };
 
-  // Release a spot. Your own goes immediately; clearing SOMEONE ELSE
-  // (commissioner only) routes through a confirm — that's a person
-  // losing their tee time because of a mis-tap on a small target.
-  const handleRelease = async (round, g, s, pid) => {
-    if (pid && pid !== myPid) {
-      const p = players.find(x => x.id === pid);
-      setConfirmClear({ round, g, s, name: p ? lastNamesOnly(p.name) : "this player" });
-      return;
-    }
+  // Give up your own spot. Commissioners never reach this — every spot
+  // routes them to the manager instead.
+  const handleRelease = async (round, g, s) => {
     const patch = releaseSlotPatch(round, g, s);
     if (!patch) return;
     setBusyId(round.id);
@@ -584,13 +676,34 @@ export function FunRounds({
     }
   };
 
-  const handleConfirmClear = async () => {
-    const c = confirmClear;
-    setConfirmClear(null);
-    if (!c) return;
-    const patch = releaseSlotPatch(c.round, c.g, c.s);
+  // Commissioner: seat a player, swapping if they're already on the
+  // sheet. assignSlotPatch decides which of those it is; this only has
+  // to persist the result and say what happened.
+  const handleAssign = async (pid) => {
+    const m = managing;
+    if (!m) return;
+    const patch = assignSlotPatch(m.round, pid, m.g, m.s);
+    setManaging(null);
     if (!patch) return;
-    const ok = await saveFunRound({ id: c.round.id, slots: patch });
+    setBusyId(m.round.id);
+    try {
+      const ok = await saveFunRound({ id: m.round.id, slots: patch });
+      toast(
+        ok ? (Object.keys(patch).length > 1 ? "Players swapped." : "Spot assigned.") : "Couldn't update the tee sheet.",
+        ok ? "success" : "error"
+      );
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleManagerClear = async () => {
+    const m = managing;
+    setManaging(null);
+    if (!m) return;
+    const patch = releaseSlotPatch(m.round, m.g, m.s);
+    if (!patch) return;
+    const ok = await saveFunRound({ id: m.round.id, slots: patch });
     if (!ok) toast("Couldn't clear that spot.", "error");
   };
 
@@ -631,6 +744,7 @@ export function FunRounds({
     onEdit: (r) => setFormFor(r),
     onDelete: (r) => setConfirmDelete(r),
     onScore: (round, groupIdx, pids) => setScoring({ round, groupIdx, pids }),
+    onManage: (round, g, s) => setManaging({ round, g, s }),
   };
 
   const nothingAtAll = upcoming.length === 0 && past.length === 0;
@@ -731,17 +845,19 @@ export function FunRounds({
         );
       })()}
 
-      <ConfirmModal
-        modal={confirmClear ? {
-          eyebrow: confirmClear.round.date || "",
-          title: `Remove ${confirmClear.name}?`,
-          message: "They'll lose their spot and anyone can claim it.",
-          confirmLabel: "Remove",
-          destructive: true,
-          onConfirm: handleConfirmClear,
-          onCancel: () => setConfirmClear(null),
-        } : null}
-      />
+      {managing && (
+        <SpotManager
+          key={`${managing.round.id}_${managing.g}_${managing.s}`}
+          round={managing.round}
+          g={managing.g}
+          s={managing.s}
+          players={players}
+          grid={readSlots(managing.round)}
+          onAssign={handleAssign}
+          onClear={handleManagerClear}
+          onClose={() => setManaging(null)}
+        />
+      )}
     </div>
   );
 }

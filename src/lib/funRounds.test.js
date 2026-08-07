@@ -16,6 +16,7 @@ import {
   isSignedUp,
   funRoundCounts,
   claimSlotPatch,
+  assignSlotPatch,
   releaseSlotPatch,
   pruneSlotsPatch,
   splitFunRounds,
@@ -207,6 +208,59 @@ describe("claimSlotPatch", () => {
 
   it("refuses a null player id", () => {
     expect(claimSlotPatch(round(), null, 0, 0)).toBeNull();
+  });
+});
+
+describe("assignSlotPatch — the commissioner's one operation", () => {
+  it("assigns an unseated player to an empty spot", () => {
+    expect(assignSlotPatch(round(), "p1", 0, 2)).toEqual({ [slotKey(0, 2)]: "p1" });
+  });
+
+  it("replaces the occupant when the incoming player wasn't on the sheet", () => {
+    // "Dan can't make it, put Ed in his place" — Dan comes off entirely.
+    const r = round({ slots: { [slotKey(0, 0)]: "dan" } });
+    expect(assignSlotPatch(r, "ed", 0, 0)).toEqual({ [slotKey(0, 0)]: "ed" });
+  });
+
+  it("MOVES a seated player to an empty spot, vacating the old one", () => {
+    const r = round({ slots: { [slotKey(0, 0)]: "p1" } });
+    expect(assignSlotPatch(r, "p1", 1, 3)).toEqual({
+      [slotKey(1, 3)]: "p1",
+      [slotKey(0, 0)]: null,
+    });
+  });
+
+  it("SWAPS two seated players — they trade places in one patch", () => {
+    // The reason the occupant lands in the mover's old spot instead of
+    // being dropped: fixing two people in the wrong groups is one tap,
+    // and the sheet is never briefly wrong.
+    const r = round({ slots: { [slotKey(0, 0)]: "p1", [slotKey(1, 2)]: "p2" } });
+    expect(assignSlotPatch(r, "p1", 1, 2)).toEqual({
+      [slotKey(1, 2)]: "p1",
+      [slotKey(0, 0)]: "p2",
+    });
+  });
+
+  it("is a no-op when the player is already in that spot", () => {
+    const r = round({ slots: { [slotKey(0, 0)]: "p1" } });
+    expect(assignSlotPatch(r, "p1", 0, 0)).toBeNull();
+  });
+
+  it("never leaves a player holding two spots", () => {
+    const r = round({ slots: { [slotKey(0, 0)]: "p1", [slotKey(1, 1)]: "p2" } });
+    const patch = assignSlotPatch(r, "p1", 1, 1);
+    const after = readSlots({ ...r, slots: { ...r.slots, ...patch } });
+    const seats = after.flat().filter(v => v === "p1");
+    expect(seats).toHaveLength(1);
+    // …and the displaced player is still on the sheet, not lost.
+    expect(after.flat()).toContain("p2");
+  });
+
+  it("refuses coordinates off the sheet and a null player", () => {
+    const r = round({ groupCount: 2, groupSize: 4 });
+    expect(assignSlotPatch(r, "p1", 2, 0)).toBeNull();
+    expect(assignSlotPatch(r, "p1", 0, 4)).toBeNull();
+    expect(assignSlotPatch(r, null, 0, 0)).toBeNull();
   });
 });
 

@@ -232,6 +232,38 @@ export function claimSlotPatch(round, pid, g, s) {
   return patch;
 }
 
+/**
+ * Commissioner action: put `pid` in (g, s), whoever is there now.
+ *
+ * One function covers assign, move and swap, because they're the same
+ * operation seen from different starting states:
+ *
+ *   player off the sheet  → empty spot  = assign
+ *   player off the sheet  → taken spot  = replace (the occupant comes off)
+ *   player on the sheet   → empty spot  = move
+ *   player on the sheet   → taken spot  = SWAP (they trade places)
+ *
+ * The swap case is why the occupant goes into the mover's old spot
+ * rather than being dropped: "Dan and Ed are in the wrong groups" is one
+ * tap, not a clear-and-two-assigns that leaves the sheet briefly wrong.
+ *
+ * Still a single merge patch, so no intermediate state is ever visible
+ * to anyone else watching the sheet.
+ */
+export function assignSlotPatch(round, pid, g, s) {
+  if (!pid) return null;
+  const grid = readSlots(round);
+  if (!grid[g] || g < 0 || s < 0 || s >= grid[g].length) return null;
+  const occupant = grid[g][s];
+  if (occupant === pid) return null;   // already sitting there — nothing to do
+  const from = findPlayerSlot(round, pid);
+  const patch = { [slotKey(g, s)]: pid };
+  // When the mover came from elsewhere, their old spot receives whoever
+  // they displaced — or null if the target was empty.
+  if (from) patch[slotKey(from.g, from.s)] = occupant;
+  return patch;
+}
+
 /** Free a spot. Returns null when it's already open. */
 export function releaseSlotPatch(round, g, s) {
   const grid = readSlots(round);

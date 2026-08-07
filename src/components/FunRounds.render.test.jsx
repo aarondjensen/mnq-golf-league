@@ -15,11 +15,12 @@
 
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { FunRounds } from "./FunRounds.jsx";
+import { FunRounds, SpotManager } from "./FunRounds.jsx";
 import { slotKey } from "../lib/funRounds";
 
 const CLAIMABLE = "Open spot — tap to claim";
-const removable = (name) => `${name} — tap to remove`;
+const giveUp = (name) => `${name} — tap to give up`;
+const manageable = (label) => `${label} — tap to manage spot`;
 
 const players = [
   { id: "p1", name: "Aaron Jensen" },
@@ -136,23 +137,29 @@ describe("FunRounds — who can tap what", () => {
     expect(count(html, CLAIMABLE)).toBe(8);
   });
 
-  it("lets a player release their own spot but not someone else's", () => {
+  it("lets a player give up their own spot but not someone else's", () => {
     const html = render({
       funRounds: [round({ slots: { [slotKey(0, 0)]: "p1", [slotKey(0, 1)]: "p2" } })],
     });
-    expect(html).toContain(removable("Jensen"));
-    expect(html).not.toContain(removable("Vigo"));
+    expect(html).toContain(giveUp("Jensen"));
+    expect(html).not.toContain(giveUp("Vigo"));
     expect(html).toContain("You&#x27;re In");
   });
 
-  it("lets the commissioner clear anyone's spot", () => {
+  it("routes EVERY spot to the manager for a commissioner", () => {
+    // Occupied or open, a commissioner's tap opens the picker — that's
+    // where assign, swap and clear all live.
     const html = render({
       isComm: true,
       leagueUser: { playerId: "p3", isCommissioner: true },
-      funRounds: [round({ slots: { [slotKey(0, 0)]: "p1", [slotKey(0, 1)]: "p2" } })],
+      funRounds: [round({ groupCount: 1, slots: { [slotKey(0, 0)]: "p1", [slotKey(0, 1)]: "p2" } })],
     });
-    expect(html).toContain(removable("Jensen"));
-    expect(html).toContain(removable("Vigo"));
+    expect(html).toContain(manageable("Jensen"));
+    expect(html).toContain(manageable("Vigo"));
+    expect(html).toContain(manageable("Open"));
+    // The player-only affordances are gone for them.
+    expect(html).not.toContain(giveUp("Jensen"));
+    expect(html).not.toContain(CLAIMABLE);
   });
 
   it("offers nothing tappable to a viewer with no linked player", () => {
@@ -178,7 +185,7 @@ describe("FunRounds — past rounds", () => {
     expect(html).toContain("Past");
     expect(html).toContain("Jensen");
     expect(html).not.toContain(CLAIMABLE);
-    expect(html).not.toContain(removable("Jensen"));
+    expect(html).not.toContain(giveUp("Jensen"));
   });
 
   it("lets the commissioner delete a past round but not edit it", () => {
@@ -190,5 +197,51 @@ describe("FunRounds — past rounds", () => {
   it("lets the commissioner edit an upcoming round", () => {
     const html = render({ isComm: true, funRounds: [round()] });
     expect(html).toContain(">Edit<");
+  });
+});
+
+describe("SpotManager — the commissioner's assign / swap / clear popup", () => {
+  const grid = [["p1", "p2", null, null], ["p3", null, null, null]];
+  const r = round({ groupCount: 2 });
+  const manager = (g, s) => renderToStaticMarkup(
+    <SpotManager
+      round={r} g={g} s={s} players={players} grid={grid}
+      onAssign={() => {}} onClear={() => {}} onClose={() => {}}
+    />
+  );
+
+  it("names the spot by tee time and position", () => {
+    expect(manager(1, 2)).toContain("4:36 PM · Spot 3");
+  });
+
+  it("lists every player, so anyone can be seated", () => {
+    const html = manager(0, 2);
+    expect(html).toContain("Aaron Jensen");
+    expect(html).toContain("Bob Vigo");
+    expect(html).toContain("Cal Stevens");
+  });
+
+  it("labels a seated player as a SWAP, with the group they'd come from", () => {
+    // Tapping them trades places; saying so before the tap is the whole
+    // point — a silent swap is indistinguishable from a bug.
+    const html = manager(0, 2);
+    expect(html).toContain("swap · group 1");   // p1/p2 sit in group 1
+    expect(html).toContain("swap · group 2");   // p3 sits in group 2
+  });
+
+  it("marks the current occupant and does not offer them as a choice", () => {
+    const html = manager(0, 0);
+    expect(html).toContain("here now");
+    expect(html).toContain("disabled");
+  });
+
+  it("offers Clear only on an occupied spot", () => {
+    expect(manager(0, 0)).toContain("Clear this spot");
+    expect(manager(0, 2)).not.toContain("Clear this spot");
+  });
+
+  it("explains what tapping a name will do, per spot state", () => {
+    expect(manager(0, 0)).toContain("swap or replace");
+    expect(manager(0, 2)).toContain("Pick a player for this spot");
   });
 });
