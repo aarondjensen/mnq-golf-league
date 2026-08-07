@@ -28,7 +28,7 @@
 // file's expectations are pinned correctly.
 
 import { describe, it, expect } from "vitest";
-import { getCSS, buildStandingsForSeed, lockedRegularSeasonWeeks, computeRegularSeasonSeeds, isIndivGroupMatch, weekFullyAttested, weekFullyScored, findGroupResult, indivGroupKey, matchPids, currentPlayoffRoundIdx, orderByBracketIdx } from "./theme";
+import { getCSS, buildStandingsForSeed, lockedRegularSeasonWeeks, isPostseasonWeek, computeRegularSeasonSeeds, isIndivGroupMatch, weekFullyAttested, weekFullyScored, findGroupResult, indivGroupKey, matchPids, currentPlayoffRoundIdx, orderByBracketIdx } from "./theme";
 
 // Helpers that build fixtures concisely. Default values match what
 // computeMatchResult would produce for typical matches.
@@ -358,6 +358,35 @@ describe("buildStandingsForSeed", () => {
 // legacy-data tolerance, then assert the end-to-end effect through
 // computeRegularSeasonSeeds — the consumer that turns this set into the
 // frozen playoff seeding.
+describe("isPostseasonWeek", () => {
+  it("uses the isPlayoff flag as the fast path", () => {
+    expect(isPostseasonWeek({ week: 13, isPlayoff: true })).toBe(true);
+    expect(isPostseasonWeek({ week: 1, isPlayoff: false, matches: [{ team1: "a", team2: "b" }] })).toBe(false);
+  });
+
+  it("catches a bracket week whose isPlayoff flag is stale or missing", () => {
+    // Admin's generator preserves a locked week verbatim when the playoff
+    // block lands on it, so `isPlayoff: false` can survive on a week that
+    // holds bracket matches. bracketIdx and isConsolation are written only by
+    // the playoff seeding paths, so either one settles it.
+    expect(isPostseasonWeek({ week: 13, isPlayoff: false, matches: [{ team1: "a", team2: "b", bracketIdx: 0 }] })).toBe(true);
+    expect(isPostseasonWeek({ week: 13, matches: [{ team1: "a", team2: "b", isConsolation: true }] })).toBe(true);
+    // bracketIdx 0 is falsy — the check must be `!= null`, not truthiness.
+    expect(isPostseasonWeek({ week: 13, matches: [{ team1: "a", team2: "b", bracketIdx: 0 }] })).toBe(true);
+  });
+
+  it("does not over-reach — ordinary weeks stay regular season", () => {
+    // The fallback must be additive only. A regular pairing carries neither
+    // marker, so no amount of it can flip a week to postseason. This is what
+    // makes the rule safe for rainout-stretched seasons, where regular play
+    // runs past the configured regularWeeks count.
+    expect(isPostseasonWeek({ week: 14, matches: [{ team1: "a", team2: "b" }, { team1: "c", team2: "d" }] })).toBe(false);
+    expect(isPostseasonWeek({ week: 7, rainedOut: true, matches: [] })).toBe(false);
+    expect(isPostseasonWeek({ week: 3 })).toBe(false);
+    expect(isPostseasonWeek(null)).toBe(false);
+  });
+});
+
 describe("lockedRegularSeasonWeeks", () => {
   it("keeps locked regular-season weeks", () => {
     const set = lockedRegularSeasonWeeks([lockedWeek(1), lockedWeek(2)]);
@@ -385,13 +414,23 @@ describe("lockedRegularSeasonWeeks", () => {
   });
 
   it("treats weeks with no isPlayoff field as regular season", () => {
-    // Legacy schedule docs predate the flag. `isPlayoff !== true` (rather
-    // than `=== false`) is what keeps their history counting.
+    // Legacy schedule docs predate the flag. Absent the flag AND absent any
+    // bracket markers, a week is regular season — that keeps their history
+    // counting instead of silently vanishing from the standings.
     const set = lockedRegularSeasonWeeks([
       { week: 1, locked: true },
       { week: 2, locked: true, isPlayoff: false },
     ]);
     expect([...set].sort()).toEqual([1, 2]);
+  });
+
+  it("excludes a locked bracket week that is missing its isPlayoff flag", () => {
+    const set = lockedRegularSeasonWeeks([
+      { week: 1, locked: true, isPlayoff: false, matches: [{ team1: "a", team2: "b" }] },
+      { week: 2, locked: true, isPlayoff: false, matches: [{ team1: "a", team2: "b", bracketIdx: 0 }] },
+      { week: 3, locked: true, matches: [{ team1: "a", team2: "b", isConsolation: true }] },
+    ]);
+    expect([...set]).toEqual([1]);
   });
 
   it("handles null/undefined schedule and null entries without throwing", () => {

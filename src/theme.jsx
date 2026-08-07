@@ -570,6 +570,35 @@ export function deserializeLeagueConfig(cfg) {
   return { ...cfg, customSeedWeeks: deserializeSeedWeeks(cfg.customSeedWeeks) };
 }
 
+// ── Shared utility: is this schedule week part of the POSTSEASON? ──
+// `isPlayoff === true` is the intended flag and the fast path. But it is not
+// reliable on its own, because Admin's schedule generator PRESERVES a locked
+// week verbatim when the playoff block lands on it:
+//
+//     if (existing && existing.locked === true) { placeWeek({ ...existing }); }
+//
+// A week first written as regular season (`isPlayoff: false`), then locked,
+// then re-generated into the playoff block keeps its stale `false`. Such a
+// week is a playoff week in every way that matters — it holds bracket
+// matches — but a flag-only check counts it toward the regular season.
+//
+// So we fall back to the week's STRUCTURE. `bracketIdx` and `isConsolation`
+// are written exclusively by the playoff seeding paths (scheduleAutoSeed's
+// playoff loop and Admin's handleSeedWeek playoff branch); regular-season
+// pairings never carry either. That makes the fallback purely additive — it
+// can only catch weeks that literally contain bracket-seeded matches, so it
+// can never misclassify a genuine regular-season week.
+//
+// Deliberately NOT inferred from week NUMBER (e.g. `week > regularWeeks`):
+// `regularWeeks` is a COUNT, not a boundary, and every rained-out week pushes
+// real regular-season play past it. That rule would silently drop legitimate
+// weeks from the standings in any season with a rainout.
+export function isPostseasonWeek(wk) {
+  if (!wk) return false;
+  if (wk.isPlayoff === true) return true;
+  return (wk.matches || []).some(m => m && (m.isConsolation === true || m.bracketIdx != null));
+}
+
 // ── Shared utility: the set of FINALIZED REGULAR-SEASON week numbers ──
 // One definition of "the regular season period", used by every consumer that
 // must not let postseason play leak into a regular-season figure:
@@ -577,15 +606,14 @@ export function deserializeLeagueConfig(cfg) {
 //   • buildPlayoffSeedMap's live seed preview
 //   • computeRegularSeasonSeeds (the frozen playoff seeding)
 // A week qualifies when it is locked (finalized — mid-week partial scores must
-// never move a standings row) and is not a playoff week. Playoff weeks are
-// excluded wholesale, which covers the consolation pairings too: those exist
-// only to give non-bracket teams a tee time and are not regular-season games.
-// `isPlayoff !== true` rather than `=== false` so legacy schedule entries that
-// predate the flag still count as regular season.
+// never move a standings row) and is not a postseason week. Postseason weeks
+// are excluded wholesale, which covers the consolation pairings too: those
+// exist only to give non-bracket teams a tee time and are not regular-season
+// games.
 export function lockedRegularSeasonWeeks(schedule) {
   const set = new Set();
   (schedule || []).forEach(wk => {
-    if (wk && wk.locked === true && wk.isPlayoff !== true) set.add(wk.week);
+    if (wk && wk.locked === true && !isPostseasonWeek(wk)) set.add(wk.week);
   });
   return set;
 }
