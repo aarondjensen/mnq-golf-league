@@ -11,6 +11,7 @@ import { IndivGroupCard } from "../components/IndivGroupCard";
 import { parseTiebreakerResult, TeamMatchupCard, ResultCenter } from "../TeamMatchupCard";
 import { EditConfirmationPopup } from "../components/EditConfirmationPopup";
 import { FunRounds } from "../components/FunRounds";
+import { splitFunRounds } from "../lib/funRounds";
 
 // Column widths for the "My Schedule" compact row + its header bars.
 // Defined once so the row and its header always line up; the audit found
@@ -35,11 +36,43 @@ const MY_SCHEDULE_COLS = {
 export default function ScheduleView({ groupResults, schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, fetchAllScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen, appToast, dataLoaded, attendance, saveAttendance, funRounds, saveFunRound, deleteFunRound, funScores, saveFunScores, season }) {
   const [showAll, setShowAll] = useState(false);
   const [myOnly, setMyOnly] = useState(true);
+  // ── Fun view + its default ────────────────────────────────────────
   // Third filter alongside My Schedule / Full League. Casual tee times
   // outside the official schedule; see lib/funRounds.js. Kept as its own
   // boolean rather than folded into `myOnly` because it swaps the entire
   // body of the page, not just which weeks are listed.
-  const [funView, setFunView] = useState(false);
+  //
+  // The Schedule tab OPENS on Fun whenever a fun round is coming up.
+  // When the commissioner has posted one, that's the thing people are
+  // opening the app to deal with — claiming a spot is time-sensitive in
+  // a way that re-reading a league matchup isn't.
+  //
+  // Gated on UPCOMING rounds specifically, not "any round exists". A fun
+  // round from three months ago would otherwise hijack this tab away
+  // from My Schedule permanently, and the moment the last one falls into
+  // the past the tab quietly goes back to normal.
+  //
+  // Note this is deliberately not applied to Standings. There the FUN
+  // tab sits beside season-phase tabs whose own default already tracks
+  // where the season is, and a casual round shouldn't outrank the
+  // playoff bracket.
+  const funYear = season || leagueConfig?.year || new Date().getFullYear();
+  const hasUpcomingFun = useMemo(
+    () => splitFunRounds(funRounds, funYear).upcoming.length > 0,
+    [funRounds, funYear]
+  );
+  // Seeded from the default rather than assigned by the effect below, so
+  // the FIRST paint is already right — with a cached Firestore snapshot
+  // the rounds are present at mount, and an effect-only default would
+  // show My Schedule for a frame and then swap.
+  const [funView, setFunView] = useState(hasUpcomingFun);
+  // The default yields to the user the moment they touch the filter bar.
+  // Tracked in a ref (not state) so re-selecting the same filter still
+  // counts as a choice and never triggers a re-render of its own.
+  const userPickedView = useRef(false);
+  useEffect(() => {
+    if (!userPickedView.current) setFunView(hasUpcomingFun);
+  }, [hasUpcomingFun]);
   const [expandedWeeks, setExpandedWeeks] = useState({});
   const [expandedMatchKey, setExpandedMatchKey] = useState(null); // "week_mi"
   const [matchScores, setMatchScores] = useState({}); // { week: { key: score } }
@@ -1617,19 +1650,19 @@ export default function ScheduleView({ groupResults, schedule, teams, players, m
             the bar, `myOnly` / `!myOnly` no longer partition it — the
             negation alone would leave Full League lit while Fun is open. */}
         {myTeam && (
-          <button onClick={() => { setMyOnly(true); setShowAll(true); setFunView(false); }} style={{
+          <button onClick={() => { userPickedView.current = true; setMyOnly(true); setShowAll(true); setFunView(false); }} style={{
             padding: "7px 10px", borderRadius: 6, cursor: "pointer", fontSize: FS.xs, fontWeight: FW.semibold,
             background: myOnly && !funView ? K.acc : K.card, color: myOnly && !funView ? K.bg : K.t2,
             border: `1px solid ${myOnly && !funView ? K.acc : K.bdr}`, whiteSpace: "nowrap",
           }}>My Schedule</button>
         )}
-        <button onClick={() => { setShowAll(true); setMyOnly(false); setFunView(false); }} style={{
+        <button onClick={() => { userPickedView.current = true; setShowAll(true); setMyOnly(false); setFunView(false); }} style={{
           padding: "7px 10px", borderRadius: 6, cursor: "pointer", fontSize: FS.xs, fontWeight: FW.semibold,
           background: !myOnly && !funView ? K.acc : K.card, color: !myOnly && !funView ? K.bg : K.t2,
           border: `1px solid ${!myOnly && !funView ? K.acc : K.bdr}`, whiteSpace: "nowrap",
         }}>Full League</button>
         {showFunTab && (
-          <button onClick={() => setFunView(true)} style={{
+          <button onClick={() => { userPickedView.current = true; setFunView(true); }} style={{
             padding: "7px 10px", borderRadius: 6, cursor: "pointer", fontSize: FS.xs, fontWeight: FW.semibold,
             background: funView ? K.teal : K.card, color: funView ? K.bg : K.t2,
             border: `1px solid ${funView ? K.teal : K.bdr}`, whiteSpace: "nowrap",
