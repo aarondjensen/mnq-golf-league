@@ -40,7 +40,7 @@ const withPlayoffs = [
 
 const funRound = {
   id: "r1", season: YEAR, date: "Dec 30", startTime: "4:28 PM",
-  teeInterval: 8, groupSize: 4, side: "front", signups: [], createdAt: 1,
+  teeInterval: 8, groupCount: 3, groupSize: 4, side: "front", slots: {}, createdAt: 1,
 };
 
 const baseProps = {

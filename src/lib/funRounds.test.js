@@ -9,16 +9,22 @@
 
 import { describe, it, expect } from "vitest";
 import {
-  normalizeSignups,
-  isSignedUp,
-  withSignup,
+  slotKey,
+  readSlots,
   buildFunGroups,
+  findPlayerSlot,
+  isSignedUp,
+  funRoundCounts,
+  claimSlotPatch,
+  releaseSlotPatch,
+  pruneSlotsPatch,
   splitFunRounds,
   isoToScheduleDate,
   scheduleDateToIso,
   validateFunRound,
   normalizeStartTime,
   funGroupSize,
+  funGroupCount,
   funTeeInterval,
 } from "./funRounds";
 
@@ -28,113 +34,251 @@ const round = (over = {}) => ({
   date: "Sep 1",
   startTime: "4:28 PM",
   teeInterval: 8,
+  groupCount: 2,
   groupSize: 4,
-  signups: [],
+  slots: {},
   ...over,
 });
 
-describe("normalizeSignups", () => {
-  it("preserves join order", () => {
-    expect(normalizeSignups(round({ signups: ["c", "a", "b"] }))).toEqual(["c", "a", "b"]);
+// Convenience: build a slots map from a grid literal, so fixtures read
+// like the tee sheet they represent.
+const slotsFrom = (grid) => {
+  const out = {};
+  grid.forEach((row, g) => row.forEach((pid, s) => { out[slotKey(g, s)] = pid; }));
+  return out;
+};
+
+describe("readSlots", () => {
+  it("always returns a full groupCount x groupSize grid", () => {
+    const grid = readSlots(round({ groupCount: 3, groupSize: 4 }));
+    expect(grid).toHaveLength(3);
+    expect(grid.every(row => row.length === 4)).toBe(true);
+    expect(grid.flat().every(v => v === null)).toBe(true);
   });
 
-  it("drops duplicates, keeping the FIRST occurrence", () => {
-    // Keeping the first is what protects the earlier signup's tee time
-    // if a double-write ever appends someone twice.
-    expect(normalizeSignups(round({ signups: ["a", "b", "a"] }))).toEqual(["a", "b"]);
+  it("places claims at their stored coordinates, not in arrival order", () => {
+    // The whole point of the model: p1 sits in the SECOND group's third
+    // spot because that is the spot they tapped.
+    const grid = readSlots(round({ slots: { [slotKey(1, 2)]: "p1" } }));
+    expect(grid[0]).toEqual([null, null, null, null]);
+    expect(grid[1]).toEqual([null, null, "p1", null]);
   });
 
-  it("tolerates a missing or malformed signups field", () => {
-    expect(normalizeSignups(round({ signups: undefined }))).toEqual([]);
-    expect(normalizeSignups(round({ signups: "nope" }))).toEqual([]);
-    expect(normalizeSignups(round({ signups: ["a", null, "", 7, "b"] }))).toEqual(["a", "b"]);
-    expect(normalizeSignups(null)).toEqual([]);
-  });
-});
-
-describe("withSignup", () => {
-  it("appends a joiner to the end", () => {
-    expect(withSignup(round({ signups: ["a", "b"] }), "c", true)).toEqual(["a", "b", "c"]);
+  it("treats null and missing identically — both are an open spot", () => {
+    const grid = readSlots(round({ slots: { [slotKey(0, 0)]: null } }));
+    expect(grid[0][0]).toBeNull();
   });
 
-  it("is idempotent — joining twice does not duplicate or reorder", () => {
-    const once = withSignup(round({ signups: ["a"] }), "b", true);
-    expect(withSignup(round({ signups: once }), "b", true)).toEqual(["a", "b"]);
+  it("ignores claims outside the current sheet", () => {
+    // Left behind when the commissioner shrank the round; must not
+    // resurface just because the grid is being read.
+    const grid = readSlots(round({ groupCount: 1, slots: { [slotKey(3, 0)]: "p9" } }));
+    expect(grid).toHaveLength(1);
+    expect(grid.flat()).not.toContain("p9");
   });
 
-  it("removes a leaver without reshuffling the others", () => {
-    // b leaves out of the middle; a keeps the first slot and c moves up
-    // rather than everyone being re-sorted.
-    expect(withSignup(round({ signups: ["a", "b", "c"] }), "b", false)).toEqual(["a", "c"]);
+  it("seats a duplicated player only once, at their first spot", () => {
+    const grid = readSlots(round({
+      slots: { [slotKey(0, 1)]: "p1", [slotKey(1, 0)]: "p1" },
+    }));
+    expect(grid[0][1]).toBe("p1");
+    expect(grid[1][0]).toBeNull();
   });
 
-  it("leaving when not signed up is a no-op", () => {
-    expect(withSignup(round({ signups: ["a"] }), "z", false)).toEqual(["a"]);
+  it("ignores junk values", () => {
+    const grid = readSlots(round({ slots: { [slotKey(0, 0)]: 7, [slotKey(0, 1)]: "" } }));
+    expect(grid[0][0]).toBeNull();
+    expect(grid[0][1]).toBeNull();
   });
 
-  it("ignores a null player id", () => {
-    expect(withSignup(round({ signups: ["a"] }), null, true)).toEqual(["a"]);
-  });
-});
-
-describe("isSignedUp", () => {
-  it("reports membership", () => {
-    expect(isSignedUp(round({ signups: ["a"] }), "a")).toBe(true);
-    expect(isSignedUp(round({ signups: ["a"] }), "b")).toBe(false);
+  it("tolerates a missing or malformed slots field", () => {
+    expect(readSlots(round({ slots: undefined })).flat().every(v => v === null)).toBe(true);
+    expect(readSlots(round({ slots: "nope" })).flat().every(v => v === null)).toBe(true);
+    expect(readSlots(null)).toHaveLength(3); // falls back to the default group count
   });
 
-  it("is false for a null player id", () => {
-    expect(isSignedUp(round({ signups: ["a"] }), null)).toBe(false);
+  it("migrates a legacy signups array when there is no slot data", () => {
+    const grid = readSlots({ groupCount: 2, groupSize: 4, signups: ["a", "b", "c", "d", "e"] });
+    expect(grid[0]).toEqual(["a", "b", "c", "d"]);
+    expect(grid[1]).toEqual(["e", null, null, null]);
+  });
+
+  it("prefers real slot data over a stale legacy array", () => {
+    const grid = readSlots({
+      groupCount: 2, groupSize: 4,
+      signups: ["old1", "old2"],
+      slots: { [slotKey(0, 0)]: "new1" },
+    });
+    expect(grid[0][0]).toBe("new1");
+    expect(grid.flat()).not.toContain("old1");
+  });
+
+  it("does not overflow the sheet when the legacy array is longer than it", () => {
+    const grid = readSlots({ groupCount: 1, groupSize: 2, signups: ["a", "b", "c", "d"] });
+    expect(grid).toHaveLength(1);
+    expect(grid[0]).toEqual(["a", "b"]);
   });
 });
 
 describe("buildFunGroups", () => {
-  it("chunks in join order and staggers tee times by the interval", () => {
-    const g = buildFunGroups(round({ signups: ["a", "b", "c", "d", "e", "f", "g", "h"] }));
-    expect(g).toHaveLength(2);
-    expect(g[0].pids).toEqual(["a", "b", "c", "d"]);
-    expect(g[0].teeTime).toBe("4:28 PM");
-    expect(g[1].pids).toEqual(["e", "f", "g", "h"]);
-    expect(g[1].teeTime).toBe("4:36 PM");
+  it("returns one entry per ACTIVATED tee time, including empty ones", () => {
+    // An activated-but-empty tee time is the thing a player is looking
+    // for, so it must render. This is the core difference from the old
+    // signup-order model, which only emitted groups that had people.
+    const g = buildFunGroups(round({ groupCount: 3, slots: {} }));
+    expect(g).toHaveLength(3);
+    expect(g[0].spots).toEqual([null, null, null, null]);
   });
 
-  it("puts a partial group last and still gives it a tee time", () => {
-    const g = buildFunGroups(round({ signups: ["a", "b", "c", "d", "e"] }));
-    expect(g).toHaveLength(2);
-    expect(g[1].pids).toEqual(["e"]);
-    expect(g[1].teeTime).toBe("4:36 PM");
-  });
-
-  it("returns no groups when nobody has signed up", () => {
-    expect(buildFunGroups(round())).toEqual([]);
-  });
-
-  it("honors a non-default group size", () => {
-    const g = buildFunGroups(round({ groupSize: 2, signups: ["a", "b", "c"] }));
-    expect(g.map(x => x.pids)).toEqual([["a", "b"], ["c"]]);
+  it("staggers tee times by the interval", () => {
+    const g = buildFunGroups(round({ groupCount: 3, teeInterval: 8 }));
+    expect(g.map(x => x.teeTime)).toEqual(["4:28 PM", "4:36 PM", "4:44 PM"]);
   });
 
   it("rolls tee times past the hour correctly", () => {
-    const g = buildFunGroups(round({
-      startTime: "4:56 PM",
-      teeInterval: 10,
-      groupSize: 2,
-      signups: ["a", "b", "c", "d"],
-    }));
-    expect(g[0].teeTime).toBe("4:56 PM");
-    expect(g[1].teeTime).toBe("5:06 PM");
+    const g = buildFunGroups(round({ startTime: "4:56 PM", teeInterval: 10, groupCount: 2 }));
+    expect(g.map(x => x.teeTime)).toEqual(["4:56 PM", "5:06 PM"]);
+  });
+
+  it("exposes each spot in position order", () => {
+    const g = buildFunGroups(round({ slots: { [slotKey(0, 2)]: "p1" } }));
+    expect(g[0].spots).toEqual([null, null, "p1", null]);
   });
 });
 
-describe("funGroupSize / funTeeInterval clamping", () => {
+describe("findPlayerSlot / isSignedUp / funRoundCounts", () => {
+  const r = round({ slots: { [slotKey(1, 3)]: "p1" } });
+
+  it("finds a seated player's coordinates", () => {
+    expect(findPlayerSlot(r, "p1")).toEqual({ g: 1, s: 3 });
+  });
+
+  it("returns null for an unseated player or a null id", () => {
+    expect(findPlayerSlot(r, "p2")).toBeNull();
+    expect(findPlayerSlot(r, null)).toBeNull();
+  });
+
+  it("reports signed-up status from the sheet", () => {
+    expect(isSignedUp(r, "p1")).toBe(true);
+    expect(isSignedUp(r, "p2")).toBe(false);
+  });
+
+  it("counts filled spots against total capacity", () => {
+    expect(funRoundCounts(r)).toEqual({ filled: 1, total: 8 });
+    expect(funRoundCounts(round({ groupCount: 3, groupSize: 4 }))).toEqual({ filled: 0, total: 12 });
+  });
+});
+
+describe("claimSlotPatch", () => {
+  it("claims an open spot with a single-key patch", () => {
+    // One key is the concurrency guarantee: a merge write of exactly this
+    // object cannot disturb anyone else's spot.
+    expect(claimSlotPatch(round(), "p1", 0, 2)).toEqual({ [slotKey(0, 2)]: "p1" });
+  });
+
+  it("refuses a spot held by someone else", () => {
+    const r = round({ slots: { [slotKey(0, 0)]: "p2" } });
+    expect(claimSlotPatch(r, "p1", 0, 0)).toBeNull();
+  });
+
+  it("moves a seated player, freeing their old spot in the same patch", () => {
+    // Both keys in one merge means there is no instant where the player
+    // holds two spots, or none.
+    const r = round({ slots: { [slotKey(0, 0)]: "p1" } });
+    expect(claimSlotPatch(r, "p1", 1, 1)).toEqual({
+      [slotKey(1, 1)]: "p1",
+      [slotKey(0, 0)]: null,
+    });
+  });
+
+  it("is a no-op patch when re-tapping the spot you already hold", () => {
+    const r = round({ slots: { [slotKey(0, 0)]: "p1" } });
+    expect(claimSlotPatch(r, "p1", 0, 0)).toEqual({ [slotKey(0, 0)]: "p1" });
+  });
+
+  it("refuses coordinates off the sheet", () => {
+    const r = round({ groupCount: 2, groupSize: 4 });
+    expect(claimSlotPatch(r, "p1", 2, 0)).toBeNull();
+    expect(claimSlotPatch(r, "p1", 0, 4)).toBeNull();
+    expect(claimSlotPatch(r, "p1", -1, 0)).toBeNull();
+    expect(claimSlotPatch(r, "p1", 0, -1)).toBeNull();
+  });
+
+  it("refuses a null player id", () => {
+    expect(claimSlotPatch(round(), null, 0, 0)).toBeNull();
+  });
+});
+
+describe("releaseSlotPatch", () => {
+  it("nulls the released key", () => {
+    const r = round({ slots: { [slotKey(1, 2)]: "p1" } });
+    expect(releaseSlotPatch(r, 1, 2)).toEqual({ [slotKey(1, 2)]: null });
+  });
+
+  it("returns null when the spot is already open", () => {
+    expect(releaseSlotPatch(round(), 0, 0)).toBeNull();
+  });
+
+  it("returns null for coordinates off the sheet", () => {
+    expect(releaseSlotPatch(round({ groupCount: 1 }), 5, 0)).toBeNull();
+  });
+});
+
+describe("pruneSlotsPatch", () => {
+  it("nulls claims stranded by a shrink", () => {
+    // Without this, shrinking to 2 tee times and later growing back to 4
+    // would reseat people who were removed and never re-confirmed.
+    const r = round({
+      groupCount: 4,
+      slots: slotsFrom([["a"], ["b"], ["c"], ["d"]]),
+    });
+    expect(pruneSlotsPatch(r, 2, 4)).toEqual({
+      [slotKey(2, 0)]: null,
+      [slotKey(3, 0)]: null,
+    });
+  });
+
+  it("nulls claims stranded by a narrower group", () => {
+    const r = round({ slots: { [slotKey(0, 3)]: "a", [slotKey(0, 1)]: "b" } });
+    expect(pruneSlotsPatch(r, 2, 2)).toEqual({ [slotKey(0, 3)]: null });
+  });
+
+  it("leaves a pure growth alone", () => {
+    const r = round({ slots: { [slotKey(0, 0)]: "a" } });
+    expect(pruneSlotsPatch(r, 6, 4)).toEqual({});
+  });
+
+  it("ignores already-empty keys", () => {
+    const r = round({ groupCount: 4, slots: { [slotKey(3, 0)]: null } });
+    expect(pruneSlotsPatch(r, 1, 4)).toEqual({});
+  });
+
+  it("clears unparseable keys so a hand-edited doc can't haunt the round", () => {
+    const r = round({ slots: { garbage: "a" } });
+    expect(pruneSlotsPatch(r, 2, 4)).toEqual({ garbage: null });
+  });
+
+  it("returns an empty patch when there are no slots at all", () => {
+    expect(pruneSlotsPatch(round({ slots: undefined }), 2, 4)).toEqual({});
+  });
+});
+
+describe("clamping", () => {
   it("falls back to the foursome default on junk", () => {
     expect(funGroupSize({ groupSize: undefined })).toBe(4);
     expect(funGroupSize({ groupSize: "four" })).toBe(4);
   });
 
-  it("clamps out-of-range group sizes into 2–6", () => {
+  it("clamps out-of-range group sizes into 2-6", () => {
     expect(funGroupSize({ groupSize: 1 })).toBe(2);
     expect(funGroupSize({ groupSize: 99 })).toBe(6);
+  });
+
+  it("clamps out-of-range tee-time counts into 1-12", () => {
+    expect(funGroupCount({ groupCount: 0 })).toBe(1);
+    expect(funGroupCount({ groupCount: 99 })).toBe(12);
+    expect(funGroupCount({ groupCount: undefined })).toBe(3);
+    expect(funGroupCount({ groupCount: 3 })).toBe(3);
   });
 
   it("falls back to the default interval on an out-of-range value", () => {
@@ -244,8 +388,9 @@ describe("normalizeStartTime", () => {
     const groups = buildFunGroups({
       startTime: normalizeStartTime("4:28pm"),
       teeInterval: 8,
+      groupCount: 2,
       groupSize: 2,
-      signups: ["a", "b", "c"],
+      slots: {},
     });
     expect(groups[0].teeTime).toBe("4:28 PM");
     expect(groups[1].teeTime).toBe("4:36 PM");
@@ -261,7 +406,7 @@ describe("normalizeStartTime", () => {
 });
 
 describe("validateFunRound", () => {
-  const good = { date: "Sep 1", startTime: "4:28 PM", groupSize: 4, teeInterval: 8 };
+  const good = { date: "Sep 1", startTime: "4:28 PM", groupCount: 3, groupSize: 4, teeInterval: 8 };
 
   it("accepts a well-formed draft", () => {
     expect(validateFunRound(good)).toEqual([]);
@@ -292,7 +437,13 @@ describe("validateFunRound", () => {
     expect(validateFunRound({ ...good, teeInterval: 61 })).toHaveLength(1);
   });
 
+  it("rejects an out-of-range tee-time count", () => {
+    expect(validateFunRound({ ...good, groupCount: 0 })).toHaveLength(1);
+    expect(validateFunRound({ ...good, groupCount: 13 })).toHaveLength(1);
+  });
+
   it("reports every problem at once rather than stopping at the first", () => {
-    expect(validateFunRound({ date: "", startTime: "x", groupSize: 0, teeInterval: 0 })).toHaveLength(4);
+    expect(validateFunRound({ date: "", startTime: "x", groupCount: 0, groupSize: 0, teeInterval: 0 }))
+      .toHaveLength(5);
   });
 });

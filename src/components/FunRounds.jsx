@@ -31,16 +31,20 @@ import { Popup, ConfirmModal } from "./Popup";
 import {
   splitFunRounds,
   buildFunGroups,
-  normalizeSignups,
-  isSignedUp,
-  withSignup,
+  findPlayerSlot,
+  funRoundCounts,
+  claimSlotPatch,
+  releaseSlotPatch,
+  pruneSlotsPatch,
   validateFunRound,
   normalizeStartTime,
   isoToScheduleDate,
   scheduleDateToIso,
   funGroupSize,
+  funGroupCount,
   funTeeInterval,
   FUN_GROUP_SIZE,
+  FUN_GROUP_COUNT,
   FUN_TEE_INTERVAL,
 } from "../lib/funRounds";
 
@@ -64,6 +68,7 @@ function FunRoundForm({ round, season, defaults, onSave, onCancel, saving }) {
     dateIso: round ? scheduleDateToIso(round.date, round.season || season) : "",
     startTime: round?.startTime || defaults.startTime,
     teeInterval: round ? funTeeInterval(round) : defaults.teeInterval,
+    groupCount: round ? funGroupCount(round) : FUN_GROUP_COUNT,
     groupSize: round ? funGroupSize(round) : FUN_GROUP_SIZE,
     side: round?.side || "front",
     notes: round?.notes || "",
@@ -82,6 +87,7 @@ function FunRoundForm({ round, season, defaults, onSave, onCancel, saving }) {
       // the validator below rejects it.
       startTime: normalizeStartTime(draft.startTime),
       teeInterval: Number(draft.teeInterval),
+      groupCount: Number(draft.groupCount),
       groupSize: Number(draft.groupSize),
       side: draft.side,
       notes: draft.notes.trim(),
@@ -130,8 +136,17 @@ function FunRoundForm({ round, season, defaults, onSave, onCancel, saving }) {
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
-        <div style={{ width: 96 }}>
-          <div style={fieldLabel}>Per Group</div>
+        <div style={{ flex: 1 }}>
+          <div style={fieldLabel}>Tee Times</div>
+          <input
+            type="number" min="1" max="12"
+            value={draft.groupCount}
+            onChange={e => set({ groupCount: parseInt(e.target.value, 10) || "" })}
+            style={inputStyle}
+          />
+        </div>
+        <div style={{ flex: 1 }}>
+          <div style={fieldLabel}>Spots Each</div>
           <input
             type="number" min="2" max="6"
             value={draft.groupSize}
@@ -139,6 +154,21 @@ function FunRoundForm({ round, season, defaults, onSave, onCancel, saving }) {
             style={inputStyle}
           />
         </div>
+      </div>
+
+      {/* Shrinking the sheet drops people. Say so before they tap Save,
+          not after — the write is one tap away and there's no undo. */}
+      {editing && (Number(draft.groupCount) < funGroupCount(round) || Number(draft.groupSize) < funGroupSize(round)) && (
+        <div style={{
+          marginBottom: 10, padding: "8px 10px", borderRadius: 8,
+          background: K.warn + "12", border: `1px solid ${K.warn}40`,
+          color: K.warn, fontSize: FS.xs, lineHeight: 1.5,
+        }}>
+          Shrinking the sheet removes anyone in the spots you're cutting.
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
         <div style={{ flex: 1 }}>
           <div style={fieldLabel}>Nine</div>
           <div style={{ display: "flex", gap: 6 }}>
@@ -202,11 +232,62 @@ function FunRoundForm({ round, season, defaults, onSave, onCancel, saving }) {
   );
 }
 
+// ── One spot on the tee sheet ─────────────────────────────────────
+//
+// Four states, and the tap target differs in each:
+//   • open, and you can take it     → dashed "Open", tap to claim
+//   • open, but you can't           → dashed and inert (past round, or
+//                                      a viewer with no linked player)
+//   • yours                         → teal, tap to give it up
+//   • someone else's                → plain name; a tap does nothing
+//                                      unless you're the commissioner,
+//                                      who can clear it
+//
+// `mine` is styling and `canRelease` is permission, and they are
+// separate on purpose: on a PAST round your spot still reads as yours
+// (teal, "You're In") but nothing on the sheet is tappable any more.
+function Spot({ pid, name, mine, canClaim, canRelease, canClear, busy, onClaim, onClear }) {
+  const interactive = (!pid && canClaim) || (pid && ((mine && canRelease) || canClear));
+  const label = pid ? name : "Open";
+
+  const base = {
+    flex: "1 1 0", minWidth: 68, padding: "7px 6px", borderRadius: 7,
+    fontSize: FS.xs, fontWeight: FW.bold, textAlign: "center",
+    overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
+    transition: "background .15s, border-color .15s",
+  };
+
+  const style = pid
+    ? {
+        ...base,
+        background: mine ? K.teal + "1c" : K.inp,
+        border: `1px solid ${mine ? K.teal + "70" : K.bdr}`,
+        color: mine ? K.teal : K.t2,
+      }
+    : {
+        ...base,
+        background: "transparent",
+        border: `1px dashed ${canClaim ? K.teal + "70" : K.bdr}`,
+        color: canClaim ? K.teal : K.t3,
+      };
+
+  if (!interactive) return <div style={style}>{label}</div>;
+
+  return (
+    <button
+      onClick={pid ? onClear : onClaim}
+      disabled={busy}
+      aria-label={pid ? `${label} — tap to remove` : "Open spot — tap to claim"}
+      style={{ ...style, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1 }}
+    >{label}</button>
+  );
+}
+
 // ── One round's card ──────────────────────────────────────────────
-function FunRoundCard({ round, players, myPid, isComm, isPast, onJoin, onEdit, onDelete, busy }) {
+function FunRoundCard({ round, players, myPid, isComm, isPast, onClaim, onRelease, onEdit, onDelete, busy }) {
   const groups = useMemo(() => buildFunGroups(round), [round]);
-  const signups = normalizeSignups(round);
-  const joined = isSignedUp(round, myPid);
+  const { filled, total } = funRoundCounts(round);
+  const mySlot = findPlayerSlot(round, myPid);
 
   const nameFor = (pid) => {
     const p = players.find(x => x.id === pid);
@@ -216,7 +297,7 @@ function FunRoundCard({ round, players, myPid, isComm, isPast, onJoin, onEdit, o
   return (
     <div style={{
       background: K.card, borderRadius: CARD_RADIUS,
-      border: `1px solid ${joined && !isPast ? K.teal + "60" : K.bdr}`,
+      border: `1px solid ${mySlot && !isPast ? K.teal + "60" : K.bdr}`,
       overflow: "hidden", opacity: isPast ? 0.72 : 1,
     }}>
       {/* Header — date, name, nine */}
@@ -227,72 +308,65 @@ function FunRoundCard({ round, players, myPid, isComm, isPast, onJoin, onEdit, o
             {round.title ? <span style={{ color: K.t2, fontWeight: FW.semibold }}> · {round.title}</span> : null}
           </div>
           <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 2 }}>
-            {signups.length} {signups.length === 1 ? "player" : "players"}
-            {groups.length > 0 ? ` · ${groups.length} ${groups.length === 1 ? "group" : "groups"}` : ""}
+            {groups.length} {groups.length === 1 ? "tee time" : "tee times"} · {filled} of {total} spots filled
           </div>
         </div>
         <Pill color={K.logoBright} style={{ fontSize: FS.micro }}>{round.side === "back" ? "Back 9" : "Front 9"}</Pill>
-        {joined && !isPast && <Pill color={K.teal} style={{ fontSize: FS.micro }}>You're In</Pill>}
+        {mySlot && !isPast && <Pill color={K.teal} style={{ fontSize: FS.micro }}>You're In</Pill>}
       </div>
 
-      {/* Tee sheet */}
+      {/* Tee sheet — one row per activated tee time, always shown even
+          when empty. An activated-but-empty tee time is information:
+          it's the spot somebody can still take. */}
       <div style={{ padding: "8px 14px" }}>
-        {groups.length === 0 ? (
-          <div style={{ fontSize: FS.sm, color: K.t3, padding: "6px 0" }}>
-            No one signed up yet — first tee is {round.startTime || "TBD"}.
-          </div>
-        ) : groups.map(g => (
-          <div key={g.idx} style={{ display: "flex", alignItems: "flex-start", gap: 10, padding: "5px 0" }}>
-            <div style={{ width: 62, flexShrink: 0, fontSize: FS.sm, fontWeight: FW.bold, color: K.act }}>{g.teeTime}</div>
-            <div style={{ flex: 1, display: "flex", flexWrap: "wrap", gap: 4 }}>
-              {g.pids.map(pid => (
-                <span key={pid} style={{
-                  fontSize: FS.xs, fontWeight: FW.semibold,
-                  color: pid === myPid ? K.teal : K.t2,
-                  background: pid === myPid ? K.teal + "14" : K.inp,
-                  border: `1px solid ${pid === myPid ? K.teal + "50" : K.bdr}`,
-                  borderRadius: 5, padding: "2px 7px",
-                }}>{nameFor(pid)}</span>
+        {groups.map(g => (
+          <div key={g.idx} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}>
+            <div style={{ width: 58, flexShrink: 0, fontSize: FS.sm, fontWeight: FW.bold, color: K.act }}>{g.teeTime}</div>
+            <div style={{ flex: 1, display: "flex", gap: 4, minWidth: 0 }}>
+              {g.spots.map((pid, s) => (
+                <Spot
+                  key={s}
+                  pid={pid}
+                  name={pid ? nameFor(pid) : ""}
+                  mine={!!pid && pid === myPid}
+                  canClaim={!isPast && !!myPid}
+                  canRelease={!isPast}
+                  canClear={isComm && !isPast}
+                  busy={busy}
+                  onClaim={() => onClaim(round, g.idx, s)}
+                  onClear={() => onRelease(round, g.idx, s, pid)}
+                />
               ))}
             </div>
           </div>
         ))}
         {round.notes && (
-          <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 6, lineHeight: 1.5 }}>{round.notes}</div>
+          <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 8, lineHeight: 1.5 }}>{round.notes}</div>
+        )}
+        {!isPast && !myPid && (
+          <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 8, lineHeight: 1.5 }}>
+            Link your player in Admin to claim a spot.
+          </div>
         )}
       </div>
 
-      {/* Actions. A past round is read-only for everyone — there is
-          nothing to sign up for and nothing worth editing; the commish
-          can still delete it to tidy the list. */}
-      <div style={{ display: "flex", gap: 6, padding: "0 14px 12px" }}>
-        {!isPast && myPid && (
-          <button
-            onClick={() => onJoin(round, !joined)}
-            disabled={busy}
-            style={{
-              flex: 1, padding: "9px 10px", borderRadius: 8,
-              background: joined ? K.inp : K.teal,
-              border: `1px solid ${joined ? K.bdr : K.teal}`,
-              color: joined ? K.t2 : K.bg,
-              fontSize: FS.sm, fontWeight: FW.bold,
-              cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1,
-            }}
-          >{joined ? "Drop Out" : "I'm In"}</button>
-        )}
-        {isComm && !isPast && (
-          <button
-            onClick={() => onEdit(round)}
-            style={{ padding: "9px 12px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer" }}
-          >Edit</button>
-        )}
-        {isComm && (
+      {/* Commissioner actions. A past round is read-only — nothing left
+          to claim and nothing worth editing — but it can still be
+          deleted to tidy the list. */}
+      {isComm && (
+        <div style={{ display: "flex", gap: 6, padding: "0 14px 12px" }}>
+          {!isPast && (
+            <button
+              onClick={() => onEdit(round)}
+              style={{ flex: 1, padding: "9px 12px", borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t2, fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer" }}
+            >Edit</button>
+          )}
           <button
             onClick={() => onDelete(round)}
-            style={{ padding: "9px 12px", borderRadius: 8, background: "transparent", border: `1px solid ${K.red}40`, color: K.red, fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer" }}
+            style={{ flex: isPast ? 1 : "0 0 auto", padding: "9px 12px", borderRadius: 8, background: "transparent", border: `1px solid ${K.red}40`, color: K.red, fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer" }}
           >Delete</button>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -319,6 +393,8 @@ export function FunRounds({
 }) {
   const [formFor, setFormFor] = useState(null);   // round object | "new" | null
   const [confirmDelete, setConfirmDelete] = useState(null);
+  // { round, g, s, name } — commissioner clearing someone else's spot.
+  const [confirmClear, setConfirmClear] = useState(null);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState(null);
 
@@ -333,8 +409,8 @@ export function FunRounds({
   // Popups suppress pull-to-refresh app-side, same as every other page
   // that opens one.
   useEffect(() => {
-    if (setPopupOpen) setPopupOpen(!!formFor || !!confirmDelete);
-  }, [formFor, confirmDelete, setPopupOpen]);
+    if (setPopupOpen) setPopupOpen(!!formFor || !!confirmDelete || !!confirmClear);
+  }, [formFor, confirmDelete, confirmClear, setPopupOpen]);
 
   const toast = (msg, kind = "info") => {
     if (typeof appToast === "function") appToast(msg, kind, 3000);
@@ -351,23 +427,34 @@ export function FunRounds({
     const editing = formFor !== "new" ? formFor : null;
     setSaving(true);
     try {
-      const doc = editing
-        ? { ...editing, ...fields }
-        : {
-            // Millisecond id + a random suffix: two commissioners
-            // creating a round in the same millisecond is far-fetched,
-            // but a collision would silently overwrite the other's
-            // round, so it costs nothing to rule out.
-            id: `fun_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-            season: year,
-            signups: [],
-            // Player.id, not an auth uid — leagueUser carries playerId,
-            // and a Player.id is what every other record in the app uses
-            // to name a human.
-            createdBy: myPid || null,
-            createdAt: Date.now(),
-            ...fields,
-          };
+      let doc;
+      if (editing) {
+        // Shrinking the sheet strands any claim outside the new bounds.
+        // Null them in the SAME write as the resize, so there is never a
+        // moment where the doc says "3 tee times" while spot g3_s0 still
+        // holds a name that would reappear on the next expansion.
+        const stranded = pruneSlotsPatch(editing, fields.groupCount, fields.groupSize);
+        doc = { ...editing, ...fields };
+        if (Object.keys(stranded).length) {
+          doc.slots = { ...(editing.slots || {}), ...stranded };
+        }
+      } else {
+        doc = {
+          // Millisecond id + a random suffix: two commissioners creating
+          // a round in the same millisecond is far-fetched, but a
+          // collision would silently overwrite the other's round, so it
+          // costs nothing to rule out.
+          id: `fun_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+          season: year,
+          slots: {},
+          // Player.id, not an auth uid — leagueUser carries playerId,
+          // and a Player.id is what every other record in the app uses
+          // to name a human.
+          createdBy: myPid || null,
+          createdAt: Date.now(),
+          ...fields,
+        };
+      }
       const ok = await saveFunRound(doc);
       if (!ok) { toast("Couldn't save the tee time.", "error"); return; }
       setFormFor(null);
@@ -377,17 +464,51 @@ export function FunRounds({
     }
   };
 
-  // Sign in / out. Writes ONLY the signups field so it stays within what
-  // the Firestore rules allow a non-commissioner member to change.
-  const handleJoin = async (round, joining) => {
+  // Claim a spot. The write is a MERGE of one or two slot keys — never
+  // the whole grid — so two players claiming different spots at the same
+  // moment can't overwrite each other. It also stays inside what the
+  // Firestore rules let a non-commissioner touch (the `slots` field).
+  const handleClaim = async (round, g, s) => {
     if (!myPid) return;
+    const patch = claimSlotPatch(round, myPid, g, s);
+    if (!patch) { toast("That spot was just taken.", "error"); return; }
     setBusyId(round.id);
     try {
-      const ok = await saveFunRound({ id: round.id, signups: withSignup(round, myPid, joining) });
-      if (!ok) toast("Couldn't update your signup.", "error");
+      const ok = await saveFunRound({ id: round.id, slots: patch });
+      if (!ok) toast("Couldn't claim that spot.", "error");
     } finally {
       setBusyId(null);
     }
+  };
+
+  // Release a spot. Your own goes immediately; clearing SOMEONE ELSE
+  // (commissioner only) routes through a confirm — that's a person
+  // losing their tee time because of a mis-tap on a small target.
+  const handleRelease = async (round, g, s, pid) => {
+    if (pid && pid !== myPid) {
+      const p = players.find(x => x.id === pid);
+      setConfirmClear({ round, g, s, name: p ? lastNamesOnly(p.name) : "this player" });
+      return;
+    }
+    const patch = releaseSlotPatch(round, g, s);
+    if (!patch) return;
+    setBusyId(round.id);
+    try {
+      const ok = await saveFunRound({ id: round.id, slots: patch });
+      if (!ok) toast("Couldn't give up that spot.", "error");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const handleConfirmClear = async () => {
+    const c = confirmClear;
+    setConfirmClear(null);
+    if (!c) return;
+    const patch = releaseSlotPatch(c.round, c.g, c.s);
+    if (!patch) return;
+    const ok = await saveFunRound({ id: c.round.id, slots: patch });
+    if (!ok) toast("Couldn't clear that spot.", "error");
   };
 
   const handleDelete = async () => {
@@ -400,7 +521,8 @@ export function FunRounds({
 
   const cardProps = {
     players, myPid, isComm,
-    onJoin: handleJoin,
+    onClaim: handleClaim,
+    onRelease: handleRelease,
     onEdit: (r) => setFormFor(r),
     onDelete: (r) => setConfirmDelete(r),
   };
@@ -475,11 +597,23 @@ export function FunRounds({
         modal={confirmDelete ? {
           eyebrow: confirmDelete.date || "",
           title: "Delete this tee time?",
-          message: `${normalizeSignups(confirmDelete).length} player(s) signed up. This can't be undone.`,
+          message: `${funRoundCounts(confirmDelete).filled} player(s) have claimed a spot. This can't be undone.`,
           confirmLabel: "Delete",
           destructive: true,
           onConfirm: handleDelete,
           onCancel: () => setConfirmDelete(null),
+        } : null}
+      />
+
+      <ConfirmModal
+        modal={confirmClear ? {
+          eyebrow: confirmClear.round.date || "",
+          title: `Remove ${confirmClear.name}?`,
+          message: "They'll lose their spot and anyone can claim it.",
+          confirmLabel: "Remove",
+          destructive: true,
+          onConfirm: handleConfirmClear,
+          onCancel: () => setConfirmClear(null),
         } : null}
       />
     </div>

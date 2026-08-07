@@ -125,8 +125,14 @@
  * accidentally sweep one into standings, handicaps, or the playoff seed
  * order. See src/lib/funRounds.js for the full rationale.
  *
- * `signups` is ordered: join order determines group and tee time
- * (group N tees at startTime + N × teeInterval). Never sort it.
+ * The commissioner activates `groupCount` tee times of `groupSize`
+ * spots; players claim a specific spot. `slots` is a FLAT MAP keyed
+ * "g0_s2" (group 0, spot 2) → Player.id, deliberately NOT a nested
+ * array: Firestore merges maps key by key but replaces arrays whole, so
+ * the map is what lets two players claim different spots at the same
+ * moment without erasing each other. A freed spot is stored as null,
+ * because a merge write can't delete a key — read paths must treat null
+ * and missing identically.
  *
  * @typedef {Object} FunRound
  * @property {string} id
@@ -134,9 +140,12 @@
  * @property {string} date                   "Sep 1" — same format as ScheduleWeek.date.
  * @property {string} startTime              "4:28 PM" — first group's tee time.
  * @property {number} teeInterval            Minutes between groups.
- * @property {number} groupSize              Players per group (2–6; 4 is the default).
+ * @property {number} groupCount             Activated tee times (1–12; 3 is the form default).
+ * @property {number} groupSize              Spots per tee time (2–6; 4 is the default).
  * @property {"front" | "back"} side
- * @property {string[]} signups              Player.ids in join order.
+ * @property {Record<string, string|null>} slots   "g{n}_s{n}" → Player.id; null = open.
+ * @property {string[]} [signups]            LEGACY. Ordered signups from the first cut of
+ *                                           this feature; read-only compat in funRounds.js.
  * @property {string} [title]                Optional name, e.g. "Labor Day Scramble".
  * @property {string} [notes]
  * @property {boolean} [cancelled]           Hidden from both upcoming and past when true.

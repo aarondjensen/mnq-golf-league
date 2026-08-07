@@ -5,10 +5,15 @@
 //
 // What a fun round IS
 // ───────────────────
-// A commissioner-created tee time on a date the league isn't otherwise
-// playing. Players sign themselves up, groups fill in join order, and
-// tee times fall out of the start time + interval. That's the whole
-// feature — it's a tee-time creator, not a competition.
+// A date the league isn't otherwise playing, on which the commissioner
+// ACTIVATES some number of tee times — often fewer than a league night
+// needs — and players CLAIM a specific spot in a specific group by
+// tapping it. Tee times fall out of the start time + interval. That's
+// the whole feature: it's a tee-time creator, not a competition.
+//
+// The tee sheet is the model. There's no waitlist, no join queue, and
+// no auto-assignment: a spot is either open or it has a name on it, and
+// what you see is what the course will see.
 //
 // What a fun round is NOT
 // ───────────────────────
@@ -44,46 +49,56 @@ export const FUN_GROUP_SIZE_MIN = 2;
 export const FUN_GROUP_SIZE_MAX = 6;
 export const FUN_TEE_INTERVAL = 8;
 
-// ── Signups ───────────────────────────────────────────────────────
+// How many tee times the commissioner activates. Some weeks the league
+// only books three. The cap is a sanity bound, not a course rule.
+export const FUN_GROUP_COUNT = 3;
+export const FUN_GROUP_COUNT_MIN = 1;
+export const FUN_GROUP_COUNT_MAX = 12;
+
+// ── The tee sheet ─────────────────────────────────────────────────
 //
-// `signups` is an ARRAY, not a set or a map, because join ORDER is the
-// group assignment: the first four to sign up tee off first. Order is
-// the feature, so the array is normalized (deduped, junk dropped)
-// rather than sorted.
+// The commissioner activates N tee times of M spots each; a player
+// claims ONE SPECIFIC SPOT by tapping it. So the stored shape has to
+// name positions, not record arrival order.
+//
+// `slots` is a FLAT MAP keyed "g0_s2" (group 0, spot 2) → Player.id.
+// Not a nested array, and the difference is load-bearing rather than
+// stylistic:
+//
+//   Firestore's setDoc(..., {merge:true}) merges nested MAPS key by key
+//   but replaces ARRAYS wholesale. With an array-of-arrays, two players
+//   tapping open spots at the same moment would each write the entire
+//   grid from their own slightly-stale copy, and the later write would
+//   erase the earlier claim. The player would watch their name vanish a
+//   second after tapping. With a flat map, a claim writes exactly
+//   { slots: { g0_s2: "p7" } } and touches one key — concurrent claims
+//   on different spots can't collide at all.
+//
+// A released spot is written as null rather than deleted: a merge write
+// has no way to remove a key, and "null means open" costs one check on
+// read. Read paths must therefore treat null and missing identically.
+//
+// Two people tapping the SAME open spot in the same instant is still
+// last-write-wins. That's a race the UI makes hard to hit (spots
+// disable the moment a claim lands via the live subscription) and the
+// stakes are a casual tee time, so it isn't worth a transaction.
 
-/** @param {{signups?: string[]}} round */
-export function normalizeSignups(round) {
-  const raw = Array.isArray(round?.signups) ? round.signups : [];
-  const seen = new Set();
-  const out = [];
-  for (const pid of raw) {
-    if (typeof pid !== "string" || !pid || seen.has(pid)) continue;
-    seen.add(pid);
-    out.push(pid);
-  }
-  return out;
+export function slotKey(groupIdx, spotIdx) {
+  return `g${groupIdx}_s${spotIdx}`;
 }
 
-export function isSignedUp(round, pid) {
-  return !!pid && normalizeSignups(round).includes(pid);
-}
-
-// Returns the NEXT signups array — pure, so the caller decides whether
-// to persist. Joining appends (preserving tee order for everyone who
-// signed up earlier); leaving removes without reshuffling the rest.
-export function withSignup(round, pid, joining) {
-  const list = normalizeSignups(round);
-  if (!pid) return list;
-  if (joining) return list.includes(pid) ? list : [...list, pid];
-  return list.filter(x => x !== pid);
-}
-
-// ── Groups & tee times ────────────────────────────────────────────
+const SLOT_KEY_RE = /^g(\d+)_s(\d+)$/;
 
 export function funGroupSize(round) {
   const n = Number(round?.groupSize);
   if (!Number.isInteger(n)) return FUN_GROUP_SIZE;
   return Math.min(FUN_GROUP_SIZE_MAX, Math.max(FUN_GROUP_SIZE_MIN, n));
+}
+
+export function funGroupCount(round) {
+  const n = Number(round?.groupCount);
+  if (!Number.isInteger(n)) return FUN_GROUP_COUNT;
+  return Math.min(FUN_GROUP_COUNT_MAX, Math.max(FUN_GROUP_COUNT_MIN, n));
 }
 
 export function funTeeInterval(round) {
@@ -92,27 +107,158 @@ export function funTeeInterval(round) {
   return n;
 }
 
+function rawSlots(round) {
+  const raw = round?.slots;
+  return (raw && typeof raw === "object" && !Array.isArray(raw)) ? raw : null;
+}
+
 /**
- * Chunk signups into tee groups, each with its computed tee time.
- * Returns [] for an empty signup list — an unfilled round shows the
- * "nobody yet" state rather than a phantom empty group.
+ * The tee sheet as a grid: grid[groupIdx][spotIdx] = Player.id | null.
+ * Always exactly groupCount × groupSize, so callers can index it
+ * without bounds checks.
  *
- * @returns {{ idx: number, teeTime: string, pids: string[] }[]}
+ * Claims outside the current grid (left behind when the commissioner
+ * shrinks the sheet) are ignored, and a player appearing twice keeps
+ * only their first spot in reading order — neither should happen, but
+ * a tee sheet that renders someone in two groups at once is worse than
+ * one that quietly picks the earlier spot.
+ */
+export function readSlots(round) {
+  const groups = funGroupCount(round);
+  const size = funGroupSize(round);
+  const grid = Array.from({ length: groups }, () => Array.from({ length: size }, () => null));
+  const raw = rawSlots(round);
+  const seen = new Set();
+  let placed = 0;
+
+  if (raw) {
+    for (let g = 0; g < groups; g++) {
+      for (let s = 0; s < size; s++) {
+        const pid = raw[slotKey(g, s)];
+        if (typeof pid !== "string" || !pid || seen.has(pid)) continue;
+        seen.add(pid);
+        grid[g][s] = pid;
+        placed++;
+      }
+    }
+  }
+
+  // Compatibility with the first cut of this feature, which stored an
+  // ordered `signups` array and derived groups from it. Read-only, and
+  // only when there is no slot data to prefer — the first claim written
+  // against such a round migrates it. Safe to delete once no round in
+  // Firestore carries a `signups` field.
+  if (placed === 0 && Array.isArray(round?.signups)) {
+    let i = 0;
+    for (const pid of round.signups) {
+      if (typeof pid !== "string" || !pid || seen.has(pid)) continue;
+      const g = Math.floor(i / size);
+      if (g >= groups) break;
+      seen.add(pid);
+      grid[g][i % size] = pid;
+      i++;
+    }
+  }
+
+  return grid;
+}
+
+/**
+ * The tee sheet as the UI renders it: one entry per activated tee time,
+ * each with its clock time and its spots.
+ *
+ * Unlike the previous signup-order model this ALWAYS returns groupCount
+ * entries, including entirely empty ones — an activated tee time with
+ * nobody in it is the whole point of the screen.
+ *
+ * @returns {{ idx: number, teeTime: string, spots: (string|null)[] }[]}
  */
 export function buildFunGroups(round) {
-  const pids = normalizeSignups(round);
-  const size = funGroupSize(round);
   const interval = funTeeInterval(round);
-  const groups = [];
-  for (let i = 0; i < pids.length; i += size) {
-    const idx = groups.length;
-    groups.push({
-      idx,
-      teeTime: formatTeeTime(round?.startTime, idx, interval),
-      pids: pids.slice(i, i + size),
-    });
+  return readSlots(round).map((spots, idx) => ({
+    idx,
+    teeTime: formatTeeTime(round?.startTime, idx, interval),
+    spots,
+  }));
+}
+
+/** Where is this player sitting? `null` when they haven't claimed a spot. */
+export function findPlayerSlot(round, pid) {
+  if (!pid) return null;
+  const grid = readSlots(round);
+  for (let g = 0; g < grid.length; g++) {
+    for (let s = 0; s < grid[g].length; s++) {
+      if (grid[g][s] === pid) return { g, s };
+    }
   }
-  return groups;
+  return null;
+}
+
+export function isSignedUp(round, pid) {
+  return findPlayerSlot(round, pid) !== null;
+}
+
+/** { filled, total } across the whole sheet — drives the header count. */
+export function funRoundCounts(round) {
+  const grid = readSlots(round);
+  let filled = 0;
+  for (const row of grid) for (const pid of row) if (pid) filled++;
+  return { filled, total: grid.length * (grid[0]?.length || 0) };
+}
+
+// ── Write patches ─────────────────────────────────────────────────
+//
+// Each returns a partial `slots` map to merge, or null when the action
+// isn't legal. Pure — the caller decides whether to persist.
+
+/**
+ * Claim (g, s) for a player. Returns null if the spot is taken by
+ * someone else or the coordinates are off the sheet.
+ *
+ * Claiming while already seated MOVES the player: the patch releases
+ * their old spot in the same write. One player can't hold two spots on
+ * one tee sheet, and doing it in a single merge means there's no
+ * instant where they hold both or neither.
+ */
+export function claimSlotPatch(round, pid, g, s) {
+  if (!pid) return null;
+  const grid = readSlots(round);
+  if (!grid[g] || g < 0 || s < 0 || s >= grid[g].length) return null;
+  const occupant = grid[g][s];
+  if (occupant && occupant !== pid) return null;
+  const patch = { [slotKey(g, s)]: pid };
+  const prior = findPlayerSlot(round, pid);
+  if (prior && !(prior.g === g && prior.s === s)) patch[slotKey(prior.g, prior.s)] = null;
+  return patch;
+}
+
+/** Free a spot. Returns null when it's already open. */
+export function releaseSlotPatch(round, g, s) {
+  const grid = readSlots(round);
+  if (!grid[g] || !grid[g][s]) return null;
+  return { [slotKey(g, s)]: null };
+}
+
+/**
+ * Nulls for every claim that a resize would strand — call it when the
+ * commissioner shrinks the sheet.
+ *
+ * Without this, dropping from 4 tee times to 3 and back to 4 would
+ * resurrect the 4th group's original claims, seating people at a tee
+ * time they were removed from and never re-confirmed. Junk keys are
+ * cleared too, so a hand-edited doc can't keep haunting the round.
+ */
+export function pruneSlotsPatch(round, nextGroupCount, nextGroupSize) {
+  const raw = rawSlots(round);
+  if (!raw) return {};
+  const patch = {};
+  for (const key of Object.keys(raw)) {
+    if (raw[key] === null || raw[key] === undefined) continue;
+    const m = SLOT_KEY_RE.exec(key);
+    if (!m) { patch[key] = null; continue; }
+    if (Number(m[1]) >= nextGroupCount || Number(m[2]) >= nextGroupSize) patch[key] = null;
+  }
+  return patch;
 }
 
 // ── Ordering ──────────────────────────────────────────────────────
@@ -209,6 +355,10 @@ export function validateFunRound(draft) {
     const h = parseInt(hh, 10);
     const m = parseInt(mm, 10);
     if (h < 1 || h > 12 || m > 59) errors.push("First tee time isn't a real clock time.");
+  }
+  const gc = Number(draft?.groupCount);
+  if (!Number.isInteger(gc) || gc < FUN_GROUP_COUNT_MIN || gc > FUN_GROUP_COUNT_MAX) {
+    errors.push(`Tee times must be ${FUN_GROUP_COUNT_MIN}–${FUN_GROUP_COUNT_MAX}.`);
   }
   const gs = Number(draft?.groupSize);
   if (!Number.isInteger(gs) || gs < FUN_GROUP_SIZE_MIN || gs > FUN_GROUP_SIZE_MAX) {

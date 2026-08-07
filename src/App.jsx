@@ -999,10 +999,11 @@ export default function GolfLeagueApp() {
   const deleteWeekSchedule = useCallback(async (id) => await db.deleteDoc("league_schedule", id), []);
 
   // Fun rounds. `upsert` (merge) rather than `set` is load-bearing for the
-  // signup path: a player writes ONLY { id, signups }, which is both what
-  // the Firestore rules permit a non-commissioner to change and what keeps
-  // two people joining at once from clobbering each other's view of the
-  // rest of the doc.
+  // claim path: a player writes ONLY { id, slots: { g0_s2: <pid> } }, and
+  // Firestore merges nested maps key by key. That's both what the rules
+  // permit a non-commissioner to change AND what stops two players
+  // claiming different spots at the same moment from overwriting each
+  // other — see the `slots` note in lib/funRounds.js.
   const saveFunRound = useCallback(async (r) => await db.upsert("league_fun_rounds", { ...r, league_id: LEAGUE_ID }), []);
   const deleteFunRound = useCallback(async (id) => await db.deleteDoc("league_fun_rounds", id), []);
 

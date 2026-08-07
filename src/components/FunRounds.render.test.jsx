@@ -1,33 +1,33 @@
 // ══════════════════════════════════════════════════════════════════
-//  FunRounds — does the tee sheet actually render, for every viewer?
+//  FunRounds — does the tee sheet render, and is the right spot
+//  tappable for the right viewer?
 // ══════════════════════════════════════════════════════════════════
 //
-// Same rationale and technique as Scoring.render.test.jsx: the pure
-// logic in lib/funRounds.js is covered by funRounds.test.js, but that
-// can't catch a branch that renders nothing for a whole class of viewer.
-// The interesting viewers here are (commissioner | player) × (empty |
-// populated) × (upcoming | past), plus the "am I signed up" state that
-// decides which button a player is shown.
+// Same technique as Scoring.render.test.jsx. The pure logic is covered
+// by funRounds.test.js; what that can't catch is a spot rendering as
+// inert markup for someone who should be able to tap it, or — worse —
+// as a live button for someone who shouldn't.
 //
-// renderToStaticMarkup runs the component body and its hooks without
-// jsdom. Effects don't run, which is fine — nothing rendered depends on
-// one (the single useEffect just reports popup state upward).
+// The Spot component gives every interactive spot an aria-label, so
+// "is this tappable" is directly assertable from static markup rather
+// than inferred from styling. Those labels are the contract this file
+// leans on.
 
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
 import { FunRounds } from "./FunRounds.jsx";
+import { slotKey } from "../lib/funRounds";
+
+const CLAIMABLE = "Open spot — tap to claim";
+const removable = (name) => `${name} — tap to remove`;
 
 const players = [
   { id: "p1", name: "Aaron Jensen" },
   { id: "p2", name: "Bob Vigo" },
   { id: "p3", name: "Cal Stevens" },
-  { id: "p4", name: "Dan Marks" },
-  { id: "p5", name: "Ed Novak" },
 ];
 
-// Fixed "today" is not available to the component (it calls splitFunRounds
-// with the real clock), so the fixtures use dates far enough from any
-// plausible run date to stay unambiguous.
+// Dates far enough from any plausible run date to stay unambiguous.
 const FUTURE = "Dec 30";
 const PAST = "Jan 2";
 const YEAR = new Date().getFullYear();
@@ -38,9 +38,10 @@ const round = (over = {}) => ({
   date: FUTURE,
   startTime: "4:28 PM",
   teeInterval: 8,
+  groupCount: 3,
   groupSize: 4,
   side: "front",
-  signups: [],
+  slots: {},
   createdAt: 1,
   ...over,
 });
@@ -57,6 +58,7 @@ const baseProps = {
 };
 
 const render = (props) => renderToStaticMarkup(<FunRounds {...baseProps} {...props} />);
+const count = (html, needle) => html.split(needle).length - 1;
 
 describe("FunRounds — empty state", () => {
   it("gives the commissioner the create button", () => {
@@ -78,24 +80,31 @@ describe("FunRounds — empty state", () => {
   });
 });
 
-describe("FunRounds — tee sheet", () => {
-  it("renders one tee time per group, in signup order", () => {
-    const html = render({
-      funRounds: [round({ signups: ["p1", "p2", "p3", "p4", "p5"] })],
-    });
+describe("FunRounds — the tee sheet", () => {
+  it("renders every activated tee time, empty ones included", () => {
+    // The old model only drew groups that had players in them. Here an
+    // empty tee time is exactly what a player is scanning for.
+    const html = render({ funRounds: [round({ groupCount: 3 })] });
     expect(html).toContain("4:28 PM");
     expect(html).toContain("4:36 PM");
-    // Last names, matching how the rest of the app lists golfers.
-    expect(html).toContain("Jensen");
-    expect(html).toContain("Novak");
-    expect(html).toContain("5 players");
-    expect(html).toContain("2 groups");
+    expect(html).toContain("4:44 PM");
+    expect(html).toContain("3 tee times");
+    expect(count(html, ">Open<")).toBe(12);
   });
 
-  it("says so plainly when nobody has signed up", () => {
-    const html = render({ funRounds: [round()] });
-    expect(html).toContain("No one signed up yet");
-    expect(html).toContain("4:28 PM");
+  it("honors a smaller sheet — three tee times, not a league-night eight", () => {
+    const html = render({ funRounds: [round({ groupCount: 3, groupSize: 4 })] });
+    expect(html).not.toContain("4:52 PM");
+    expect(html).toContain("0 of 12 spots filled");
+  });
+
+  it("shows a claimed spot as the player's name in position", () => {
+    const html = render({
+      funRounds: [round({ slots: { [slotKey(1, 2)]: "p2" } })],
+    });
+    expect(html).toContain("Vigo");
+    expect(html).toContain("1 of 12 spots filled");
+    expect(count(html, ">Open<")).toBe(11);
   });
 
   it("renders the round's name and notes when present", () => {
@@ -107,49 +116,69 @@ describe("FunRounds — tee sheet", () => {
   });
 
   it("hides a cancelled round entirely", () => {
-    const html = render({
-      funRounds: [round({ title: "Called Off", cancelled: true })],
-    });
+    const html = render({ funRounds: [round({ title: "Called Off", cancelled: true })] });
     expect(html).not.toContain("Called Off");
     expect(html).toContain("No fun rounds yet");
   });
+
+  it("still seats people from a legacy signups round", () => {
+    const html = render({
+      funRounds: [round({ slots: undefined, signups: ["p1", "p2"] })],
+    });
+    expect(html).toContain("Jensen");
+    expect(html).toContain("Vigo");
+  });
 });
 
-describe("FunRounds — signup affordance", () => {
-  it("offers I'm In to a player who has not signed up", () => {
-    const html = render({ funRounds: [round({ signups: ["p2"] })] });
-    expect(html).toContain("I&#x27;m In");
-    expect(html).not.toContain("Drop Out");
+describe("FunRounds — who can tap what", () => {
+  it("makes every open spot claimable for a linked player", () => {
+    const html = render({ funRounds: [round({ groupCount: 2 })] });
+    expect(count(html, CLAIMABLE)).toBe(8);
   });
 
-  it("offers Drop Out to a player who has", () => {
-    const html = render({ funRounds: [round({ signups: ["p1"] })] });
-    expect(html).toContain("Drop Out");
+  it("lets a player release their own spot but not someone else's", () => {
+    const html = render({
+      funRounds: [round({ slots: { [slotKey(0, 0)]: "p1", [slotKey(0, 1)]: "p2" } })],
+    });
+    expect(html).toContain(removable("Jensen"));
+    expect(html).not.toContain(removable("Vigo"));
     expect(html).toContain("You&#x27;re In");
   });
 
-  it("offers nothing to a viewer with no linked player", () => {
-    // An unlinked member (or the commissioner viewing before joining a
-    // team) has no Player.id to sign up, so the button must not appear —
-    // tapping it could only write a null into signups.
+  it("lets the commissioner clear anyone's spot", () => {
+    const html = render({
+      isComm: true,
+      leagueUser: { playerId: "p3", isCommissioner: true },
+      funRounds: [round({ slots: { [slotKey(0, 0)]: "p1", [slotKey(0, 1)]: "p2" } })],
+    });
+    expect(html).toContain(removable("Jensen"));
+    expect(html).toContain(removable("Vigo"));
+  });
+
+  it("offers nothing tappable to a viewer with no linked player", () => {
+    // An unlinked member has no Player.id to put in a slot, so every spot
+    // must be inert — a tap could only write a null.
     const html = render({
       leagueUser: { playerId: null, isCommissioner: false },
       funRounds: [round()],
     });
-    expect(html).not.toContain("I&#x27;m In");
-    expect(html).not.toContain("Drop Out");
+    expect(html).not.toContain(CLAIMABLE);
+    expect(html).toContain("Link your player");
+    // The sheet itself still renders — they can see who's playing.
+    expect(html).toContain(">Open<");
+    expect(html).toContain("4:28 PM");
   });
 });
 
 describe("FunRounds — past rounds", () => {
-  const past = [round({ id: "old", date: PAST, signups: ["p1", "p2"] })];
+  const past = [round({ id: "old", date: PAST, slots: { [slotKey(0, 0)]: "p1" } })];
 
-  it("files a past round under Past and drops its signup button", () => {
+  it("files a past round under Past and freezes its sheet", () => {
     const html = render({ funRounds: past });
     expect(html).toContain("Past");
     expect(html).toContain("Jensen");
-    expect(html).not.toContain("Drop Out");
-    expect(html).not.toContain("I&#x27;m In");
+    expect(html).not.toContain(CLAIMABLE);
+    expect(html).not.toContain(removable("Jensen"));
   });
 
   it("lets the commissioner delete a past round but not edit it", () => {
