@@ -11,7 +11,8 @@
     "test": "vitest",
     "test:run": "vitest run",
     "coverage": "vitest run --coverage",
-    "rules": "firebase deploy --only firestore:rules"
+    "rules": "bash scripts/deploy-rules.sh",
+    "rules:cli": "firebase deploy --only firestore:rules"
   },
   "dependencies": {
     "@capacitor-firebase/authentication": "^8.3.0",
