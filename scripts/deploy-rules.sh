@@ -35,14 +35,59 @@ API="https://firebaserules.googleapis.com/v1"
 fail() { printf '\n✗ %s\n' "$1" >&2; exit 1; }
 
 [ -f "$RULES_FILE" ] || fail "No $RULES_FILE here. Run this from the repo root."
-command -v gcloud >/dev/null 2>&1 || fail "gcloud not found. In Cloud Shell it's built in; on a laptop use 'firebase deploy --only firestore:rules' instead."
-command -v jq     >/dev/null 2>&1 || fail "jq not found (it's preinstalled in Cloud Shell)."
-command -v curl   >/dev/null 2>&1 || fail "curl not found."
+command -v jq   >/dev/null 2>&1 || fail "jq not found (it's preinstalled in Cloud Shell)."
+command -v curl >/dev/null 2>&1 || fail "curl not found."
+# gcloud is NOT required — the metadata server below can supply the token
+# on its own, and failing here would skip that path entirely.
 
-echo "→ Getting a token from gcloud…"
-TOKEN="$(gcloud auth print-access-token 2>/dev/null)" \
-  || fail "gcloud has no credentials. In Cloud Shell this should be automatic; otherwise run 'gcloud auth login'."
-[ -n "$TOKEN" ] || fail "gcloud returned an empty token."
+# Two independent ways to get a token, because in Cloud Shell either can
+# be the one that works:
+#
+#   1. gcloud — the normal path, but it can sit un-authorized until you
+#      approve the "Authorize Cloud Shell" dialog, and on a phone that
+#      dialog is easy to miss or to have never rendered.
+#   2. The metadata server — Cloud Shell runs one, and it serves the
+#      logged-in USER's credentials (this is how Application Default
+#      Credentials resolve there). It needs no gcloud state at all, so it
+#      often works when path 1 hasn't been authorized.
+#
+# Failures here are printed in full rather than swallowed. An earlier cut
+# of this script hid gcloud's stderr, which turned "why did this fail"
+# into a guessing game over screenshots.
+echo "→ Getting an access token…"
+TOKEN=""
+GCLOUD_ERR=""
+
+if command -v gcloud >/dev/null 2>&1; then
+  if TOKEN_TRY="$(gcloud auth print-access-token 2>&1)" && [ -n "$TOKEN_TRY" ]; then
+    TOKEN="$TOKEN_TRY"
+    echo "  got one from gcloud"
+  else
+    GCLOUD_ERR="$TOKEN_TRY"
+    echo "  gcloud couldn't provide one, trying the metadata server…"
+  fi
+fi
+
+if [ -z "$TOKEN" ]; then
+  META="http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/token"
+  if META_RESP="$(curl -sS --max-time 10 -H 'Metadata-Flavor: Google' "$META" 2>&1)"; then
+    TOKEN="$(printf '%s' "$META_RESP" | jq -r '.access_token // empty' 2>/dev/null || true)"
+    [ -n "$TOKEN" ] && echo "  got one from the metadata server"
+  fi
+fi
+
+if [ -z "$TOKEN" ]; then
+  echo
+  echo "── diagnostics ───────────────────────────────"
+  echo "gcloud said:"
+  printf '%s\n' "${GCLOUD_ERR:-（gcloud not installed）}"
+  echo
+  echo "accounts gcloud knows about:"
+  gcloud auth list 2>&1 || true
+  echo "──────────────────────────────────────────────"
+  echo
+  fail "No credentials available. Screenshot the diagnostics above. Most likely fix: run 'gcloud auth login' and approve the Cloud Shell authorize prompt."
+fi
 
 # jq builds the body so the rules text is escaped properly — it's full of
 # quotes, slashes and newlines, and hand-rolling that JSON is how you end
