@@ -155,6 +155,28 @@
  */
 
 /**
+ * One player's scorecard for one fun round. Stored in
+ * `league_fun_scores`, id `funsc_{roundId}_{playerId}`.
+ *
+ * Note again what's absent: no `week`. These are keyed by ROUND, which
+ * is what makes them structurally invisible to calcPlayerHcp,
+ * fetchAllScores, Stats, and standings — all of which read
+ * `league_hole_scores`. A fun round can never move a handicap. Net is
+ * computed by READING the player's current handicapIndex, which is safe
+ * in that direction; see the boundary note in src/lib/funScores.js.
+ *
+ * @typedef {Object} FunScore
+ * @property {string} id
+ * @property {string} roundId              FunRound.id this card belongs to.
+ * @property {string} playerId             Player.id.
+ * @property {number[]} holes              Exactly 9 entries; 0 = hole not played.
+ * @property {number} [season]
+ * @property {number} [updatedAt]
+ * @property {string} [updatedBy]          Player.id of whoever entered it.
+ * @property {string} [league_id]
+ */
+
+/**
  * A persisted match-play result. Stored in `league_match_results`.
  * The matchResultText string is the human-readable result like "3&2",
  * "1UP", "TIED", or "TIE (Hole 5)" for tiebreakers. matchWinnerId is

@@ -132,6 +132,11 @@ export default function GolfLeagueApp() {
   // practical upshot here: nothing downstream of `schedule` needs to know
   // this state exists, and no season math can accidentally read it.
   const [funRounds, setFunRounds] = useState([]);
+  // Fun-round scorecards — one doc per (round, player), keyed by ROUND
+  // id with no week anywhere in the shape. That's what keeps them out of
+  // the handicap and stats pipelines, which read league_hole_scores.
+  // See the boundary note at the top of lib/funScores.js.
+  const [funScores, setFunScores] = useState([]);
   const [leagueConfig, setLeagueConfig] = useState({ name: "Golf League 2026", year: 2026 });
 
   // ── Latest-state ref for autoSeedIfReady ──
@@ -481,6 +486,7 @@ export default function GolfLeagueApp() {
     unsubs.push(db.subscribe("league_fun_rounds", LF, (docs) => {
       setFunRounds(docs.filter(d => d && d.id).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0)));
     }));
+    unsubs.push(db.subscribe("league_fun_scores", LF, (docs) => setFunScores(docs)));
     unsubs.push(db.subscribe("league_match_results", LF, (docs) => setMatchResults(docs)));
     unsubs.push(db.subscribe("league_group_results", LF, (docs) => setGroupResults(docs)));
     unsubs.push(db.subscribe("league_ctp", LF, (docs) => setCtpData(docs)));
@@ -1005,7 +1011,29 @@ export default function GolfLeagueApp() {
   // claiming different spots at the same moment from overwriting each
   // other — see the `slots` note in lib/funRounds.js.
   const saveFunRound = useCallback(async (r) => await db.upsert("league_fun_rounds", { ...r, league_id: LEAGUE_ID }), []);
-  const deleteFunRound = useCallback(async (id) => await db.deleteDoc("league_fun_rounds", id), []);
+
+  // Deleting a round takes its scorecards with it. Otherwise the cards
+  // outlive the only doc that knows which nine they were played on and
+  // who was in the group — unreadable rows that nothing would ever
+  // clean up.
+  const deleteFunRound = useCallback(async (id) => {
+    await db.batchDelete("league_fun_scores", [...LF, { field: "roundId", op: "==", value: id }]);
+    return await db.deleteDoc("league_fun_rounds", id);
+  }, []);
+
+  // A group's cards commit together. batchUpsert is atomic per chunk, so
+  // a foursome's four docs land as one unit rather than three-of-four on
+  // a dropped connection. Returns true/false for the caller's toast.
+  const saveFunScores = useCallback(async (docs) => {
+    if (!docs || !docs.length) return true;
+    try {
+      await db.batchUpsert("league_fun_scores", docs.map(d => ({ ...d, league_id: LEAGUE_ID })));
+      return true;
+    } catch (e) {
+      console.error("saveFunScores failed:", e);
+      return false;
+    }
+  }, []);
 
   const resetSeasonData = useCallback(async () => {
     const seasonFilter = [...LF, { field: "season", op: "==", value: CURRENT_SEASON }];
@@ -1017,6 +1045,7 @@ export default function GolfLeagueApp() {
     // casual tee times on the FUN tab would be its own kind of confusing.
     // Filtered by season so a multi-season deployment doesn't lose history.
     await db.batchDelete("league_fun_rounds", seasonFilter);
+    await db.batchDelete("league_fun_scores", seasonFilter);
     for (const wk of schedule) {
       if (wk.id) await db.deleteDoc("league_schedule", wk.id);
     }
@@ -1030,6 +1059,7 @@ export default function GolfLeagueApp() {
     setMatchResults([]);
     setGroupResults([]);
     setFunRounds([]);
+    setFunScores([]);
     setSchedule([]);
     // Current-season docs were just batch-deleted, so the season cache is
     // wholesale stale — drop it (next fetch sees the empty collection).
@@ -1683,9 +1713,9 @@ export default function GolfLeagueApp() {
           <div className="main-content fi" key={tab}>
           <ErrorBoundary>
           <Suspense fallback={TabFallback}>
-          {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} fetchAllScores={fetchAllScores} saveMatchResult={saveMatchResult} dataLoaded={dataLoaded} leagueUser={effectiveUser} isComm={isComm} funRounds={funRounds} saveFunRound={saveFunRound} deleteFunRound={deleteFunRound} appToast={appToast} setPopupOpen={setPopupOpen} season={CURRENT_SEASON} />}
+          {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} fetchAllScores={fetchAllScores} saveMatchResult={saveMatchResult} dataLoaded={dataLoaded} leagueUser={effectiveUser} isComm={isComm} funRounds={funRounds} saveFunRound={saveFunRound} deleteFunRound={deleteFunRound} funScores={funScores} saveFunScores={saveFunScores} appToast={appToast} setPopupOpen={setPopupOpen} season={CURRENT_SEASON} />}
           {tab === "scoring" && <LiveScoringView groupResults={groupResults} saveGroupResult={saveGroupResult} deleteGroupResult={deleteGroupResult} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} deleteMatchResult={deleteMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} commMode={commMode} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} openFinalize={openFinalize} onFinalizeOpened={() => setOpenFinalize(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} recalcHandicaps={recalcHandicaps} clearWeekData={clearWeekData} autoSeedIfReady={autoSeedIfReady} attendance={attendance} saveAttendance={saveAttendance} />}
-          {tab === "schedule" && <ScheduleView groupResults={groupResults} schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} course={courseData} fetchWeekScores={fetchWeekScores} fetchAllScores={fetchAllScores} scoringRules={scoringRules} isComm={isComm} saveScore={saveScore} saveMatchResult={saveMatchResult} setPopupOpen={setPopupOpen} appToast={appToast} dataLoaded={dataLoaded} attendance={attendance} saveAttendance={saveAttendance} funRounds={funRounds} saveFunRound={saveFunRound} deleteFunRound={deleteFunRound} season={CURRENT_SEASON} />}
+          {tab === "schedule" && <ScheduleView groupResults={groupResults} schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} course={courseData} fetchWeekScores={fetchWeekScores} fetchAllScores={fetchAllScores} scoringRules={scoringRules} isComm={isComm} saveScore={saveScore} saveMatchResult={saveMatchResult} setPopupOpen={setPopupOpen} appToast={appToast} dataLoaded={dataLoaded} attendance={attendance} saveAttendance={saveAttendance} funRounds={funRounds} saveFunRound={saveFunRound} deleteFunRound={deleteFunRound} funScores={funScores} saveFunScores={saveFunScores} season={CURRENT_SEASON} />}
           {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} dataLoaded={dataLoaded} />}
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} leagueConfig={leagueConfig} teams={teams} matchResults={matchResults} />}
           {tab === "ctp" && <CTPView ctpData={ctpData} players={activePlayers} isComm={isComm} saveCtp={saveCtp} />}

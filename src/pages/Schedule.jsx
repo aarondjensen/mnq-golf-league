@@ -32,7 +32,7 @@ const MY_SCHEDULE_COLS = {
   status: 80,  // Stacked Absent / Making Up buttons, or active status pill
 };
 
-export default function ScheduleView({ groupResults, schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, fetchAllScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen, appToast, dataLoaded, attendance, saveAttendance, funRounds, saveFunRound, deleteFunRound, season }) {
+export default function ScheduleView({ groupResults, schedule, teams, players, matchResults, leagueUser, leagueConfig, course, fetchWeekScores, fetchAllScores, scoringRules, isComm, saveScore, saveMatchResult, setPopupOpen, appToast, dataLoaded, attendance, saveAttendance, funRounds, saveFunRound, deleteFunRound, funScores, saveFunScores, season }) {
   const [showAll, setShowAll] = useState(false);
   const [myOnly, setMyOnly] = useState(true);
   // Third filter alongside My Schedule / Full League. Casual tee times
@@ -1658,6 +1658,7 @@ export default function ScheduleView({ groupResults, schedule, teams, players, m
           funRounds={funRounds} players={players} leagueUser={leagueUser} isComm={isComm}
           saveFunRound={saveFunRound} deleteFunRound={deleteFunRound}
           leagueConfig={leagueConfig} season={season}
+          course={course} funScores={funScores} saveFunScores={saveFunScores}
           appToast={appToast} setPopupOpen={setPopupOpen}
         />
       )}

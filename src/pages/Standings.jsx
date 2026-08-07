@@ -992,7 +992,7 @@ function IndividualBoard({ players, teams, schedule, course, leagueConfig, scori
   );
 }
 
-export default function StandingsView({ teams, players, matchResults, leagueConfig, schedule, fetchSeasonScores, course, fetchWeekScores, scoringRules, fetchAllScores, saveMatchResult, dataLoaded, leagueUser, isComm, funRounds, saveFunRound, deleteFunRound, appToast, setPopupOpen, season }) {
+export default function StandingsView({ teams, players, matchResults, leagueConfig, schedule, fetchSeasonScores, course, fetchWeekScores, scoringRules, fetchAllScores, saveMatchResult, dataLoaded, leagueUser, isComm, funRounds, saveFunRound, deleteFunRound, funScores, saveFunScores, appToast, setPopupOpen, season }) {
   // Note: no local isRecord flag anymore — the standings rows render the
   // same column set (W-L-T · Pts/HW) in both modes; standingsMethod only
   // affects the sort, which buildStandingsForSeed receives as a string.
@@ -1486,6 +1486,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
           funRounds={funRounds} players={players} leagueUser={leagueUser} isComm={isComm}
           saveFunRound={saveFunRound} deleteFunRound={deleteFunRound}
           leagueConfig={leagueConfig} season={season}
+          course={course} funScores={funScores} saveFunScores={saveFunScores}
           appToast={appToast} setPopupOpen={setPopupOpen}
         />
       )}

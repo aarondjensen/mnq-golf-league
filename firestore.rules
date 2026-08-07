@@ -141,6 +141,21 @@ service cloud.firestore {
         || (isMember()
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['slots']));
     }
+
+    // Fun-round scorecards — one doc per (round, player). Plain member
+    // write, matching league_hole_scores: whoever in the group has their
+    // phone out enters for everybody, exactly as on league night.
+    //
+    // No commissioner gate and no owner check, because these scores are
+    // inert. They carry no `week`, they are never written to
+    // league_hole_scores, and no handicap, standings or stats path reads
+    // this collection — so the worst a bad actor can do is make a casual
+    // round's leaderboard wrong. Deletes are allowed for the same reason
+    // (and are how App.jsx cleans up cards when a round is deleted).
+    match /league_fun_scores/{docId} {
+      allow read: if signedIn();
+      allow write: if isMember();
+    }
     match /league_attendance/{docId} {
       allow read: if signedIn();
       allow write: if isMember();

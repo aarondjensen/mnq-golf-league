@@ -12,18 +12,21 @@
 //
 // Roles
 // ─────
-//   • Commissioner creates, edits and deletes rounds.
-//   • Any linked player signs THEMSELVES up or out.
+//   • Commissioner creates a round, activates N tee times, and can edit
+//     or delete it or clear anyone's spot.
+//   • Any linked player claims or gives up a spot, and any member can
+//     enter scores for a group.
 //
-// Groups form in signup order and tee times fall out of start time +
-// interval — see lib/funRounds.js, which owns all of that logic and is
-// where the tests live. This file is presentation plus the two write
-// calls.
+// The logic lives in two libs, where the tests are: lib/funRounds.js
+// owns the tee sheet (slots, claims, tee times, ordering) and
+// lib/funScores.js owns the cards (net to par, leaderboard). This file
+// is presentation plus the write calls.
 //
-// Deliberately absent: scoring. A fun round writes no hole scores and
-// touches no league math (see the header comment in lib/funRounds.js
-// for why that isolation is structural rather than a filter someone
-// has to remember).
+// Scoring here is REAL — nine holes, stroke dots, net leaderboard — and
+// still touches no league math. Cards go to league_fun_scores keyed by
+// round, never to league_hole_scores, so no handicap, standings, or
+// stats path can read them. Both lib headers spell out why that
+// isolation is structural rather than a filter someone has to remember.
 
 import { useState, useEffect, useMemo } from "react";
 import { K, Pill, EmptyState, SubLabel, lastNamesOnly, LIST_GAP, CARD_RADIUS, FS, FW } from "../theme";
@@ -47,6 +50,15 @@ import {
   FUN_GROUP_COUNT,
   FUN_TEE_INTERVAL,
 } from "../lib/funRounds";
+import {
+  funRoundSide,
+  indexFunScores,
+  buildFunLeaderboard,
+  roundHasScores,
+  funScoreId,
+  funSpotSummary,
+} from "../lib/funScores";
+import { FunScoreEntry, FunLeaderboard } from "./FunScorecard";
 
 const inputStyle = {
   width: "100%", padding: 10, borderRadius: 8,
@@ -284,10 +296,21 @@ function Spot({ pid, name, mine, canClaim, canRelease, canClear, busy, onClaim, 
 }
 
 // ── One round's card ──────────────────────────────────────────────
-function FunRoundCard({ round, players, myPid, isComm, isPast, onClaim, onRelease, onEdit, onDelete, busy }) {
+function FunRoundCard({
+  round, players, myPid, isComm, isPast, course, funScoreIndex,
+  onClaim, onRelease, onEdit, onDelete, onScore, busy,
+}) {
   const groups = useMemo(() => buildFunGroups(round), [round]);
   const { filled, total } = funRoundCounts(round);
   const mySlot = findPlayerSlot(round, myPid);
+  const { pars, hcps } = funRoundSide(round, course);
+
+  const grid = useMemo(() => groups.map(g => g.spots), [groups]);
+  const hasScores = roundHasScores({ grid, index: funScoreIndex, roundId: round.id });
+  const board = useMemo(
+    () => buildFunLeaderboard({ grid, index: funScoreIndex, roundId: round.id, players, pars, hcps }),
+    [grid, funScoreIndex, round.id, players, pars, hcps]
+  );
 
   const nameFor = (pid) => {
     const p = players.find(x => x.id === pid);
@@ -319,33 +342,85 @@ function FunRoundCard({ round, players, myPid, isComm, isPast, onClaim, onReleas
           when empty. An activated-but-empty tee time is information:
           it's the spot somebody can still take. */}
       <div style={{ padding: "8px 14px" }}>
-        {groups.map(g => (
-          <div key={g.idx} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0" }}>
-            <div style={{ width: 58, flexShrink: 0, fontSize: FS.sm, fontWeight: FW.bold, color: K.act }}>{g.teeTime}</div>
-            <div style={{ flex: 1, display: "flex", gap: 4, minWidth: 0 }}>
-              {g.spots.map((pid, s) => (
-                <Spot
-                  key={s}
-                  pid={pid}
-                  name={pid ? nameFor(pid) : ""}
-                  mine={!!pid && pid === myPid}
-                  canClaim={!isPast && !!myPid}
-                  canRelease={!isPast}
-                  canClear={isComm && !isPast}
-                  busy={busy}
-                  onClaim={() => onClaim(round, g.idx, s)}
-                  onClear={() => onRelease(round, g.idx, s, pid)}
-                />
-              ))}
+        {groups.map(g => {
+          const seated = g.spots.filter(Boolean);
+          // Scoring needs somebody to score and a course to score
+          // against. It stays available on PAST rounds — a group that
+          // finished at dusk and posted the next morning is the normal
+          // case, not an edge case.
+          const canScore = seated.length > 0 && !!pars && !!myPid;
+          return (
+            <div key={g.idx} style={{ padding: "3px 0" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ width: 58, flexShrink: 0, fontSize: FS.sm, fontWeight: FW.bold, color: K.act }}>{g.teeTime}</div>
+                <div style={{ flex: 1, display: "flex", gap: 4, minWidth: 0 }}>
+                  {g.spots.map((pid, s) => (
+                    <Spot
+                      key={s}
+                      pid={pid}
+                      name={pid ? nameFor(pid) : ""}
+                      mine={!!pid && pid === myPid}
+                      canClaim={!isPast && !!myPid}
+                      canRelease={!isPast}
+                      canClear={isComm && !isPast}
+                      busy={busy}
+                      onClaim={() => onClaim(round, g.idx, s)}
+                      onClear={() => onRelease(round, g.idx, s, pid)}
+                    />
+                  ))}
+                </div>
+                <button
+                  onClick={() => onScore(round, g.idx, g.spots)}
+                  disabled={!canScore}
+                  aria-label={`Score group ${g.idx + 1}`}
+                  style={{
+                    flexShrink: 0, padding: "6px 8px", borderRadius: 6,
+                    background: "transparent",
+                    border: `1px solid ${canScore ? K.act + "50" : K.bdr}`,
+                    color: canScore ? K.act : K.t3,
+                    fontSize: FS.micro, fontWeight: FW.bold,
+                    cursor: canScore ? "pointer" : "default",
+                    opacity: canScore ? 1 : 0.5, whiteSpace: "nowrap",
+                  }}
+                >Score</button>
+              </div>
+              {/* Per-player score line, only for players who've posted.
+                  Sits under the group so the tee sheet above stays a
+                  tee sheet and doesn't turn into a scoreboard. */}
+              {seated.some(pid => funSpotSummary(funScoreIndex, round.id, pid, pars, hcps, players.find(p => p.id === pid))) && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "3px 0 2px 66px" }}>
+                  {seated.map(pid => {
+                    const summary = funSpotSummary(funScoreIndex, round.id, pid, pars, hcps, players.find(p => p.id === pid));
+                    if (!summary) return null;
+                    return (
+                      <span key={pid} style={{ fontSize: FS.micro, color: K.t3 }}>
+                        {nameFor(pid)} <strong style={{ color: pid === myPid ? K.teal : K.t2 }}>{summary}</strong>
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-          </div>
-        ))}
+          );
+        })}
         {round.notes && (
           <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 8, lineHeight: 1.5 }}>{round.notes}</div>
         )}
         {!isPast && !myPid && (
           <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 8, lineHeight: 1.5 }}>
             Link your player in Admin to claim a spot.
+          </div>
+        )}
+
+        {/* Round leaderboard — appears the moment anyone posts a hole,
+            and only then. An all-zero board on an unplayed round would
+            be noise on every upcoming card. */}
+        {hasScores && (
+          <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px solid ${K.bdr}` }}>
+            <div style={{ fontSize: FS.micro, fontWeight: FW.bold, color: K.teal, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 4 }}>
+              Leaderboard · Net
+            </div>
+            <FunLeaderboard rows={board} myPid={myPid} />
           </div>
         )}
       </div>
@@ -389,12 +464,15 @@ function FunRoundCard({ round, players, myPid, isComm, isPast, onClaim, onReleas
 export function FunRounds({
   funRounds, players, leagueUser, isComm,
   saveFunRound, deleteFunRound, leagueConfig, season,
+  course, funScores, saveFunScores,
   appToast, setPopupOpen,
 }) {
   const [formFor, setFormFor] = useState(null);   // round object | "new" | null
   const [confirmDelete, setConfirmDelete] = useState(null);
   // { round, g, s, name } — commissioner clearing someone else's spot.
   const [confirmClear, setConfirmClear] = useState(null);
+  // { round, groupIdx, pids } — the group whose card is open for entry.
+  const [scoring, setScoring] = useState(null);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState(null);
 
@@ -409,8 +487,13 @@ export function FunRounds({
   // Popups suppress pull-to-refresh app-side, same as every other page
   // that opens one.
   useEffect(() => {
-    if (setPopupOpen) setPopupOpen(!!formFor || !!confirmDelete || !!confirmClear);
-  }, [formFor, confirmDelete, confirmClear, setPopupOpen]);
+    if (setPopupOpen) setPopupOpen(!!formFor || !!confirmDelete || !!confirmClear || !!scoring);
+  }, [formFor, confirmDelete, confirmClear, scoring, setPopupOpen]);
+
+  // Flat card lookup keyed `${roundId}_${pid}`, rebuilt when the score
+  // subscription fires. Every card on the page reads from this one index
+  // rather than filtering the doc list per player per round.
+  const funScoreIndex = useMemo(() => indexFunScores(funScores), [funScores]);
 
   const toast = (msg, kind = "info") => {
     if (typeof appToast === "function") appToast(msg, kind, 3000);
@@ -519,12 +602,35 @@ export function FunRounds({
     toast(ok ? "Tee time deleted." : "Couldn't delete the tee time.", ok ? "success" : "error");
   };
 
+  // Save a group's cards. One doc per player, so two people scoring
+  // DIFFERENT players in the same group can't collide; two people
+  // scoring the SAME player is last-write-wins, which is the same
+  // bargain league scoring makes and the same one a paper card makes.
+  const handleSaveScores = async (cards) => {
+    const entries = Object.entries(cards || {});
+    if (!entries.length) return true;   // nothing changed; close quietly
+    const docs = entries.map(([pid, holes]) => ({
+      id: funScoreId(scoring.round.id, pid),
+      roundId: scoring.round.id,
+      playerId: pid,
+      season: scoring.round.season || year,
+      holes,
+      updatedAt: Date.now(),
+      updatedBy: myPid || null,
+    }));
+    const ok = await saveFunScores(docs);
+    if (!ok) { toast("Couldn't save those scores.", "error"); return false; }
+    toast("Scores saved.", "success");
+    return true;
+  };
+
   const cardProps = {
-    players, myPid, isComm,
+    players, myPid, isComm, course, funScoreIndex,
     onClaim: handleClaim,
     onRelease: handleRelease,
     onEdit: (r) => setFormFor(r),
     onDelete: (r) => setConfirmDelete(r),
+    onScore: (round, groupIdx, pids) => setScoring({ round, groupIdx, pids }),
   };
 
   const nothingAtAll = upcoming.length === 0 && past.length === 0;
@@ -604,6 +710,26 @@ export function FunRounds({
           onCancel: () => setConfirmDelete(null),
         } : null}
       />
+
+      {scoring && (() => {
+        const { side, pars, hcps } = funRoundSide(scoring.round, course);
+        return (
+          <FunScoreEntry
+            // Keyed so opening a different group remounts the draft
+            // state — otherwise group 2 would open showing group 1's
+            // typed-but-unsaved numbers.
+            key={`${scoring.round.id}_${scoring.groupIdx}`}
+            round={scoring.round}
+            groupIdx={scoring.groupIdx}
+            pids={scoring.pids}
+            players={players}
+            pars={pars} hcps={hcps} side={side}
+            index={funScoreIndex}
+            onSave={handleSaveScores}
+            onClose={() => setScoring(null)}
+          />
+        );
+      })()}
 
       <ConfirmModal
         modal={confirmClear ? {
