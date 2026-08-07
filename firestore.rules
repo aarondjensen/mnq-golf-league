@@ -12,7 +12,8 @@ rules_version = '2';
 //   • league member (has a league_members doc): write gameplay data —
 //     hole scores (live scoring), match results (finalize / attest /
 //     auto-heal, which runs on every client), CTP claims, attendance,
-//     and their own push-notification tokens.
+//     and their own push-notification tokens. Plus the `slots` field
+//     (and only that field) on a fun round — claiming a tee-time spot.
 //   • commissioner (member doc with isCommissioner: true): everything else —
 //     players, teams, schedule, config, course, scoring rules, and other
 //     users' member docs. All commissioner-only UI flows (Admin pages,
@@ -106,6 +107,52 @@ service cloud.firestore {
       allow write: if isMember();
     }
     match /league_ctp/{docId} {
+      allow read: if signedIn();
+      allow write: if isMember();
+    }
+
+    // ── Fun rounds — split access, and the only collection with one ──
+    // Casual tee times outside the official schedule (src/lib/funRounds.js).
+    // The commissioner owns the ROUND — creating it, and setting the date,
+    // start time, and how many tee times are activated. Any member owns
+    // the TEE SHEET: claiming an open spot or giving one up.
+    //
+    // That split is why this can't be a plain `isMember()` write like the
+    // gameplay collections above: a member who could write the whole doc
+    // could move the tee time or add a fourth group the course never
+    // booked, and the commissioner is the one talking to the pro shop. The
+    // diff() check pins a member's write to the `slots` field and nothing
+    // else — date, startTime, groupCount and groupSize stay commish-only.
+    //
+    // Note this permits a member to clear ANOTHER player's spot, not only
+    // their own. Validating "only your own playerId moved" would mean
+    // resolving uid → playerId and diffing map values in rules, and the
+    // league already trusts members to mark a teammate absent
+    // (league_attendance above) — dropping a buddy from a casual tee time
+    // is the same trust level, and the UI only offers it to commissioners.
+    //
+    // affectedKeys() is top-level, so a claim — a merge upsert of
+    // { id, slots: { g0_s2: <pid> }, league_id } — diffs to exactly
+    // ['slots'] no matter which spot inside the map moved.
+    match /league_fun_rounds/{docId} {
+      allow read: if signedIn();
+      allow create, delete: if isCommissioner();
+      allow update: if isCommissioner()
+        || (isMember()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['slots']));
+    }
+
+    // Fun-round scorecards — one doc per (round, player). Plain member
+    // write, matching league_hole_scores: whoever in the group has their
+    // phone out enters for everybody, exactly as on league night.
+    //
+    // No commissioner gate and no owner check, because these scores are
+    // inert. They carry no `week`, they are never written to
+    // league_hole_scores, and no handicap, standings or stats path reads
+    // this collection — so the worst a bad actor can do is make a casual
+    // round's leaderboard wrong. Deletes are allowed for the same reason
+    // (and are how App.jsx cleans up cards when a round is deleted).
+    match /league_fun_scores/{docId} {
       allow read: if signedIn();
       allow write: if isMember();
     }
