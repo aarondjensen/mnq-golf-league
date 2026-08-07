@@ -570,6 +570,26 @@ export function deserializeLeagueConfig(cfg) {
   return { ...cfg, customSeedWeeks: deserializeSeedWeeks(cfg.customSeedWeeks) };
 }
 
+// ── Shared utility: the set of FINALIZED REGULAR-SEASON week numbers ──
+// One definition of "the regular season period", used by every consumer that
+// must not let postseason play leak into a regular-season figure:
+//   • Standings' Regular Season tab (W-L-T · Pts · HW and the ▲/▼ movement)
+//   • buildPlayoffSeedMap's live seed preview
+//   • computeRegularSeasonSeeds (the frozen playoff seeding)
+// A week qualifies when it is locked (finalized — mid-week partial scores must
+// never move a standings row) and is not a playoff week. Playoff weeks are
+// excluded wholesale, which covers the consolation pairings too: those exist
+// only to give non-bracket teams a tee time and are not regular-season games.
+// `isPlayoff !== true` rather than `=== false` so legacy schedule entries that
+// predate the flag still count as regular season.
+export function lockedRegularSeasonWeeks(schedule) {
+  const set = new Set();
+  (schedule || []).forEach(wk => {
+    if (wk && wk.locked === true && wk.isPlayoff !== true) set.add(wk.week);
+  });
+  return set;
+}
+
 // ── Shared utility: { teamId -> seed number (1 = best) } ──
 // Prefers locked-seeds snapshot (leagueConfig.lockedSeeds) when present and complete.
 // Otherwise derives from standings via buildStandingsForSeed, so Admin, Scoring,
@@ -606,9 +626,7 @@ export function buildPlayoffSeedMap(teams, matchResults, schedule, leagueConfig)
     playoffSeeds.forEach((tid, i) => { map[tid] = i + 1; });
     return map;
   }
-  const nonPlayoffLocked = new Set(
-    (schedule || []).filter(s => s.locked === true && s.isPlayoff !== true).map(s => s.week)
-  );
+  const nonPlayoffLocked = lockedRegularSeasonWeeks(schedule);
   const rsResults = (matchResults || []).filter(r => r && nonPlayoffLocked.has(r.week));
   const standings = buildStandingsForSeed(teams, rsResults, schedule, leagueConfig?.standingsMethod, false);
   const map = {};
@@ -621,9 +639,7 @@ export function buildPlayoffSeedMap(teams, matchResults, schedule, leagueConfig)
 // Shared by autoSeed's freeze path and Admin's "Lock Playoff Seeds" capture so
 // both compute the playoff seeding identically.
 export function computeRegularSeasonSeeds(teams, matchResults, schedule, standingsMethod) {
-  const nonPlayoffLocked = new Set(
-    (schedule || []).filter(s => s.locked === true && s.isPlayoff !== true).map(s => s.week)
-  );
+  const nonPlayoffLocked = lockedRegularSeasonWeeks(schedule);
   const rsResults = (matchResults || []).filter(r => r && nonPlayoffLocked.has(r.week));
   return buildStandingsForSeed(teams, rsResults, schedule, standingsMethod, false).map(s => s.teamId);
 }

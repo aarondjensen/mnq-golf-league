@@ -28,7 +28,7 @@
 // file's expectations are pinned correctly.
 
 import { describe, it, expect } from "vitest";
-import { getCSS, buildStandingsForSeed, isIndivGroupMatch, weekFullyAttested, weekFullyScored, findGroupResult, indivGroupKey, matchPids, currentPlayoffRoundIdx, orderByBracketIdx } from "./theme";
+import { getCSS, buildStandingsForSeed, lockedRegularSeasonWeeks, computeRegularSeasonSeeds, isIndivGroupMatch, weekFullyAttested, weekFullyScored, findGroupResult, indivGroupKey, matchPids, currentPlayoffRoundIdx, orderByBracketIdx } from "./theme";
 
 // Helpers that build fixtures concisely. Default values match what
 // computeMatchResult would produce for typical matches.
@@ -338,6 +338,96 @@ describe("buildStandingsForSeed", () => {
       expect(a.points).toBe(10);
       expect(a.w).toBe(1);
     });
+  });
+});
+
+// ══════════════════════════════════════════════════════════════════
+//  Regular-season week filter
+// ══════════════════════════════════════════════════════════════════
+//
+// The Regular Season standings row (W-L-T · Pts · HW) must reflect the
+// regular season and nothing else. Before this filter existed, Standings
+// counted EVERY locked week, so the moment a playoff week was finalized
+// the bracket result — and the consolation match played alongside it —
+// bumped the regular-season record of whoever played. Records kept
+// climbing through the postseason and the "final standings" were never
+// final.
+//
+// lockedRegularSeasonWeeks is the single definition of that period. These
+// tests pin both halves of the predicate (locked AND not playoff) plus the
+// legacy-data tolerance, then assert the end-to-end effect through
+// computeRegularSeasonSeeds — the consumer that turns this set into the
+// frozen playoff seeding.
+describe("lockedRegularSeasonWeeks", () => {
+  it("keeps locked regular-season weeks", () => {
+    const set = lockedRegularSeasonWeeks([lockedWeek(1), lockedWeek(2)]);
+    expect([...set].sort()).toEqual([1, 2]);
+  });
+
+  it("excludes playoff weeks even when they are locked", () => {
+    // The regression: a finalized playoff week is locked, so a plain
+    // `locked` check swept its results into the regular-season record.
+    const schedule = [
+      lockedWeek(1),
+      lockedWeek(2),
+      { week: 3, locked: true, isPlayoff: true },
+      { week: 4, locked: true, isPlayoff: true },
+    ];
+    const set = lockedRegularSeasonWeeks(schedule);
+    expect([...set].sort()).toEqual([1, 2]);
+    expect(set.has(3)).toBe(false);
+    expect(set.has(4)).toBe(false);
+  });
+
+  it("excludes unlocked weeks — a week in progress cannot move standings", () => {
+    const set = lockedRegularSeasonWeeks([lockedWeek(1), lockedWeek(2, false)]);
+    expect([...set]).toEqual([1]);
+  });
+
+  it("treats weeks with no isPlayoff field as regular season", () => {
+    // Legacy schedule docs predate the flag. `isPlayoff !== true` (rather
+    // than `=== false`) is what keeps their history counting.
+    const set = lockedRegularSeasonWeeks([
+      { week: 1, locked: true },
+      { week: 2, locked: true, isPlayoff: false },
+    ]);
+    expect([...set].sort()).toEqual([1, 2]);
+  });
+
+  it("handles null/undefined schedule and null entries without throwing", () => {
+    expect([...lockedRegularSeasonWeeks(null)]).toEqual([]);
+    expect([...lockedRegularSeasonWeeks(undefined)]).toEqual([]);
+    expect([...lockedRegularSeasonWeeks([null, lockedWeek(1)])]).toEqual([1]);
+  });
+
+  it("keeps postseason results out of the standings totals end-to-end", () => {
+    // "a" sweeps the two regular-season weeks; "b" wins both playoff weeks.
+    // Filtering by this set must leave "a" at 2-0-0 and "b" at 0-2-0 — the
+    // playoff wins are invisible to the regular-season record.
+    const teams = [team("a"), team("b")];
+    const schedule = [
+      lockedWeek(1),
+      lockedWeek(2),
+      { week: 3, locked: true, isPlayoff: true },
+      { week: 4, locked: true, isPlayoff: true },
+    ];
+    const results = [
+      result(1, "a", "b", { winnerId: "a", text: "3&2", t1Hw: 5, t2Hw: 2 }),
+      result(2, "a", "b", { winnerId: "a", text: "2UP", t1Hw: 4, t2Hw: 3 }),
+      result(3, "a", "b", { winnerId: "b", text: "4&3", t1Hw: 1, t2Hw: 6 }),
+      result(4, "a", "b", { winnerId: "b", text: "5&4", t1Hw: 1, t2Hw: 7 }),
+    ];
+    const rsWeeks = lockedRegularSeasonWeeks(schedule);
+    const rsResults = results.filter(r => rsWeeks.has(r.week));
+    const standings = buildStandingsForSeed(teams, rsResults, schedule, "record", false);
+
+    const a = standings.find(s => s.teamId === "a");
+    const b = standings.find(s => s.teamId === "b");
+    expect(a).toMatchObject({ w: 2, l: 0, t: 0, gp: 2, hw: 9 });
+    expect(b).toMatchObject({ w: 0, l: 2, t: 0, gp: 2, hw: 5 });
+
+    // And "a" — winless in the postseason — still holds the #1 seed.
+    expect(computeRegularSeasonSeeds(teams, results, schedule, "record")).toEqual(["a", "b"]);
   });
 });
 

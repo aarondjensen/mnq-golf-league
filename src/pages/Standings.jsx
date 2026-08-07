@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, buildSeedMap, buildPlayoffSeedMap, buildStandingsForSeed, recordPoints, LoadingPanel, SkeletonList, buildHistoricalPlayers, isIndivGroupMatch, currentPlayoffRoundIdx, orderByBracketIdx, FS, FW } from "../theme";
+import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, buildSeedMap, buildPlayoffSeedMap, buildStandingsForSeed, lockedRegularSeasonWeeks, recordPoints, LoadingPanel, SkeletonList, buildHistoricalPlayers, isIndivGroupMatch, currentPlayoffRoundIdx, orderByBracketIdx, FS, FW } from "../theme";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/matchCalc";
 import { autoHealMatchResults } from "../lib/autoHealMatchResults";
@@ -1199,21 +1199,32 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     });
   }, [matchResults, weekScores, course, scoringRules, leagueConfig, saveMatchResult, schedule, teams, players, seedMap, playoffSeedMap, allRounds]);
 
-  const lockedWeeks = useMemo(() => {
-    const set = new Set();
-    (schedule || []).forEach(wk => { if (wk.locked) set.add(wk.week); });
-    return set;
-  }, [schedule]);
+  // ── Regular-season week filter ────────────────────────────────────────
+  // The Regular Season standings count ONLY regular-season weeks. Every
+  // playoff week (bracket matches AND the consolation pairings that fill out
+  // the tee sheet) is excluded, so a team's W-L-T · Pts · HW stops moving the
+  // moment the regular season ends — which is what "final standings" means,
+  // and what the frozen playoff seeds are built from.
+  //
+  // Shared with computeRegularSeasonSeeds / buildPlayoffSeedMap via
+  // theme.lockedRegularSeasonWeeks, so the standings this page shows and the
+  // seeding the bracket resolves from can never drift apart.
+  const regularSeasonWeeks = useMemo(() => lockedRegularSeasonWeeks(schedule), [schedule]);
 
   const lockedResults = useMemo(() => {
-    return matchResults.filter(r => r && lockedWeeks.has(r.week));
-  }, [matchResults, lockedWeeks]);
+    return matchResults.filter(r => r && regularSeasonWeeks.has(r.week));
+  }, [matchResults, regularSeasonWeeks]);
 
+  // Latest FINALIZED REGULAR-SEASON week. Drives the ▲/▼ week-over-week
+  // position change, which is likewise a regular-season-only comparison —
+  // once the playoffs start there is no "last week" that moved the standings,
+  // so the indicator correctly freezes on the final regular-season week's
+  // movement instead of flattening to zero the moment a playoff week locks.
   const latestLockedWeek = useMemo(() => {
     let max = 0;
-    lockedWeeks.forEach(w => { if (w > max) max = w; });
+    regularSeasonWeeks.forEach(w => { if (w > max) max = w; });
     return max;
-  }, [lockedWeeks]);
+  }, [regularSeasonWeeks]);
 
   const standings = useMemo(() => {
     // lockedOnly: false because the caller has already filtered to lockedResults.
@@ -1264,8 +1275,11 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
         return { week: r.week, date: wk?.date || "", oppName: lastNamesOnly(opp?.name || "TBD"), myPts, oppPts, result: wResult, holesWon, resultDisplay, matchResult: r, rainedOut: false };
       });
 
+    // Rain-outs are listed for context alongside the played weeks. Restricted
+    // to regular-season weeks for the same reason the match rows are — this
+    // breakdown has to add up to the regular-season record on the row above it.
     const rainRows = schedule
-      .filter(wk => wk.rainedOut && wk.week > 0)
+      .filter(wk => wk.rainedOut && wk.week > 0 && wk.isPlayoff !== true)
       .map(wk => ({
         week: wk.week, date: wk.date || "", oppName: "", myPts: 0, oppPts: 0,
         result: "R", holesWon: "", resultDisplay: "RAIN", matchResult: null, rainedOut: true,
