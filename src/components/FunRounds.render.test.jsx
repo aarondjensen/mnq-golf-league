@@ -20,6 +20,11 @@ import { slotKey } from "../lib/funRounds";
 
 const CLAIMABLE = "Open spot — tap to claim";
 const giveUp = (name) => `${name} — tap to give up`;
+// Claimed spots now read "A. Jensen" — a bare surname is ambiguous when
+// two players share one, and the tee sheet is the screen where getting
+// the wrong person actually matters.
+const JENSEN = "A. Jensen";
+const VIGO = "B. Vigo";
 const manageable = (label) => `${label} — tap to manage spot`;
 
 const players = [
@@ -103,7 +108,7 @@ describe("FunRounds — the tee sheet", () => {
     const html = render({
       funRounds: [round({ slots: { [slotKey(1, 2)]: "p2" } })],
     });
-    expect(html).toContain("Vigo");
+    expect(html).toContain(VIGO);
     expect(html).toContain("1 of 12 spots filled");
     expect(count(html, ">Open<")).toBe(11);
   });
@@ -126,8 +131,8 @@ describe("FunRounds — the tee sheet", () => {
     const html = render({
       funRounds: [round({ slots: undefined, signups: ["p1", "p2"] })],
     });
-    expect(html).toContain("Jensen");
-    expect(html).toContain("Vigo");
+    expect(html).toContain(JENSEN);
+    expect(html).toContain(VIGO);
   });
 });
 
@@ -141,8 +146,8 @@ describe("FunRounds — who can tap what", () => {
     const html = render({
       funRounds: [round({ slots: { [slotKey(0, 0)]: "p1", [slotKey(0, 1)]: "p2" } })],
     });
-    expect(html).toContain(giveUp("Jensen"));
-    expect(html).not.toContain(giveUp("Vigo"));
+    expect(html).toContain(giveUp(JENSEN));
+    expect(html).not.toContain(giveUp(VIGO));
     expect(html).toContain("You&#x27;re In");
   });
 
@@ -154,11 +159,11 @@ describe("FunRounds — who can tap what", () => {
       leagueUser: { playerId: "p3", isCommissioner: true },
       funRounds: [round({ groupCount: 1, slots: { [slotKey(0, 0)]: "p1", [slotKey(0, 1)]: "p2" } })],
     });
-    expect(html).toContain(manageable("Jensen"));
-    expect(html).toContain(manageable("Vigo"));
+    expect(html).toContain(manageable(JENSEN));
+    expect(html).toContain(manageable(VIGO));
     expect(html).toContain(manageable("Open"));
     // The player-only affordances are gone for them.
-    expect(html).not.toContain(giveUp("Jensen"));
+    expect(html).not.toContain(giveUp(JENSEN));
     expect(html).not.toContain(CLAIMABLE);
   });
 
@@ -183,9 +188,9 @@ describe("FunRounds — past rounds", () => {
   it("files a past round under Past and freezes its sheet", () => {
     const html = render({ funRounds: past });
     expect(html).toContain("Past");
-    expect(html).toContain("Jensen");
+    expect(html).toContain(JENSEN);
     expect(html).not.toContain(CLAIMABLE);
-    expect(html).not.toContain(giveUp("Jensen"));
+    expect(html).not.toContain(giveUp(JENSEN));
   });
 
   it("lets the commissioner delete a past round but not edit it", () => {
@@ -365,5 +370,26 @@ describe("FunRounds — tee sheet row can't overflow", () => {
 
   it("still renders every spot", () => {
     expect(count(html(), ">Open<")).toBe(4);
+  });
+});
+
+describe("FunRounds — spot labelling and size", () => {
+  const seated = round({ groupCount: 1, slots: { [slotKey(0, 0)]: "p1" } });
+
+  it("shows first initial and last name on a claimed spot", () => {
+    const h = render({ funRounds: [seated] });
+    expect(h).toContain("A. Jensen");
+    expect(h).not.toContain(">Jensen<");
+  });
+
+  it("gives spots room for that longer name without truncating", () => {
+    // "A. JENSEN" renders uppercase with letter-spacing and needs ~74px
+    // of box; the floor has to clear it or every name ellipsises.
+    const h = render({ funRounds: [seated] });
+    expect(h).toContain("min-width:80px");
+  });
+
+  it("keeps a bigger tap target", () => {
+    expect(render({ funRounds: [seated] })).toContain("padding:11px 8px");
   });
 });

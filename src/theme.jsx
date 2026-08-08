@@ -125,6 +125,26 @@ export function lastNamesOnly(teamName) {
   }).join(" / ");
 }
 
+// ── Shared utility: "Aaron Jensen" → "A. Jensen" ──
+//
+// The compact form for anywhere a full name won't fit but a bare last
+// name is ambiguous — two Jensens in a league is not hypothetical.
+//
+// This exact expression was already written out inline in
+// IndividualLeaderboard and Admin; the fun-round tee sheet would have
+// been a third copy. (Schedule has a deliberately DIFFERENT rule — it
+// only adds the initial when two players share a last name — so it is
+// not this function and shouldn't be folded into it.)
+//
+// A single-word name is returned unchanged: "Cher" has no last name to
+// abbreviate toward, and "C. Cher" would be worse than useless.
+export function initialLastName(fullName) {
+  if (!fullName) return "";
+  const parts = String(fullName).trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return parts[0] || "";
+  return `${parts[0][0]}. ${parts[parts.length - 1]}`;
+}
+
 // ── Shared utility: format tee time from base time string + index ──
 export function formatTeeTime(baseTime, idx, interval = 8) {
   const [timePart, ampm] = (baseTime || "4:28 PM").split(' ');

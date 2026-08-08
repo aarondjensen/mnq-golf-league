@@ -36,7 +36,7 @@
 // isolation is structural rather than a filter someone has to remember.
 
 import { useState, useEffect, useMemo, useRef } from "react";
-import { K, Pill, EmptyState, SubLabel, lastNamesOnly, LIST_GAP, CARD_RADIUS, FS, FW } from "../theme";
+import { K, Pill, EmptyState, SubLabel, initialLastName, LIST_GAP, CARD_RADIUS, FS, FW } from "../theme";
 import { Popup, ConfirmModal } from "./Popup";
 import {
   splitFunRounds,
@@ -71,7 +71,6 @@ import {
   funScoreId,
   funSpotSummary,
   isCardComplete,
-  readFunCard as _readFunCard,
 } from "../lib/funScores";
 import { FunLeaderboard } from "./FunScorecard";
 import { GroupScoring } from "./GroupScoring";
@@ -283,8 +282,13 @@ function Spot({ pid, name, mine, canClaim, canRelease, canManage, busy, onClaim,
   const interactive = canManage || (!pid && canClaim) || (pid && mine && canRelease);
   const label = pid ? name : "Open";
 
+  // Sized so "A. JENSEN" fits without truncating. The app renders
+  // uppercase with letter-spacing, so a nine-character name needs about
+  // 74px of box — hence the 80px floor. On a narrow phone four of those
+  // exceed the card width and the row wraps to 2×2, which reads better
+  // than four ellipsised surnames.
   const base = {
-    flex: "1 1 0", minWidth: 62, padding: "7px 6px", borderRadius: 7,
+    flex: "1 1 0", minWidth: 80, padding: "11px 8px", borderRadius: 8,
     fontSize: FS.xs, fontWeight: FW.bold, textAlign: "center",
     overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
     transition: "background .15s, border-color .15s",
@@ -421,9 +425,12 @@ function FunRoundCard({
     [grid, funScoreIndex, round.id, players, pars, hcps]
   );
 
+  // "A. Jensen" rather than "Jensen": two players sharing a surname is
+  // not hypothetical in a league this size, and the tee sheet is the one
+  // screen where getting the wrong person is a real problem.
   const nameFor = (pid) => {
     const p = players.find(x => x.id === pid);
-    return p ? lastNamesOnly(p.name) : "Unknown";
+    return p ? initialLastName(p.name) : "Unknown";
   };
 
   return (
@@ -616,7 +623,7 @@ export function FunRounds({
   const myFullGroup = useMemo(
     () => (autoOpenMyGroup
       ? findMyFullGroup(funRounds, myPid, year,
-          (r, pid) => isCardComplete(_readFunCard(funScoreIndex, r.id, pid)))
+          (r, pid) => isCardComplete(readFunCard(funScoreIndex, r.id, pid)))
       : null),
     [autoOpenMyGroup, funRounds, myPid, year, funScoreIndex]
   );
