@@ -300,3 +300,37 @@ describe("FunRounds — scoring a group", () => {
     expect(html).toContain("thru 3");
   });
 });
+
+// ── Row layout ───────────────────────────────────────────────────
+//
+// The tee-sheet row used to be one line: time, four spots, Score. Spots
+// carry a min-width so names stay readable, so a foursome plus the time
+// and the button needed ~406px — more than a phone card's ~300px — and
+// the card's overflow:hidden clipped the Score button out of sight
+// behind the last spot. These pin the shape that prevents it.
+describe("FunRounds — tee sheet row can't overflow", () => {
+  const html = () => render({
+    funRounds: [round({ groupCount: 1, groupSize: 4 })],
+    course: { frontPars: [4,4,4,3,5,4,4,3,5], backPars: [4,4,4,3,5,4,4,3,5],
+              frontHcps: [1,3,5,7,9,11,13,15,17], backHcps: [1,3,5,7,9,11,13,15,17] },
+  });
+
+  it("puts Score on the tee-time line, above the spots", () => {
+    // Order in the markup is the guard: if Score ever moves back into
+    // the spots row, it competes for width again.
+    const h = html();
+    expect(h.indexOf("Score group 1")).toBeLessThan(h.indexOf("Open spot"));
+  });
+
+  it("lets the spots wrap instead of overflowing the card", () => {
+    // A fivesome, or a very narrow phone, wraps to a second line rather
+    // than pushing a control outside the card.
+    expect(html()).toContain("flex-wrap:wrap");
+  });
+
+  it("still renders every spot and the Score button", () => {
+    const h = html();
+    expect(count(h, ">Open<")).toBe(4);
+    expect(h).toContain("Score group 1");
+  });
+});

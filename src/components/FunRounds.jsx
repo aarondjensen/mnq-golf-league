@@ -276,7 +276,7 @@ function Spot({ pid, name, mine, canClaim, canRelease, canManage, busy, onClaim,
   const label = pid ? name : "Open";
 
   const base = {
-    flex: "1 1 0", minWidth: 68, padding: "7px 6px", borderRadius: 7,
+    flex: "1 1 0", minWidth: 62, padding: "7px 6px", borderRadius: 7,
     fontSize: FS.xs, fontWeight: FW.bold, textAlign: "center",
     overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis",
     transition: "background .15s, border-color .15s",
@@ -451,11 +451,38 @@ function FunRoundCard({
           // case, not an edge case.
           const canScore = seated.length > 0 && !!pars && !!myPid;
           return (
-            <div key={g.idx} style={{ padding: "3px 0" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <div style={{ width: 58, flexShrink: 0, fontSize: FS.sm, fontWeight: FW.bold, color: K.act }}>{g.teeTime}</div>
-                <div style={{ flex: 1, display: "flex", gap: 4, minWidth: 0 }}>
-                  {g.spots.map((pid, s) => (
+            <div key={g.idx} style={{ padding: "5px 0" }}>
+              {/* Tee time and Score share a line; the spots get the full
+                  width below them.
+                  This used to be one row — time, four spots, Score. Each
+                  spot carries a min-width so a name stays readable, so
+                  four of them plus the time and the button needed about
+                  406px of row. A phone card is nearer 300px, and the
+                  card's overflow:hidden clipped the Score button out of
+                  existence behind the last spot. Giving the spots their
+                  own full-width line fits a foursome comfortably, and
+                  they wrap rather than overflow if the screen is
+                  narrower still or the group is a fivesome. */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                <div style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.act }}>{g.teeTime}</div>
+                <div style={{ flex: 1, minWidth: 0 }} />
+                <button
+                  onClick={() => onScore(round, g.idx, g.spots)}
+                  disabled={!canScore}
+                  aria-label={`Score group ${g.idx + 1}`}
+                  style={{
+                    flexShrink: 0, padding: "6px 10px", borderRadius: 6,
+                    background: "transparent",
+                    border: `1px solid ${canScore ? K.act + "50" : K.bdr}`,
+                    color: canScore ? K.act : K.t3,
+                    fontSize: FS.micro, fontWeight: FW.bold,
+                    cursor: canScore ? "pointer" : "default",
+                    opacity: canScore ? 1 : 0.5, whiteSpace: "nowrap",
+                  }}
+                >Score</button>
+              </div>
+              <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                {g.spots.map((pid, s) => (
                     <Spot
                       key={s}
                       pid={pid}
@@ -470,27 +497,12 @@ function FunRoundCard({
                       onManage={() => onManage(round, g.idx, s)}
                     />
                   ))}
-                </div>
-                <button
-                  onClick={() => onScore(round, g.idx, g.spots)}
-                  disabled={!canScore}
-                  aria-label={`Score group ${g.idx + 1}`}
-                  style={{
-                    flexShrink: 0, padding: "6px 8px", borderRadius: 6,
-                    background: "transparent",
-                    border: `1px solid ${canScore ? K.act + "50" : K.bdr}`,
-                    color: canScore ? K.act : K.t3,
-                    fontSize: FS.micro, fontWeight: FW.bold,
-                    cursor: canScore ? "pointer" : "default",
-                    opacity: canScore ? 1 : 0.5, whiteSpace: "nowrap",
-                  }}
-                >Score</button>
               </div>
               {/* Per-player score line, only for players who've posted.
                   Sits under the group so the tee sheet above stays a
                   tee sheet and doesn't turn into a scoreboard. */}
               {seated.some(pid => funSpotSummary(funScoreIndex, round.id, pid, pars, hcps, players.find(p => p.id === pid))) && (
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "3px 0 2px 66px" }}>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: "4px 0 2px 2px" }}>
                   {seated.map(pid => {
                     const summary = funSpotSummary(funScoreIndex, round.id, pid, pars, hcps, players.find(p => p.id === pid));
                     if (!summary) return null;
