@@ -4,15 +4,16 @@
 // ══════════════════════════════════════════════════════════════════
 //
 // The arithmetic is covered by funScores.test.js. What's left, and what
-// only a render can catch: the entry grid labelling the right holes for
-// the nine being played (a back-nine card numbered 1-9 would have people
-// entering scores against the wrong hole), the leaderboard appearing
-// only once somebody has posted, and the Score button being offered to
-// the right viewers.
+// only a render can catch: the leaderboard appearing only once somebody
+// has posted, and the Score button being offered to the right viewers.
+//
+// Score ENTRY moved to GroupScoring — the same hole-by-hole screen the
+// playoff foursomes use — so its rendering is covered by the tests that
+// exercise that component through Scoring.
 
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { FunScoreEntry, FunLeaderboard } from "./FunScorecard.jsx";
+import { FunLeaderboard } from "./FunScorecard.jsx";
 import { FunRounds } from "./FunRounds.jsx";
 import { slotKey } from "../lib/funRounds";
 import { buildFunLeaderboard, indexFunScores } from "../lib/funScores";
@@ -34,61 +35,6 @@ const round = (over = {}) => ({
   slots: { [slotKey(0, 0)]: "p1", [slotKey(0, 1)]: "p2" },
   createdAt: 1,
   ...over,
-});
-
-describe("FunScoreEntry", () => {
-  const entry = (props = {}) => renderToStaticMarkup(
-    <FunScoreEntry
-      round={round()} groupIdx={0} pids={["p1", "p2", null, null]}
-      players={players} pars={PARS} hcps={HCPS} side="front"
-      index={{}} onSave={async () => true} onClose={() => {}}
-      {...props}
-    />
-  );
-
-  it("renders a row of nine inputs per seated player", () => {
-    const html = entry();
-    expect(html).toContain("Jensen");
-    expect(html).toContain("Vigo");
-    // Nine holes x two players, and nothing for the two empty spots.
-    expect(html.split("<input").length - 1).toBe(18);
-  });
-
-  it("numbers the holes 1-9 on the front", () => {
-    const html = entry({ side: "front" });
-    expect(html).toContain("Jensen hole 1");
-    expect(html).toContain("Jensen hole 9");
-  });
-
-  it("numbers the holes 10-18 on the back", () => {
-    // A back-nine card numbered 1-9 would have people entering scores
-    // against the wrong hole on the card in their hand.
-    const html = entry({ side: "back", round: round({ side: "back" }) });
-    expect(html).toContain("Jensen hole 10");
-    expect(html).toContain("Jensen hole 18");
-    expect(html).not.toContain("Jensen hole 1<");
-    expect(html).toContain("Back 9");
-  });
-
-  it("shows each player's handicap so the strokes are explicable", () => {
-    const html = entry();
-    expect(html).toContain("HCP 4");
-    expect(html).toContain("HCP 0");
-  });
-
-  it("pre-fills existing scores and shows the running line", () => {
-    const html = entry({
-      index: indexFunScores([{ roundId: "r1", playerId: "p2", holes: [5, 4, 4, 0, 0, 0, 0, 0, 0] }]),
-    });
-    expect(html).toContain('value="5"');
-    expect(html).toContain("thru 3");
-  });
-
-  it("says so rather than rendering a broken grid when the course is missing", () => {
-    const html = entry({ pars: null, hcps: null });
-    expect(html).toContain("Course data hasn&#x27;t loaded");
-    expect(html).not.toContain("<input");
-  });
 });
 
 describe("FunLeaderboard", () => {

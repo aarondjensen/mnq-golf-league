@@ -169,7 +169,16 @@
  * @property {string} id
  * @property {string} roundId              FunRound.id this card belongs to.
  * @property {string} playerId             Player.id.
- * @property {number[]} holes              Exactly 9 entries; 0 = hole not played.
+ * @property {Record<string, number>|number[]} holes   Hole index → strokes,
+ *                                         e.g. `{ "0": 5, "3": 4 }`. A MAP,
+ *                                         not an array, for the same reason
+ *                                         FunRound.slots is: hole-by-hole entry
+ *                                         writes one hole per tap, and Firestore
+ *                                         merges maps key by key but replaces
+ *                                         arrays whole — so an array would let
+ *                                         two quick taps erase each other. Cards
+ *                                         written before the switch are still
+ *                                         read in array form.
  * @property {number} [season]
  * @property {number} [updatedAt]
  * @property {string} [updatedBy]          Player.id of whoever entered it.

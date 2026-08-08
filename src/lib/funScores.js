@@ -45,19 +45,60 @@ export function funScoreId(roundId, pid) {
 }
 
 /**
- * Coerce a stored/edited hole array to exactly 9 integers, 0 meaning
- * "no score yet". Golf scores are small positive integers; anything
- * else (null, "", NaN, a 3-digit fat finger) reads as unentered rather
- * than poisoning a total.
+ * Coerce stored/edited holes to exactly 9 integers, 0 meaning "no score
+ * yet". Golf scores are small positive integers; anything else (null,
+ * "", NaN, a 3-digit fat finger) reads as unentered rather than
+ * poisoning a total.
+ *
+ * Accepts BOTH shapes:
+ *   • a map keyed by hole index — `{ "0": 5, "3": 4 }` — how it's stored
+ *   • an array — the original shape, still read so cards entered before
+ *     the switch keep working
+ *
+ * Why a map on the way in: hole-by-hole entry writes one hole per tap,
+ * and Firestore merges nested maps key by key but replaces arrays
+ * wholesale. With an array, two quick taps would both read the same
+ * stale card and the second write would erase the first hole — scores
+ * silently vanishing mid-round. Same reasoning as `slots` on the tee
+ * sheet. Internally everything downstream still works on an array,
+ * which is what all the scoring math wants.
  */
 export function normalizeHoles(raw) {
   const out = new Array(FUN_HOLES).fill(0);
-  if (!Array.isArray(raw)) return out;
+  if (!raw || typeof raw !== "object") return out;
   for (let h = 0; h < FUN_HOLES; h++) {
-    const n = Number(raw[h]);
+    const n = Number(Array.isArray(raw) ? raw[h] : raw[h] ?? raw[String(h)]);
     out[h] = Number.isInteger(n) && n > 0 && n < 100 ? n : 0;
   }
   return out;
+}
+
+/**
+ * The single-hole patch a tap persists. Merged into `holes`, so it
+ * touches that one key and nothing else.
+ */
+export function funHolePatch(hole, value) {
+  const n = Number(value);
+  return { [String(hole)]: Number.isInteger(n) && n > 0 && n < 100 ? n : 0 };
+}
+
+/**
+ * Shape a fun card into the `ir` form resolveIndivRound produces, so
+ * anything built to read a league round can read a fun one. The league
+ * store has makeup and total-only namespaces; a fun round has neither,
+ * so this is only ever the "live" or "none" case.
+ */
+export function funRoundIr(holes) {
+  const card = normalizeHoles(holes);
+  const played = {};
+  let gross = 0;
+  let count = 0;
+  for (let h = 0; h < FUN_HOLES; h++) {
+    if (card[h] > 0) { played[h] = card[h]; gross += card[h]; count++; }
+  }
+  return count > 0
+    ? { withdrawn: false, mode: "live", holes: played, gross, holesPlayed: count, totalOnly: false }
+    : { withdrawn: false, mode: "none", holes: {}, gross: 0, holesPlayed: 0, totalOnly: false };
 }
 
 /** Flat lookup keyed `${roundId}_${pid}` → 9 holes, built from the raw docs. */
@@ -101,17 +142,7 @@ export function funRoundSide(round, course) {
  * @returns {{ gross, netToPar, grossToPar, holesPlayed, played }}
  */
 export function funRoundLine(holes, pars, hcps, roundHcp = 0) {
-  const card = normalizeHoles(holes);
-  const played = {};
-  let gross = 0;
-  let count = 0;
-  for (let h = 0; h < FUN_HOLES; h++) {
-    if (card[h] > 0) { played[h] = card[h]; gross += card[h]; count++; }
-  }
-  const ir = count > 0
-    ? { withdrawn: false, mode: "live", holes: played, gross, holesPlayed: count, totalOnly: false }
-    : { withdrawn: false, mode: "none", holes: {}, gross: 0, holesPlayed: 0, totalOnly: false };
-  return computeRoundLine({ ir, pars, hcps, roundHcp });
+  return computeRoundLine({ ir: funRoundIr(holes), pars, hcps, roundHcp });
 }
 
 /** The 9-hole handicap to score a player against. Rounded, matching every other card. */

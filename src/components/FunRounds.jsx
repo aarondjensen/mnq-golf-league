@@ -56,13 +56,17 @@ import {
 } from "../lib/funRounds";
 import {
   funRoundSide,
+  funHolePatch,
+  funRoundIr,
+  readFunCard,
   indexFunScores,
   buildFunLeaderboard,
   roundHasScores,
   funScoreId,
   funSpotSummary,
 } from "../lib/funScores";
-import { FunScoreEntry, FunLeaderboard } from "./FunScorecard";
+import { FunLeaderboard } from "./FunScorecard";
+import { GroupScoring } from "./GroupScoring";
 
 const inputStyle = {
   width: "100%", padding: 10, borderRadius: 8,
@@ -571,6 +575,7 @@ export function FunRounds({
   const [managing, setManaging] = useState(null);
   // { round, groupIdx, pids } — the group whose card is open for entry.
   const [scoring, setScoring] = useState(null);
+  const [scoreToast, setScoreToast] = useState(null);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState(null);
 
@@ -592,6 +597,12 @@ export function FunRounds({
   // subscription fires. Every card on the page reads from this one index
   // rather than filtering the doc list per player per round.
   const funScoreIndex = useMemo(() => indexFunScores(funScores), [funScores]);
+  // GroupScoring wants a pid → player lookup, the same shape Scoring builds.
+  const playerMap = useMemo(() => {
+    const m = {};
+    (players || []).forEach(p => { m[p.id] = p; });
+    return m;
+  }, [players]);
 
   const toast = (msg, kind = "info") => {
     if (typeof appToast === "function") appToast(msg, kind, 3000);
@@ -719,22 +730,22 @@ export function FunRounds({
   // DIFFERENT players in the same group can't collide; two people
   // scoring the SAME player is last-write-wins, which is the same
   // bargain league scoring makes and the same one a paper card makes.
-  const handleSaveScores = async (cards) => {
-    const entries = Object.entries(cards || {});
-    if (!entries.length) return true;   // nothing changed; close quietly
-    const docs = entries.map(([pid, holes]) => ({
-      id: funScoreId(scoring.round.id, pid),
-      roundId: scoring.round.id,
+  // One hole, one tap, one merge patch — mirroring how league scoring
+  // writes a single hole at a time. `holes` is a map, so this touches
+  // only the hole just entered and two quick taps can't clobber each
+  // other (see normalizeHoles in lib/funScores.js).
+  const saveOneHole = (round, pid, hole, value) => {
+    saveFunScores([{
+      id: funScoreId(round.id, pid),
+      roundId: round.id,
       playerId: pid,
-      season: scoring.round.season || year,
-      holes,
+      season: round.season || year,
+      holes: funHolePatch(hole, value),
       updatedAt: Date.now(),
       updatedBy: myPid || null,
-    }));
-    const ok = await saveFunScores(docs);
-    if (!ok) { toast("Couldn't save those scores.", "error"); return false; }
-    toast("Scores saved.", "success");
-    return true;
+    }]).then(ok => {
+      if (!ok) toast("Couldn't save that score.", "error");
+    });
   };
 
   const cardProps = {
@@ -748,6 +759,70 @@ export function FunRounds({
   };
 
   const nothingAtAll = upcoming.length === 0 && past.length === 0;
+
+  // ── Scoring a group ───────────────────────────────────────────────
+  //
+  // Takes over the whole view rather than opening a popup, because this
+  // IS the league's scoring screen — the same GroupScoring component a
+  // knocked-out playoff foursome uses, with the same hole strip, the
+  // same one-tap entry, the same scorecard. A fun group is exactly that
+  // situation: golfers sharing a tee time with no opponent.
+  //
+  // What's switched off is what doesn't exist here. There's no league
+  // week to be absent from, and nothing feeding a competition to sign
+  // or attest for — so both features are turned off rather than shown
+  // and made inert.
+  //
+  // The store is the whole adapter: read a hole from this round's card,
+  // write a hole back to it. GroupScoring never learns that these
+  // scores live somewhere other than league_hole_scores, and nothing
+  // downstream of league_hole_scores learns these exist.
+  if (scoring) {
+    const { side, pars, hcps } = funRoundSide(scoring.round, course);
+    const seated = (scoring.pids || []).filter(Boolean);
+    const groups = buildFunGroups(scoring.round);
+    const teeTime = groups[scoring.groupIdx]?.teeTime || "";
+    const store = {
+      get: (pid, h) => readFunCard(funScoreIndex, scoring.round.id, pid)[h] || 0,
+      set: (pid, h, val) => saveOneHole(scoring.round, pid, h, val),
+    };
+    return (
+      <GroupScoring
+        key={`${scoring.round.id}_${scoring.groupIdx}`}
+        pids={seated}
+        side={side}
+        pars={pars}
+        hcps={hcps}
+        playerMap={playerMap}
+        viewerPid={myPid}
+        isComm={isComm}
+        onBack={() => setScoring(null)}
+        toast={scoreToast}
+        setToast={setScoreToast}
+        scoreStore={store}
+        resolveRound={(pid) => funRoundIr(readFunCard(funScoreIndex, scoring.round.id, pid))}
+        allowAttendance={false}
+        allowSigning={false}
+        // Unused once a store is supplied, but passed so the component
+        // never reads an undefined map if a future edit slips past one.
+        week={0}
+        holeScores={{}}
+        saveScore={() => {}}
+        isWeekLocked={false}
+        header={
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: K.teal, letterSpacing: 1.5, textTransform: "uppercase" }}>
+              Fun Round · {scoring.round.date || ""}
+            </div>
+            <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 2 }}>
+              {teeTime} · {side === "back" ? "Back 9" : "Front 9"}
+              {scoring.round.title ? ` · ${scoring.round.title}` : ""}
+            </div>
+          </div>
+        }
+      />
+    );
+  }
 
   return (
     <div>
@@ -824,26 +899,6 @@ export function FunRounds({
           onCancel: () => setConfirmDelete(null),
         } : null}
       />
-
-      {scoring && (() => {
-        const { side, pars, hcps } = funRoundSide(scoring.round, course);
-        return (
-          <FunScoreEntry
-            // Keyed so opening a different group remounts the draft
-            // state — otherwise group 2 would open showing group 1's
-            // typed-but-unsaved numbers.
-            key={`${scoring.round.id}_${scoring.groupIdx}`}
-            round={scoring.round}
-            groupIdx={scoring.groupIdx}
-            pids={scoring.pids}
-            players={players}
-            pars={pars} hcps={hcps} side={side}
-            index={funScoreIndex}
-            onSave={handleSaveScores}
-            onClose={() => setScoring(null)}
-          />
-        );
-      })()}
 
       {managing && (
         <SpotManager
