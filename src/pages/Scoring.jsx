@@ -1984,6 +1984,9 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
           leagueConfig={leagueConfig} season={season}
           course={course} funScores={funScores} saveFunScores={saveFunScores}
           appToast={appToast} setPopupOpen={setPopupOpen}
+          // On THIS tab a full foursome opens straight onto its
+          // scorecard. Standings and Schedule stay a tee sheet.
+          autoOpenMyGroup
         />
       </div>
     );

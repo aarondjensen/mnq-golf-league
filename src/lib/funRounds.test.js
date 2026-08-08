@@ -21,6 +21,8 @@ import {
   pruneSlotsPatch,
   splitFunRounds,
   hasUpcomingFunRound,
+  findMyFullGroup,
+  isFunRoundToday,
   isoToScheduleDate,
   scheduleDateToIso,
   validateFunRound,
@@ -527,5 +529,81 @@ describe("validateFunRound", () => {
   it("reports every problem at once rather than stopping at the first", () => {
     expect(validateFunRound({ date: "", startTime: "x", groupCount: 0, groupSize: 0, teeInterval: 0 }))
       .toHaveLength(5);
+  });
+});
+
+describe("findMyFullGroup — why a full foursome just appears in Scoring", () => {
+  const today = new Date(2026, 8, 10);      // Sep 10, 2026
+  const full = (g) => ({ [slotKey(g,0)]:"p1", [slotKey(g,1)]:"p2", [slotKey(g,2)]:"p3", [slotKey(g,3)]:"p4" });
+  const done = () => true;
+  const notDone = () => false;
+
+  it("finds the player's group when it is full", () => {
+    // Dated ahead of `today` — the shared fixture's default Sep 1 is in
+    // the past, which routes through the different (past) branch.
+    const r = round({ groupCount: 2, date: "Sep 12", slots: full(1) });
+    const hit = findMyFullGroup([r], "p3", 2026, done, today);
+    expect(hit.groupIdx).toBe(1);
+    expect(hit.pids).toEqual(["p1", "p2", "p3", "p4"]);
+  });
+
+  it("ignores a group that is not yet full", () => {
+    // Three of four: still being filled. A scorecard here would be
+    // jumping the gun, and the tee sheet is what they need instead.
+    const r = round({ date: "Sep 12", slots: { [slotKey(0,0)]:"p1", [slotKey(0,1)]:"p2", [slotKey(0,2)]:"p3" } });
+    expect(findMyFullGroup([r], "p1", 2026, done, today)).toBeNull();
+  });
+
+  it("ignores a full group the player is not in", () => {
+    expect(findMyFullGroup([round({ date: "Sep 12", slots: full(0) })], "stranger", 2026, done, today)).toBeNull();
+  });
+
+  it("prefers the soonest upcoming round", () => {
+    const soon  = round({ id: "soon",  date: "Sep 12", slots: full(0) });
+    const later = round({ id: "later", date: "Sep 20", slots: full(0) });
+    expect(findMyFullGroup([later, soon], "p1", 2026, done, today).round.id).toBe("soon");
+  });
+
+  it("counts a round being played today as upcoming", () => {
+    const r = round({ id: "tonight", date: "Sep 10", slots: full(0) });
+    expect(findMyFullGroup([r], "p1", 2026, done, today).round.id).toBe("tonight");
+  });
+
+  it("falls back to a past round when the player's card is unfinished", () => {
+    // Finished at dusk, posting the next morning. With no Score button
+    // this is the only way back into that card.
+    const r = round({ id: "lastnight", date: "Sep 9", slots: full(0) });
+    expect(findMyFullGroup([r], "p1", 2026, notDone, today).round.id).toBe("lastnight");
+  });
+
+  it("stops resurfacing a past round once the card is done", () => {
+    const r = round({ id: "lastnight", date: "Sep 9", slots: full(0) });
+    expect(findMyFullGroup([r], "p1", 2026, done, today)).toBeNull();
+  });
+
+  it("prefers an upcoming round over an unfinished past one", () => {
+    const old  = round({ id: "old",  date: "Sep 9",  slots: full(0) });
+    const next = round({ id: "next", date: "Sep 12", slots: full(0) });
+    expect(findMyFullGroup([old, next], "p1", 2026, notDone, today).round.id).toBe("next");
+  });
+
+  it("returns null for no player, no rounds, or a cancelled round", () => {
+    const r = round({ date: "Sep 12", slots: full(0) });
+    expect(findMyFullGroup([r], null, 2026, done, today)).toBeNull();
+    expect(findMyFullGroup([], "p1", 2026, done, today)).toBeNull();
+    expect(findMyFullGroup([{ ...r, cancelled: true }], "p1", 2026, done, today)).toBeNull();
+  });
+});
+
+describe("isFunRoundToday", () => {
+  const today = new Date(2026, 8, 10);
+  it("is true only on the day", () => {
+    expect(isFunRoundToday({ date: "Sep 10", season: 2026 }, 2026, today)).toBe(true);
+    expect(isFunRoundToday({ date: "Sep 11", season: 2026 }, 2026, today)).toBe(false);
+    expect(isFunRoundToday({ date: "Sep 9", season: 2026 }, 2026, today)).toBe(false);
+  });
+  it("is false for junk", () => {
+    expect(isFunRoundToday({ date: "sometime" }, 2026, today)).toBe(false);
+    expect(isFunRoundToday(null, 2026, today)).toBe(false);
   });
 });

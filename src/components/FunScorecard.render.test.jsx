@@ -68,7 +68,7 @@ describe("FunLeaderboard", () => {
   });
 });
 
-describe("FunRounds — scoring on the round card", () => {
+describe("FunRounds — the leaderboard on the round card", () => {
   const baseProps = {
     players,
     funRounds: [round()],
@@ -84,17 +84,6 @@ describe("FunRounds — scoring on the round card", () => {
   };
   const render = (props) => renderToStaticMarkup(<FunRounds {...baseProps} {...props} />);
 
-  it("offers a Score button per tee time", () => {
-    const html = render({});
-    expect(html).toContain("Score group 1");
-  });
-
-  it("does not offer scoring to a viewer with no linked player", () => {
-    const html = render({ leagueUser: { playerId: null, isCommissioner: false } });
-    expect(html).toContain("disabled");
-    expect(html).toContain("Score");
-  });
-
   it("shows no leaderboard on a round nobody has scored", () => {
     expect(render({})).not.toContain("Leaderboard");
   });
@@ -108,13 +97,12 @@ describe("FunRounds — scoring on the round card", () => {
     expect(html).toContain("E · F");
   });
 
-  it("still scores a past round — dusk finishes get posted next morning", () => {
+  it("shows a past round's leaderboard too", () => {
     const html = render({
       funRounds: [round({ date: "Jan 2" })],
       funScores: [{ roundId: "r1", playerId: "p2", holes: PARS }],
     });
     expect(html).toContain("Past");
-    expect(html).toContain("Score group 1");
     expect(html).toContain("Leaderboard");
   });
 });

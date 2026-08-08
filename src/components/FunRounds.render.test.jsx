@@ -253,51 +253,85 @@ describe("SpotManager — the commissioner's assign / swap / clear popup", () =>
 // actually swaps in, that the league-only features are OFF (there is no
 // week to be absent from and nothing to sign for), and that scores read
 // back out of the fun store rather than league hole_scores.
-describe("FunRounds — scoring a group", () => {
+describe("FunRounds — scoring reaches players without a button", () => {
   const PARS = [4, 4, 4, 3, 5, 4, 4, 3, 5];
   const HCPS = [1, 3, 5, 7, 9, 11, 13, 15, 17];
   const course = { name: "T", frontPars: PARS, backPars: PARS, frontHcps: HCPS, backHcps: HCPS };
-  const seatedRound = round({
+  const fullRound = round({
     groupCount: 1,
-    slots: { [slotKey(0, 0)]: "p1", [slotKey(0, 1)]: "p2" },
+    slots: { [slotKey(0,0)]:"p1", [slotKey(0,1)]:"p2", [slotKey(0,2)]:"p3", [slotKey(0,3)]:"p4" },
+  });
+  const partial = round({ groupCount: 1, slots: { [slotKey(0,0)]:"p1" } });
+  const fourPlayers = [...players, { id: "p4", name: "Dan Marks" }];
+
+  it("has no Score button anywhere", () => {
+    const h = render({ funRounds: [fullRound], players: fourPlayers, course, funScores: [] });
+    expect(h).not.toContain("Score group");
+    expect(h).not.toContain(">Score<");
   });
 
-  // renderToStaticMarkup can't tap the Score button, so drive the view
-  // the way the button does — FunRounds decides from its own state, and
-  // the reachable proxy is rendering with a group already scoring is not
-  // possible without a click. Instead assert the entry points here and
-  // let GroupScoring's own behavior be covered through Scoring.
-  it("offers Score on a group that has players", () => {
-    const html = render({ funRounds: [seatedRound], course, funScores: [] });
-    expect(html).toContain("Score group 1");
-    expect(html).not.toContain("disabled=\"\" aria-label=\"Score group 1\"");
+  it("marks a full group Full, so it's clear why nothing else is needed", () => {
+    const h = render({ funRounds: [fullRound], players: fourPlayers, course, funScores: [] });
+    expect(h).toContain("Full");
   });
 
-  it("disables Score before the course has loaded", () => {
-    // Without pars there is nothing to score against, and the hole strip
-    // would render against fabricated pars.
-    const html = render({ funRounds: [seatedRound], course: null, funScores: [] });
-    expect(html).toContain("Score group 1");
-    expect(html).toContain("disabled");
+  it("does not mark a partly-filled group Full", () => {
+    const h = render({ funRounds: [partial], players: fourPlayers, course, funScores: [] });
+    expect(h).not.toContain(">Full<");
+  });
+
+  it("opens straight onto the scorecard when Scoring asks for it", () => {
+    // autoOpenMyGroup is what Scoring passes. The player is in a full
+    // group, so the tee sheet is skipped entirely.
+    const h = render({
+      funRounds: [fullRound], players: fourPlayers, course, funScores: [],
+      autoOpenMyGroup: true,
+    });
+    expect(h).toContain("Hole");          // the hole strip — the scoring screen
+    expect(h).toContain("Back");          // …with a way back to the tee sheet
+    expect(h).not.toContain("Open spot"); // not the tee sheet
+  });
+
+  it("stays on the tee sheet when the group is not yet full", () => {
+    const h = render({
+      funRounds: [partial], players: fourPlayers, course, funScores: [],
+      autoOpenMyGroup: true,
+    });
+    expect(h).toContain("Open spot");     // still claiming
+    expect(h).not.toContain("Full Scorecard");
+  });
+
+  it("stays on the tee sheet for a viewer who is not in the group", () => {
+    const h = render({
+      funRounds: [fullRound], players: fourPlayers, course, funScores: [],
+      leagueUser: { playerId: "stranger" }, autoOpenMyGroup: true,
+    });
+    expect(h).toContain("Full");
+    expect(h).not.toContain("Full Scorecard");
+  });
+
+  it("leaves Standings and Schedule as a tee sheet", () => {
+    // No autoOpenMyGroup: those tabs are for reading the sheet and
+    // claiming a spot, not for scoring.
+    const h = render({ funRounds: [fullRound], players: fourPlayers, course, funScores: [] });
+    expect(h).not.toContain("Full Scorecard");
   });
 
   it("reads posted scores back from the fun store, in map form", () => {
-    // Storage is a hole-keyed MAP so per-hole writes merge; the summary
-    // under the group proves the read path understands it.
-    const html = render({
-      funRounds: [seatedRound], course,
+    const h = render({
+      funRounds: [fullRound], players: fourPlayers, course,
       funScores: [{ roundId: "r1", playerId: "p1", holes: { 0: 4, 1: 4, 2: 4 } }],
     });
-    expect(html).toContain("thru 3");
-    expect(html).toContain("Leaderboard");
+    expect(h).toContain("thru 3");
+    expect(h).toContain("Leaderboard");
   });
 
   it("still reads a card stored in the older array form", () => {
-    const html = render({
-      funRounds: [seatedRound], course,
+    const h = render({
+      funRounds: [fullRound], players: fourPlayers, course,
       funScores: [{ roundId: "r1", playerId: "p1", holes: [4, 4, 4, 0, 0, 0, 0, 0, 0] }],
     });
-    expect(html).toContain("thru 3");
+    expect(h).toContain("thru 3");
   });
 });
 
@@ -307,7 +341,8 @@ describe("FunRounds — scoring a group", () => {
 // carry a min-width so names stay readable, so a foursome plus the time
 // and the button needed ~406px — more than a phone card's ~300px — and
 // the card's overflow:hidden clipped the Score button out of sight
-// behind the last spot. These pin the shape that prevents it.
+// behind the last spot. The button is gone now, but the shape that
+// prevents overflow is still worth pinning.
 describe("FunRounds — tee sheet row can't overflow", () => {
   const html = () => render({
     funRounds: [round({ groupCount: 1, groupSize: 4 })],
@@ -315,11 +350,11 @@ describe("FunRounds — tee sheet row can't overflow", () => {
               frontHcps: [1,3,5,7,9,11,13,15,17], backHcps: [1,3,5,7,9,11,13,15,17] },
   });
 
-  it("puts Score on the tee-time line, above the spots", () => {
-    // Order in the markup is the guard: if Score ever moves back into
-    // the spots row, it competes for width again.
+  it("keeps the tee-time line separate from the spots row", () => {
+    // Order in the markup is the guard: anything that moves back into
+    // the spots row competes for width again.
     const h = html();
-    expect(h.indexOf("Score group 1")).toBeLessThan(h.indexOf("Open spot"));
+    expect(h.indexOf("4:28 PM")).toBeLessThan(h.indexOf("Open spot"));
   });
 
   it("lets the spots wrap instead of overflowing the card", () => {
@@ -328,9 +363,7 @@ describe("FunRounds — tee sheet row can't overflow", () => {
     expect(html()).toContain("flex-wrap:wrap");
   });
 
-  it("still renders every spot and the Score button", () => {
-    const h = html();
-    expect(count(h, ">Open<")).toBe(4);
-    expect(h).toContain("Score group 1");
+  it("still renders every spot", () => {
+    expect(count(html(), ">Open<")).toBe(4);
   });
 });

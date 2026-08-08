@@ -17,7 +17,12 @@
 //     manager, where they assign a player, swap two players, or clear a
 //     spot.
 //   • Any linked player claims an open spot, gives up their own, or
-//     moves between groups. Any member can enter scores for a group.
+//     moves between groups.
+//
+// Scoring has no button. Once a foursome fills, it appears on those
+// players' Scoring tab as their card — the same way a league match
+// does — which is what `autoOpenMyGroup` switches on. Standings and
+// Schedule stay a tee sheet: read it, claim a spot.
 //
 // The logic lives in two libs, where the tests are: lib/funRounds.js
 // owns the tee sheet (slots, claims, tee times, ordering) and
@@ -30,7 +35,7 @@
 // stats path can read them. Both lib headers spell out why that
 // isolation is structural rather than a filter someone has to remember.
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { K, Pill, EmptyState, SubLabel, lastNamesOnly, LIST_GAP, CARD_RADIUS, FS, FW } from "../theme";
 import { Popup, ConfirmModal } from "./Popup";
 import {
@@ -43,6 +48,7 @@ import {
   assignSlotPatch,
   releaseSlotPatch,
   pruneSlotsPatch,
+  findMyFullGroup,
   validateFunRound,
   normalizeStartTime,
   isoToScheduleDate,
@@ -64,6 +70,8 @@ import {
   roundHasScores,
   funScoreId,
   funSpotSummary,
+  isCardComplete,
+  readFunCard as _readFunCard,
 } from "../lib/funScores";
 import { FunLeaderboard } from "./FunScorecard";
 import { GroupScoring } from "./GroupScoring";
@@ -399,7 +407,7 @@ export function SpotManager({ round, g, s, players, grid, onAssign, onClear, onC
 // ── One round's card ──────────────────────────────────────────────
 function FunRoundCard({
   round, players, myPid, isComm, isPast, course, funScoreIndex,
-  onClaim, onRelease, onManage, onEdit, onDelete, onScore, busy,
+  onClaim, onRelease, onManage, onEdit, onDelete, busy,
 }) {
   const groups = useMemo(() => buildFunGroups(round), [round]);
   const { filled, total } = funRoundCounts(round);
@@ -445,11 +453,6 @@ function FunRoundCard({
       <div style={{ padding: "8px 14px" }}>
         {groups.map(g => {
           const seated = g.spots.filter(Boolean);
-          // Scoring needs somebody to score and a course to score
-          // against. It stays available on PAST rounds — a group that
-          // finished at dusk and posted the next morning is the normal
-          // case, not an edge case.
-          const canScore = seated.length > 0 && !!pars && !!myPid;
           return (
             <div key={g.idx} style={{ padding: "5px 0" }}>
               {/* Tee time and Score share a line; the spots get the full
@@ -466,20 +469,12 @@ function FunRoundCard({
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                 <div style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.act }}>{g.teeTime}</div>
                 <div style={{ flex: 1, minWidth: 0 }} />
-                <button
-                  onClick={() => onScore(round, g.idx, g.spots)}
-                  disabled={!canScore}
-                  aria-label={`Score group ${g.idx + 1}`}
-                  style={{
-                    flexShrink: 0, padding: "6px 10px", borderRadius: 6,
-                    background: "transparent",
-                    border: `1px solid ${canScore ? K.act + "50" : K.bdr}`,
-                    color: canScore ? K.act : K.t3,
-                    fontSize: FS.micro, fontWeight: FW.bold,
-                    cursor: canScore ? "pointer" : "default",
-                    opacity: canScore ? 1 : 0.5, whiteSpace: "nowrap",
-                  }}
-                >Score</button>
+                {/* A full group needs no Score button: it turns up in its
+                    players' Scoring tab on its own. The pill just says so,
+                    so a group that has filled up knows where to go. */}
+                {g.spots.every(Boolean) && (
+                  <Pill color={K.act} style={{ fontSize: FS.micro, flexShrink: 0 }}>Full</Pill>
+                )}
               </div>
               <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                 {g.spots.map((pid, s) => (
@@ -580,13 +575,16 @@ export function FunRounds({
   saveFunRound, deleteFunRound, leagueConfig, season,
   course, funScores, saveFunScores,
   appToast, setPopupOpen,
+  // Scoring passes this. A full foursome opens straight onto its
+  // scorecard there — that IS the entry point, in place of the Score
+  // button this view used to carry. Standings and Schedule leave it off:
+  // they're where you read the tee sheet and claim a spot.
+  autoOpenMyGroup = false,
 }) {
   const [formFor, setFormFor] = useState(null);   // round object | "new" | null
   const [confirmDelete, setConfirmDelete] = useState(null);
   // { round, g, s } — the spot whose commissioner manager is open.
   const [managing, setManaging] = useState(null);
-  // { round, groupIdx, pids } — the group whose card is open for entry.
-  const [scoring, setScoring] = useState(null);
   const [scoreToast, setScoreToast] = useState(null);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState(null);
@@ -599,16 +597,43 @@ export function FunRounds({
     [funRounds, year]
   );
 
+  // Flat card lookup keyed `${roundId}_${pid}`, rebuilt when the score
+  // subscription fires. Every card on the page reads from this one index
+  // rather than filtering the doc list per player per round.
+  const funScoreIndex = useMemo(() => indexFunScores(funScores), [funScores]);
+
+  // ── The group this player should be scoring ───────────────────────
+  //
+  // There is no Score button any more: a full foursome simply turns up
+  // on its players' Scoring tab. This is that lookup, and seeding the
+  // state from it means the card is on screen the moment the tab opens
+  // rather than after a flash of the tee sheet.
+  //
+  // `scoring` stays state rather than being derived, because Back has to
+  // be able to put the tee sheet in front of someone who wants to see
+  // the other groups — and once they've done that, re-deriving would
+  // yank them straight back to their card.
+  const myFullGroup = useMemo(
+    () => (autoOpenMyGroup
+      ? findMyFullGroup(funRounds, myPid, year,
+          (r, pid) => isCardComplete(_readFunCard(funScoreIndex, r.id, pid)))
+      : null),
+    [autoOpenMyGroup, funRounds, myPid, year, funScoreIndex]
+  );
+  const [scoring, setScoring] = useState(myFullGroup);
+  const leftScoring = useRef(false);
+  useEffect(() => {
+    // Late-arriving data (the subscription lands after mount, or the
+    // fourth player claims their spot while you're looking at the sheet)
+    // still opens the card — unless you've deliberately backed out of it.
+    if (!leftScoring.current && myFullGroup && !scoring) setScoring(myFullGroup);
+  }, [myFullGroup, scoring]);
+
   // Popups suppress pull-to-refresh app-side, same as every other page
   // that opens one.
   useEffect(() => {
     if (setPopupOpen) setPopupOpen(!!formFor || !!confirmDelete || !!managing || !!scoring);
   }, [formFor, confirmDelete, managing, scoring, setPopupOpen]);
-
-  // Flat card lookup keyed `${roundId}_${pid}`, rebuilt when the score
-  // subscription fires. Every card on the page reads from this one index
-  // rather than filtering the doc list per player per round.
-  const funScoreIndex = useMemo(() => indexFunScores(funScores), [funScores]);
   // GroupScoring wants a pid → player lookup, the same shape Scoring builds.
   const playerMap = useMemo(() => {
     const m = {};
@@ -766,7 +791,6 @@ export function FunRounds({
     onRelease: handleRelease,
     onEdit: (r) => setFormFor(r),
     onDelete: (r) => setConfirmDelete(r),
-    onScore: (round, groupIdx, pids) => setScoring({ round, groupIdx, pids }),
     onManage: (round, g, s) => setManaging({ round, g, s }),
   };
 
@@ -808,7 +832,7 @@ export function FunRounds({
         playerMap={playerMap}
         viewerPid={myPid}
         isComm={isComm}
-        onBack={() => setScoring(null)}
+        onBack={() => { leftScoring.current = true; setScoring(null); }}
         toast={scoreToast}
         setToast={setScoreToast}
         scoreStore={store}

@@ -330,6 +330,55 @@ export function splitFunRounds(rounds, fallbackYear, today = new Date()) {
   return { upcoming, past };
 }
 
+/** Is this round being played today? */
+export function isFunRoundToday(round, fallbackYear, today = new Date()) {
+  return compareScheduleDateToToday(round?.date, round?.season || fallbackYear, today) === 0;
+}
+
+/**
+ * The group a player should be scoring — the reason a full foursome
+ * "just shows up" in its players' Scoring tab with no button to press.
+ *
+ * A group qualifies only when it is FULL. A half-empty group is still
+ * being filled; putting a scorecard in front of someone before their
+ * playing partners exist would be jumping the gun, and the tee sheet is
+ * what they need to look at instead.
+ *
+ * Order of preference:
+ *   1. the soonest round still to be played (today counts)
+ *   2. failing that, the most recent PAST round where this player's card
+ *      is unfinished — a group that finished at dusk and posts the next
+ *      morning still needs somewhere to do it, and with no Score button
+ *      this is the only way back in. Bounded by "unfinished" so a
+ *      completed round stops resurfacing once it's done.
+ *
+ * @returns {{ round: object, groupIdx: number, pids: string[] } | null}
+ */
+export function findMyFullGroup(funRounds, pid, fallbackYear, isCardComplete, today = new Date()) {
+  if (!pid) return null;
+  const { upcoming, past } = splitFunRounds(funRounds, fallbackYear, today);
+
+  const groupIn = (round) => {
+    const groups = buildFunGroups(round);
+    for (const g of groups) {
+      if (g.spots.includes(pid) && g.spots.every(Boolean)) {
+        return { round, groupIdx: g.idx, pids: g.spots };
+      }
+    }
+    return null;
+  };
+
+  for (const r of upcoming) {
+    const hit = groupIn(r);
+    if (hit) return hit;
+  }
+  for (const r of past) {
+    const hit = groupIn(r);
+    if (hit && typeof isCardComplete === "function" && !isCardComplete(r, pid)) return hit;
+  }
+  return null;
+}
+
 /**
  * Is there a fun round still to be played? This is the gate every tab
  * uses to decide whether to DEFAULT to the Fun view, and it is
