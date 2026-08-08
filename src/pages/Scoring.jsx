@@ -268,11 +268,22 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
   // Offered on playoff weeks whenever the individual event is running — every
   // golfer is in it, not just the ones whose team is out of the bracket.
   //
+  // …but only while the tournament is actually LIVE. `currentWeek` falls back
+  // to the last playable week once nothing is unlocked, so after the final
+  // postseason round is finalized `weekSch` is still that playoff week and the
+  // trophy hung around forever — on a page with nothing left to score, and
+  // latterly on the Fun view too, since ViewToggle renders there as well.
+  // A finished tournament's board is still reachable, and belongs, at
+  // Standings → Postseason → Individual.
+  //
   // `enabled` keeps the hook inert until the popup is actually opened, and
   // handing it App's live hole scores means opening the board costs no
   // Firestore reads at all: the finalized weeks come from the cached season
   // tier and the one week still in play is already subscribed for scoring.
-  const eventBoardAvailable = weekSch?.isPlayoff === true && leagueConfig?.individualEvent !== false;
+  const eventBoardAvailable =
+    weekSch?.isPlayoff === true &&
+    leagueConfig?.individualEvent !== false &&
+    !isSeasonComplete(schedule);
   const eventScores = useIndividualScores({
     schedule, leagueConfig, fetchSeasonScores, fetchAllScores,
     liveScores: holeScores, liveWeek: week,

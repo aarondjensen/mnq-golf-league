@@ -129,3 +129,46 @@ describe("Scoring tab after the season ends", () => {
     expect(html).toContain(">Fun<");
   });
 });
+
+// ── Individual tournament trophy ─────────────────────────────────
+//
+// The trophy opens the individual leaderboard, and it was gated only on
+// "the current week is a playoff week". Since `currentWeek` falls back
+// to the last playable week once nothing is unlocked, a finished season
+// left `weekSch` pointing at the final playoff round forever — so the
+// trophy outlived the tournament it belonged to, on a page with nothing
+// left to score.
+const TROPHY = "Individual tournament leaderboard";
+
+describe("Scoring — individual tournament trophy", () => {
+  it("offers the trophy while the postseason is being played", () => {
+    const html = render({ schedule: seasonLive });
+    expect(html).toContain(TROPHY);
+  });
+
+  it("hides it once the final postseason round is finalized", () => {
+    const html = render({ schedule: seasonOver });
+    expect(html).not.toContain(TROPHY);
+  });
+
+  it("hides it on the Fun view too", () => {
+    // ViewToggle renders on the fun view as well, so a trophy gated only
+    // on the stale playoff week would have followed it there.
+    const html = render({ schedule: seasonOver, funRounds: [funRound()] });
+    expect(html).toContain(FUN_BODY);
+    expect(html).not.toContain(TROPHY);
+  });
+
+  it("stays hidden for a league that runs no individual event", () => {
+    const html = render({
+      schedule: seasonLive,
+      leagueConfig: { year: YEAR, individualEvent: false },
+    });
+    expect(html).not.toContain(TROPHY);
+  });
+
+  it("is absent during the regular season, as before", () => {
+    const regular = [{ week: 3, side: "front", date: "May 5", locked: false, matches: match }];
+    expect(render({ schedule: regular })).not.toContain(TROPHY);
+  });
+});
