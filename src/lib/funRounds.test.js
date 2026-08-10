@@ -23,6 +23,12 @@ import {
   hasUpcomingFunRound,
   findMyFullGroup,
   isFunRoundToday,
+  isGuestId,
+  newGuestId,
+  readGuests,
+  rosterFor,
+  canRemoveGuest,
+  addGuestPatch,
   isoToScheduleDate,
   scheduleDateToIso,
   validateFunRound,
@@ -177,7 +183,7 @@ describe("claimSlotPatch", () => {
   it("claims an open spot with a single-key patch", () => {
     // One key is the concurrency guarantee: a merge write of exactly this
     // object cannot disturb anyone else's spot.
-    expect(claimSlotPatch(round(), "p1", 0, 2)).toEqual({ [slotKey(0, 2)]: "p1" });
+    expect(claimSlotPatch(round(), "p1", 0, 2)).toEqual({ slots: { [slotKey(0, 2)]: "p1" } });
   });
 
   it("refuses a spot held by someone else", () => {
@@ -189,15 +195,15 @@ describe("claimSlotPatch", () => {
     // Both keys in one merge means there is no instant where the player
     // holds two spots, or none.
     const r = round({ slots: { [slotKey(0, 0)]: "p1" } });
-    expect(claimSlotPatch(r, "p1", 1, 1)).toEqual({
+    expect(claimSlotPatch(r, "p1", 1, 1)).toEqual({ slots: {
       [slotKey(1, 1)]: "p1",
       [slotKey(0, 0)]: null,
-    });
+    } });
   });
 
   it("is a no-op patch when re-tapping the spot you already hold", () => {
     const r = round({ slots: { [slotKey(0, 0)]: "p1" } });
-    expect(claimSlotPatch(r, "p1", 0, 0)).toEqual({ [slotKey(0, 0)]: "p1" });
+    expect(claimSlotPatch(r, "p1", 0, 0)).toEqual({ slots: { [slotKey(0, 0)]: "p1" } });
   });
 
   it("refuses coordinates off the sheet", () => {
@@ -215,21 +221,21 @@ describe("claimSlotPatch", () => {
 
 describe("assignSlotPatch — the commissioner's one operation", () => {
   it("assigns an unseated player to an empty spot", () => {
-    expect(assignSlotPatch(round(), "p1", 0, 2)).toEqual({ [slotKey(0, 2)]: "p1" });
+    expect(assignSlotPatch(round(), "p1", 0, 2)).toEqual({ slots: { [slotKey(0, 2)]: "p1" } });
   });
 
   it("replaces the occupant when the incoming player wasn't on the sheet", () => {
     // "Dan can't make it, put Ed in his place" — Dan comes off entirely.
     const r = round({ slots: { [slotKey(0, 0)]: "dan" } });
-    expect(assignSlotPatch(r, "ed", 0, 0)).toEqual({ [slotKey(0, 0)]: "ed" });
+    expect(assignSlotPatch(r, "ed", 0, 0)).toEqual({ slots: { [slotKey(0, 0)]: "ed" } });
   });
 
   it("MOVES a seated player to an empty spot, vacating the old one", () => {
     const r = round({ slots: { [slotKey(0, 0)]: "p1" } });
-    expect(assignSlotPatch(r, "p1", 1, 3)).toEqual({
+    expect(assignSlotPatch(r, "p1", 1, 3)).toEqual({ slots: {
       [slotKey(1, 3)]: "p1",
       [slotKey(0, 0)]: null,
-    });
+    } });
   });
 
   it("SWAPS two seated players — they trade places in one patch", () => {
@@ -237,10 +243,10 @@ describe("assignSlotPatch — the commissioner's one operation", () => {
     // being dropped: fixing two people in the wrong groups is one tap,
     // and the sheet is never briefly wrong.
     const r = round({ slots: { [slotKey(0, 0)]: "p1", [slotKey(1, 2)]: "p2" } });
-    expect(assignSlotPatch(r, "p1", 1, 2)).toEqual({
+    expect(assignSlotPatch(r, "p1", 1, 2)).toEqual({ slots: {
       [slotKey(1, 2)]: "p1",
       [slotKey(0, 0)]: "p2",
-    });
+    } });
   });
 
   it("is a no-op when the player is already in that spot", () => {
@@ -251,7 +257,7 @@ describe("assignSlotPatch — the commissioner's one operation", () => {
   it("never leaves a player holding two spots", () => {
     const r = round({ slots: { [slotKey(0, 0)]: "p1", [slotKey(1, 1)]: "p2" } });
     const patch = assignSlotPatch(r, "p1", 1, 1);
-    const after = readSlots({ ...r, slots: { ...r.slots, ...patch } });
+    const after = readSlots({ ...r, slots: { ...r.slots, ...patch.slots } });
     const seats = after.flat().filter(v => v === "p1");
     expect(seats).toHaveLength(1);
     // …and the displaced player is still on the sheet, not lost.
@@ -269,7 +275,7 @@ describe("assignSlotPatch — the commissioner's one operation", () => {
 describe("releaseSlotPatch", () => {
   it("nulls the released key", () => {
     const r = round({ slots: { [slotKey(1, 2)]: "p1" } });
-    expect(releaseSlotPatch(r, 1, 2)).toEqual({ [slotKey(1, 2)]: null });
+    expect(releaseSlotPatch(r, 1, 2)).toEqual({ slots: { [slotKey(1, 2)]: null } });
   });
 
   it("returns null when the spot is already open", () => {
@@ -605,5 +611,109 @@ describe("isFunRoundToday", () => {
   it("is false for junk", () => {
     expect(isFunRoundToday({ date: "sometime" }, 2026, today)).toBe(false);
     expect(isFunRoundToday(null, 2026, today)).toBe(false);
+  });
+});
+
+describe("guests — friends who aren't league members", () => {
+  const G = "guest_abc";
+  const withGuest = (over = {}) => round({
+    slots: { [slotKey(0, 0)]: "p1", [slotKey(0, 1)]: G },
+    guests: { [G]: { name: "Mike Smith", hcp: 12, invitedBy: "p1", addedAt: 5 } },
+    ...over,
+  });
+
+  it("seats a guest like anyone else — the grid never learns they differ", () => {
+    // The whole point of a string id with a prefix: readSlots and every
+    // grid consumer are untouched.
+    expect(readSlots(withGuest())[0]).toEqual(["p1", G, null, null]);
+    expect(funRoundCounts(withGuest()).filled).toBe(2);
+  });
+
+  it("recognises a guest id", () => {
+    expect(isGuestId(G)).toBe(true);
+    expect(isGuestId("p1")).toBe(false);
+    expect(isGuestId(null)).toBe(false);
+  });
+
+  it("mints unique ids", () => {
+    expect(newGuestId()).not.toBe(newGuestId());
+    expect(isGuestId(newGuestId())).toBe(true);
+  });
+
+  it("exposes guests as player-shaped rows so name and handicap don't branch", () => {
+    const roster = rosterFor(withGuest(), [{ id: "p1", name: "Aaron Jensen", handicapIndex: 4 }]);
+    const mike = roster.find(r => r.id === G);
+    expect(mike).toMatchObject({ name: "Mike Smith", handicapIndex: 12, isGuest: true, invitedBy: "p1" });
+    // League players come through untouched and unmarked.
+    expect(roster.find(r => r.id === "p1").isGuest).toBeUndefined();
+  });
+
+  it("drops malformed guest records rather than rendering blanks", () => {
+    const r = withGuest({ guests: { [G]: { name: "  " }, "p9": { name: "Not a guest id" } } });
+    expect(readGuests(r)).toEqual({});
+  });
+
+  it("defaults a missing handicap to scratch", () => {
+    const r = withGuest({ guests: { [G]: { name: "Mike Smith" } } });
+    expect(readGuests(r)[G].hcp).toBe(0);
+  });
+
+  it("adds a guest to the first open spot, in one write", () => {
+    // Both maps together: a guest can never exist without a seat, or
+    // hold a seat without a name.
+    const patch = addGuestPatch(round({ slots: { [slotKey(0, 0)]: "p1" } }), 0,
+      { name: "Mike Smith", hcp: 12, invitedBy: "p1" }, G);
+    expect(patch.slots).toEqual({ [slotKey(0, 1)]: G });
+    expect(patch.guests[G]).toMatchObject({ name: "Mike Smith", hcp: 12, invitedBy: "p1" });
+  });
+
+  it("refuses a nameless guest or a full group", () => {
+    expect(addGuestPatch(round(), 0, { name: "   " }, G)).toBeNull();
+    const full = round({ groupSize: 2, slots: { [slotKey(0, 0)]: "p1", [slotKey(0, 1)]: "p2" } });
+    expect(addGuestPatch(full, 0, { name: "Mike" }, G)).toBeNull();
+    expect(addGuestPatch(round(), 99, { name: "Mike" }, G)).toBeNull();
+  });
+
+  it("removes the guest record when their spot is freed", () => {
+    // They exist only to fill that seat; leaving the record behind would
+    // grow the doc with every friend anyone ever brought.
+    const patch = releaseSlotPatch(withGuest(), 0, 1);
+    expect(patch.slots).toEqual({ [slotKey(0, 1)]: null });
+    expect(patch.guests).toEqual({ [G]: null });
+  });
+
+  it("leaves the guest map alone when a MEMBER's spot is freed", () => {
+    expect(releaseSlotPatch(withGuest(), 0, 0).guests).toBeUndefined();
+  });
+
+  it("drops a guest who is REPLACED by a commissioner", () => {
+    const patch = assignSlotPatch(withGuest(), "p9", 0, 1);
+    expect(patch.slots[slotKey(0, 1)]).toBe("p9");
+    expect(patch.guests).toEqual({ [G]: null });
+  });
+
+  it("KEEPS a guest who is merely swapped — they're still playing", () => {
+    // p1 and the guest trade places; the guest lands in p1's old spot,
+    // so deleting their record would erase a seated player.
+    const patch = assignSlotPatch(withGuest(), "p1", 0, 1);
+    expect(patch.slots).toEqual({ [slotKey(0, 1)]: "p1", [slotKey(0, 0)]: G });
+    expect(patch.guests).toBeUndefined();
+  });
+
+  it("lets only the member who brought them take them out", () => {
+    const r = withGuest();
+    expect(canRemoveGuest(r, G, "p1")).toBe(true);    // the inviter
+    expect(canRemoveGuest(r, G, "p2")).toBe(false);   // somebody else
+    expect(canRemoveGuest(r, "p1", "p1")).toBe(false); // not a guest at all
+    expect(canRemoveGuest(r, G, null)).toBe(false);
+  });
+
+  it("counts a guest toward a full foursome", () => {
+    const r = round({ groupCount: 1, groupSize: 2,
+      slots: { [slotKey(0, 0)]: "p1", [slotKey(0, 1)]: G },
+      guests: { [G]: { name: "Mike Smith", invitedBy: "p1" } } });
+    const hit = findMyFullGroup([{ ...r, date: "Sep 12" }], "p1", 2026, () => true, new Date(2026, 8, 10));
+    expect(hit).not.toBeNull();
+    expect(hit.pids).toEqual(["p1", G]);
   });
 });

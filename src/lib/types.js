@@ -143,7 +143,11 @@
  * @property {number} groupCount             Activated tee times (1–12; 3 is the form default).
  * @property {number} groupSize              Spots per tee time (2–6; 4 is the default).
  * @property {"front" | "back"} side
- * @property {Record<string, string|null>} slots   "g{n}_s{n}" → Player.id; null = open.
+ * @property {Record<string, string|null>} slots   "g{n}_s{n}" → Player.id or
+ *                                         FunGuest id; null = open.
+ * @property {Record<string, FunGuest|null>} [guests]  Guest id → their details.
+ *                                         null = removed (a merge write can't
+ *                                         delete a key).
  * @property {string[]} [signups]            LEGACY. Ordered signups from the first cut of
  *                                           this feature; read-only compat in funRounds.js.
  * @property {string} [title]                Optional name, e.g. "Labor Day Scramble".
@@ -152,6 +156,26 @@
  * @property {string} [createdBy]            Player.id of the commissioner who created it.
  * @property {number} [createdAt]            Timestamp ms; breaks same-day sort ties.
  * @property {string} [league_id]
+ */
+
+/**
+ * A guest on a fun round — someone's friend, not a league member. Lives
+ * in the round's own `guests` map under an id prefixed `guest_`, which
+ * is what a slot holds in place of a Player.id.
+ *
+ * Deliberately NOT a league_players row. A guest has no season, no team
+ * and no handicap history, and creating a player for them would put a
+ * stranger into the roster that drives standings and handicaps — the
+ * exact boundary the whole fun-round feature is built to respect. The
+ * handicap here is used for one thing: ranking them fairly on that
+ * round's net leaderboard.
+ *
+ * @typedef {Object} FunGuest
+ * @property {string} name           As typed by the member who brought them.
+ * @property {number} hcp            9-hole handicap; 0 (scratch) when not given.
+ * @property {string|null} invitedBy Player.id of the member who added them —
+ *                                   the only non-commissioner who can remove them.
+ * @property {number} [addedAt]      Timestamp ms.
  */
 
 /**

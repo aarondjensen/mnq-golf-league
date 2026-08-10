@@ -208,8 +208,11 @@ export function funRoundCounts(round) {
 
 // ── Write patches ─────────────────────────────────────────────────
 //
-// Each returns a partial `slots` map to merge, or null when the action
-// isn't legal. Pure — the caller decides whether to persist.
+// Each returns a partial DOC to merge — `{ slots, guests? }` — or null
+// when the action isn't legal. Pure; the caller decides whether to
+// persist. They all share one shape so a caller can persist any of them
+// the same way and can't accidentally pass a bare slots map where a
+// compound one was meant.
 
 /**
  * Claim (g, s) for a player. Returns null if the spot is taken by
@@ -226,10 +229,10 @@ export function claimSlotPatch(round, pid, g, s) {
   if (!grid[g] || g < 0 || s < 0 || s >= grid[g].length) return null;
   const occupant = grid[g][s];
   if (occupant && occupant !== pid) return null;
-  const patch = { [slotKey(g, s)]: pid };
+  const slots = { [slotKey(g, s)]: pid };
   const prior = findPlayerSlot(round, pid);
-  if (prior && !(prior.g === g && prior.s === s)) patch[slotKey(prior.g, prior.s)] = null;
-  return patch;
+  if (prior && !(prior.g === g && prior.s === s)) slots[slotKey(prior.g, prior.s)] = null;
+  return { slots };
 }
 
 /**
@@ -257,18 +260,138 @@ export function assignSlotPatch(round, pid, g, s) {
   const occupant = grid[g][s];
   if (occupant === pid) return null;   // already sitting there — nothing to do
   const from = findPlayerSlot(round, pid);
-  const patch = { [slotKey(g, s)]: pid };
+  const slots = { [slotKey(g, s)]: pid };
   // When the mover came from elsewhere, their old spot receives whoever
   // they displaced — or null if the target was empty.
-  if (from) patch[slotKey(from.g, from.s)] = occupant;
+  if (from) slots[slotKey(from.g, from.s)] = occupant;
+  const patch = { slots };
+  // A guest who is REPLACED leaves the sheet entirely, so their record
+  // goes too. A guest who is SWAPPED just moves — `from` is set, they
+  // land in the mover's old spot, and their record must survive.
+  if (isGuestId(occupant) && !from) patch.guests = { [occupant]: null };
   return patch;
 }
 
-/** Free a spot. Returns null when it's already open. */
+// ── Guests ────────────────────────────────────────────────────────
+//
+// Fun rounds are not members-only: someone brings a friend. A guest
+// occupies a spot exactly like a member does, so `slots` still holds a
+// plain id string — the difference is the id carries a `guest_` prefix
+// and their details live in a `guests` map on the round:
+//
+//   guests: { guest_ab12: { name, hcp, invitedBy, addedAt } }
+//
+// Keeping the slot value a string is what makes this cheap: readSlots,
+// claimSlotPatch, assignSlotPatch and the whole tee-sheet grid are
+// unchanged and never learn that guests exist. Only NAME and HANDICAP
+// lookups have to know, and those go through rosterFor below, which
+// hands the rest of the app a list of player-shaped objects.
+//
+// A guest is deliberately not a league_players row. They have no
+// season, no team, no handicap history, and creating one would put a
+// stranger into the roster that drives standings and handicaps — the
+// exact boundary this whole feature is built to respect.
+
+export const GUEST_PREFIX = "guest_";
+
+export function isGuestId(id) {
+  return typeof id === "string" && id.startsWith(GUEST_PREFIX);
+}
+
+export function newGuestId() {
+  return `${GUEST_PREFIX}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 7)}`;
+}
+
+/** The round's guest map, normalized. Cleared entries read as absent. */
+export function readGuests(round) {
+  const raw = round?.guests;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+  const out = {};
+  for (const [id, v] of Object.entries(raw)) {
+    if (!isGuestId(id) || !v || typeof v !== "object") continue;
+    const name = typeof v.name === "string" ? v.name.trim() : "";
+    if (!name) continue;
+    const hcp = Number(v.hcp);
+    out[id] = {
+      name,
+      hcp: Number.isFinite(hcp) ? Math.round(hcp) : 0,
+      invitedBy: typeof v.invitedBy === "string" ? v.invitedBy : null,
+      addedAt: Number(v.addedAt) || 0,
+    };
+  }
+  return out;
+}
+
+/**
+ * Everyone who can appear on this round's sheet: the league's players
+ * plus the round's guests, shaped alike so name and handicap lookups
+ * don't branch. Guests carry `isGuest` for the UI to mark them, and
+ * `invitedBy` so the member who brought them can take them back out.
+ */
+export function rosterFor(round, players) {
+  const guests = readGuests(round);
+  const asPlayers = Object.entries(guests).map(([id, g]) => ({
+    id,
+    name: g.name,
+    handicapIndex: g.hcp,
+    isGuest: true,
+    invitedBy: g.invitedBy,
+  }));
+  return [...(players || []), ...asPlayers];
+}
+
+/** Who may take a guest back off the sheet: whoever brought them. */
+export function canRemoveGuest(round, id, pid) {
+  if (!isGuestId(id) || !pid) return false;
+  const g = readGuests(round)[id];
+  return !!g && g.invitedBy === pid;
+}
+
+/**
+ * Seat a guest in the first open spot of a group. Returns the full doc
+ * patch — both maps in ONE write, so a guest can never exist without a
+ * seat or hold a seat without a name.
+ *
+ * Returns null when the group has no room, which is what the caller
+ * shows as "that group just filled up".
+ */
+export function addGuestPatch(round, groupIdx, guest, id = newGuestId()) {
+  const name = String(guest?.name || "").trim();
+  if (!name) return null;
+  const grid = readSlots(round);
+  const row = grid[groupIdx];
+  if (!row) return null;
+  const spot = row.findIndex(v => !v);
+  if (spot < 0) return null;
+  const hcp = Number(guest?.hcp);
+  return {
+    slots: { [slotKey(groupIdx, spot)]: id },
+    guests: {
+      [id]: {
+        name,
+        hcp: Number.isFinite(hcp) ? Math.round(hcp) : 0,
+        invitedBy: guest?.invitedBy || null,
+        addedAt: guest?.addedAt || 0,
+      },
+    },
+  };
+}
+
+/**
+ * Free a spot. Returns the full doc patch, or null when it's already
+ * open.
+ *
+ * When the occupant is a guest their entry is dropped in the same
+ * write. They exist only to fill that seat, so leaving the record
+ * behind would grow the doc with every friend anyone ever brought.
+ */
 export function releaseSlotPatch(round, g, s) {
   const grid = readSlots(round);
-  if (!grid[g] || !grid[g][s]) return null;
-  return { [slotKey(g, s)]: null };
+  const occupant = grid[g]?.[s];
+  if (!occupant) return null;
+  const patch = { slots: { [slotKey(g, s)]: null } };
+  if (isGuestId(occupant)) patch.guests = { [occupant]: null };
+  return patch;
 }
 
 /**

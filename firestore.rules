@@ -131,15 +131,26 @@ service cloud.firestore {
     // (league_attendance above) — dropping a buddy from a casual tee time
     // is the same trust level, and the UI only offers it to commissioners.
     //
+    // `guests` is in the member set alongside `slots` because these
+    // rounds are NOT members-only: a member brings a friend, types their
+    // name, and that friend takes a spot. Seating a guest writes both
+    // maps in one merge, so both keys have to be permitted together or
+    // the write is rejected whole.
+    //
+    // A guest is only ever a name and a handicap living on this round's
+    // doc. They are not a league_players row, so nothing a member types
+    // here can reach the roster that drives standings or handicaps.
+    //
     // affectedKeys() is top-level, so a claim — a merge upsert of
     // { id, slots: { g0_s2: <pid> }, league_id } — diffs to exactly
-    // ['slots'] no matter which spot inside the map moved.
+    // ['slots'] no matter which spot inside the map moved, and seating a
+    // guest diffs to ['slots','guests'].
     match /league_fun_rounds/{docId} {
       allow read: if signedIn();
       allow create, delete: if isCommissioner();
       allow update: if isCommissioner()
         || (isMember()
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['slots']));
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['slots', 'guests']));
     }
 
     // Fun-round scorecards — one doc per (round, player). Plain member
