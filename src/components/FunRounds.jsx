@@ -324,7 +324,7 @@ function Spot({ pid, name, mine, isGuest, canClaim, canRelease, canManage, busy,
   const who = isGuest ? `${label} (guest)` : label;
   const ariaLabel = canManage
     ? `${who} — tap to manage spot`
-    : pid ? `${who} — tap to give up` : "Open spot — tap to claim";
+    : pid ? `${who} — tap to give up` : "Open spot — tap to fill";
 
   return (
     <button
@@ -336,17 +336,61 @@ function Spot({ pid, name, mine, isGuest, canClaim, canRelease, canManage, busy,
   );
 }
 
+// ── What goes in this open spot ───────────────────────────────────
+//
+// Tapping "Open" asks rather than assuming, because a member filling a
+// spot means one of two things and the app can't tell which: they're
+// playing, or they're bringing someone.
+//
+// If they ALREADY hold a spot in this round, taking a second one is not
+// a thing a person can do — so only the guest option is offered, and
+// the popup says where they're already sitting rather than leaving a
+// missing button unexplained.
+export function OpenSpotChooser({ teeTime, spotIdx, mySeat, onClaim, onGuest, onCancel }) {
+  const btn = (primary) => ({
+    width: "100%", padding: 13, borderRadius: 10, marginBottom: 8,
+    background: primary ? K.teal : K.inp,
+    border: primary ? "none" : `1px solid ${K.bdr}`,
+    color: primary ? K.bg : K.t1,
+    fontSize: FS.base, fontWeight: FW.bold, cursor: "pointer",
+  });
+
+  return (
+    <Popup onClose={onCancel} maxWidth={340} padding={20} showClose>
+      <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: K.teal, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 4 }}>
+        {teeTime} · Spot {spotIdx + 1}
+      </div>
+      <div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 14, lineHeight: 1.5 }}>
+        {mySeat
+          ? `You're already in this round at ${mySeat}. Fill this spot for a guest.`
+          : "Who's taking this spot?"}
+      </div>
+
+      {!mySeat && (
+        <button onClick={onClaim} style={btn(true)}>I'm playing</button>
+      )}
+      <button onClick={onGuest} style={btn(!mySeat ? false : true)}>Add a guest</button>
+      <button
+        onClick={onCancel}
+        style={{ ...btn(false), marginBottom: 0, background: "transparent", border: "none", color: K.t3, fontSize: FS.sm }}
+      >Cancel</button>
+    </Popup>
+  );
+}
+
 // ── Add a guest ───────────────────────────────────────────────────
 //
-// Fun rounds aren't members-only — someone brings a friend. The member
-// adding them owns them: their name and handicap are typed here, and
-// only that member (or the commissioner) can take them back out.
+// Fun rounds aren't members-only — someone brings a friend. Reached
+// from the open-spot chooser, so the guest lands in the spot that was
+// tapped. The member adding them owns them: their name and handicap are
+// typed here, and only that member (or the commissioner) can take them
+// back out.
 //
 // Handicap is optional and defaults to scratch. It exists so the net
 // leaderboard can rank a guest honestly against the members they're
 // playing with; getting it slightly wrong on a casual round costs
 // nothing, and demanding it would be friction on the tee.
-function GuestForm({ teeTime, onAdd, onCancel, saving }) {
+function GuestForm({ teeTime, spotIdx, onAdd, onCancel, saving }) {
   const [name, setName] = useState("");
   const [hcp, setHcp] = useState("");
   const [error, setError] = useState("");
@@ -363,7 +407,7 @@ function GuestForm({ teeTime, onAdd, onCancel, saving }) {
         Add a Guest
       </div>
       <div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 12 }}>
-        {teeTime} · they'll take the next open spot in this group.
+        {teeTime} · Spot {spotIdx + 1}
       </div>
 
       <div style={{ marginBottom: 10 }}>
@@ -506,7 +550,7 @@ export function SpotManager({ round, g, s, players, grid, onAssign, onClear, onC
 // ── One round's card ──────────────────────────────────────────────
 function FunRoundCard({
   round, players, myPid, isComm, isPast, course, funScoreIndex,
-  onClaim, onRelease, onManage, onAddGuest, onEdit, onDelete, busy,
+  onOpenSpot, onRelease, onManage, onEdit, onDelete, busy,
 }) {
   const groups = useMemo(() => buildFunGroups(round), [round]);
   // Players plus THIS round's guests, shaped alike — so every name and
@@ -577,23 +621,10 @@ function FunRoundCard({
                 <div style={{ flex: 1, minWidth: 0 }} />
                 {/* A full group needs no Score button: it turns up in its
                     players' Scoring tab on its own. The pill just says so,
-                    so a group that has filled up knows where to go. While
-                    a group still has room, that same slot offers a guest
-                    instead — the two states are mutually exclusive. */}
-                {g.spots.every(Boolean) ? (
+                    so a group that has filled up knows where to go. */}
+                {g.spots.every(Boolean) && (
                   <Pill color={K.act} style={{ fontSize: FS.micro, flexShrink: 0 }}>Full</Pill>
-                ) : (!isPast && !!myPid && (
-                  <button
-                    onClick={() => onAddGuest(round, g.idx, g.teeTime)}
-                    aria-label={`Add a guest to group ${g.idx + 1}`}
-                    style={{
-                      flexShrink: 0, padding: "6px 10px", borderRadius: 6,
-                      background: "transparent", border: `1px solid ${K.teal}50`,
-                      color: K.teal, fontSize: FS.micro, fontWeight: FW.bold,
-                      cursor: "pointer", whiteSpace: "nowrap",
-                    }}
-                  >+ Guest</button>
-                ))}
+                )}
               </div>
               <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
                 {g.spots.map((pid, s) => (
@@ -609,7 +640,7 @@ function FunRoundCard({
                       canRelease={!isPast && (pid === myPid || canRemoveGuest(round, pid, myPid))}
                       canManage={isComm && !isPast}
                       busy={busy}
-                      onClaim={() => onClaim(round, g.idx, s)}
+                      onClaim={() => onOpenSpot(round, g.idx, s, g.teeTime)}
                       onRelease={() => onRelease(round, g.idx, s, pid)}
                       onManage={() => onManage(round, g.idx, s)}
                     />
@@ -707,7 +738,9 @@ export function FunRounds({
   const [confirmDelete, setConfirmDelete] = useState(null);
   // { round, g, s } — the spot whose commissioner manager is open.
   const [managing, setManaging] = useState(null);
-  // { round, groupIdx, teeTime } — the group a guest is being added to.
+  // { round, g, s, teeTime } — the open spot whose chooser is showing.
+  const [filling, setFilling] = useState(null);
+  // { round, g, s, teeTime } — the spot a guest is being named for.
   const [guestFor, setGuestFor] = useState(null);
   const [scoreToast, setScoreToast] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -756,8 +789,8 @@ export function FunRounds({
   // Popups suppress pull-to-refresh app-side, same as every other page
   // that opens one.
   useEffect(() => {
-    if (setPopupOpen) setPopupOpen(!!formFor || !!confirmDelete || !!managing || !!scoring || !!guestFor);
-  }, [formFor, confirmDelete, managing, scoring, guestFor, setPopupOpen]);
+    if (setPopupOpen) setPopupOpen(!!formFor || !!confirmDelete || !!managing || !!scoring || !!guestFor || !!filling);
+  }, [formFor, confirmDelete, managing, scoring, guestFor, filling, setPopupOpen]);
   // GroupScoring wants a pid → player lookup, the same shape Scoring
   // builds — but keyed off the ROUND's roster, so a guest in the group
   // resolves to their name and handicap instead of rendering as "?".
@@ -824,6 +857,7 @@ export function FunRounds({
   // moment can't overwrite each other. It also stays inside what the
   // Firestore rules let a non-commissioner touch (the `slots` field).
   const handleClaim = async (round, g, s) => {
+    setFilling(null);
     if (!myPid) return;
     const patch = claimSlotPatch(round, myPid, g, s);
     if (!patch) { toast("That spot was just taken.", "error"); return; }
@@ -878,12 +912,13 @@ export function FunRounds({
     if (!target) return;
     const patch = addGuestPatch(
       target.round,
-      target.groupIdx,
+      target.g,
+      target.s,
       { ...guest, invitedBy: myPid, addedAt: Date.now() },
       newGuestId()
     );
     setGuestFor(null);
-    if (!patch) { toast("That group just filled up.", "error"); return; }
+    if (!patch) { toast("That spot was just taken.", "error"); return; }
     setBusyId(target.round.id);
     try {
       const ok = await saveFunRound({ id: target.round.id, ...patch });
@@ -935,12 +970,11 @@ export function FunRounds({
 
   const cardProps = {
     players, myPid, isComm, course, funScoreIndex,
-    onClaim: handleClaim,
+    onOpenSpot: (round, g, s, teeTime) => setFilling({ round, g, s, teeTime }),
     onRelease: handleRelease,
     onEdit: (r) => setFormFor(r),
     onDelete: (r) => setConfirmDelete(r),
     onManage: (round, g, s) => setManaging({ round, g, s }),
-    onAddGuest: (round, groupIdx, teeTime) => setGuestFor({ round, groupIdx, teeTime }),
   };
 
   const nothingAtAll = upcoming.length === 0 && past.length === 0;
@@ -1085,10 +1119,29 @@ export function FunRounds({
         } : null}
       />
 
+      {filling && (
+        <OpenSpotChooser
+          key={`${filling.round.id}_${filling.g}_${filling.s}`}
+          teeTime={filling.teeTime}
+          spotIdx={filling.s}
+          // Where they're already sitting, if anywhere. Its presence is
+          // what hides "I'm playing" — and saying the tee time turns a
+          // missing button into an explanation.
+          mySeat={(() => {
+            const at = findPlayerSlot(filling.round, myPid);
+            return at ? buildFunGroups(filling.round)[at.g]?.teeTime || null : null;
+          })()}
+          onClaim={() => handleClaim(filling.round, filling.g, filling.s)}
+          onGuest={() => { setGuestFor(filling); setFilling(null); }}
+          onCancel={() => setFilling(null)}
+        />
+      )}
+
       {guestFor && (
         <GuestForm
-          key={`${guestFor.round.id}_${guestFor.groupIdx}`}
+          key={`${guestFor.round.id}_${guestFor.g}_${guestFor.s}`}
           teeTime={guestFor.teeTime}
+          spotIdx={guestFor.s}
           onAdd={handleAddGuest}
           onCancel={() => setGuestFor(null)}
         />

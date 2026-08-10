@@ -348,24 +348,26 @@ export function canRemoveGuest(round, id, pid) {
 }
 
 /**
- * Seat a guest in the first open spot of a group. Returns the full doc
- * patch — both maps in ONE write, so a guest can never exist without a
- * seat or hold a seat without a name.
+ * Seat a guest in ONE SPECIFIC spot. Returns the full doc patch — both
+ * maps in ONE write, so a guest can never exist without a seat or hold
+ * a seat without a name.
  *
- * Returns null when the group has no room, which is what the caller
- * shows as "that group just filled up".
+ * The coordinates are explicit because the member picks the spot: the
+ * guest goes exactly where the tapped "Open" was, the same as claiming
+ * for yourself. Returns null for a nameless guest, coordinates off the
+ * sheet, or a spot somebody took first — which the caller shows as
+ * "that spot was just taken".
  */
-export function addGuestPatch(round, groupIdx, guest, id = newGuestId()) {
+export function addGuestPatch(round, groupIdx, spotIdx, guest, id = newGuestId()) {
   const name = String(guest?.name || "").trim();
   if (!name) return null;
   const grid = readSlots(round);
   const row = grid[groupIdx];
-  if (!row) return null;
-  const spot = row.findIndex(v => !v);
-  if (spot < 0) return null;
+  if (!row || spotIdx < 0 || spotIdx >= row.length) return null;
+  if (row[spotIdx]) return null;
   const hcp = Number(guest?.hcp);
   return {
-    slots: { [slotKey(groupIdx, spot)]: id },
+    slots: { [slotKey(groupIdx, spotIdx)]: id },
     guests: {
       [id]: {
         name,

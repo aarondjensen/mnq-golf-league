@@ -658,20 +658,22 @@ describe("guests — friends who aren't league members", () => {
     expect(readGuests(r)[G].hcp).toBe(0);
   });
 
-  it("adds a guest to the first open spot, in one write", () => {
+  it("seats a guest in the spot that was tapped, in one write", () => {
     // Both maps together: a guest can never exist without a seat, or
-    // hold a seat without a name.
-    const patch = addGuestPatch(round({ slots: { [slotKey(0, 0)]: "p1" } }), 0,
+    // hold a seat without a name. The coordinates are explicit because
+    // the member picks the spot, exactly as when claiming for themselves.
+    const patch = addGuestPatch(round({ slots: { [slotKey(0, 0)]: "p1" } }), 0, 2,
       { name: "Mike Smith", hcp: 12, invitedBy: "p1" }, G);
-    expect(patch.slots).toEqual({ [slotKey(0, 1)]: G });
+    expect(patch.slots).toEqual({ [slotKey(0, 2)]: G });
     expect(patch.guests[G]).toMatchObject({ name: "Mike Smith", hcp: 12, invitedBy: "p1" });
   });
 
-  it("refuses a nameless guest or a full group", () => {
-    expect(addGuestPatch(round(), 0, { name: "   " }, G)).toBeNull();
-    const full = round({ groupSize: 2, slots: { [slotKey(0, 0)]: "p1", [slotKey(0, 1)]: "p2" } });
-    expect(addGuestPatch(full, 0, { name: "Mike" }, G)).toBeNull();
-    expect(addGuestPatch(round(), 99, { name: "Mike" }, G)).toBeNull();
+  it("refuses a nameless guest, a taken spot, or coordinates off the sheet", () => {
+    expect(addGuestPatch(round(), 0, 0, { name: "   " }, G)).toBeNull();
+    const taken = round({ slots: { [slotKey(0, 0)]: "p2" } });
+    expect(addGuestPatch(taken, 0, 0, { name: "Mike" }, G)).toBeNull();
+    expect(addGuestPatch(round(), 99, 0, { name: "Mike" }, G)).toBeNull();
+    expect(addGuestPatch(round(), 0, 99, { name: "Mike" }, G)).toBeNull();
   });
 
   it("removes the guest record when their spot is freed", () => {

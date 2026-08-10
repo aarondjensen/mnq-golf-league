@@ -15,10 +15,10 @@
 
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { FunRounds, SpotManager } from "./FunRounds.jsx";
+import { FunRounds, SpotManager, OpenSpotChooser } from "./FunRounds.jsx";
 import { slotKey } from "../lib/funRounds";
 
-const CLAIMABLE = "Open spot — tap to claim";
+const CLAIMABLE = "Open spot — tap to fill";
 const giveUp = (name) => `${name} — tap to give up`;
 // Claimed spots now read "A. Jensen" — a bare surname is ambiguous when
 // two players share one, and the tee sheet is the screen where getting
@@ -137,7 +137,7 @@ describe("FunRounds — the tee sheet", () => {
 });
 
 describe("FunRounds — who can tap what", () => {
-  it("makes every open spot claimable for a linked player", () => {
+  it("makes every open spot fillable for a linked player", () => {
     const html = render({ funRounds: [round({ groupCount: 2 })] });
     expect(count(html, CLAIMABLE)).toBe(8);
   });
@@ -410,28 +410,11 @@ describe("FunRounds — guests", () => {
     ...over,
   });
 
-  it("offers + Guest on a group with room", () => {
+  it("has no dedicated Guest button — Open is the single entry point", () => {
     const h = render({ funRounds: [round({ groupCount: 1 })] });
-    expect(h).toContain("Add a guest to group 1");
-  });
-
-  it("does not offer + Guest on a full group", () => {
-    const h = render({
-      funRounds: [round({ groupCount: 1, groupSize: 2,
-        slots: { [slotKey(0,0)]: "p1", [slotKey(0,1)]: "p2" } })],
-    });
-    expect(h).not.toContain("Add a guest");
-    expect(h).toContain("Full");
-  });
-
-  it("does not offer + Guest to a viewer with no linked player", () => {
-    const h = render({ leagueUser: { playerId: null }, funRounds: [round({ groupCount: 1 })] });
-    expect(h).not.toContain("Add a guest");
-  });
-
-  it("does not offer + Guest on a past round", () => {
-    const h = render({ funRounds: [round({ groupCount: 1, date: PAST })] });
-    expect(h).not.toContain("Add a guest");
+    expect(h).not.toContain("+ Guest");
+    expect(h).not.toContain("Add a guest to group");
+    expect(h).toContain(CLAIMABLE);
   });
 
   it("shows the guest's name on the sheet, marked as a guest", () => {
@@ -526,5 +509,43 @@ describe("FunRounds — a guest reaches the screens that need them", () => {
     );
     expect(h).toContain("Mike Smith");
     expect(h).toContain("swap · group 1");
+  });
+});
+
+// ── The open-spot chooser ────────────────────────────────────────
+//
+// Tapping "Open" asks rather than assuming: a member filling a spot
+// means either "I'm playing" or "I'm bringing someone", and the app
+// can't tell which. Once they already hold a spot, taking a second is
+// not a thing a person can do, so only the guest option remains.
+describe("OpenSpotChooser", () => {
+  const chooser = (props) => renderToStaticMarkup(
+    <OpenSpotChooser
+      teeTime="4:36 PM" spotIdx={2} mySeat={null}
+      onClaim={() => {}} onGuest={() => {}} onCancel={() => {}}
+      {...props}
+    />
+  );
+
+  it("offers both options to a member with no spot yet", () => {
+    const h = chooser({});
+    expect(h).toContain("I&#x27;m playing");
+    expect(h).toContain("Add a guest");
+    expect(h).toContain("Who&#x27;s taking this spot?");
+  });
+
+  it("names the spot being filled", () => {
+    expect(chooser({})).toContain("4:36 PM · Spot 3");
+  });
+
+  it("offers ONLY the guest option once the member holds a spot", () => {
+    const h = chooser({ mySeat: "4:28 PM" });
+    expect(h).not.toContain("I&#x27;m playing");
+    expect(h).toContain("Add a guest");
+  });
+
+  it("says where they're already sitting rather than just hiding a button", () => {
+    // A missing option with no explanation reads as a bug.
+    expect(chooser({ mySeat: "4:28 PM" })).toContain("already in this round at 4:28 PM");
   });
 });
