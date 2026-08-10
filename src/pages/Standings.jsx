@@ -1218,35 +1218,45 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     });
   }, [matchResults, weekScores, course, scoringRules, leagueConfig, saveMatchResult, schedule, teams, players, seedMap, playoffSeedMap, allRounds]);
 
-  const lockedWeeks = useMemo(() => {
+  // ── Regular Season week/result scope ──────────────────────────────────
+  // This tab is the REGULAR SEASON table, so it counts regular-season weeks
+  // ONLY — the round-robin plus the seeded weeks. Playoff weeks are excluded
+  // even after they're locked: bracket and consolation results belong to the
+  // Postseason tab, and folding them in inflates the W-L-T / Pts / HW columns
+  // (and the expanded per-week list) with games that were never part of the
+  // regular-season race. Same rule the rest of the app already applies for
+  // playoff seeding — see buildPlayoffSeedMap / computeRegularSeasonSeeds in
+  // theme.jsx, which filter on `locked === true && isPlayoff !== true`.
+  const rsLockedWeeks = useMemo(() => {
     const set = new Set();
-    (schedule || []).forEach(wk => { if (wk.locked) set.add(wk.week); });
+    (schedule || []).forEach(wk => { if (wk.locked && wk.isPlayoff !== true) set.add(wk.week); });
     return set;
   }, [schedule]);
 
-  const lockedResults = useMemo(() => {
-    return matchResults.filter(r => r && lockedWeeks.has(r.week));
-  }, [matchResults, lockedWeeks]);
+  const rsLockedResults = useMemo(() => {
+    return matchResults.filter(r => r && rsLockedWeeks.has(r.week));
+  }, [matchResults, rsLockedWeeks]);
 
   const latestLockedWeek = useMemo(() => {
     let max = 0;
-    lockedWeeks.forEach(w => { if (w > max) max = w; });
+    rsLockedWeeks.forEach(w => { if (w > max) max = w; });
     return max;
-  }, [lockedWeeks]);
+  }, [rsLockedWeeks]);
 
   const standings = useMemo(() => {
-    // lockedOnly: false because the caller has already filtered to lockedResults.
-    // Passing standingsMethod (string) instead of isRecord (boolean) — the
-    // shared function does its own "=== record" check.
-    return buildStandingsForSeed(teams, lockedResults, schedule, leagueConfig?.standingsMethod, false);
-  }, [teams, lockedResults, schedule, leagueConfig?.standingsMethod]);
+    // lockedOnly: false because the caller has already filtered to
+    // rsLockedResults (locked, regular-season-only). Passing standingsMethod
+    // (string) instead of isRecord (boolean) — the shared function does its
+    // own "=== record" check.
+    return buildStandingsForSeed(teams, rsLockedResults, schedule, leagueConfig?.standingsMethod, false);
+  }, [teams, rsLockedResults, schedule, leagueConfig?.standingsMethod]);
 
   const prevStandings = useMemo(() => {
     if (latestLockedWeek === 0) return null;
-    const prevResults = lockedResults.filter(r => r.week !== latestLockedWeek);
-    if (prevResults.length === 0 && lockedResults.length > 0) return null;
+    const prevResults = rsLockedResults.filter(r => r.week !== latestLockedWeek);
+    if (prevResults.length === 0 && rsLockedResults.length > 0) return null;
     return buildStandingsForSeed(teams, prevResults, schedule, leagueConfig?.standingsMethod, false);
-  }, [teams, lockedResults, latestLockedWeek, schedule, leagueConfig?.standingsMethod]);
+  }, [teams, rsLockedResults, latestLockedWeek, schedule, leagueConfig?.standingsMethod]);
 
   const prevPositionMap = useMemo(() => {
     if (!prevStandings) return {};
@@ -1256,7 +1266,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   }, [prevStandings]);
 
   const getTeamResults = (teamId) => {
-    const matchRows = lockedResults
+    const matchRows = rsLockedResults
       .filter(r => r.team1Id === teamId || r.team2Id === teamId)
       .map(r => {
         const isTeam1 = r.team1Id === teamId;
@@ -1283,8 +1293,12 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
         return { week: r.week, date: wk?.date || "", oppName: lastNamesOnly(opp?.name || "TBD"), myPts, oppPts, result: wResult, holesWon, resultDisplay, matchResult: r, rainedOut: false };
       });
 
+    // Rained-out weeks show as an "R / RAIN" row so a gap in the week list is
+    // explained rather than just missing. Playoff washouts are filtered out
+    // for the same reason playoff results are — this list is the team's
+    // regular season.
     const rainRows = schedule
-      .filter(wk => wk.rainedOut && wk.week > 0)
+      .filter(wk => wk.rainedOut && wk.week > 0 && wk.isPlayoff !== true)
       .map(wk => ({
         week: wk.week, date: wk.date || "", oppName: "", myPts: 0, oppPts: 0,
         result: "R", holesWon: "", resultDisplay: "RAIN", matchResult: null, rainedOut: true,
