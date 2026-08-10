@@ -56,6 +56,8 @@ import {
   isGuestId,
   canRemoveGuest,
   addGuestPatch,
+  updateGuestPatch,
+  readGuests,
   newGuestId,
   validateFunRound,
   normalizeStartTime,
@@ -286,8 +288,8 @@ function FunRoundForm({ round, season, defaults, onSave, onCancel, saving }) {
 // `mine` is styling and `canRelease` is permission, and they are
 // separate on purpose: on a PAST round your spot still reads as yours
 // (teal, "You're In") but nothing on the sheet is tappable any more.
-function Spot({ pid, name, mine, isGuest, canClaim, canRelease, canManage, busy, onClaim, onRelease, onManage }) {
-  const interactive = canManage || (!pid && canClaim) || (pid && canRelease);
+function Spot({ pid, name, mine, isGuest, canClaim, canRelease, canEditGuest, canManage, busy, onClaim, onRelease, onEditGuest, onManage }) {
+  const interactive = canManage || (!pid && canClaim) || (pid && (canRelease || canEditGuest));
   const label = pid ? name : "Open";
 
   // Sized so "A. JENSEN" fits without truncating. The app renders
@@ -324,11 +326,12 @@ function Spot({ pid, name, mine, isGuest, canClaim, canRelease, canManage, busy,
   const who = isGuest ? `${label} (guest)` : label;
   const ariaLabel = canManage
     ? `${who} — tap to manage spot`
+    : canEditGuest ? `${who} — tap to edit or remove`
     : pid ? `${who} — tap to give up` : "Open spot — tap to fill";
 
   return (
     <button
-      onClick={canManage ? onManage : (pid ? onRelease : onClaim)}
+      onClick={canManage ? onManage : canEditGuest ? onEditGuest : (pid ? onRelease : onClaim)}
       disabled={busy}
       aria-label={ariaLabel}
       style={{ ...style, cursor: busy ? "default" : "pointer", opacity: busy ? 0.6 : 1 }}
@@ -390,9 +393,10 @@ export function OpenSpotChooser({ teeTime, spotIdx, mySeat, onClaim, onGuest, on
 // leaderboard can rank a guest honestly against the members they're
 // playing with; getting it slightly wrong on a casual round costs
 // nothing, and demanding it would be friction on the tee.
-function GuestForm({ teeTime, spotIdx, onAdd, onCancel, saving }) {
-  const [name, setName] = useState("");
-  const [hcp, setHcp] = useState("");
+export function GuestForm({ teeTime, spotIdx, guest, onAdd, onRemove, onCancel, saving }) {
+  const editing = !!guest;
+  const [name, setName] = useState(guest?.name || "");
+  const [hcp, setHcp] = useState(guest ? String(guest.hcp ?? "") : "");
   const [error, setError] = useState("");
 
   const submit = () => {
@@ -404,7 +408,7 @@ function GuestForm({ teeTime, spotIdx, onAdd, onCancel, saving }) {
   return (
     <Popup onClose={onCancel} maxWidth={360} padding={20} showClose>
       <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: K.teal, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 4 }}>
-        Add a Guest
+        {editing ? "Guest" : "Add a Guest"}
       </div>
       <div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 12 }}>
         {teeTime} · Spot {spotIdx + 1}
@@ -457,8 +461,23 @@ function GuestForm({ teeTime, spotIdx, onAdd, onCancel, saving }) {
             fontSize: FS.base, fontWeight: FW.bold,
             cursor: saving ? "default" : "pointer", opacity: saving ? 0.6 : 1,
           }}
-        >{saving ? "Adding..." : "Add Guest"}</button>
+        >{saving ? "Saving..." : editing ? "Save" : "Add Guest"}</button>
       </div>
+
+      {/* Removing is deliberately down here and quiet. Tapping a guest's
+          spot used to remove them outright — a destructive one-tap on a
+          small target, with no way to fix a typo. Now the tap opens this
+          and removal is an explicit second choice. */}
+      {editing && onRemove && (
+        <button
+          onClick={onRemove}
+          style={{
+            width: "100%", padding: "10px 12px", borderRadius: 8, marginTop: 10,
+            background: "transparent", border: `1px solid ${K.red}40`, color: K.red,
+            fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer",
+          }}
+        >Remove from this spot</button>
+      )}
     </Popup>
   );
 }
@@ -473,7 +492,7 @@ function GuestForm({ teeTime, spotIdx, onAdd, onCancel, saving }) {
 //
 // Players stay listed even when they're already seated — that IS the
 // swap affordance, so hiding them would remove the feature.
-export function SpotManager({ round, g, s, players, grid, onAssign, onGuest, onClear, onClose }) {
+export function SpotManager({ round, g, s, players, grid, onAssign, onGuest, onEditGuest, onClear, onClose }) {
   const occupant = grid?.[g]?.[s] || null;
   const teeTime = buildFunGroups(round)[g]?.teeTime || "";
 
@@ -505,6 +524,17 @@ export function SpotManager({ round, g, s, players, grid, onAssign, onGuest, onC
           commissioner had no route to a guest at all: every spot sends
           them here, so the league list was the only thing they could
           reach. */}
+      {occupant && isGuestId(occupant) && onEditGuest && (
+        <button
+          onClick={onEditGuest}
+          style={{
+            width: "100%", padding: "10px 12px", borderRadius: 8, marginBottom: 8,
+            background: "transparent", border: `1px solid ${K.teal}50`, color: K.teal,
+            fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer",
+          }}
+        >Edit guest</button>
+      )}
+
       {!occupant && (
         <button
           onClick={onGuest}
@@ -565,7 +595,7 @@ export function SpotManager({ round, g, s, players, grid, onAssign, onGuest, onC
 // ── One round's card ──────────────────────────────────────────────
 function FunRoundCard({
   round, players, myPid, isComm, isPast, course, funScoreIndex,
-  onOpenSpot, onRelease, onManage, onEdit, onDelete, busy,
+  onOpenSpot, onRelease, onEditGuest, onManage, onEdit, onDelete, busy,
 }) {
   const groups = useMemo(() => buildFunGroups(round), [round]);
   // Players plus THIS round's guests, shaped alike — so every name and
@@ -650,13 +680,15 @@ function FunRoundCard({
                       mine={!!pid && pid === myPid}
                       isGuest={isGuestId(pid)}
                       canClaim={!isPast && !!myPid}
-                      // Your own spot, or a guest you brought. Somebody
-                      // else's guest is not yours to remove.
-                      canRelease={!isPast && (pid === myPid || canRemoveGuest(round, pid, myPid))}
+                      canRelease={!isPast && pid === myPid}
+                      // A guest you brought opens their editor. Somebody
+                      // else's guest is not yours to touch.
+                      canEditGuest={!isPast && canRemoveGuest(round, pid, myPid)}
                       canManage={isComm && !isPast}
                       busy={busy}
                       onClaim={() => onOpenSpot(round, g.idx, s, g.teeTime)}
                       onRelease={() => onRelease(round, g.idx, s, pid)}
+                      onEditGuest={() => onEditGuest(round, g.idx, s, pid, g.teeTime)}
                       onManage={() => onManage(round, g.idx, s)}
                     />
                   ))}
@@ -922,9 +954,24 @@ export function FunRounds({
 
   // Add a guest to a group. One write carries both the seat and the
   // record, so a guest can never exist without a spot.
-  const handleAddGuest = async (guest) => {
+  const handleSaveGuest = async (guest) => {
     const target = guestFor;
     if (!target) return;
+    // Editing an existing guest touches only their record; adding one
+    // seats them as well. Same form, same write call, different patch.
+    if (target.guestId) {
+      const patch = updateGuestPatch(target.round, target.guestId, guest);
+      setGuestFor(null);
+      if (!patch) { toast("Couldn't update that guest.", "error"); return; }
+      setBusyId(target.round.id);
+      try {
+        const ok = await saveFunRound({ id: target.round.id, ...patch });
+        toast(ok ? "Guest updated." : "Couldn't update that guest.", ok ? "success" : "error");
+      } finally {
+        setBusyId(null);
+      }
+      return;
+    }
     const patch = addGuestPatch(
       target.round,
       target.g,
@@ -938,6 +985,22 @@ export function FunRounds({
     try {
       const ok = await saveFunRound({ id: target.round.id, ...patch });
       toast(ok ? `${guest.name} added.` : "Couldn't add your guest.", ok ? "success" : "error");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  // Remove a guest from their spot, reached from the guest editor.
+  const handleRemoveGuest = async () => {
+    const target = guestFor;
+    setGuestFor(null);
+    if (!target) return;
+    const patch = releaseSlotPatch(target.round, target.g, target.s);
+    if (!patch) return;
+    setBusyId(target.round.id);
+    try {
+      const ok = await saveFunRound({ id: target.round.id, ...patch });
+      if (!ok) toast("Couldn't remove that guest.", "error");
     } finally {
       setBusyId(null);
     }
@@ -989,6 +1052,7 @@ export function FunRounds({
     onRelease: handleRelease,
     onEdit: (r) => setFormFor(r),
     onDelete: (r) => setConfirmDelete(r),
+    onEditGuest: (round, g, s, guestId, teeTime) => setGuestFor({ round, g, s, guestId, teeTime }),
     onManage: (round, g, s) => setManaging({ round, g, s }),
   };
 
@@ -1154,10 +1218,12 @@ export function FunRounds({
 
       {guestFor && (
         <GuestForm
-          key={`${guestFor.round.id}_${guestFor.g}_${guestFor.s}`}
+          key={`${guestFor.round.id}_${guestFor.g}_${guestFor.s}_${guestFor.guestId || "new"}`}
           teeTime={guestFor.teeTime}
           spotIdx={guestFor.s}
-          onAdd={handleAddGuest}
+          guest={guestFor.guestId ? readGuests(guestFor.round)[guestFor.guestId] : null}
+          onAdd={handleSaveGuest}
+          onRemove={handleRemoveGuest}
           onCancel={() => setGuestFor(null)}
         />
       )}
@@ -1171,6 +1237,14 @@ export function FunRounds({
           players={rosterFor(managing.round, players)}
           grid={readSlots(managing.round)}
           onAssign={handleAssign}
+          onEditGuest={() => {
+            setGuestFor({
+              round: managing.round, g: managing.g, s: managing.s,
+              guestId: readSlots(managing.round)[managing.g]?.[managing.s],
+              teeTime: buildFunGroups(managing.round)[managing.g]?.teeTime || "",
+            });
+            setManaging(null);
+          }}
           onGuest={() => {
             setGuestFor({
               round: managing.round, g: managing.g, s: managing.s,

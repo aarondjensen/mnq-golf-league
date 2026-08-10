@@ -380,6 +380,24 @@ export function addGuestPatch(round, groupIdx, spotIdx, guest, id = newGuestId()
 }
 
 /**
+ * Correct a guest's name or handicap. A name is typed on a phone, on a
+ * tee, by someone in a hurry — it will be wrong sometimes, and the
+ * person it's wrong about isn't in the league to fix it themselves.
+ *
+ * Writes only the two editable fields. The merge preserves invitedBy
+ * and addedAt, so correcting a typo can't quietly transfer ownership of
+ * a guest to whoever happened to fix it.
+ */
+export function updateGuestPatch(round, id, fields) {
+  if (!isGuestId(id)) return null;
+  if (!readGuests(round)[id]) return null;
+  const name = String(fields?.name || "").trim();
+  if (!name) return null;
+  const hcp = Number(fields?.hcp);
+  return { guests: { [id]: { name, hcp: Number.isFinite(hcp) ? Math.round(hcp) : 0 } } };
+}
+
+/**
  * Free a spot. Returns the full doc patch, or null when it's already
  * open.
  *

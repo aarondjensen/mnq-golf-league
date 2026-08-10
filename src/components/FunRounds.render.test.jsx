@@ -15,7 +15,7 @@
 
 import { describe, it, expect } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { FunRounds, SpotManager, OpenSpotChooser } from "./FunRounds.jsx";
+import { FunRounds, SpotManager, OpenSpotChooser, GuestForm } from "./FunRounds.jsx";
 import { slotKey } from "../lib/funRounds";
 
 const CLAIMABLE = "Open spot — tap to fill";
@@ -424,17 +424,20 @@ describe("FunRounds — guests", () => {
     expect(h).toContain("dashed");             // …and so does the border
   });
 
-  it("lets the member who brought them take them out", () => {
+  it("opens the editor for the member who brought them", () => {
+    // Tapping used to remove outright — a destructive one-tap on a small
+    // target, and no way to fix a typo in a name you typed yourself.
     const h = render({ funRounds: [guested()] });
-    expect(h).toContain("M. Smith (guest) — tap to give up");
+    expect(h).toContain("M. Smith (guest) — tap to edit or remove");
   });
 
-  it("does NOT let another member remove someone else's guest", () => {
+  it("does NOT let another member touch someone else's guest", () => {
     const h = render({
       leagueUser: { playerId: "p2" },
       funRounds: [guested()],
     });
     expect(h).toContain("M. Smith");
+    expect(h).not.toContain("tap to edit or remove");
     expect(h).not.toContain("M. Smith (guest) — tap to give up");
   });
 
@@ -598,5 +601,60 @@ describe("FunRounds — a commissioner can reach the guest prompt", () => {
     expect(h).toContain(manageable("Open"));
     // …and the chooser is not what they get.
     expect(h).not.toContain(CLAIMABLE);
+  });
+});
+
+describe("GuestForm — editing an existing guest", () => {
+  const guest = { name: "Mike Smth", hcp: 12, invitedBy: "p1", addedAt: 5 };
+  const form = (props) => renderToStaticMarkup(
+    <GuestForm teeTime="4:36 PM" spotIdx={1}
+      onAdd={() => {}} onCancel={() => {}} {...props} />
+  );
+
+  it("prefills the name and handicap so a typo can be corrected", () => {
+    const h = form({ guest, onRemove: () => {} });
+    expect(h).toContain('value="Mike Smth"');
+    expect(h).toContain('value="12"');
+  });
+
+  it("offers Save and Remove rather than Add", () => {
+    const h = form({ guest, onRemove: () => {} });
+    expect(h).toContain(">Save<");
+    expect(h).toContain("Remove from this spot");
+    expect(h).not.toContain("Add Guest");
+  });
+
+  it("is still an add form when there's no existing guest", () => {
+    const h = form({});
+    expect(h).toContain("Add Guest");
+    expect(h).not.toContain("Remove from this spot");
+    expect(h).toContain('value=""');
+  });
+});
+
+describe("SpotManager — editing a guest as commissioner", () => {
+  const G = "guest_abc";
+  const r = round({
+    groupCount: 1,
+    slots: { [slotKey(0, 0)]: G },
+    guests: { [G]: { name: "Mike Smith", hcp: 12, invitedBy: "p1" } },
+  });
+  const manager = (props) => renderToStaticMarkup(
+    <SpotManager round={r} g={0} s={0} players={players} grid={[[G, null, null, null]]}
+      onAssign={() => {}} onGuest={() => {}} onEditGuest={() => {}}
+      onClear={() => {}} onClose={() => {}} {...props} />
+  );
+
+  it("offers Edit guest on a guest-held spot", () => {
+    expect(manager({})).toContain("Edit guest");
+  });
+
+  it("does not offer it on a member's spot", () => {
+    const h = renderToStaticMarkup(
+      <SpotManager round={r} g={0} s={0} players={players} grid={[["p1", null, null, null]]}
+        onAssign={() => {}} onGuest={() => {}} onEditGuest={() => {}}
+        onClear={() => {}} onClose={() => {}} />
+    );
+    expect(h).not.toContain("Edit guest");
   });
 });

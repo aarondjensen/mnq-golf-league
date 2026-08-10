@@ -29,6 +29,7 @@ import {
   rosterFor,
   canRemoveGuest,
   addGuestPatch,
+  updateGuestPatch,
   isoToScheduleDate,
   scheduleDateToIso,
   validateFunRound,
@@ -717,5 +718,39 @@ describe("guests — friends who aren't league members", () => {
     const hit = findMyFullGroup([{ ...r, date: "Sep 12" }], "p1", 2026, () => true, new Date(2026, 8, 10));
     expect(hit).not.toBeNull();
     expect(hit.pids).toEqual(["p1", G]);
+  });
+});
+
+describe("updateGuestPatch — fixing a guest's details", () => {
+  const G = "guest_abc";
+  const r = round({
+    slots: { [slotKey(0, 0)]: G },
+    guests: { [G]: { name: "Mike Smth", hcp: 12, invitedBy: "p1", addedAt: 5 } },
+  });
+
+  it("writes the corrected name and handicap", () => {
+    expect(updateGuestPatch(r, G, { name: "Mike Smith", hcp: 14 }))
+      .toEqual({ guests: { [G]: { name: "Mike Smith", hcp: 14 } } });
+  });
+
+  it("writes ONLY those two fields, so ownership survives the edit", () => {
+    // The merge preserves invitedBy — otherwise fixing a typo would
+    // quietly transfer the guest to whoever corrected it, and with it
+    // the right to remove them.
+    const patch = updateGuestPatch(r, G, { name: "Mike Smith" });
+    expect(Object.keys(patch.guests[G]).sort()).toEqual(["hcp", "name"]);
+  });
+
+  it("treats a blank handicap as scratch", () => {
+    expect(updateGuestPatch(r, G, { name: "Mike" }).guests[G].hcp).toBe(0);
+  });
+
+  it("refuses to blank the name", () => {
+    expect(updateGuestPatch(r, G, { name: "   " })).toBeNull();
+  });
+
+  it("refuses a non-guest or an unknown guest", () => {
+    expect(updateGuestPatch(r, "p1", { name: "Nope" })).toBeNull();
+    expect(updateGuestPatch(r, "guest_nobody", { name: "Nope" })).toBeNull();
   });
 });
