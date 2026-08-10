@@ -473,7 +473,7 @@ function GuestForm({ teeTime, spotIdx, onAdd, onCancel, saving }) {
 //
 // Players stay listed even when they're already seated — that IS the
 // swap affordance, so hiding them would remove the feature.
-export function SpotManager({ round, g, s, players, grid, onAssign, onClear, onClose }) {
+export function SpotManager({ round, g, s, players, grid, onAssign, onGuest, onClear, onClose }) {
   const occupant = grid?.[g]?.[s] || null;
   const teeTime = buildFunGroups(round)[g]?.teeTime || "";
 
@@ -498,8 +498,23 @@ export function SpotManager({ round, g, s, players, grid, onAssign, onClear, onC
       <div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 12 }}>
         {occupant
           ? "Pick someone else to swap or replace them."
-          : "Pick a player for this spot."}
+          : "Pick a player, or add a guest."}
       </div>
+
+      {/* An open spot can take a non-member too. Without this the
+          commissioner had no route to a guest at all: every spot sends
+          them here, so the league list was the only thing they could
+          reach. */}
+      {!occupant && (
+        <button
+          onClick={onGuest}
+          style={{
+            width: "100%", padding: "10px 12px", borderRadius: 8, marginBottom: 12,
+            background: "transparent", border: `1px solid ${K.teal}50`, color: K.teal,
+            fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer",
+          }}
+        >+ Add a guest</button>
+      )}
 
       {occupant && (
         <button
@@ -1156,6 +1171,13 @@ export function FunRounds({
           players={rosterFor(managing.round, players)}
           grid={readSlots(managing.round)}
           onAssign={handleAssign}
+          onGuest={() => {
+            setGuestFor({
+              round: managing.round, g: managing.g, s: managing.s,
+              teeTime: buildFunGroups(managing.round)[managing.g]?.teeTime || "",
+            });
+            setManaging(null);
+          }}
           onClear={handleManagerClear}
           onClose={() => setManaging(null)}
         />

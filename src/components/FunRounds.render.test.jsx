@@ -247,7 +247,7 @@ describe("SpotManager — the commissioner's assign / swap / clear popup", () =>
 
   it("explains what tapping a name will do, per spot state", () => {
     expect(manager(0, 0)).toContain("swap or replace");
-    expect(manager(0, 2)).toContain("Pick a player for this spot");
+    expect(manager(0, 2)).toContain("Pick a player, or add a guest");
   });
 });
 
@@ -547,5 +547,56 @@ describe("OpenSpotChooser", () => {
   it("says where they're already sitting rather than just hiding a button", () => {
     // A missing option with no explanation reads as a bug.
     expect(chooser({ mySeat: "4:28 PM" })).toContain("already in this round at 4:28 PM");
+  });
+});
+
+// ── The commissioner's route to a guest ──────────────────────────
+//
+// Reported live: a commissioner claimed a spot, tapped another Open
+// expecting the guest prompt, and got the league lineup instead. Cause:
+// EVERY spot routes a commissioner to the manager, so the chooser — and
+// with it the only guest option — was unreachable for them.
+describe("SpotManager — guests", () => {
+  const manager = (props) => renderToStaticMarkup(
+    <SpotManager
+      round={round({ groupCount: 1 })} g={0} s={1}
+      players={players} grid={[[null, null, null, null]]}
+      onAssign={() => {}} onGuest={() => {}} onClear={() => {}} onClose={() => {}}
+      {...props}
+    />
+  );
+
+  it("offers a guest on an OPEN spot", () => {
+    const h = manager({});
+    expect(h).toContain("Add a guest");
+    expect(h).toContain("Pick a player, or add a guest");
+  });
+
+  it("does not offer a guest on an occupied spot", () => {
+    // Guests go in open spots; replacing someone with a guest is a
+    // clear-then-add, not a hidden third meaning for this button.
+    const h = manager({ grid: [["p1", null, null, null]], s: 0 });
+    expect(h).not.toContain("Add a guest");
+    expect(h).toContain("Clear this spot");
+  });
+
+  it("still lists league players alongside the guest option", () => {
+    const h = manager({});
+    expect(h).toContain("Aaron Jensen");
+    expect(h).toContain("Add a guest");
+  });
+});
+
+describe("FunRounds — a commissioner can reach the guest prompt", () => {
+  it("routes an open spot to the manager, which now carries the guest option", () => {
+    const h = render({
+      isComm: true,
+      leagueUser: { playerId: "p1", isCommissioner: true },
+      funRounds: [round({ groupCount: 1, slots: { [slotKey(0, 0)]: "p1" } })],
+    });
+    // Their tap still goes to the manager…
+    expect(h).toContain(manageable("Open"));
+    // …and the chooser is not what they get.
+    expect(h).not.toContain(CLAIMABLE);
   });
 });
