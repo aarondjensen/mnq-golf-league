@@ -61,7 +61,7 @@ const baseProps = {
   scoringRules: { hcpRecentCount: 8, hcpBestCount: 6 },
   leagueConfig: { year: YEAR, startTime: "4:28 PM", teeInterval: 8 },
   leagueUser: { playerId: "p1", isCommissioner: false },
-  isComm: false, commMode: false,
+  isComm: false,
   fetchSeasonScores: async () => ({}),
   fetchAllScores: async () => ({}),
   fetchWeekScores: async () => ({}),

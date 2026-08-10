@@ -62,7 +62,7 @@ const baseProps = {
     playoffRounds: [{ name: "Round 1", matchups: [] }],
     consolationEnabled: true, individualizeEliminated: true,
   },
-  forceWeek: WEEK, openAllMatches: false, openFinalize: false, commMode: false,
+  forceWeek: WEEK, openAllMatches: false, openFinalize: false,
   saveScore() {}, saveMatchResult() {}, deleteMatchResult() {},
   saveGroupResult() {}, deleteGroupResult() {}, saveCtp() {}, saveAttendance() {},
   setLiveWeek() {}, fetchWeekScores: async () => ({}),
@@ -221,3 +221,9 @@ describe("LiveScoringView renders for every viewer", () => {
     expect(html.length).toBeGreaterThan(0);
   });
 });
+
+// NOTE on the commish week tools (Rain Out / Attest All Signed): they live in
+// the All Matches list, which these SSR tests can't reach — `openAllMatches`
+// is applied by an effect, and renderToStaticMarkup doesn't run effects. Their
+// only gate is now `isComm` (the "Commish" header toggle that used to also
+// gate them is gone); covering them would need a jsdom test file.

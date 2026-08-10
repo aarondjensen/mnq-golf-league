@@ -237,8 +237,11 @@ export default function GolfLeagueApp() {
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteErr, setDeleteErr] = useState("");
   const [deletePw, setDeletePw] = useState("");
+  // Impersonation ("Switch Player") is a commissioner support tool, reached
+  // from More → Switch Player. There is no longer a "commish mode" toggle
+  // gating it (or any other commissioner action) — a commissioner's duties
+  // are always available to them, so nobody has to flip a switch first.
   const [impersonating, setImpersonating] = useState(null);
-  const [commMode, setCommMode] = useState(false);
   const [showPlayerPicker, setShowPlayerPicker] = useState(false);
   const [openAllMatches, setOpenAllMatches] = useState(false);
   // openFinalize → Scoring opens the CTP-selection / finalize popup directly.
@@ -697,15 +700,14 @@ export default function GolfLeagueApp() {
     // before the listener catches up. Resetting here makes the transition
     // go LoadingScreen → AuthScreen cleanly, no flash.
     //
-    // Also clearing commMode + impersonating: a commissioner who signs out
-    // and lets someone else sign in on the same device would otherwise
-    // start the next session in commMode=true (their setting persisted
-    // through the signout). Resetting here ensures every sign-in starts
-    // clean.
+    // Also clearing impersonating: a commissioner who signs out and lets
+    // someone else sign in on the same device would otherwise start the
+    // next session still viewing the app as the impersonated player (the
+    // selection persisted through the signout). Resetting here ensures
+    // every sign-in starts clean.
     setMembersLoaded(false);
     setMembers([]);
     setLeagueUser(null);
-    setCommMode(false);
     setImpersonating(null);
     setTab("standings");
     // On native, also clear the plugin/native Google session so the next
@@ -733,7 +735,6 @@ export default function GolfLeagueApp() {
       setMembersLoaded(false);
       setMembers([]);
       setLeagueUser(null);
-      setCommMode(false);
       setImpersonating(null);
       setTab("standings");
       setShowDeleteAccount(false);
@@ -1300,9 +1301,12 @@ export default function GolfLeagueApp() {
   // to drive that button's visibility and were removed with it — dropping a
   // re-render of the whole app shell every 60 seconds.
 
-  useEffect(() => { if (!commMode) setImpersonating(null); }, [commMode]);
+  // Losing the commissioner flag mid-session (revoked in Admin → Members)
+  // drops any active impersonation — the support tool goes away with the
+  // permission that granted it.
+  useEffect(() => { if (!isComm) setImpersonating(null); }, [isComm]);
 
-  const effectiveUser = commMode && impersonating
+  const effectiveUser = impersonating
     ? { ...leagueUser, playerId: impersonating.playerId, name: impersonating.name }
     : leagueUser;
 
@@ -1505,8 +1509,14 @@ export default function GolfLeagueApp() {
   // below it. Sign Out stays at the bottom — separated from the navigation
   // entries by intent. Previously Admin was sandwiched between CTP and
   // Sign Out, which was easy to miss-tap when reaching for Sign Out.
+  //
+  // "Switch Player" (commissioner impersonation) lives here too, since the
+  // header toggle that used to reveal its gold bar is gone. It's not a tab —
+  // the click opens the player picker instead of navigating (see the
+  // isSwitchPlayer branch in the menu's onClick).
   const moreItems = [
     ...(isComm ? [{ id: "admin", label: "Admin", icon: "settings" }] : []),
+    ...(isComm ? [{ id: "switchplayer", label: "Switch Player", icon: "user" }] : []),
     { id: "stats", label: "Stats", icon: "barChart" },
     { id: "ctp", label: "CTP", icon: "target" },
     { id: "notifications", label: "Notifications", icon: "bell" },
@@ -1572,29 +1582,14 @@ export default function GolfLeagueApp() {
 
       {/* Header */}
       <div className="app-header">
+        {/* The header used to carry a "Commish" on/off toggle on the left.
+            It was pure friction: every commissioner action (rain out, attest
+            all, switch player) was already gated on isComm, and the toggle
+            just made a commissioner tap twice to reach their own tools — and
+            wonder why the buttons were missing when they forgot. Commissioner
+            actions are now always available to commissioners, so the header is
+            just the logo. */}
         <div style={{ maxWidth: 900, width: "100%", margin: "0 auto", display: "flex", alignItems: "center", justifyContent: "center", position: "relative", padding: "0 14px" }}>
-          {/* Left: Commissioner mode toggle */}
-          <div style={{ position: "absolute", left: 14, display: "flex", flexDirection: "column", alignItems: "center", gap: 1 }}>
-            {isComm && (
-              <>
-                <span style={{ fontSize: FS.micro, fontWeight: FW.bold, color: commMode ? K.act : K.t3, letterSpacing: .5, textTransform: "uppercase" }}>Commish</span>
-                <button onClick={() => setCommMode(!commMode)} style={{
-                  width: 44, height: 24, borderRadius: 12, border: "none", cursor: "pointer",
-                  background: commMode ? K.act : K.bdr,
-                  position: "relative", transition: "background .2s",
-                }}>
-                  <div style={{
-                    width: 20, height: 20, borderRadius: 10,
-                    background: "#fff",
-                    position: "absolute", top: 2,
-                    left: commMode ? 22 : 2,
-                    transition: "left .2s",
-                    boxShadow: "0 1px 3px rgba(0,0,0,.3)",
-                  }} />
-                </button>
-              </>
-            )}
-          </div>
           <img src="/MnQ_logo_transparent_bg.webp" alt="MnQ Golf" style={{ height: 36, objectFit: "contain" }} />
         </div>
       </div>
@@ -1714,7 +1709,7 @@ export default function GolfLeagueApp() {
           <ErrorBoundary>
           <Suspense fallback={TabFallback}>
           {tab === "standings" && <StandingsView teams={teams} players={activePlayers} matchResults={matchResults} leagueConfig={leagueConfig} schedule={schedule} fetchSeasonScores={fetchSeasonScores} course={courseData} fetchWeekScores={fetchWeekScores} scoringRules={scoringRules} fetchAllScores={fetchAllScores} saveMatchResult={saveMatchResult} dataLoaded={dataLoaded} leagueUser={effectiveUser} isComm={isComm} funRounds={funRounds} saveFunRound={saveFunRound} deleteFunRound={deleteFunRound} funScores={funScores} saveFunScores={saveFunScores} appToast={appToast} setPopupOpen={setPopupOpen} season={CURRENT_SEASON} />}
-          {tab === "scoring" && <LiveScoringView groupResults={groupResults} saveGroupResult={saveGroupResult} deleteGroupResult={deleteGroupResult} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} deleteMatchResult={deleteMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} commMode={commMode} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} openFinalize={openFinalize} onFinalizeOpened={() => setOpenFinalize(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} recalcHandicaps={recalcHandicaps} clearWeekData={clearWeekData} autoSeedIfReady={autoSeedIfReady} attendance={attendance} saveAttendance={saveAttendance} funRounds={funRounds} saveFunRound={saveFunRound} deleteFunRound={deleteFunRound} funScores={funScores} saveFunScores={saveFunScores} season={CURRENT_SEASON} appToast={appToast} />}
+          {tab === "scoring" && <LiveScoringView groupResults={groupResults} saveGroupResult={saveGroupResult} deleteGroupResult={deleteGroupResult} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} leagueUser={effectiveUser} players={activePlayers} teams={teams} course={courseData} schedule={schedule} holeScores={holeScores} saveScore={saveScore} scoringRules={scoringRules} matchResults={matchResults} saveMatchResult={saveMatchResult} deleteMatchResult={deleteMatchResult} ctpData={ctpData} saveCtp={saveCtp} setLiveWeek={setLiveWeek} fetchWeekScores={fetchWeekScores} isComm={isComm} leagueConfig={leagueConfig} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} openAllMatches={openAllMatches} onAllMatchesOpened={() => setOpenAllMatches(false)} openFinalize={openFinalize} onFinalizeOpened={() => setOpenFinalize(false)} forceWeek={forceWeek} onForceWeekUsed={() => setForceWeek(null)} setPopupOpen={setPopupOpen} recalcHandicaps={recalcHandicaps} clearWeekData={clearWeekData} autoSeedIfReady={autoSeedIfReady} attendance={attendance} saveAttendance={saveAttendance} funRounds={funRounds} saveFunRound={saveFunRound} deleteFunRound={deleteFunRound} funScores={funScores} saveFunScores={saveFunScores} season={CURRENT_SEASON} appToast={appToast} />}
           {tab === "schedule" && <ScheduleView groupResults={groupResults} schedule={schedule} teams={teams} players={activePlayers} matchResults={matchResults} leagueUser={effectiveUser} leagueConfig={leagueConfig} course={courseData} fetchWeekScores={fetchWeekScores} fetchAllScores={fetchAllScores} scoringRules={scoringRules} isComm={isComm} saveScore={saveScore} saveMatchResult={saveMatchResult} setPopupOpen={setPopupOpen} appToast={appToast} dataLoaded={dataLoaded} attendance={attendance} saveAttendance={saveAttendance} funRounds={funRounds} saveFunRound={saveFunRound} deleteFunRound={deleteFunRound} funScores={funScores} saveFunScores={saveFunScores} season={CURRENT_SEASON} />}
           {tab === "players" && <PlayersView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchAllScores={fetchAllScores} members={members} dataLoaded={dataLoaded} />}
           {tab === "stats" && <StatsView players={activePlayers} course={courseData} schedule={schedule} scoringRules={scoringRules} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} leagueConfig={leagueConfig} teams={teams} matchResults={matchResults} />}
@@ -1723,7 +1718,9 @@ export default function GolfLeagueApp() {
           {tab === "admin" && isComm && <AdminView groupResults={groupResults} players={players} savePlayer={savePlayer} deletePlayer={deletePlayer} teams={teams} saveTeam={saveTeam} deleteTeam={deleteTeam} schedule={schedule} saveWeekSchedule={saveWeekSchedule} setWeekSchedule={setWeekSchedule} deleteWeekSchedule={deleteWeekSchedule} course={courseData} saveCourseData={saveCourseData} scoringRules={scoringRules} saveScoringRules={saveScoringRules} leagueConfig={leagueConfig} saveLeagueConfig={saveLeagueConfig} members={members} saveMember={saveMember} deleteMember={deleteMember} authUser={authUser} matchResults={matchResults} saveMatchResult={saveMatchResult} resetSeasonData={resetSeasonData} importHistoricalScores={importHistoricalScores} recalcHandicaps={recalcHandicaps} autoSeedIfReady={autoSeedIfReady} clearWeekData={clearWeekData} fetchSeasonScores={fetchSeasonScores} fetchAllScores={fetchAllScores} />}
           </Suspense>
           </ErrorBoundary>
-          {commMode && <div style={{ height: 44 }} />}
+          {/* Spacer clearing the fixed impersonation bar so the last row of
+              content isn't hidden behind it. */}
+          {impersonating && <div style={{ height: 44 }} />}
           </div>
         </div>
       </div>
@@ -1812,15 +1809,19 @@ export default function GolfLeagueApp() {
         </Popup>
       )}
 
-      {commMode && (
+      {/* Impersonation bar — only while actually impersonating. It used to
+          show for the whole session whenever commish mode was on, which meant
+          a permanent gold strip eating 44px on every screen just to advertise
+          a rarely-used tool. Now it's a live status indicator: it appears when
+          a commissioner is viewing as someone else, and the Exit button (plus
+          tapping through to the picker) gets them back. */}
+      {impersonating && (
         <button onClick={() => setShowPlayerPicker(true)} style={{ width: "100%", maxWidth: 900, margin: "0 auto", background: K.act, padding: "8px 14px", display: "flex", justifyContent: "center", alignItems: "center", gap: 8, flexShrink: 0, cursor: "pointer", border: "none", zIndex: 200 }}>
           <span style={{ fontSize: FS.sm, color: K.bg, fontWeight: FW.heavy, letterSpacing: .5 }}>
-            {impersonating ? `Logged in as ${impersonating.name}` : "Login as"}
+            {`Logged in as ${impersonating.name}`}
           </span>
           <span style={{ fontSize: FS.xs, color: K.bg + "90" }}>▾</span>
-          {impersonating && (
-            <button onClick={(e) => { e.stopPropagation(); setImpersonating(null); }} style={{ background: K.bg + "25", border: "none", borderRadius: 4, color: K.bg, fontSize: FS.xs, padding: "3px 8px", cursor: "pointer", fontWeight: FW.bold }}>Exit</button>
-          )}
+          <button onClick={(e) => { e.stopPropagation(); setImpersonating(null); }} style={{ background: K.bg + "25", border: "none", borderRadius: 4, color: K.bg, fontSize: FS.xs, padding: "3px 8px", cursor: "pointer", fontWeight: FW.bold }}>Exit</button>
         </button>
       )}
 
@@ -1863,6 +1864,7 @@ export default function GolfLeagueApp() {
                 const active = tab === item.id;
                 const isSignOut = item.id === "signout";
                 const isDeleteAccount = item.id === "deleteaccount";
+                const isSwitchPlayer = item.id === "switchplayer";
                 return (
                   <div key={item.id}>
                     {isSignOut && (<>
@@ -1889,6 +1891,7 @@ export default function GolfLeagueApp() {
                     <button onClick={() => {
                       if (isSignOut) { doSignOut(); setShowMore(false); }
                       else if (isDeleteAccount) { setDeleteErr(""); setDeletePw(""); setShowDeleteAccount(true); setShowMore(false); }
+                      else if (isSwitchPlayer) { setShowPlayerPicker(true); setShowMore(false); }
                       else { setTab(item.id); setShowMore(false); }
                     }} style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", padding: "10px 16px", background: active && !isSignOut && !isDeleteAccount ? K.acc + "12" : "transparent", border: "none", cursor: "pointer", textAlign: "left" }}>
                       <span style={{ display: "flex" }}>{I[item.icon](16, (isSignOut || isDeleteAccount) ? K.red : active ? K.acc : K.t3)}</span>

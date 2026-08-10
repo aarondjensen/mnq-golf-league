@@ -92,7 +92,7 @@ function computeMatchStatus(t1Pids, t2Pids, getScore, getStrokes, pars) {
 // ═══════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
-export default function LiveScoringView({ groupResults, saveGroupResult, deleteGroupResult, fetchSeasonScores, fetchAllScores, leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, commMode, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, applyScheduleOps, openAllMatches, onAllMatchesOpened, openFinalize, onFinalizeOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData, autoSeedIfReady, attendance, saveAttendance, funRounds, saveFunRound, deleteFunRound, funScores, saveFunScores, season, appToast }) {
+export default function LiveScoringView({ groupResults, saveGroupResult, deleteGroupResult, fetchSeasonScores, fetchAllScores, leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, applyScheduleOps, openAllMatches, onAllMatchesOpened, openFinalize, onFinalizeOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData, autoSeedIfReady, attendance, saveAttendance, funRounds, saveFunRound, deleteFunRound, funScores, saveFunScores, season, appToast }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
   // 4-way view toggle: "myMatch" (default scoring view), "allMatches" (week
@@ -1608,8 +1608,10 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
 
         {isComm && (
           <div style={{ marginTop: 12 }}>
-            {/* Rain Out button — only visible when commish toggle is on */}
-            {commMode && !isWeekLocked && !allMatchesAttested && (
+            {/* Rain Out button — commissioners only (the enclosing isComm
+                gate), for any week that's still open and unfinished. No
+                separate "commish mode" toggle to flip on first. */}
+            {!isWeekLocked && !allMatchesAttested && (
               <button onClick={() => {
                 const isRoundRobin = !weekSch.isPlayoff && !weekSch.seeded && !weekSch.makeupFor;
                 const lastRRWeekNum = Math.max(0, ...schedule.filter(s =>
@@ -1740,9 +1742,9 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
                 Rain Out Week {week}
               </button>
             )}
-            {/* Attest All Signed — force-attest pending match results for this week.
-                Only visible when the commish toggle is on (matches Rain Out gate). */}
-            {commMode && !isWeekLocked && weekSignedUnattestedCount > 0 && (
+            {/* Attest All Signed — force-attest pending match results for this
+                week. Commissioners only (matches the Rain Out gate). */}
+            {!isWeekLocked && weekSignedUnattestedCount > 0 && (
               <button onClick={handleAttestAllWeek} style={{ width: "100%", padding: 12, borderRadius: 10, marginBottom: 8, cursor: "pointer", background: K.hcpBlue + "15", border: `1.5px solid ${K.hcpBlue}50`, color: K.hcpBlue, fontSize: FS.sm, fontWeight: FW.bold }}>
                 Attest All Signed ({weekSignedUnattestedCount})
               </button>
