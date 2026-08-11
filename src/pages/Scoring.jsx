@@ -2429,7 +2429,7 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
         </div>
       )}
       {!isAlreadyFinalized && (
-      <div style={{ display: "flex", gap: 3, marginBottom: 8 }}>
+      <div style={{ display: "flex", gap: 3, marginBottom: 12 }}>
         {Array.from({ length: 9 }, (_, i) => {
           const cur = i === curHole; const done = allP.every(pid => getS(pid, i) > 0);
           return <button key={i} onClick={() => { setCurHole(i); setEditing(i < currentHoleIdx); }} style={{ flex: 1, height: 32, borderRadius: done || cur ? 8 : 6, border: done && !cur ? `1.5px solid ${K.acc}50` : "none", background: cur ? K.acc : done ? K.acc + "15" : K.card, color: cur ? K.bg : done ? K.acc : K.t3, fontSize: FS.base, fontWeight: FW.bold, cursor: "pointer", outline: cur ? `2px solid ${K.acc}` : "none", outlineOffset: 1 }}>{side === 'front' ? i + 1 : i + 10}</button>;
@@ -2471,7 +2471,7 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
         const hasAnyStatus = holeStatuses.some(s => s !== null);
 
         return (<>
-          <div style={{ display: isAlreadyFinalized ? "none" : "flex", marginTop: 0, marginBottom: 8, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 8, padding: "4px 0", alignItems: "center" }}>
+          <div style={{ display: isAlreadyFinalized ? "none" : "flex", marginTop: 0, marginBottom: 12, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 8, padding: "4px 0", alignItems: "center" }}>
             {holeStatuses.map((st, i) => {
               const colBorderR = i < 8 ? { borderRight: `1px solid ${K.bdr}30` } : {};
               if (matchClinchHole !== null && i === matchClinchHole) {
@@ -2619,8 +2619,8 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
           popup instead of the read-only scorecard popup. Same button,
           two jobs — avoids a second redundant button below the cards. */}
       <button onClick={() => { if (allComplete) setShowFinalize(true); else setShowScorecard(true); }} style={ allComplete
-          ? { width: "100%", padding: 10, borderRadius: 10, marginBottom: 8, cursor: "pointer", background: K.hcpBlue + "15", border: `1.5px solid ${K.hcpBlue}50`, color: K.hcpBlue, fontSize: FS.base, fontWeight: FW.bold, letterSpacing: .3 }
-          : { width: "100%", padding: "6px 0", borderRadius: 8, marginBottom: 8, cursor: "pointer", background: K.card, border: `1px solid ${K.bdr}60`, color: K.t2, fontSize: FS.xs, fontWeight: FW.bold, letterSpacing: .5 } }>
+          ? { width: "100%", padding: 10, borderRadius: 10, marginBottom: 12, cursor: "pointer", background: K.hcpBlue + "15", border: `1.5px solid ${K.hcpBlue}50`, color: K.hcpBlue, fontSize: FS.base, fontWeight: FW.bold, letterSpacing: .3 }
+          : { width: "100%", padding: "7px 0", borderRadius: 8, marginBottom: 12, cursor: "pointer", background: K.card, border: `1px solid ${K.bdr}60`, color: K.t2, fontSize: FS.xs, fontWeight: FW.bold, letterSpacing: .5 } }>
         {allComplete ? "Complete — Sign Scorecard" : "Full Scorecard"}
       </button>
       <div style={{ background: K.acc, borderRadius: 10, padding: "4px 8px", marginBottom: 4, display: "flex", alignItems: "center" }}>
