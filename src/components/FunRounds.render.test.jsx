@@ -347,8 +347,18 @@ describe("FunRounds — scoring reaches players without a button", () => {
       autoOpenMyGroup: true,
     });
     expect(h).toContain("Hole");          // the hole strip — the scoring screen
-    expect(h).toContain("Back");          // …with a way back to the tee sheet
     expect(h).not.toContain("Open spot"); // not the tee sheet
+  });
+
+  it("offers no Back, because there is nothing behind it", () => {
+    // Back used to drop you onto the tee sheet, which has no Score
+    // button to climb back with — a one-way trip out of your own card.
+    // On Scoring the card IS the view; the tee sheet is a tab away.
+    const h = render({
+      funRounds: [fullRound], players: fourPlayers, course, funScores: [],
+      autoOpenMyGroup: true,
+    });
+    expect(h).not.toContain("Back");
   });
 
   it("heads the scorecard with the tee time and nothing else", () => {

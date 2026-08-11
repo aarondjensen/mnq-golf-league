@@ -38,7 +38,7 @@
 // stats path can read them. Both lib headers spell out why that
 // isolation is structural rather than a filter someone has to remember.
 
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { K, Pill, EmptyState, SubLabel, initialLastName, LIST_GAP, CARD_RADIUS, FS, FW } from "../theme";
 import { Popup, ConfirmModal } from "./Popup";
 import {
@@ -827,29 +827,21 @@ export function FunRounds({
   // ── The group this player should be scoring ───────────────────────
   //
   // There is no Score button any more: a full foursome simply turns up
-  // on its players' Scoring tab. This is that lookup, and seeding the
-  // state from it means the card is on screen the moment the tab opens
-  // rather than after a flash of the tee sheet.
+  // on its players' Scoring tab. This is that lookup, and it's derived
+  // rather than held in state — on Scoring your card IS the view, so
+  // there's nothing to enter or leave. The tee sheet is a tab away on
+  // Standings and Schedule for anyone who wants to see the other groups
+  // or give up their spot.
   //
-  // `scoring` stays state rather than being derived, because Back has to
-  // be able to put the tee sheet in front of someone who wants to see
-  // the other groups — and once they've done that, re-deriving would
-  // yank them straight back to their card.
-  const myFullGroup = useMemo(
+  // It briefly WAS state, with a Back button that dropped you onto the
+  // tee sheet. That was a trapdoor: no Score button means no way back up.
+  const scoring = useMemo(
     () => (autoOpenMyGroup
       ? findMyFullGroup(funRounds, myPid, year,
           (r, pid) => isCardComplete(readFunCard(funScoreIndex, r.id, pid)))
       : null),
     [autoOpenMyGroup, funRounds, myPid, year, funScoreIndex]
   );
-  const [scoring, setScoring] = useState(myFullGroup);
-  const leftScoring = useRef(false);
-  useEffect(() => {
-    // Late-arriving data (the subscription lands after mount, or the
-    // fourth player claims their spot while you're looking at the sheet)
-    // still opens the card — unless you've deliberately backed out of it.
-    if (!leftScoring.current && myFullGroup && !scoring) setScoring(myFullGroup);
-  }, [myFullGroup, scoring]);
 
   // Popups suppress pull-to-refresh app-side, same as every other page
   // that opens one.
@@ -1113,7 +1105,6 @@ export function FunRounds({
         playerMap={playerMap}
         viewerPid={myPid}
         isComm={isComm}
-        onBack={() => { leftScoring.current = true; setScoring(null); }}
         toast={scoreToast}
         setToast={setScoreToast}
         scoreStore={store}
