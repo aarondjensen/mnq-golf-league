@@ -417,7 +417,7 @@ export function GroupScoring({
       {/* Hole strip — a hole is "done" when every golfer still in the event
           has a score on it. Withdrawn golfers are excluded so their blank
           card doesn't hold the strip open. */}
-      <div style={{ display: "flex", gap: 3, marginBottom: 2 }}>
+      <div style={{ display: "flex", gap: 3, marginBottom: 8 }}>
         {Array.from({ length: 9 }, (_, i) => {
           const live = pids.filter(pid => !isWithdrawn(pid));
           const done = live.length > 0 && live.every(pid => getScore(pid, i) > 0);
@@ -430,8 +430,8 @@ export function GroupScoring({
           is complete — same promotion the match view's button does, so the
           gesture is identical whichever kind of round you're playing. */}
       <button onClick={() => setShowCard(v => !v)} style={canSign && !showCard
-        ? { width: "100%", padding: 10, borderRadius: 10, marginBottom: 4, cursor: "pointer", background: K.hcpBlue + "15", border: `1.5px solid ${K.hcpBlue}50`, color: K.hcpBlue, fontSize: FS.base, fontWeight: FW.bold, letterSpacing: .3 }
-        : { width: "100%", padding: "5px 0", borderRadius: 8, marginBottom: 4, cursor: "pointer", background: K.card, border: `1px solid ${K.bdr}60`, color: K.t2, fontSize: FS.xs, fontWeight: FW.bold, letterSpacing: .5 }}>
+        ? { width: "100%", padding: 10, borderRadius: 10, marginBottom: 8, cursor: "pointer", background: K.hcpBlue + "15", border: `1.5px solid ${K.hcpBlue}50`, color: K.hcpBlue, fontSize: FS.base, fontWeight: FW.bold, letterSpacing: .3 }
+        : { width: "100%", padding: "6px 0", borderRadius: 8, marginBottom: 8, cursor: "pointer", background: K.card, border: `1px solid ${K.bdr}60`, color: K.t2, fontSize: FS.xs, fontWeight: FW.bold, letterSpacing: .5 }}>
         {showCard ? "Hide Scorecard" : canSign ? "Complete — Review & Sign" : "Full Scorecard"}
       </button>
 
