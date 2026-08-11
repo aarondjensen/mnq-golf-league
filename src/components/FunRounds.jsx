@@ -1088,9 +1088,6 @@ export function FunRounds({
   if (scoring) {
     const { side, pars, hcps } = funRoundSide(scoring.round, course);
     const seated = (scoring.pids || []).filter(Boolean);
-    const groups = buildFunGroups(scoring.round);
-    const teeTime = groups[scoring.groupIdx]?.teeTime || "";
-    const headerLine = [teeTime, scoring.round.title].filter(Boolean).join(" · ");
     const store = {
       get: (pid, h) => readFunCard(funScoreIndex, scoring.round.id, pid)[h] || 0,
       set: (pid, h, val) => saveOneHole(scoring.round, pid, h, val),
@@ -1117,16 +1114,11 @@ export function FunRounds({
         holeScores={{}}
         saveScore={() => {}}
         isWeekLocked={false}
-        // Just the tee time (and the round's name, if it has one). The
-        // "FUN ROUND · Dec 30" banner and the nine went: you got here
-        // from a round you claimed a spot on, so which round this is
-        // was never the question — and the hole strip immediately below
-        // is numbered, which says the nine better than a label does.
-        header={
-          headerLine
-            ? <div style={{ marginBottom: 8, fontSize: FS.xs, color: K.t3 }}>{headerLine}</div>
-            : null
-        }
+        // No header at all. It went in stages — the "FUN ROUND · Dec 30"
+        // banner, then the nine, then the tee time — and each removal
+        // said the same thing: you reached this screen from a round you
+        // claimed a spot on, so nothing above the hole strip was
+        // answering a question anyone had. The card starts at hole 1.
       />
     );
   }

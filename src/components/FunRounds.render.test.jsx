@@ -361,28 +361,21 @@ describe("FunRounds — scoring reaches players without a button", () => {
     expect(h).not.toContain("Back");
   });
 
-  it("heads the scorecard with the tee time and nothing else", () => {
-    // The header used to read "FUN ROUND · Dec 30" over
-    // "4:28 PM · Front 9". You reached this screen from a round you
-    // claimed a spot on, so naming it back was redundant, and the hole
-    // strip below is numbered — it says the nine on its own.
+  it("puts nothing above the hole strip", () => {
+    // The header went in stages — "FUN ROUND · Dec 30", then the nine,
+    // then the tee time. You reached this screen from a round you
+    // claimed a spot on, so none of it was answering a live question.
     const h = render({
-      funRounds: [fullRound], players: fourPlayers, course, funScores: [],
-      autoOpenMyGroup: true,
-    });
-    expect(h).toContain("4:28 PM");
-    expect(h).not.toContain("Fun Round");
-    expect(h).not.toContain(FUTURE);
-    expect(h).not.toContain("Front 9");
-    expect(h).not.toContain("Back 9");
-  });
-
-  it("keeps the round's name on the scorecard when it has one", () => {
-    const h = render({
-      funRounds: [round({ ...fullRound, title: "Labor Day Scramble" })],
+      funRounds: [round({ ...fullRound, title: "Labor Day Scramble", side: "back" })],
       players: fourPlayers, course, funScores: [], autoOpenMyGroup: true,
     });
-    expect(h).toContain("4:28 PM · Labor Day Scramble");
+    expect(h).toContain("Hole");        // the card itself is still there
+    expect(h).not.toContain("Fun Round");
+    expect(h).not.toContain(FUTURE);          // the date
+    expect(h).not.toContain("4:28 PM");       // the tee time
+    expect(h).not.toContain("Labor Day Scramble");
+    expect(h).not.toContain("Front 9");
+    expect(h).not.toContain("Back 9");
   });
 
   it("stays on the tee sheet when the group is not yet full", () => {
