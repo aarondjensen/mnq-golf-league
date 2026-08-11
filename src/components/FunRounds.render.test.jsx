@@ -351,6 +351,30 @@ describe("FunRounds — scoring reaches players without a button", () => {
     expect(h).not.toContain("Open spot"); // not the tee sheet
   });
 
+  it("heads the scorecard with the tee time and nothing else", () => {
+    // The header used to read "FUN ROUND · Dec 30" over
+    // "4:28 PM · Front 9". You reached this screen from a round you
+    // claimed a spot on, so naming it back was redundant, and the hole
+    // strip below is numbered — it says the nine on its own.
+    const h = render({
+      funRounds: [fullRound], players: fourPlayers, course, funScores: [],
+      autoOpenMyGroup: true,
+    });
+    expect(h).toContain("4:28 PM");
+    expect(h).not.toContain("Fun Round");
+    expect(h).not.toContain(FUTURE);
+    expect(h).not.toContain("Front 9");
+    expect(h).not.toContain("Back 9");
+  });
+
+  it("keeps the round's name on the scorecard when it has one", () => {
+    const h = render({
+      funRounds: [round({ ...fullRound, title: "Labor Day Scramble" })],
+      players: fourPlayers, course, funScores: [], autoOpenMyGroup: true,
+    });
+    expect(h).toContain("4:28 PM · Labor Day Scramble");
+  });
+
   it("stays on the tee sheet when the group is not yet full", () => {
     const h = render({
       funRounds: [partial], players: fourPlayers, course, funScores: [],

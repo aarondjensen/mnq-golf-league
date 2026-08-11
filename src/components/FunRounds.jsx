@@ -1098,6 +1098,7 @@ export function FunRounds({
     const seated = (scoring.pids || []).filter(Boolean);
     const groups = buildFunGroups(scoring.round);
     const teeTime = groups[scoring.groupIdx]?.teeTime || "";
+    const headerLine = [teeTime, scoring.round.title].filter(Boolean).join(" · ");
     const store = {
       get: (pid, h) => readFunCard(funScoreIndex, scoring.round.id, pid)[h] || 0,
       set: (pid, h, val) => saveOneHole(scoring.round, pid, h, val),
@@ -1125,16 +1126,15 @@ export function FunRounds({
         holeScores={{}}
         saveScore={() => {}}
         isWeekLocked={false}
+        // Just the tee time (and the round's name, if it has one). The
+        // "FUN ROUND · Dec 30" banner and the nine went: you got here
+        // from a round you claimed a spot on, so which round this is
+        // was never the question — and the hole strip immediately below
+        // is numbered, which says the nine better than a label does.
         header={
-          <div style={{ marginBottom: 8 }}>
-            <div style={{ fontSize: FS.xs, fontWeight: FW.bold, color: K.teal, letterSpacing: 1.5, textTransform: "uppercase" }}>
-              Fun Round · {scoring.round.date || ""}
-            </div>
-            <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 2 }}>
-              {teeTime} · {side === "back" ? "Back 9" : "Front 9"}
-              {scoring.round.title ? ` · ${scoring.round.title}` : ""}
-            </div>
-          </div>
+          headerLine
+            ? <div style={{ marginBottom: 8, fontSize: FS.xs, color: K.t3 }}>{headerLine}</div>
+            : null
         }
       />
     );
