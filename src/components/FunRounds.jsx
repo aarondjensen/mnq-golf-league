@@ -592,17 +592,32 @@ export function SpotManager({ round, g, s, players, grid, onAssign, onGuest, onE
   );
 }
 
+// The commissioner's create button. It lives in the first round card's
+// header, so it renders exactly once per screen — the view falls back to
+// the intro row only when there are no cards to host it.
+function CreateRoundButton({ onClick }) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        flexShrink: 0, padding: "6px 10px", borderRadius: 8,
+        background: K.teal, border: "none", color: K.bg,
+        fontSize: FS.micro, fontWeight: FW.bold, cursor: "pointer", whiteSpace: "nowrap",
+      }}
+    >+ Tee Time</button>
+  );
+}
+
 // ── One round's card ──────────────────────────────────────────────
 function FunRoundCard({
   round, players, myPid, isComm, isPast, course, funScoreIndex,
-  onOpenSpot, onRelease, onEditGuest, onManage, onEdit, onDelete, busy,
+  onOpenSpot, onRelease, onEditGuest, onManage, onEdit, onDelete, onCreate, busy,
 }) {
   const groups = useMemo(() => buildFunGroups(round), [round]);
   // Players plus THIS round's guests, shaped alike — so every name and
   // handicap lookup below works the same whether the spot holds a league
   // member or somebody's friend.
   const roster = useMemo(() => rosterFor(round, players), [round, players]);
-  const { filled, total } = funRoundCounts(round);
   const mySlot = findPlayerSlot(round, myPid);
   const { pars, hcps } = funRoundSide(round, course);
 
@@ -627,19 +642,22 @@ function FunRoundCard({
       border: `1px solid ${mySlot && !isPast ? K.teal + "60" : K.bdr}`,
       overflow: "hidden", opacity: isPast ? 0.72 : 1,
     }}>
-      {/* Header — date, name, nine */}
+      {/* Header — date, name, nine.
+          The sheet below already says who's in and how full it is, one
+          name per spot, so the header doesn't repeat it: no "You're In"
+          pill, no "3 tee times · 5 of 12 spots filled". The teal border
+          still marks a round you're playing. The space that bought goes
+          to the create button, which now sits with the rounds it makes
+          rather than on a line of its own. */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", borderBottom: `1px solid ${K.bdr}` }}>
         <div style={{ minWidth: 0, flex: 1 }}>
           <div style={{ fontSize: FS.base, fontWeight: FW.bold, color: K.t1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>
             {round.date || "No date"}
             {round.title ? <span style={{ color: K.t2, fontWeight: FW.semibold }}> · {round.title}</span> : null}
           </div>
-          <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 2 }}>
-            {groups.length} {groups.length === 1 ? "tee time" : "tee times"} · {filled} of {total} spots filled
-          </div>
         </div>
         <Pill color={K.logoBright} style={{ fontSize: FS.micro }}>{round.side === "back" ? "Back 9" : "Front 9"}</Pill>
-        {mySlot && !isPast && <Pill color={K.teal} style={{ fontSize: FS.micro }}>You're In</Pill>}
+        {isComm && onCreate && <CreateRoundButton onClick={onCreate} />}
       </div>
 
       {/* Tee sheet — one row per activated tee time, always shown even
@@ -1124,24 +1142,18 @@ export function FunRounds({
 
   return (
     <div>
-      {/* Intro + create. The one-liner is doing real work: without it
-          the obvious question about any golf round in this app is
-          "does this count?", and the answer needs to be visible rather
-          than folklore. */}
+      {/* Intro. The one-liner is doing real work: without it the obvious
+          question about any golf round in this app is "does this count?",
+          and the answer needs to be visible rather than folklore.
+          The create button normally rides in the first card's header;
+          with no cards there's nothing to ride, so it falls back here —
+          otherwise a commissioner who has deleted every round would have
+          no way to make another. */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
         <div style={{ flex: 1, fontSize: FS.xs, color: K.t3, lineHeight: 1.5 }}>
           Extra rounds outside the league schedule. Nothing here counts toward standings, handicaps, or stats.
         </div>
-        {isComm && (
-          <button
-            onClick={() => setFormFor("new")}
-            style={{
-              flexShrink: 0, padding: "8px 12px", borderRadius: 8,
-              background: K.teal, border: "none", color: K.bg,
-              fontSize: FS.xs, fontWeight: FW.bold, cursor: "pointer", whiteSpace: "nowrap",
-            }}
-          >+ Tee Time</button>
-        )}
+        {isComm && nothingAtAll && <CreateRoundButton onClick={() => setFormFor("new")} />}
       </div>
 
       {nothingAtAll && (
@@ -1154,8 +1166,12 @@ export function FunRounds({
 
       {upcoming.length > 0 && (
         <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
-          {upcoming.map(r => (
-            <FunRoundCard key={r.id} round={r} isPast={false} busy={busyId === r.id} {...cardProps} />
+          {upcoming.map((r, i) => (
+            <FunRoundCard
+              key={r.id} round={r} isPast={false} busy={busyId === r.id}
+              onCreate={i === 0 ? () => setFormFor("new") : null}
+              {...cardProps}
+            />
           ))}
         </div>
       )}
@@ -1164,8 +1180,12 @@ export function FunRounds({
         <div style={{ marginTop: upcoming.length > 0 ? 20 : 0 }}>
           <SubLabel color={K.t3} style={{ marginBottom: 8 }}>Past</SubLabel>
           <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
-            {past.map(r => (
-              <FunRoundCard key={r.id} round={r} isPast={true} busy={busyId === r.id} {...cardProps} />
+            {past.map((r, i) => (
+              <FunRoundCard
+                key={r.id} round={r} isPast={true} busy={busyId === r.id}
+                onCreate={upcoming.length === 0 && i === 0 ? () => setFormFor("new") : null}
+                {...cardProps}
+              />
             ))}
           </div>
         </div>

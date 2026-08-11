@@ -86,6 +86,63 @@ describe("FunRounds — empty state", () => {
   });
 });
 
+describe("FunRounds — the card header", () => {
+  // The header used to carry a "You're In" pill and a
+  // "3 tee times · 5 of 12 spots filled" line. Both restated what the
+  // sheet directly below already shows a name at a time, so they went.
+  const mine = round({ groupCount: 2, slots: { [slotKey(0, 0)]: "p1" } });
+
+  it("does not badge the round you're in — the sheet has your name on it", () => {
+    const html = render({ funRounds: [mine] });
+    expect(html).toContain(JENSEN);
+    expect(html).not.toContain("You&#x27;re In");
+  });
+
+  it("does not count tee times or spots at you", () => {
+    const html = render({ funRounds: [mine] });
+    expect(html).not.toContain("tee times");
+    expect(html).not.toContain("spots filled");
+  });
+
+  it("still says the date and the nine", () => {
+    const html = render({ funRounds: [round({ title: "Twilight", side: "back" })] });
+    expect(html).toContain(FUTURE);
+    expect(html).toContain("Twilight");
+    expect(html).toContain("Back 9");
+  });
+});
+
+describe("FunRounds — where the create button lives", () => {
+  // It rides in the first card's header rather than on a line of its
+  // own, which means it must appear exactly once no matter how many
+  // rounds are on screen — and must not vanish when there are none.
+  const two = [round({ id: "r1" }), round({ id: "r2", date: "Dec 31" })];
+  // The empty state's "Tap + Tee Time to set one up" says the words too,
+  // so count the button itself, not the phrase.
+  const BUTTON = ">+ Tee Time<";
+
+  it("appears once for a commissioner, however many rounds there are", () => {
+    const html = render({ isComm: true, funRounds: two });
+    expect(count(html, BUTTON)).toBe(1);
+  });
+
+  it("stays hidden from a player", () => {
+    expect(render({ isComm: false, funRounds: two })).not.toContain("+ Tee Time");
+  });
+
+  it("falls back to the intro row when there is no card to ride", () => {
+    // Otherwise a commissioner who deleted every round could never make
+    // another one.
+    const html = render({ isComm: true, funRounds: [] });
+    expect(count(html, BUTTON)).toBe(1);
+  });
+
+  it("rides a past card when every round is behind us", () => {
+    const html = render({ isComm: true, funRounds: [round({ date: PAST })] });
+    expect(count(html, BUTTON)).toBe(1);
+  });
+});
+
 describe("FunRounds — the tee sheet", () => {
   it("renders every activated tee time, empty ones included", () => {
     // The old model only drew groups that had players in them. Here an
@@ -94,14 +151,13 @@ describe("FunRounds — the tee sheet", () => {
     expect(html).toContain("4:28 PM");
     expect(html).toContain("4:36 PM");
     expect(html).toContain("4:44 PM");
-    expect(html).toContain("3 tee times");
     expect(count(html, ">Open<")).toBe(12);
   });
 
   it("honors a smaller sheet — three tee times, not a league-night eight", () => {
     const html = render({ funRounds: [round({ groupCount: 3, groupSize: 4 })] });
     expect(html).not.toContain("4:52 PM");
-    expect(html).toContain("0 of 12 spots filled");
+    expect(count(html, ">Open<")).toBe(12);
   });
 
   it("shows a claimed spot as the player's name in position", () => {
@@ -109,7 +165,6 @@ describe("FunRounds — the tee sheet", () => {
       funRounds: [round({ slots: { [slotKey(1, 2)]: "p2" } })],
     });
     expect(html).toContain(VIGO);
-    expect(html).toContain("1 of 12 spots filled");
     expect(count(html, ">Open<")).toBe(11);
   });
 
@@ -148,7 +203,6 @@ describe("FunRounds — who can tap what", () => {
     });
     expect(html).toContain(giveUp(JENSEN));
     expect(html).not.toContain(giveUp(VIGO));
-    expect(html).toContain("You&#x27;re In");
   });
 
   it("routes EVERY spot to the manager for a commissioner", () => {
@@ -449,8 +503,11 @@ describe("FunRounds — guests", () => {
     expect(h).toContain("M. Smith (guest) — tap to manage spot");
   });
 
-  it("counts a guest toward the filled total", () => {
-    expect(render({ funRounds: [guested()] })).toContain("2 of 4 spots filled");
+  it("seats a guest alongside the member who brought them", () => {
+    const h = render({ funRounds: [guested()] });
+    expect(h).toContain("M. Smith");
+    expect(h).toContain(JENSEN);
+    expect(count(h, ">Open<")).toBe(2);
   });
 
   it("puts the guest on the round's leaderboard", () => {
