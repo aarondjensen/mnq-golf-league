@@ -95,7 +95,7 @@ export default function CTPView({ ctpData, players, isComm, saveCtp }) {
       {view === "players" && (
         <>
           {leaders.length === 0 ? (
-            <EmptyState icon="target" title="No CTP winners yet" subtitle="Results will appear here as the commissioner records each week's closest-to-the-pin winners." />
+            <EmptyState icon="target" title="No CTP winners yet" subtitle="Results appear as the commissioner records them." />
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
               {leaders.map((e, i) => {

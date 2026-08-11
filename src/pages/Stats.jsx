@@ -851,7 +851,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
       })}
       {board({
         title: "Worst Match Result",
-        subtitle: "Biggest margin of defeat — regular + playoff, consolation excluded",
+        subtitle: "Biggest margin of defeat",
         valueFn: s => s.worstMatchMargin,
         valueDisplay: s => s.worstMatchText || "—",
         sortDir: 'desc',

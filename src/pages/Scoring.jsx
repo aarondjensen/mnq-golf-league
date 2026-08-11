@@ -971,7 +971,7 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
   // and `t2` are non-null and crashes when reading `.player1` etc.
   if (!activeMatch && !myMatch) {
     if (!leagueUser.playerId) {
-      return <EmptyState icon="user" title="Account not linked" subtitle="Your commissioner needs to link your account to a player profile before you can score. In the meantime, you can view other matches from the Schedule tab." />;
+      return <EmptyState icon="user" title="Account not linked" subtitle="Your commissioner needs to link your account to a player profile before you can score." />;
     }
     // Linked but no match this week → auto-switch to All Matches.
     // Calling setView during render is safe here: it triggers a re-render

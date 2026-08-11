@@ -476,7 +476,7 @@ export function GroupScoring({
         <div style={{ background: K.card, border: `1px solid ${isFullyAttested ? K.grn + "50" : K.bdr}60`, borderRadius: 10, padding: "10px 12px", marginBottom: 6 }}>
           {!isSigned ? (<>
             <div style={{ fontSize: FS.xs, color: K.t2, marginBottom: 8, lineHeight: 1.4 }}>
-              All cards are in. Sign to submit this group's rounds to the individual tournament — someone else in the group then attests.
+              All cards are in. Someone else in the group attests after you sign.
             </div>
             <button onClick={signGroup} disabled={busy} style={{ width: "100%", padding: 12, borderRadius: 10, background: busy ? K.t3 : K.hcpBlue, border: "none", color: "#fff", fontSize: 14, fontWeight: FW.heavy, cursor: busy ? "default" : "pointer", opacity: busy ? 0.7 : 1 }}>
               Sign Scorecard

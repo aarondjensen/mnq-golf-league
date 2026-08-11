@@ -635,7 +635,7 @@ export function IndividualLeaderboard({ players, teams, schedule, course, league
   }
 
   if (!playoffWeeks.length) {
-    return <EmptyState icon="flag" title="No playoff rounds played yet" subtitle="The individual tournament runs alongside the playoff weeks." />;
+    return <EmptyState icon="flag" title="No playoff rounds played yet" />;
   }
 
   // To-par display convention (golf standard): under par renders with the

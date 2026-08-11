@@ -897,9 +897,6 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: FS.xs, fontWeight: FW.semibold, color: K.t3, letterSpacing: 1, marginBottom: 6 }}>
             Unassigned ({unassigned.length})
-            <span style={{ marginLeft: 10, textTransform: "none", letterSpacing: 0, fontSize: FS.xs, color: K.t3, fontWeight: FW.regular }}>
-              Tap to select, tap a slot to place — or drag
-            </span>
           </div>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {unassigned.map(p => <PlayerChip key={p.id} playerId={p.id} source={{ type: "pool" }} />)}
@@ -2155,10 +2152,11 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
                         };
                         return (
                           <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${K.bdr}50` }}>
-                            <div style={{ fontSize: FS.xs, color: K.t1, fontWeight: FW.bold }}>Playoff Seeds</div>
-                            <div style={{ fontSize: FS.micro, color: K.t3, lineHeight: 1.4, marginTop: 2, marginBottom: 8 }}>
-                              From the FULL regular season (round-robin + seeded weeks). Locked for the entire playoffs — the #1 seed stays #1 every round. Auto-locks when the regular season finishes.
-                            </div>
+                            <div style={{ fontSize: FS.xs, color: K.t1, fontWeight: FW.bold, marginBottom: 8 }}>Playoff Seeds</div>
+                            {/* No static description here: the four conditional
+                                lines below (live preview / lock button / drift
+                                warning / locked-and-matching) already cover every
+                                state this panel can be in. */}
                             <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                               {rsSeeds.map((teamId, i) => (
                                 <div key={teamId} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: FS.sm }}>
@@ -2217,7 +2215,7 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
                 Run individual net stroke play during playoffs
               </label>
               <div style={{ fontSize: FS.xs, color: K.t3, lineHeight: 1.5 }}>
-                All players compete individually across {cfg.playoffWeeks} playoff rounds. Lowest cumulative net score wins.
+                Lowest cumulative net across {cfg.playoffWeeks} playoff rounds wins.
               </div>
             </Card>
           </div>
@@ -2231,7 +2229,7 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
                 Give non-bracket teams a matchup each playoff week
               </label>
               <div style={{ fontSize: FS.xs, color: K.t3, lineHeight: 1.5, marginBottom: cfg.consolationEnabled ? 12 : 0 }}>
-                Covers teams with a first-round bye AND teams knocked out of the bracket, so all 10 teams play every playoff week. When off, any team not in the bracket that week simply doesn't play.
+                When off, any team not in the bracket that week simply doesn't play.
               </div>
               {cfg.consolationEnabled && (
                 <div style={{ paddingTop: 10, borderTop: `1px solid ${K.bdr}50` }}>
@@ -2250,7 +2248,7 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
                       Regroup eliminated players individually
                     </label>
                     <div style={{ fontSize: FS.xs, color: K.t3, lineHeight: 1.5 }}>
-                      Once a team is knocked out of the bracket, its two players stop playing as a team and join the individual pool. Eliminated players are grouped into fresh foursomes by reverse individual-tournament standing (worst net tees off first). Still-alive bye teams keep playing as a team.
+                      Eliminated players leave their team and join the individual pool, regrouped into foursomes by reverse standing. Still-alive bye teams keep playing as a team.
                     </div>
                   </div>
                 </div>
@@ -4347,10 +4345,6 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
           {saving ? "Saving..." : dirty ? `Save${dirtyCount > 1 ? ` (${dirtyCount})` : ""}` : "Saved"}
         </button>
       </div>
-      <div style={{ fontSize: FS.sm, color: K.t3, marginBottom: 12, lineHeight: 1.5 }}>
-        Members sign in via Google or email and link to a player profile. Commissioner
-        access is granted here.
-      </div>
 
       {notice && (
         <div
@@ -4621,7 +4615,7 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
           {recalcHandicaps && (
             <Card style={{ padding: 14, marginBottom: 16, border: `1px solid ${K.teal}30` }}>
               <div style={{ fontSize: FS.sm, color: K.t2, marginBottom: 10, lineHeight: 1.5 }}>
-                Recalculate all player handicaps now from historical scores. Normally runs automatically when a week is locked — use this to force a sync if stored values are out of date.
+                Normally runs automatically when a week is locked.
               </div>
               <button onClick={handleRecalc} disabled={recalcing} style={{ width: "100%", padding: 12, borderRadius: 8, background: K.teal + "15", border: `1.5px solid ${K.teal}50`, color: K.teal, fontSize: FS.sm, fontWeight: FW.bold, cursor: recalcing ? "default" : "pointer", opacity: recalcing ? 0.6 : 1 }}>
                 {recalcing ? "Recalculating..." : "Recalc Handicaps Now"}

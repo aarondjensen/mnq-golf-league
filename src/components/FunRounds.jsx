@@ -1134,7 +1134,7 @@ export function FunRounds({
           no way to make another. */}
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
         <div style={{ flex: 1, fontSize: FS.xs, color: K.t3, lineHeight: 1.5 }}>
-          Extra rounds outside the league schedule. Nothing here counts toward standings, handicaps, or stats.
+          Nothing here counts toward standings, handicaps, or stats.
         </div>
         {isComm && nothingAtAll && <CreateRoundButton onClick={() => setFormFor("new")} />}
       </div>

@@ -292,7 +292,7 @@ export default function NotificationsSettings({ leagueUser, appToast }) {
         </div>
       </Card>
       <div style={{ fontSize: 10, color: K.t3, lineHeight: 1.5, marginTop: 8, padding: "0 4px" }}>
-        Link both so Google and Apple sign you into the same account and team. Apple's "Hide My Email" means this can't happen automatically — it has to be done here while you're signed in.
+        Link both so Google and Apple sign you into the same account and team.
       </div>
     </div>
   );

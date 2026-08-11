@@ -184,7 +184,7 @@ export default function NotificationsAdmin({ players }) {
       </div>
 
       <div style={{ fontSize: FS.xs, color: K.t3, lineHeight: 1.5, marginTop: 12, padding: "0 4px" }}>
-        Status updates live as players enable / disable. Stale registrations are cleaned up automatically the first time a push fails to deliver.
+        Stale registrations are cleaned up automatically the first time a push fails to deliver.
       </div>
     </div>
   );
