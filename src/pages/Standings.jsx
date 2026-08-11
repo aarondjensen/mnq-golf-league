@@ -24,7 +24,7 @@ import { TeamMatchupCard } from "../TeamMatchupCard";
 // ════════════════════════════════════════════════════════════
 //  PLAYOFF BRACKET VIEW
 // ════════════════════════════════════════════════════════════
-function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConfig }) {
+function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConfig, isComm }) {
   const playoffRounds = leagueConfig?.playoffRounds || [];
   const playoffWeeks = schedule.filter(wk => wk.isPlayoff === true && !wk.rainedOut).sort((a, b) => a.week - b.week);
   // "bracket" shows every round stacked (the prior default behavior).
@@ -184,7 +184,7 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
   const getSeed = (id) => seedMap[id] || "?";
 
   if (!playoffRounds.length) {
-    return <EmptyState icon="trophy" title="No playoff bracket configured" subtitle="Commissioner can set up playoff rounds in Admin → Schedule → Edit Setup." />;
+    return <EmptyState icon="trophy" title="No playoff bracket configured" subtitle={isComm ? "Set up playoff rounds in Admin → Schedule → Edit Setup." : undefined} />;
   }
 
   // Build bracket data: for each round, separate bracket matches (those configured in
@@ -1411,7 +1411,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
 
   const gt = (id) => teams.find(t => t.id === id);
   if (dataLoaded && !dataLoaded.teams) return <SkeletonList count={10} height={60} />;
-  if (!teams.length) return <EmptyState icon="trophy" title="No teams yet" subtitle="Commissioner needs to set up teams." />;
+  if (!teams.length) return <EmptyState icon="trophy" title="No teams yet" subtitle={isComm ? "Set up teams in Admin → Teams." : undefined} />;
 
   // Right-cluster column styles — shared by record and points modes so the
   // column set is identical regardless of standingsMethod (only the sort
@@ -1517,7 +1517,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
 
       {/* Playoff Bracket view */}
       {view === "bracket" && (
-        <PlayoffBracketView teams={teams} players={players} schedule={schedule} matchResults={matchResults} leagueConfig={leagueConfig} />
+        <PlayoffBracketView teams={teams} players={players} schedule={schedule} matchResults={matchResults} leagueConfig={leagueConfig} isComm={isComm} />
       )}
 
       {/* Individual Event view — during regular season shows a "starts Week N" placeholder,
@@ -1530,7 +1530,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
           // Find the first playoff week — that's when the individual tournament kicks off.
           const firstPlayoff = schedule.filter(wk => wk.isPlayoff === true && !wk.rainedOut).sort((a, b) => a.week - b.week)[0];
           if (!firstPlayoff) {
-            return <EmptyState icon="trophy" title="No individual tournament configured" subtitle="Commissioner can enable it in Admin → Schedule." />;
+            return <EmptyState icon="trophy" title="No individual tournament configured" subtitle={isComm ? "Enable it in Admin → Schedule." : undefined} />;
           }
           const when = firstPlayoff.date ? `Week ${firstPlayoff.week} (${firstPlayoff.date})` : `Week ${firstPlayoff.week}`;
           return <EmptyState icon="trophy" title="Individual Tournament" subtitle={`Starts ${when}`} />;

@@ -962,8 +962,8 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
   //   4. User linked but no match this week → silently switch to All
   //      Matches view (returning null lets the next render pick it up).
   // ═════════════════════════════════════════════════════════════════════
-  if (!course?.name) return <EmptyState icon="flag" title="Course not configured" subtitle="Commissioner needs to set up the course." />;
-  if (!matches.length) return <EmptyState icon="calendar" title="No matches this week" subtitle="Commissioner needs to set the schedule." />;
+  if (!course?.name) return <EmptyState icon="flag" title="Course not configured" subtitle={isComm ? "Set up the course in Admin → Course." : undefined} />;
+  if (!matches.length) return <EmptyState icon="calendar" title="No matches this week" subtitle={isComm ? "Set the schedule in Admin → Schedule." : undefined} />;
 
   // Onboarding fallback — a brand-new user can land here with no match of
   // their own to score (not linked to a player yet, not on a team, or
