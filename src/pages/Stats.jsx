@@ -118,10 +118,16 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
   const [birdiesAgg, setBirdiesAgg] = useState("total");
   const [eaglesAgg,  setEaglesAgg]  = useState("total");
 
+  // `loading` already starts true, so this only matters when the fetcher changes
+  // identity and we go round again. Done during render rather than synchronously
+  // inside the effect, which is what the rule is about — an effect that sets state
+  // on the way in commits one render, then immediately schedules another.
+  const [syncedFetcher, setSyncedFetcher] = useState(fetchSeasonScores);
+  if (fetchSeasonScores !== syncedFetcher) { setSyncedFetcher(fetchSeasonScores); setLoading(true); }
+
   useEffect(() => {
     if (!fetchSeasonScores) return;
     let cancelled = false;
-    setLoading(true);
     fetchSeasonScores().then(s => {
       if (cancelled) return;
       setScores(s);

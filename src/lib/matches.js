@@ -135,3 +135,19 @@ export function weekFullyScored(wk, matchResults, groupResults) {
       )
   );
 }
+
+// ── Tiebreaker result strings ──
+// Lived in TeamMatchupCard.jsx, which made that file export a component AND a
+// plain function — a mix Fast Refresh cannot reload cleanly. It is a pure
+// parser of a match result, so it belongs here with the rest of them.
+// Parses tiebreaker-style match result strings and returns
+//   { isTiebreaker: true, label: "Hole 5" }   for "TIE (Hole 5)"
+//   { isTiebreaker: false }                   for "3&1", "1UP", "TIED", etc.
+// Used by the centre-strip renderers in Scoring, Schedule and Standings to show
+// the tiebreaker reason on a second line under a big "TIE" token.
+export function parseTiebreakerResult(raw) {
+  if (!raw) return { isTiebreaker: false };
+  const m = String(raw).match(/^TIE\s*\(([^)]+)\)\s*$/i);
+  if (m) return { isTiebreaker: true, label: m[1] };
+  return { isTiebreaker: false };
+}

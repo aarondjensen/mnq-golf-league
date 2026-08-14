@@ -64,9 +64,10 @@ branch and summarise what it contains before touching anything else.
 
 - Build before committing — `npm run build` must pass.
 - `npm run test:run` must pass.
-- Lint with `npx eslint <changed files>` and compare the error count against
-  the same files before the change. **This repo carries ~102 pre-existing
-  errors**; the bar is not adding new ones, not a clean sheet.
+- `npx eslint .` must come back with **zero errors**. It carried ~102 for a
+  long time and does not any more, so the bar is a clean sheet rather than
+  "no worse than before". 17 `exhaustive-deps` warnings remain and are not
+  errors; don't add errors alongside them.
 
 ## Firestore is shared and live
 

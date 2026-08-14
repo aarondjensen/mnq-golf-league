@@ -1049,20 +1049,24 @@ function AdminCourse({ course, saveCourseData, onBack }) {
     return holeRefs.current[k];
   };
 
-  // Keep local state (and the ref-backed hole inputs) in sync when Firestore updates —
-  // unless the user is mid-edit. The inputs use defaultValue, so we must also poke them
-  // through their refs for the new values to appear visually.
+  // Keep local state in sync when Firestore updates — unless the user is mid-edit.
+  // Adjusted during render rather than in an effect; see the note in AdminConfig.
+  const [syncedCourse, setSyncedCourse] = useState(course);
+  const courseNeedsSync = !dirty && course && course !== syncedCourse;
+  if (courseNeedsSync) { setSyncedCourse(course); setLc(course); }
+
+  // The hole inputs are UNCONTROLLED (defaultValue), so state alone does not move
+  // them — they have to be poked through their refs. That is a DOM write rather
+  // than a state update, so it stays in an effect, where the refs are attached.
   useEffect(() => {
-    if (!dirty && course) {
-      setLc(course);
-      ['frontPars', 'backPars', 'frontHcps', 'backHcps'].forEach(key => {
-        (course[key] || []).forEach((v, i) => {
-          const ref = getRef(key, i);
-          if (ref.current) ref.current.value = String(v);
-        });
+    if (dirty || !course) return;
+    ['frontPars', 'backPars', 'frontHcps', 'backHcps'].forEach(key => {
+      (course[key] || []).forEach((v, i) => {
+        const ref = getRef(key, i);
+        if (ref.current) ref.current.value = String(v);
       });
-    }
-  }, [course, dirty]);
+    });
+  }, [course, dirty, getRef]);
 
   // On save, read all ref values into state and validate before writing.
   // Validation rules:
@@ -4023,13 +4027,16 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
   const { confirm, confirmModal } = useConfirm();
 
   // Keep local form state in sync when Firestore updates — as long as the user isn't
-  // mid-edit. Prevents silently overwriting concurrent changes on Save.
-  useEffect(() => {
-    if (!dirty) {
-      setLc({ ...scoring });
-      setCfg({ scoringFormat: "lowHighBonus", bonusType: "teamNetTotal", standingsMethod: "points", ...leagueConfig });
-    }
-  }, [scoring, leagueConfig, dirty]);
+  // mid-edit. Prevents silently overwriting concurrent changes on Save. Adjusted
+  // during render rather than in an effect; see the note in AdminConfig below.
+  const [syncedScoring, setSyncedScoring] = useState(scoring);
+  const [syncedLeagueCfg, setSyncedLeagueCfg] = useState(leagueConfig);
+  if (!dirty && (scoring !== syncedScoring || leagueConfig !== syncedLeagueCfg)) {
+    setSyncedScoring(scoring);
+    setSyncedLeagueCfg(leagueConfig);
+    setLc({ ...scoring });
+    setCfg({ scoringFormat: "lowHighBonus", bonusType: "teamNetTotal", standingsMethod: "points", ...leagueConfig });
+  }
 
   const save = async () => {
     try {
@@ -4471,11 +4478,22 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, recalcHandicap
   const [recalcResult, setRecalcResult] = useState(null);
   const { confirm, confirmModal } = useConfirm();
 
-  // Keep local form state in sync when the Firestore doc updates — as long as the user
-  // hasn't started editing. Prevents silently overwriting a concurrent change made in
-  // another tab (or by another commissioner) when this user eventually hits Save.
-  useEffect(() => { if (!dirty) setLc({ ...config }); }, [config, dirty]);
-  useEffect(() => { if (!dirty && scoringRules) setSr({ ...scoringRules }); }, [scoringRules, dirty]);
+  // Keep local form state in sync when the Firestore doc updates — as long as the
+  // user hasn't started editing. Prevents silently overwriting a concurrent change
+  // made in another tab (or by another commissioner) when this user hits Save.
+  //
+  // Adjusted DURING RENDER rather than in an effect. React re-runs the component
+  // immediately without committing the first pass, so the inputs never paint a
+  // frame of stale text — where the effect version painted the old value, then
+  // replaced it. It also drops a setState-inside-an-effect cascade.
+  //
+  // This is what lib/useDirtyForm.js does, and where these forms should end up.
+  // Doing it inline for now because migrating them means rewriting every
+  // setLc/setDirty call site in the file.
+  const [syncedConfig, setSyncedConfig] = useState(config);
+  if (!dirty && config !== syncedConfig) { setSyncedConfig(config); setLc({ ...config }); }
+  const [syncedRules, setSyncedRules] = useState(scoringRules);
+  if (!dirty && scoringRules && scoringRules !== syncedRules) { setSyncedRules(scoringRules); setSr({ ...scoringRules }); }
 
   const save = async () => {
     await saveLeagueConfig(lc);
