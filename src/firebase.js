@@ -607,7 +607,14 @@ export const db = {
         console.error("db.batchWrite: bad op", op);
         continue;
       }
-      byDoc.set(`${op.col} ${op.id}`, op);
+      // The separator is a literal NUL escape rather than a raw NUL BYTE, which
+      // is what used to sit here. A raw one makes the whole file read as binary
+      // to grep, diff and every review tool, and it is invisible in an editor,
+      // so the one character carrying the collision-safety of this key was also
+      // the one character nobody could see. Same value, same guarantee: no
+      // collection name or document id can contain it, so the joined key cannot
+      // collide the way a "/" or "-" separator could.
+      byDoc.set(`${op.col}\u0000${op.id}`, op);
     }
     const finalOps = [...byDoc.values()];
     for (let i = 0; i < finalOps.length; i += BATCH_LIMIT) {
