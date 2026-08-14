@@ -1,7 +1,25 @@
+// ══════════════════════════════════════════════════════════════════
+//  league.js — the league domain: handicaps, standings, seeding, brackets.
+// ══════════════════════════════════════════════════════════════════
+//
+// All of this used to live in theme.jsx, above the design tokens and the shared
+// components. Being in a .jsx file next to JSX meant none of it could be
+// imported without dragging React in behind it, and the two concerns had no
+// business sharing a module in the first place — this is the rules of the
+// competition, and that was a palette.
+//
+// It is pure: no React, no Firestore, no DOM. That is what makes the standings
+// sort, the seed map and the bracket ordering testable, and they are the
+// highest-leverage functions in the app — the Standings rank, the playoff seed
+// map, the auto-seed pairings and bracket positioning all sit downstream of
+// them. See league.test.js.
+//
+// Bourbon Cup and WBC both keep their domain under src/lib/. This is that.
+
 // ══════════════════════════════════════════════════════════════
 //  CONSTANTS & UTILITIES
 // ══════════════════════════════════════════════════════════════
-import { resultLetterFor } from "./lib/matchCalc";
+import { resultLetterFor } from "./matchCalc";
 
 export const SEASON_WEEKS = 16;
 export const REGULAR_WEEKS = 14;
@@ -841,268 +859,3 @@ export function buildPlayerCoOccurrence(schedule, currentWeek, teams) {
   });
   return counts;
 }
-
-// ══════════════════════════════════════════════════════════════
-//  THEME
-// ══════════════════════════════════════════════════════════════
-//
-// `K.hcpBlue` exists because the codebase had `#3b82f6` hardcoded in 18+
-// places (scorecard stroke dots, HCP pills, "Sign Scorecard" button, attest
-// button, etc.). That bright pure blue clashed with the brand navy
-// `K.logoBright` (#10387d) used elsewhere for the same conceptual thing.
-// The token unifies them under one theme-aware color so dark/light mode and
-// any future rebrand only need to touch this file.
-export const getTheme = (mode = "dark") => {
-  if (mode === "light") return {
-    bg: "#f0f2f5", card: "#ffffff", cardHi: "#f8f9fa", inp: "#e9ecef",
-    bdr: "#d1d5db", acc: "#475569", accDim: "#64748b",
-    act: "#deab12", actHov: "#c99b0f",
-    grn: "#059669", grnDim: "#047857", red: "#dc2626", teal: "#0d9488", logoBlue: "#153453", logoBright: "#10387d",
-    // Brighter blue for handicaps and stroke dots — reads cleanly against
-    // light-mode card backgrounds. Distinct from K.logoBright (navy) which is
-    // used for branding (logo text, headers, badges). Matches the dark-mode
-    // value so scorecard markings look the same in both themes.
-    hcpBlue: "#3b82f6",
-    warn: "#d97706", t1: "#111827", t2: "#4b5563", t3: "#9ca3af",
-    gold: "#d97706", silver: "#6b7280", bronze: "#b45309",
-    matchGrn: "#157a34",
-  };
-  return {
-    bg: "#0b1829", card: "#111f36", cardHi: "#182d4a", inp: "#0d1e35",
-    bdr: "#1e3a5f", acc: "#c8cfd8", accDim: "#8b95a3",
-    act: "#deab12", actHov: "#c99b0f",
-    grn: "#34d399", grnDim: "#059669", red: "#ef4444", teal: "#2dd4bf", logoBlue: "#153453", logoBright: "#10387d",
-    // In dark mode, navy disappears against the dark bg, so the HCP token keeps a
-    // brighter blue for legibility. The hardcoded #3b82f6 from prior code was
-    // visually correct in dark mode — only wrong in light mode where it clashed
-    // with the navy K.logoBright. Splitting them by mode resolves both cases.
-    hcpBlue: "#3b82f6",
-    warn: "#fbbf24", t1: "#f1f5f9", t2: "#94a3b8", t3: "#475569",
-    gold: "#fbbf24", silver: "#94a3b8", bronze: "#d97706",
-    matchGrn: "#1a8c3f",
-  };
-};
-
-const _savedMode = (() => { try { return typeof window !== 'undefined' && localStorage.getItem("mnq_theme") === "dark" ? "dark" : "light"; } catch { return "light"; } })();
-export const K = { ...getTheme(_savedMode) };
-export function applyTheme(mode) {
-  const next = getTheme(mode);
-  for (const key in next) K[key] = next[key];
-  for (const key in K) { if (!(key in next)) delete K[key]; }
-}
-
-export const getCSS = (k) => `
-  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
-  html, body { overscroll-behavior: none; background: ${k.bg}; letter-spacing: 0.8px; text-transform: uppercase; min-height: 100vh; min-height: -webkit-fill-available; }
-  input, select, textarea { text-transform: uppercase; }
-  input, select, textarea, button { font-family: 'League Spartan', sans-serif; letter-spacing: 0.8px; font-size: 15px; text-transform: uppercase; }
-  ::-webkit-scrollbar { width: 4px; } ::-webkit-scrollbar-track { background: transparent; } ::-webkit-scrollbar-thumb { background: ${k.bdr}; border-radius: 4px; }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
-  @keyframes mnqSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-  /* skeletonPulse — distinct from .pu's text pulse. Oscillates the
-     background color of skeleton rows between K.inp and a slightly
-     lighter shade so loading lists feel "alive" without being noisy.
-     Pages stagger animation-delay per row for a gentle ripple effect. */
-  @keyframes skeletonPulse { 0%, 100% { opacity: .55; } 50% { opacity: .9; } }
-  input[type=number]::-webkit-inner-spin-button,input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; }
-  input[type=number] { -moz-appearance: textfield; }
-  .hole-input:focus { outline: 2px solid ${k.act}; outline-offset: -1px; background: ${k.cardHi} !important; }
-  .app-shell { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: ${k.bg}; display: flex; flex-direction: column; overflow: hidden; }
-  /* App typography lives on a shared selector, not on .app-shell alone,
-     because popups portal to <body> and would otherwise fall outside the
-     shell and inherit the browser defaults — wrong face, wrong size, no
-     letter-spacing, no uppercase. Both roots must stay in this rule. */
-  .app-shell, .popup-root { color: ${k.t1}; font-family: 'League Spartan', sans-serif; font-size: 15px; letter-spacing: 0.8px; text-transform: uppercase; }
-  .app-header { padding: 12px 20px; padding-top: calc(12px + env(safe-area-inset-top, 0px)); background: ${k.bg}; display: flex; justify-content: center; align-items: center; position: relative; }
-  .app-body { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior-y: none; min-height: 0; background: ${k.bg}; }
-  .main-content { padding: 12px 14px; padding-bottom: 24px; max-width: 900px; width: 100%; margin: 0 auto; box-sizing: border-box; min-height: 100%; background: ${k.bg}; }
-  .bottom-nav { background: ${k.card}f0; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-top: 1px solid ${k.bdr}; display: flex; justify-content: space-around; padding: 10px 0 12px; padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); z-index: 200; max-width: 900px; width: 100%; flex-shrink: 0; }
-  .admin-grid { display: flex; flex-direction: column; gap: 6px; }
-  .admin-sections-grid { display: flex; flex-direction: column; gap: 6px; }
-  .players-grid { display: flex; flex-direction: column; gap: 6px; }
-  .scoring-grid { display: flex; flex-direction: column; gap: 10px; }
-  .schedule-weeks { display: flex; gap: 4px; flex-wrap: wrap; margin-bottom: 12px; }
-  .standings-grid { display: flex; flex-direction: column; gap: 6px; }
-  @media (min-width: 768px) {
-    .main-content { padding: 24px 32px; padding-bottom: 20px; margin: 0 auto; }
-    .standings-grid { gap: 6px; }
-    .admin-sections-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-    .players-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; }
-    .scoring-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
-  }
-  .fi { animation: fadeIn .35s ease both; }
-  .pu { animation: pulse 1.8s ease-in-out infinite; }
-`;
-
-export const FONTS = "https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700;800&display=swap";
-
-// ── SVG Icons (Lucide-style, stroke-based) ──
-export const I = {
-  trophy: (s = 18, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6"/><path d="M18 9h1.5a2.5 2.5 0 0 0 0-5H18"/><path d="M4 22h16"/><path d="M10 14.66V17c0 .55-.47.98-.97 1.21C7.85 18.75 7 20.24 7 22"/><path d="M14 14.66V17c0 .55.47.98.97 1.21C16.15 18.75 17 20.24 17 22"/><path d="M18 2H6v7a6 6 0 0 0 12 0V2Z"/></svg>,
-  flag: (s = 18, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/></svg>,
-  calendar: (s = 18, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>,
-  barChart: (s = 18, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="12" x2="12" y1="20" y2="10"/><line x1="18" x2="18" y1="20" y2="4"/><line x1="6" x2="6" y1="20" y2="16"/></svg>,
-  target: (s = 18, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>,
-  settings: (s = 18, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>,
-  user: (s = 18, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>,
-  users: (s = 18, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
-  mapPin: (s = 18, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>,
-  ruler: (s = 18, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/></svg>,
-  key: (s = 18, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.3 9.3"/><path d="M18.5 5.5 21 3"/></svg>,
-  arrowLeft: (s = 14, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>,
-  ellipsis: (s = 18, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1" fill={c}/><circle cx="5" cy="12" r="1" fill={c}/><circle cx="19" cy="12" r="1" fill={c}/></svg>,
-  bell: (s = 18, c = "currentColor") => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>,
-};
-
-// ── Shared UI components ──
-//
-// NOTE: The canonical ScoreCell lives in pages/Scoring.jsx — the prior duplicate
-// here (and the unused MiniScoreCell) were removed during the audit cleanup.
-// Import ScoreCell from "./pages/Scoring" if you ever need it outside of the
-// SharedScorecard renderer.
-export const Pill = ({ children, color = K.acc, style, ...rest }) => (
-  <span style={{ fontSize: 11, fontWeight: 600, color, background: color + "14", padding: "2px 8px", borderRadius: 4, letterSpacing: 1.0, textTransform: "uppercase", ...style }} {...rest}>{children}</span>
-);
-export const BackBtn = ({ onClick }) => (
-  <button onClick={onClick} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t2, fontSize: 13, padding: "7px 14px", cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: 5, letterSpacing: .8 }}>{I.arrowLeft(13, K.t2)} Back</button>
-);
-export const SaveBtn = ({ onClick, label = "Save" }) => (
-  <button onClick={onClick} style={{ background: K.act, border: "none", borderRadius: 6, color: K.bg, fontSize: 13, padding: "7px 16px", cursor: "pointer", fontWeight: 600, letterSpacing: .8 }}>{label}</button>
-);
-export const SectionTitle = ({ children }) => (
-  <div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 22, fontWeight: 700, color: K.t1, letterSpacing: 1.0, marginBottom: 14 }}>{children}</div>
-);
-export const SubLabel = ({ children, color = K.acc, style }) => (
-  <div style={{ fontSize: 11, fontWeight: 600, color, textTransform: "uppercase", letterSpacing: 1.8, marginBottom: 6, ...style }}>{children}</div>
-);
-export const Card = ({ children, highlight, style, ...rest }) => (
-  <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${highlight ? K.acc + '40' : K.bdr}`, padding: "13px 15px", ...style }} {...rest}>{children}</div>
-);
-export const EmptyState = ({ icon, title, subtitle }) => (
-  <div style={{ textAlign: "center", padding: 40 }}>
-    <div style={{ marginBottom: 12, display: "flex", justifyContent: "center", opacity: .4 }}>{typeof icon === "string" ? I[icon]?.(40, K.t3) || null : icon}</div>
-    <div style={{ color: K.t2, fontSize: 15, fontWeight: 500, letterSpacing: .8 }}>{title}</div>
-    {subtitle && <div style={{ color: K.t3, fontSize: 13, marginTop: 4, letterSpacing: .7 }}>{subtitle}</div>}
-  </div>
-);
-
-// ──────────────────────────────────────────────────────────────────
-//  LoadingPanel — replaces the inline "Loading..." text divs that
-//  used to live in 6 places (TabFallback, Auth, Stats, Schedule,
-//  Standings ×2). Single source so any future tweak propagates.
-//
-//  `subtitle` lets callers say what's loading (e.g. "scores", "matches")
-//  without rebuilding the whole panel. `size="compact"` is for use
-//  INSIDE an already-mounted view (e.g. an expansion row waiting on
-//  per-week data) — smaller padding, smaller font. Default is for
-//  top-level page loading.
-// ──────────────────────────────────────────────────────────────────
-export const LoadingPanel = ({ subtitle, size = "default" }) => {
-  const compact = size === "compact";
-  return (
-    <div
-      className="pu"
-      style={{
-        textAlign: "center",
-        padding: compact ? 10 : 40,
-        color: K.t3,
-        fontSize: compact ? 11 : 13,
-        letterSpacing: .5,
-      }}
-    >
-      Loading{subtitle ? ` ${subtitle}` : ""}…
-    </div>
-  );
-};
-
-// ──────────────────────────────────────────────────────────────────
-//  SkeletonRow / SkeletonList — gray pulsing placeholders for the
-//  shape of incoming list content. Used during cold-start before the
-//  first Firestore snapshot fires. Replaces the "empty state flash"
-//  pattern where pages briefly render EmptyState before data arrives.
-//
-//  SkeletonRow is a single gray block at a given height. Pass `style`
-//  to override (border-radius, background, etc.) per-page. SkeletonList
-//  repeats SkeletonRow N times with consistent gap + a stagger so the
-//  pulse ripples down the list rather than blinking in lockstep.
-//
-//  Pages decide when to render skeletons vs. EmptyState by checking
-//  a `dataLoaded` flag fed from App.jsx — see App.jsx's `dataLoaded`
-//  state and the subscription callbacks that flip it on first snapshot.
-// ──────────────────────────────────────────────────────────────────
-export const SkeletonRow = ({ height = 56, style }) => (
-  <div
-    style={{
-      height,
-      background: K.inp,
-      borderRadius: CARD_RADIUS,
-      animation: "skeletonPulse 1.6s ease-in-out infinite",
-      ...style,
-    }}
-  />
-);
-
-export const SkeletonList = ({ count = 6, height = 56, gap = LIST_GAP, style }) => (
-  <div style={{ display: "flex", flexDirection: "column", gap, ...style }}>
-    {Array.from({ length: count }, (_, i) => (
-      <SkeletonRow
-        key={i}
-        height={height}
-        style={{ animationDelay: `${i * 0.08}s` }}
-      />
-    ))}
-  </div>
-);
-
-// ── Shared style constants for consistency ──
-export const LIST_GAP = 6;        // gap between list cards
-export const CARD_RADIUS = 10;    // border-radius for all list cards
-
-// ── Type scale ───────────────────────────────────────────────────────
-// Single source of truth for font sizes. The app had ~18 distinct inline
-// pixel sizes that drifted into near-duplicates (11/12/13/14/15 all used
-// for "body-ish" text, 16/17/18 for headings, 20/22/24/26 for big numbers).
-// FS collapses those into intentional steps. Each step lists the legacy
-// sizes it absorbs so the file-by-file migration knows where each number
-// rounds to. The two bespoke display sizes (42, 52px) are deliberate
-// one-offs and stay explicit at their call sites.
-export const FS = {
-  micro: 9,   // eyebrows, tiny uppercase labels, seed badges   (← 7, 8, 9)
-  xs: 11,     // sub-labels, captions, pills                    (← 10, 11)
-  sm: 13,     // secondary body text, compact rows              (← 12, 13)
-  base: 15,   // player/team names, primary body                (← 14, 15)
-  lg: 18,     // section titles, emphasis                       (← 16, 17, 18)
-  xl: 20,     // hero / stat numbers                            (← 20, 22)
-  xxl: 26,    // large display stats                            (← 24, 26)
-};
-
-export const NAME_SIZE = FS.base;       // 15 — player/team names in lists
-
-// ── Weight scale ─────────────────────────────────────────────────────
-// Companion to FS for font-weights. The app uses five real weights; this
-// names them so call sites pick from a known set instead of scattering
-// raw numbers and state-toggle ternaries. IMPORTANT: League Spartan is
-// loaded at 300–800 only (see index.html). Weight 900 is NOT loaded and
-// silently falls back to 800, so any `fontWeight: 900` is a no-op — those
-// fold to FW.heavy during migration. (A handful exist today, including a
-// latent `isActive ? 900 : 800` toggle in Scoring that renders no
-// difference and needs a real emphasis cue.)
-export const FW = {
-  regular: 400,   // body text (rare)
-  medium: 500,    // gentle emphasis
-  semibold: 600,  // secondary labels, sub-headers
-  bold: 700,      // names, primary emphasis (most common)
-  heavy: 800,     // stat numbers, strong emphasis (also the 900 fallback)
-};
-
-export const NAME_WEIGHT = FW.bold;        // 700 — font-weight for names
-export const HERO_NUM_SIZE = FS.xl;     // 20 — large stat numbers (points, CTP count, etc.)
-export const HERO_NUM_WEIGHT = FW.heavy;   // 800
-export const RANK_BADGE_SIZE = 28; // width/height for rank badges
-export const RANK_BADGE_RADIUS = 7;
-export const RANK_BADGE_FONT = FS.sm;   // 13 — number inside rank badges
-// Chevron is a glyph, not text; at 14 it sits between sm (13) and base (15).
-// Kept explicit at 14 for now so Phase 1 changes nothing on screen — it
-// folds to FS.base during the file migration as a deliberate 1px decision.
-export const CHEVRON_SIZE = 14;   // font-size for expand/collapse chevron

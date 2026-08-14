@@ -89,7 +89,7 @@
 // state at call time, not the snapshot in the original closure.
 
 import { db, LEAGUE_ID } from "../firebase";
-import { buildStandingsForSeed, serializeSeedWeeks, orderByBracketIdx } from "../theme";
+import { buildStandingsForSeed, serializeSeedWeeks, orderByBracketIdx } from "./league";
 import { buildPlayoffNonBracketMatches } from "./indivGroups";
 
 // ── Tee order within the bracket ────────────────────────────────────────

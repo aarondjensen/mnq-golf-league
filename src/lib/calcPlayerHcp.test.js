@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════
-//  Tests for theme.jsx's calcPlayerHcp.
+//  Tests for league.js's calcPlayerHcp.
 // ══════════════════════════════════════════════════════════════════
 //
 // Coverage focus
@@ -23,7 +23,7 @@
 // over-weighted by their better one.
 
 import { describe, it, expect } from "vitest";
-import { calcPlayerHcp } from "../theme";
+import { calcPlayerHcp } from "./league";
 
 describe("calcPlayerHcp", () => {
   describe("input handling", () => {

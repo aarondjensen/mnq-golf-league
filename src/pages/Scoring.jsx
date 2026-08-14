@@ -1,9 +1,8 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { K, I, BackBtn, Card, EmptyState,
-  getWeekSide,
-  formatTeeTime as fmtTeeTimeUtil, LIST_GAP,
-  buildSeedMap, buildPlayoffSeedMap, matchPids, resolveIndivRound, isIndivGroupMatch,
-  findGroupResult, weekFullyScored, IND_WITHDRAW, FS, FW } from "../theme";
+import { K, LIST_GAP, FS, FW } from "../theme";
+import { BackBtn, Card, EmptyState } from "../components/ui";
+import { I } from "../components/icons";
+import { getWeekSide, formatTeeTime as fmtTeeTimeUtil, buildSeedMap, buildPlayoffSeedMap, matchPids, resolveIndivRound, isIndivGroupMatch, findGroupResult, weekFullyScored, IND_WITHDRAW } from "../lib/league";
 import { LEAGUE_ID } from "../firebase";
 import { computeMatchResult, resultLetterFor, readScoreEffective, readStrokesEffectiveExt, computePlayoffTiebreaker, isMatchPendingMakeup } from "../lib/matchCalc";
 import { parseScheduleDate } from "../lib/scheduleDate";
@@ -293,7 +292,7 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
 
   const isWeekLocked = weekSch?.locked === true;
   // Every card in the week counts — team matches AND individual groups. A
-  // group's signature lives in its own collection (see theme.jsx), but the
+  // group's signature lives in its own collection (see lib/league.js), but the
   // integrity bar is the same: signed by one player, attested by another,
   // because the individual tournament is a real competition too.
   const isCardSigned = (m) => isIndivGroupMatch(m)
@@ -516,7 +515,7 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
   };
 
   // ── Individual-event makeup / withdrawal (Phase 4 finalize pre-flight) ──
-  // These write into the makeup namespace defined in theme.jsx
+  // These write into the makeup namespace defined in lib/league.js
   // (classifyScoreHole / resolveIndivRound), entirely separate from the team
   // match's _h{0..8} + _habsent, so a makeup entered here never disturbs an
   // already-decided match. saveScore rides them in as hole-score docs whose

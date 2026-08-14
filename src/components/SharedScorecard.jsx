@@ -33,7 +33,7 @@
 //
 //  Dependencies
 //  ────────────
-//    • K from theme.jsx         — color tokens (dark/light aware)
+//    • K from theme.js          — color tokens (dark/light aware)
 //    • parseTiebreakerResult    — used by MatchRow's clinch cell to
 //      from TeamMatchupCard       split "TIE (Hole 5)" into stacked
 //                                 "TIE" + "Hole 5" lines.

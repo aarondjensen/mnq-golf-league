@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import { K, Card, SubLabel, FS, FW } from "../theme";
+import { K, FS, FW } from "../theme";
+import { Card, SubLabel } from "../components/ui";
 import { db, LEAGUE_ID } from "../firebase";
 
 // ─────────────────────────────────────────────────────────────────────────

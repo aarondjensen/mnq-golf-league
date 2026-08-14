@@ -21,8 +21,9 @@
 // per-player expandable scorecard, and the rank/WD bucketing.
 
 import { useState, useMemo, useRef, useEffect } from "react";
-import { K, EmptyState, getWeekSide, LIST_GAP, CARD_RADIUS, calcPlayerHcp, lastNamesOnly,
-  resolveIndivRound, LoadingPanel, buildHistoricalPlayers, FS, FW } from "../theme";
+import { K, LIST_GAP, CARD_RADIUS, FS, FW } from "../theme";
+import { EmptyState, LoadingPanel } from "./ui";
+import { getWeekSide, calcPlayerHcp, lastNamesOnly, resolveIndivRound, buildHistoricalPlayers } from "../lib/league";
 import { SharedScorecard } from "./SharedScorecard";
 import { buildStrokesMap } from "../lib/matchCalc";
 // computeRoundLine is the same per-round calc the leaderboard totals use, so
@@ -455,7 +456,7 @@ export function IndividualLeaderboard({ players, teams, schedule, course, league
         const side = wk.side || 'front';
 
         // Resolve this week's individual-event round from the canonical read
-        // resolver (theme.jsx): a live League-Night card, a makeup hole card, a
+        // resolver (lib/league.js): a live League-Night card, a makeup hole card, a
         // total-only makeup, or nothing — plus the explicit withdrawal flag.
         const ir = resolveIndivRound(scores, wk.week, p.id);
 

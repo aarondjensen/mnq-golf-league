@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Capacitor } from "@capacitor/core";
-import { K, FS, FW, Card } from "../theme";
+import { K, FS, FW } from "../theme";
+import { Card } from "../components/ui";
 import {
   linkGoogleAccount,
   linkAppleAccount,

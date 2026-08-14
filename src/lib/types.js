@@ -342,7 +342,7 @@
 // ──────────────────────────────────────────────────────────────────
 
 /**
- * A single row produced by buildStandingsForSeed in theme.jsx.
+ * A single row produced by buildStandingsForSeed in lib/league.js.
  * Sort order depends on the standingsMethod argument:
  *   "points" → points desc, then hw desc.
  *   "record" → win% desc, then w desc, then l asc, then hw desc.

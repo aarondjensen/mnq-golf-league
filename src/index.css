@@ -1,2 +1,2 @@
-/* index.css — minimal reset only. All app styles live in theme.jsx getCSS(). */
+/* index.css — minimal reset only. All app styles live in theme.js getCSS(). */
 body { margin: 0; }

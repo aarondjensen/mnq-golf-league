@@ -1,5 +1,5 @@
 // ══════════════════════════════════════════════════════════════════
-//  Tests for theme.jsx's buildStandingsForSeed.
+//  Tests for league.js's buildStandingsForSeed.
 // ══════════════════════════════════════════════════════════════════
 //
 // Coverage focus
@@ -28,7 +28,8 @@
 // file's expectations are pinned correctly.
 
 import { describe, it, expect } from "vitest";
-import { getCSS, buildStandingsForSeed, isIndivGroupMatch, weekFullyAttested, weekFullyScored, findGroupResult, indivGroupKey, matchPids, currentPlayoffRoundIdx, orderByBracketIdx, initialLastName } from "./theme";
+import { getCSS } from "../theme";
+import { buildStandingsForSeed, isIndivGroupMatch, weekFullyAttested, weekFullyScored, findGroupResult, indivGroupKey, matchPids, currentPlayoffRoundIdx, orderByBracketIdx, initialLastName } from "./league";
 
 // Helpers that build fixtures concisely. Default values match what
 // computeMatchResult would produce for typical matches.

@@ -19,7 +19,8 @@
 // the top of lib/funScores.js.
 
 import { useMemo } from "react";
-import { K, lastNamesOnly, FS, FW } from "../theme";
+import { K, FS, FW } from "../theme";
+import { lastNamesOnly } from "../lib/league";
 import { formatToPar } from "../lib/funScores";
 
 // ── Round leaderboard ─────────────────────────────────────────────

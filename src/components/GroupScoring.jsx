@@ -28,7 +28,9 @@
 //     so there is nothing to vouch for.
 
 import { useState, useEffect, useRef } from "react";
-import { K, Card, BackBtn, FS, FW, IND_WITHDRAW, indivGroupResultId, resolveIndivRound } from "../theme";
+import { K, FS, FW } from "../theme";
+import { Card, BackBtn } from "./ui";
+import { IND_WITHDRAW, indivGroupResultId, resolveIndivRound } from "../lib/league";
 import { LEAGUE_ID } from "../firebase";
 import { buildStrokesMap } from "../lib/matchCalc";
 import { computeRoundLine } from "../lib/indivGroups";

@@ -29,10 +29,7 @@
 // history BEFORE that week, net-to-par over holes actually played, integer
 // end-to-end so per-round values sum to the cumulative totals exactly.
 
-import {
-  calcPlayerHcp, resolveIndivRound,
-  collectPriorMatchups, buildPlayerCoOccurrence, pairNonBracketTeams,
-} from "../theme";
+import { calcPlayerHcp, resolveIndivRound, collectPriorMatchups, buildPlayerCoOccurrence, pairNonBracketTeams } from "./league";
 import { buildStrokesMap } from "./matchCalc";
 
 // ── computeRoundLine ───────────────────────────────────────────────
