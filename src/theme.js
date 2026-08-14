@@ -170,3 +170,42 @@ export const CHEVRON_SIZE = 14;   // font-size for expand/collapse chevron
 // The webfont the whole app is set in. Lives here rather than with the
 // components because it is a design token like any other colour or size.
 export const FONTS = "https://fonts.googleapis.com/css2?family=League+Spartan:wght@300;400;500;600;700;800&display=swap";
+
+// ══════════════════════════════════════════════════════════════════
+//  R — the corner-radius scale
+// ══════════════════════════════════════════════════════════════════
+//
+// Every radius in this app started as a loose literal at a call site, and loose
+// literals are how it ended up with 340 of them across 13 distinct values —
+// none of which anyone chose, all of which someone typed. A 1px step is
+// invisible on its own and indistinguishable from a mistake, so nothing in
+// review catches it.
+//
+// The rungs describe a ROLE, not a size. Reach for the one whose role matches
+// what you are drawing; if none fits, add a rung HERE with a note on what it is
+// for, so the next person inherits a decision instead of a digit.
+//
+// WBC carries the same scale under the same names with its own values — the
+// vocabulary is shared, the numbers are each app's own, exactly as FS is.
+export const R = {
+  xs:   4,   // swatches, inline marks, the tightest grid inputs
+  sm:   6,   // chips, badges, small controls
+  md:   8,   // the default — controls inside a card
+  lg:  10,   // cards and list rows
+  xl:  12,   // panels
+  modal: 14, // the modal card — its own rung because it is its own thing, and
+             // snapping it to 12 or 16 would restyle every popup in the app
+  xxl: 16,   // bottom sheets and the largest panels
+  pill: 999, // fully-rounded tracks, tags and avatars
+};
+
+// ══════════════════════════════════════════════════════════════════
+//  MOTION — transition durations
+// ══════════════════════════════════════════════════════════════════
+//
+// Three speeds, because the app was carrying seven spellings of about four.
+// `transition: `opacity ${MOTION}`` rather than a literal, so a change of pace
+// is one edit rather than a search.
+export const MOTION_FAST = "0.15s"; // a control acknowledging a tap
+export const MOTION = "0.2s";       // the default — hovers, fades, small moves
+export const MOTION_SLOW = "0.4s";  // something entering or leaving the screen

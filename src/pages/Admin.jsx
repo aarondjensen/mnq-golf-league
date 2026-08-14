@@ -9,6 +9,7 @@ import { buildSeedMap, buildPlayoffSeedMap, computeRegularSeasonSeeds, orderByBr
 import { buildStandingsForSeed as sharedBuildStandingsForSeed } from "../lib/standings";
 import { buildPlayoffNonBracketMatches } from "../lib/indivGroups";
 import { useConfirm } from "../lib/useConfirm";
+import { useDirtyForm } from "../lib/useDirtyForm";
 import { ConfirmModal } from "../components/Popup";
 import NotificationsAdmin from "./NotificationsAdmin";
 
@@ -111,17 +112,17 @@ const EditCard = ({ isNew, f, setF, ed, setEd, setOrig, nameRef, inputStyle, isD
 //
 // What they took off the closure is passed in now: F gets the config and its
 // two setters, Radio gets setDirty.
-const F = ({ label, field, lc, setLc, setDirty }) => (
+const F = ({ label, field, lc, setLc }) => (
   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${K.bdr}15` }}>
     <span style={{ fontSize: FS.sm, color: K.t2 }}>{label}</span>
-    <input value={lc[field]} onChange={e => { setLc({ ...lc, [field]: parseFloat(e.target.value) || 0 }); setDirty(true); }} onFocus={e => setTimeout(() => e.target.select(), 10)} type="number" inputMode="decimal" step="0.5" style={{ width: 58, padding: "5px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.sm, textAlign: "center" }} />
+    <input value={lc[field]} onChange={e => { setLc({ ...lc, [field]: parseFloat(e.target.value) || 0 }); }} onFocus={e => setTimeout(() => e.target.select(), 10)} type="number" inputMode="decimal" step="0.5" style={{ width: 58, padding: "5px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.sm, textAlign: "center" }} />
   </div>
 );
 
-const Radio = ({ items, value, onChange, setDirty }) => (
+const Radio = ({ items, value, onChange }) => (
   <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 12 }}>
     {items.map(f => (
-      <button key={f.id} onClick={() => { onChange(f.id); setDirty(true); }} style={{
+      <button key={f.id} onClick={() => onChange(f.id)} style={{
         background: value === f.id ? K.act + "15" : K.card,
         border: `1.5px solid ${value === f.id ? K.act : K.bdr}`,
         borderRadius: 8, padding: "10px 12px", cursor: "pointer", textAlign: "left", width: "100%",
@@ -413,8 +414,18 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
   const [orig, setOrig] = useState(null); // snapshot for dirty detection
   const [showInactive, setShowInactive] = useState(false);
   const { confirm, confirmModal } = useConfirm();
+  // `ed` is deliberately a dependency even though the body never reads it. A ref
+  // callback runs when its IDENTITY changes, so keying it on which row is open
+  // is what re-attaches it — and re-focuses the name field — when the editor
+  // moves to a different player. Drop the dep and it focuses once, ever.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const nameRef = useCallback(node => { if (node) setTimeout(() => node.focus(), 50); }, [ed]);
-  const teeBoxes = course?.teeBoxes || [{ name: "White", color: "#e2e8f0", slope: 113, rating: 67 }];
+  // Memoised because the fallback is an array LITERAL: without this the default
+  // is a new array every render, and every hook downstream of it re-runs.
+  const teeBoxes = useMemo(
+    () => course?.teeBoxes || [{ name: "White", color: "#e2e8f0", slope: 113, rating: 67 }],
+    [course?.teeBoxes],
+  );
   const teeColor = (name) => (teeBoxes.find(t => t.name === name) || {}).color || K.bdr;
   const isWhiteTee = (name) => { const c = teeColor(name).toLowerCase(); return c === "#fff" || c === "#ffffff" || c === "#e2e8f0" || c === "white"; };
   const teeBoxNames = teeBoxes.map(t => t.name);
@@ -1043,14 +1054,29 @@ function AdminCourse({ course, saveCourseData, onBack }) {
 
   // Store hole values in refs so editing never triggers re-render
   const holeRefs = useRef({});
-  const getRef = (key, i) => {
+  // useCallback with no deps: this reads holeRefs and nothing else, so it is
+  // stable by construction — but a fresh identity every render is what the
+  // ref-poking effect below sees, which made it re-run on every render.
+  const getRef = useCallback((key, i) => {
     const k = `${key}_${i}`;
     if (!holeRefs.current[k]) holeRefs.current[k] = { current: null };
     return holeRefs.current[k];
-  };
+  }, []);
 
+  // ── Why this one is NOT on useDirtyForm ──
+  // The other two admin forms are. This one deliberately keeps half its state
+  // OUT of React: the 36 hole inputs are uncontrolled and read through refs, so
+  // that typing in them never re-renders a screen full of inputs. `dirty` here
+  // therefore describes the name and tee boxes only — a hole edit is invisible
+  // to it, and saveWithRefs reads the refs regardless.
+  //
+  // Putting this on the hook would mean either pulling the hole grid back into
+  // state (losing the reason the refs exist) or leaving the hook's isDirty
+  // describing half the form while claiming to describe all of it. The
+  // render-phase sync below is the same technique the hook uses, applied to the
+  // half that is actually in state.
+  //
   // Keep local state in sync when Firestore updates — unless the user is mid-edit.
-  // Adjusted during render rather than in an effect; see the note in AdminConfig.
   const [syncedCourse, setSyncedCourse] = useState(course);
   const courseNeedsSync = !dirty && course && course !== syncedCourse;
   if (courseNeedsSync) { setSyncedCourse(course); setLc(course); }
@@ -1329,6 +1355,10 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, applySchedule
       setLocalWk(null);
       setWeekDirty(false);
     }
+    // weekDirty is read but deliberately not a dependency: it guards against
+    // clobbering a half-finished edit, and re-running this when the guard itself
+    // flips would re-seed the form the moment somebody starts typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editWeek, schedule]);
 
   const saveWeekEdits = async () => {
@@ -4021,28 +4051,35 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, applySchedule
 
 
 function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfig, onBack }) {
-  const [lc, setLc] = useState({ ...scoring });
-  const [cfg, setCfg] = useState({ scoringFormat: "lowHighBonus", bonusType: "teamNetTotal", standingsMethod: "points", ...leagueConfig });
-  const [dirty, setDirty] = useState(false);
+  // Two forms on one screen — the scoring rules and the format/standings choices
+  // that live on the league config — each on useDirtyForm, which owns the "sync
+  // from Firestore unless the user is mid-edit" behaviour. `dirty` is DERIVED
+  // rather than tracked, so it cannot disagree with the values it describes.
+  //
+  // The config half saves a SUBSET of leagueConfig, so its onSave merges rather
+  // than replaces — writing cfg alone would drop every other field on that doc.
+  const rulesForm = useDirtyForm({ initialValue: { ...scoring }, onSave: saveScoringRules });
+  const cfgForm = useDirtyForm({
+    initialValue: { scoringFormat: "lowHighBonus", bonusType: "teamNetTotal", standingsMethod: "points", ...leagueConfig },
+    onSave: (v) => saveLeagueConfig({
+      ...leagueConfig,
+      scoringFormat: v.scoringFormat,
+      bonusType: v.bonusType,
+      standingsMethod: v.standingsMethod,
+      playoffTiebreaker: v.playoffTiebreaker || "hardestHole",
+    }),
+  });
+  const lc = rulesForm.value;
+  const setLc = rulesForm.setValue;
+  const cfg = cfgForm.value;
+  const setCfg = cfgForm.setValue;
+  const dirty = rulesForm.isDirty || cfgForm.isDirty;
   const { confirm, confirmModal } = useConfirm();
-
-  // Keep local form state in sync when Firestore updates — as long as the user isn't
-  // mid-edit. Prevents silently overwriting concurrent changes on Save. Adjusted
-  // during render rather than in an effect; see the note in AdminConfig below.
-  const [syncedScoring, setSyncedScoring] = useState(scoring);
-  const [syncedLeagueCfg, setSyncedLeagueCfg] = useState(leagueConfig);
-  if (!dirty && (scoring !== syncedScoring || leagueConfig !== syncedLeagueCfg)) {
-    setSyncedScoring(scoring);
-    setSyncedLeagueCfg(leagueConfig);
-    setLc({ ...scoring });
-    setCfg({ scoringFormat: "lowHighBonus", bonusType: "teamNetTotal", standingsMethod: "points", ...leagueConfig });
-  }
 
   const save = async () => {
     try {
-      await saveScoringRules(lc);
-      await saveLeagueConfig({ ...leagueConfig, scoringFormat: cfg.scoringFormat, bonusType: cfg.bonusType, standingsMethod: cfg.standingsMethod, playoffTiebreaker: cfg.playoffTiebreaker || "hardestHole" });
-      setDirty(false);
+      await rulesForm.save();
+      await cfgForm.save();
     } catch (e) {
       console.error("AdminScoring save failed:", e);
       alert("Save failed: " + e.message);
@@ -4050,8 +4087,9 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
   };
 
 
-  // One bundle rather than three attributes on fifteen call sites.
-  const fieldProps = { lc, setLc, setDirty };
+  // One bundle rather than two attributes on fifteen call sites. No setDirty:
+  // useDirtyForm derives it from the value, so a handler cannot forget to raise it.
+  const fieldProps = { lc, setLc };
 
   const format = cfg.scoringFormat;
   const isLowHigh = format === "lowHighBonus";
@@ -4080,7 +4118,7 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
       </div>
 
       <SubLabel>Match Format</SubLabel>
-      <Radio setDirty={setDirty} items={[
+      <Radio items={[
         { id: "lowHighBonus", label: "Low/High Match + Bonus", desc: "Low HCP match, high HCP match, plus a bonus category" },
         { id: "teamNetTotal", label: "Team Net Match Play", desc: "Combined team net per hole — winner of each hole earns 1 up; match-play status (1UP, 3&2, TIED) decides points" },
       ]} value={format} onChange={v => setCfg({ ...cfg, scoringFormat: v })} />
@@ -4116,7 +4154,7 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
       </Card>
 
       <SubLabel>Standings Method</SubLabel>
-      <Radio setDirty={setDirty} items={[
+      <Radio items={[
         { id: "points", label: "Points-Based", desc: "Teams accumulate points each week — most points wins" },
         { id: "record", label: "Win-Loss-Tie Record", desc: "Standings by win percentage — like a traditional sports league" },
       ]} value={cfg.standingsMethod} onChange={v => setCfg({ ...cfg, standingsMethod: v })} />
@@ -4129,7 +4167,7 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
           deterministic rule for deciding who advances when the overall match is even.
           Handled separately from regular-season ties which are allowed. */}
       <SubLabel>Playoff Tiebreaker</SubLabel>
-      <Radio setDirty={setDirty} items={[
+      <Radio items={[
         { id: "hardestHole", label: "Hardest Handicap Hole", desc: "Winner decided by score on the hole with HCP index 1 on the nine played. Most common playoff tiebreaker." },
         { id: "sumHoleHcpLosses", label: "Sum of HCP Indexes on Holes Lost", desc: "Lower total wins (losing on easy holes hurts more than losing on hard ones)." },
         { id: "lowestNet", label: "Lowest Team Net Total", desc: "Combined team net score — lowest wins." },
@@ -4150,7 +4188,7 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
             </div>
             <div>
               <SubLabel>Bonus — Type</SubLabel>
-              <Radio setDirty={setDirty} items={[
+              <Radio items={[
                 { id: "teamNetTotal", label: "Team Net Total", desc: "Combined net of both teammates" },
                 { id: "lowestNet", label: "Lowest Individual Net", desc: "Lowest single net score between all 4" },
                 { id: "totalGross", label: "Total Gross", desc: "Combined gross of both teammates" },
@@ -4468,9 +4506,19 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
 
 
 function AdminConfig({ config, saveLeagueConfig, resetSeasonData, recalcHandicaps, matchResults, saveMatchResult, teams, scoringRules, saveScoringRules, onBack }) {
-  const [lc, setLc] = useState({ ...config });
-  const [sr, setSr] = useState({ ...(scoringRules || {}) });
-  const [dirty, setDirty] = useState(false);
+  // Two forms in one screen — the league config and the handicap rules — each on
+  // useDirtyForm, which owns the "sync from Firestore unless the user is
+  // mid-edit" behaviour this component used to spell out by hand. `dirty` is
+  // DERIVED from the two rather than tracked, so it can never disagree with
+  // them: the old flag had to be set true by every onChange and false again in
+  // save(), and a handler that forgot either half was a Save button that lied.
+  const cfgForm = useDirtyForm({ initialValue: { ...config }, onSave: saveLeagueConfig });
+  const rulesForm = useDirtyForm({ initialValue: { ...(scoringRules || {}) }, onSave: saveScoringRules });
+  const lc = cfgForm.value;
+  const setLc = cfgForm.setValue;
+  const sr = rulesForm.value;
+  const setSr = rulesForm.setValue;
+  const dirty = cfgForm.isDirty || rulesForm.isDirty;
   const [resetting, setResetting] = useState(false);
   const [attesting, setAttesting] = useState(false);
   const [attestResult, setAttestResult] = useState(null);
@@ -4478,31 +4526,13 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, recalcHandicap
   const [recalcResult, setRecalcResult] = useState(null);
   const { confirm, confirmModal } = useConfirm();
 
-  // Keep local form state in sync when the Firestore doc updates — as long as the
-  // user hasn't started editing. Prevents silently overwriting a concurrent change
-  // made in another tab (or by another commissioner) when this user hits Save.
-  //
-  // Adjusted DURING RENDER rather than in an effect. React re-runs the component
-  // immediately without committing the first pass, so the inputs never paint a
-  // frame of stale text — where the effect version painted the old value, then
-  // replaced it. It also drops a setState-inside-an-effect cascade.
-  //
-  // This is what lib/useDirtyForm.js does, and where these forms should end up.
-  // Doing it inline for now because migrating them means rewriting every
-  // setLc/setDirty call site in the file.
-  const [syncedConfig, setSyncedConfig] = useState(config);
-  if (!dirty && config !== syncedConfig) { setSyncedConfig(config); setLc({ ...config }); }
-  const [syncedRules, setSyncedRules] = useState(scoringRules);
-  if (!dirty && scoringRules && scoringRules !== syncedRules) { setSyncedRules(scoringRules); setSr({ ...scoringRules }); }
-
   const save = async () => {
-    await saveLeagueConfig(lc);
+    await cfgForm.save();
     // Only write scoring rules if they actually changed — avoids churning the doc
-    // every time a user hits Save after editing only the league name.
-    if (scoringRules && (sr.hcpRecentCount !== scoringRules.hcpRecentCount || sr.hcpBestCount !== scoringRules.hcpBestCount)) {
-      await saveScoringRules(sr);
-    }
-    setDirty(false);
+    // every time somebody hits Save after editing only the league name. This used
+    // to compare the two hcp fields by hand, which answered the same question for
+    // those two and "no" for every other field on the form.
+    if (rulesForm.isDirty) await rulesForm.save();
   };
 
   const handleBack = async () => {
@@ -4593,9 +4623,9 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, recalcHandicap
       </div>
       <SubLabel>League Basics</SubLabel>
       <Card style={{ padding: 14, marginBottom: 16 }}>
-        <div style={{ marginBottom: 10 }}><div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 4 }}>League Name</div><input value={lc.name} onChange={e => { setLc({ ...lc, name: e.target.value }); setDirty(true); }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.base }} /></div>
-        <div style={{ marginBottom: 10 }}><div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 4 }}>Season Year</div><input value={lc.year} onChange={e => { setLc({ ...lc, year: parseInt(e.target.value) || 2026 }); setDirty(true); }} type="number" inputMode="numeric" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.base }} /></div>
-        <div><div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 4 }}>Invite Code</div><input value={lc.inviteCode || ""} onChange={e => { setLc({ ...lc, inviteCode: e.target.value.toUpperCase() }); setDirty(true); }} placeholder="e.g. MNQ2026" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.base, letterSpacing: 2, textTransform: "uppercase" }} /><div style={{ fontSize: FS.xs, color: K.t3, marginTop: 4 }}>New members must enter this code to join. Leave blank to allow anyone.</div></div>
+        <div style={{ marginBottom: 10 }}><div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 4 }}>League Name</div><input value={lc.name} onChange={e => { setLc({ ...lc, name: e.target.value }); }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.base }} /></div>
+        <div style={{ marginBottom: 10 }}><div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 4 }}>Season Year</div><input value={lc.year} onChange={e => { setLc({ ...lc, year: parseInt(e.target.value) || 2026 }); }} type="number" inputMode="numeric" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.base }} /></div>
+        <div><div style={{ fontSize: FS.xs, color: K.t3, marginBottom: 4 }}>Invite Code</div><input value={lc.inviteCode || ""} onChange={e => { setLc({ ...lc, inviteCode: e.target.value.toUpperCase() }); }} placeholder="e.g. MNQ2026" style={{ width: "100%", padding: 10, borderRadius: 8, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.base, letterSpacing: 2, textTransform: "uppercase" }} /><div style={{ fontSize: FS.xs, color: K.t3, marginTop: 4 }}>New members must enter this code to join. Leave blank to allow anyone.</div></div>
       </Card>
 
       {/* ── Handicaps section ──
@@ -4612,7 +4642,7 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, recalcHandicap
               <span style={{ fontSize: FS.sm, color: K.t2 }}>Recent rounds to consider</span>
               <input
                 value={sr.hcpRecentCount ?? ""}
-                onChange={e => { setSr({ ...sr, hcpRecentCount: parseInt(e.target.value) || 0 }); setDirty(true); }}
+                onChange={e => { setSr({ ...sr, hcpRecentCount: parseInt(e.target.value) || 0 }); }}
                 onFocus={e => setTimeout(() => e.target.select(), 10)}
                 type="number" inputMode="numeric" step="1"
                 style={{ width: 58, padding: "5px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.sm, textAlign: "center" }}
@@ -4622,7 +4652,7 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, recalcHandicap
               <span style={{ fontSize: FS.sm, color: K.t2 }}>Best rounds to average</span>
               <input
                 value={sr.hcpBestCount ?? ""}
-                onChange={e => { setSr({ ...sr, hcpBestCount: parseInt(e.target.value) || 0 }); setDirty(true); }}
+                onChange={e => { setSr({ ...sr, hcpBestCount: parseInt(e.target.value) || 0 }); }}
                 onFocus={e => setTimeout(() => e.target.select(), 10)}
                 type="number" inputMode="numeric" step="1"
                 style={{ width: 58, padding: "5px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.sm, textAlign: "center" }}

@@ -584,16 +584,22 @@ export default function ScheduleView({ groupResults, schedule, teams, players, m
       if (!wk.locked) return i;
     }
     return schedule.length - 1;
-  }, [schedule, matchResults]);
+    // schedule only: this walks weeks looking at rainedOut / matches / locked,
+    // all of which live on the schedule. matchResults was listed and never read.
+  }, [schedule]);
 
-  const isWeekComplete = (wk) => {
+  // useCallback so the memos below can depend on this function rather than on a
+  // hand-copied list of what it happens to read. They listed `matchResults` and
+  // not `groupResults`, which is the failure mode: a group signing its card
+  // completed the week without the list noticing.
+  const isWeekComplete = useCallback((wk) => {
     if (!wk.matches || wk.matches.length === 0) return false;
     // A week is complete if it's locked OR if every card in it — team match
     // or individual group — has a signed result. Groups sign into their own
     // collection; weekFullyScored knows how to check both.
     if (wk.locked) return true;
     return weekFullyScored(wk, matchResults, groupResults);
-  };
+  }, [matchResults, groupResults]);
 
   const fmtTeeTime = (idx) => {
     const base = leagueConfig?.startTime ?? "4:28 PM";
@@ -631,7 +637,7 @@ export default function ScheduleView({ groupResults, schedule, teams, players, m
       else up.push(wk);
     });
     return { upcoming: up, complete: done };
-  }, [schedule, matchResults]);
+  }, [schedule, isWeekComplete]);
 
   const weeksToShow = useMemo(() => {
     if (myOnly || showAll) return { upcoming, complete };
@@ -641,7 +647,7 @@ export default function ScheduleView({ groupResults, schedule, teams, players, m
       return { upcoming: [wk], complete: [] };
     }
     return { upcoming: schedule.slice(0, 1), complete: [] };
-  }, [showAll, myOnly, schedule, currentWeekIdx, upcoming, complete]);
+  }, [showAll, myOnly, schedule, currentWeekIdx, upcoming, complete, isWeekComplete]);
 
   const getExpanded = (weekNum) => {
     if (expandedWeeks[weekNum] !== undefined) return expandedWeeks[weekNum];

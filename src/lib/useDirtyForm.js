@@ -80,16 +80,33 @@ export function useDirtyForm({ initialValue, onSave }) {
   const cleanKey = stableStringify(clean);
   const isDirty = stableStringify(value) !== cleanKey;
 
-  // Sync incoming initialValue → local state ONLY when not dirty, so a user
-  // mid-edit keeps their work and save() reconciles.
+  // Sync incoming initialValue → local state ONLY when it actually CHANGES, and
+  // only while the form is not dirty, so a user mid-edit keeps their work and
+  // save() reconciles.
   //
-  // Compared on the STRINGIFIED values rather than on identity, so a caller
-  // that builds initialValue inline — a new object every render — syncs once
-  // and then stops, instead of looping forever.
+  // ── Why this tracks the last-seen initialValue ──
+  // It used to fire on `cleanKey !== initKey` — whenever the clean snapshot
+  // differed from the incoming value, rather than whenever the incoming value
+  // moved. Those are the same thing right up until you SAVE: save() sets the
+  // clean snapshot to what was written, but the prop is still the old document
+  // until Firestore's snapshot comes back, so the two now differ and the form
+  // syncs itself BACKWARDS onto the pre-save value. The field visibly reverts
+  // to what you just replaced.
+  //
+  // Tracking what we last saw makes the condition say what the comment always
+  // claimed: react to an incoming CHANGE, not to a disagreement.
+  //
+  // Compared on the STRINGIFIED value rather than on identity, so a caller that
+  // builds initialValue inline — a new object every render — syncs once and
+  // then stops, instead of looping forever.
   const initKey = stableStringify(initialValue);
-  if (!isDirty && cleanKey !== initKey) {
-    setClean(initialValue);
-    setValueRaw(initialValue);
+  const [seenInit, setSeenInit] = useState(initKey);
+  if (initKey !== seenInit) {
+    setSeenInit(initKey);
+    if (!isDirty) {
+      setClean(initialValue);
+      setValueRaw(initialValue);
+    }
   }
 
   const setValue = useCallback((next) => {
