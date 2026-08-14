@@ -39,7 +39,7 @@
 // one parser. The year lives on the round's `season` field, matching how
 // schedule weeks resolve their year from leagueConfig.
 
-import { formatTeeTime } from "../theme";
+import { formatTeeTime } from "./matches";
 import { parseScheduleDate, formatScheduleDate, compareScheduleDateToToday } from "./scheduleDate";
 
 // Foursome is the default and the overwhelmingly common case; the form

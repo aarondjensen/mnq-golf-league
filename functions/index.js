@@ -359,7 +359,7 @@ exports.onAttendanceMarked = onDocumentWritten(
 
       if (after.league_id && after.league_id !== LEAGUE_ID) return;
 
-      const { week, playerId, status, markedBy } = after;
+      const { week, playerId, status } = after;
       if (!week || !playerId || !status) {
         logger.warn("onAttendanceMarked: missing required fields", { week, playerId, status });
         return;

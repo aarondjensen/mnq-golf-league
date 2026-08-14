@@ -1,5 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
-import { K, EmptyState, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, CHEVRON_SIZE, calcPlayerHcp, getWeekSide, LoadingPanel, SkeletonList, FS, FW } from "../theme";
+import { K, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, CHEVRON_SIZE, FS, FW } from "../theme";
+import { EmptyState, LoadingPanel, SkeletonList } from "../components/ui";
+import { calcPlayerHcp } from "../lib/handicap";
+import { getWeekSide } from "../lib/leagueConfig";
 
 // ── HcpTrendChart ─────────────────────────────────────────────────────
 // Inline SVG line chart of a player's handicap-over-time. Each x-axis
@@ -11,7 +14,7 @@ import { K, EmptyState, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, CHEVRON_S
 // the season — climbing, falling, holding steady — without having to
 // open the full rounds list and do mental math.
 //
-// Why this lives in Players.jsx and not theme.jsx: it's small and only
+// Why this lives in Players.jsx and not lib/league.js: it's small and only
 // used here. If a second consumer ever appears, promote it.
 function HcpTrendChart({ playerScores, recentN, bestN, par, currentHcp }) {
   // Build the (round, hcp-going-into-it) series. Skip rounds where there

@@ -60,7 +60,8 @@
 // saveMatchResult, schedule, teams, players, seedMap.
 
 import { computeMatchResult } from "./matchCalc";
-import { getWeekSide, getPlayerHcpAtWeek } from "../theme";
+import { getPlayerHcpAtWeek } from "./handicap";
+import { getWeekSide } from "./leagueConfig";
 
 /**
  * Detect drift in saved match_result docs and write corrections.
@@ -220,7 +221,7 @@ export function autoHealMatchResults({
         healedIds.add(r.id);
         saveMatchResult({ ...r, ...calc });
       }
-    } catch (e) {
+    } catch {
       // Auto-heal is opportunistic. If computeMatchResult throws (e.g.
       // because a player record was deleted, a team was reassigned, etc.)
       // we just skip this record; the inline expanded scorecard will

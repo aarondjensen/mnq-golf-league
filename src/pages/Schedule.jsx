@@ -1,5 +1,12 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
-import { K, SubLabel, Pill, EmptyState, lastNamesOnly, formatTeeTime, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE, FS, FW, buildSeedMap, buildPlayoffSeedMap, LoadingPanel, SkeletonList, buildHistoricalPlayers, isIndivGroupMatch, findGroupResult, weekFullyScored, resolveIndivRound } from "../theme";
+import { K, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE, FS, FW } from "../theme";
+import { SubLabel, Pill, EmptyState, LoadingPanel, SkeletonList } from "../components/ui";
+import { buildHistoricalPlayers } from "../lib/handicap";
+import { resolveIndivRound } from "../lib/individualRounds";
+import { getWeekSide } from "../lib/leagueConfig";
+import { formatTeeTime, isIndivGroupMatch, findGroupResult, weekFullyScored } from "../lib/matches";
+import { lastNamesOnly } from "../lib/playerNames";
+import { buildSeedMap, buildPlayoffSeedMap } from "../lib/seeding";
 import { LEAGUE_ID } from "../firebase";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { Popup } from "../components/Popup";
@@ -8,7 +15,8 @@ import { parseScheduleDate } from "../lib/scheduleDate";
 import { autoHealMatchResults } from "../lib/autoHealMatchResults";
 import { computeRoundLine } from "../lib/indivGroups";
 import { IndivGroupCard } from "../components/IndivGroupCard";
-import { parseTiebreakerResult, TeamMatchupCard, ResultCenter } from "../TeamMatchupCard";
+import { TeamMatchupCard, ResultCenter } from "../TeamMatchupCard";
+import { parseTiebreakerResult } from "../lib/matches";
 import { EditConfirmationPopup } from "../components/EditConfirmationPopup";
 import { FunRounds } from "../components/FunRounds";
 import { hasUpcomingFunRound } from "../lib/funRounds";
@@ -406,7 +414,7 @@ export default function ScheduleView({ groupResults, schedule, teams, players, m
   // Second step: actually persist after the user confirms in the diff popup.
   const commitEditedScores = async () => {
     if (!pendingEdits || !editingMatch) return;
-    const { wk, m, res } = editingMatch;
+    const { res } = editingMatch;
     // Pull t2 alongside t1 — earlier version of this function omitted t2 from
     // the destructure, which threw ReferenceError on the saveMatchResult call
     // that needs both team IDs to build the result doc's id. The throw exited
@@ -755,7 +763,7 @@ export default function ScheduleView({ groupResults, schedule, teams, players, m
   };
 
   // ── My Schedule compact row ──
-  const renderMyWeek = (wk, isDone) => {
+  const renderMyWeek = (wk) => {
     const isPlayoff = wk.isPlayoff === true;
     const isComplete = isWeekComplete(wk);
     // "Treat as TBD" — covers two cases that should both show no opponent
@@ -1381,7 +1389,7 @@ export default function ScheduleView({ groupResults, schedule, teams, players, m
   };
 
   // ── Full week view ──
-  const renderWeek = (wk, isDone) => {
+  const renderWeek = (wk) => {
     const isPlayoff = wk.isPlayoff === true;
     const weekComplete = isWeekComplete(wk);
     const isRainedOut = wk.rainedOut === true;
@@ -1791,7 +1799,7 @@ export default function ScheduleView({ groupResults, schedule, teams, players, m
 
       {/* ═══ Commissioner Edit Scores Popup ═══ */}
       {editingMatch && (() => {
-        const { wk, m, res } = editingMatch;
+        const { wk, m } = editingMatch;
         const side = wk.side || getWeekSide(wk.week);
         const pars = course ? (side === 'front' ? course.frontPars : course.backPars) : [4,4,4,3,5,4,4,3,5];
         // hcps drives the stroke-dot row above each player's input row. Same
@@ -1870,7 +1878,7 @@ export default function ScheduleView({ groupResults, schedule, teams, players, m
                   name + handicap pill + absent toggle; bottom line is the
                   9 score input cells. This stops the player name from eating
                   into the score input area and exposes the handicap reliably. */}
-              {[...t1Pids, null, ...t2Pids].map((pid, idx) => {
+              {[...t1Pids, null, ...t2Pids].map((pid) => {
                 if (pid === null) return <div key="sep" style={{ height: 1, background: K.bdr + "40", margin: "8px 0" }} />;
                 const absent = isAbs(pid);
                 // Per-hole stroke allocation for THIS player. Deliberately

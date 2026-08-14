@@ -1,4 +1,5 @@
 import { K, NAME_SIZE, FS, FW } from "./theme";
+import { parseTiebreakerResult } from "./lib/matches";
 
 // ══════════════════════════════════════════════════════════════════
 //  TeamMatchupCard — shared visual identity for matchup cards
@@ -245,17 +246,6 @@ export function TeamMatchupCard({
 // ══════════════════════════════════════════════════════════════════
 //  Helper: split a "TIE (Hole 5)" result text into stacked parts
 // ══════════════════════════════════════════════════════════════════
-// Parses tiebreaker-style match result strings and returns
-//   { isTiebreaker: true, label: "Hole 5" }   for "TIE (Hole 5)"
-//   { isTiebreaker: false }                   for "3&1", "1UP", "TIED", etc.
-// Used by center-strip renderers in Scoring/Schedule/Standings to display the
-// tiebreaker reason on a second line below a big "TIE" token.
-export function parseTiebreakerResult(raw) {
-  if (!raw) return { isTiebreaker: false };
-  const m = String(raw).match(/^TIE\s*\(([^)]+)\)\s*$/i);
-  if (m) return { isTiebreaker: true, label: m[1] };
-  return { isTiebreaker: false };
-}
 
 // ══════════════════════════════════════════════════════════════════
 //  ResultCenter — standard center-strip content for a match result

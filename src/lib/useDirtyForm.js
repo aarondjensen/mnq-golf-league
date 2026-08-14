@@ -1,70 +1,65 @@
 // ══════════════════════════════════════════════════════════════════
-//  useDirtyForm — local-state form pattern with dirty tracking and
-//                 explicit save.
+//  useDirtyForm — local-state form with dirty tracking + explicit save.
 // ══════════════════════════════════════════════════════════════════
 //
-// Why this exists
-// ───────────────
-// A handful of admin-side flows need to: capture user edits in local
-// state, expose a "dirty" indicator (something has changed since the
-// last load/save), and commit on an explicit user action. Doing this
-// inline tends to produce a recurring class of bugs:
+// Captures user edits in local state, exposes an `isDirty` indicator,
+// and commits on an explicit user action. Fixes the recurring class of
+// bugs that inline "save on every tap" code tends to produce:
 //
-//   1. Stale-closure auto-save. Some early code did "save on every
-//      tap" by reading local state inside the tap handler. The handler
-//      closure captures local state at render time, so two rapid taps
-//      both save the OLD state, racing each other and losing the
-//      intermediate edits. We saw this in Admin's customSeedWeeks UI
-//      before it was migrated to "explicit Save button + dirty flag."
+//   1. Stale-closure auto-save — two rapid taps both read the OLD state
+//      and race, losing the intermediate edit. Admin's customSeedWeeks UI
+//      had exactly this before it moved to an explicit Save button.
+//   2. Always-live Save button — confuses users and triggers needless
+//      writes that flush realtime subscriptions and re-render everyone.
+//   3. Forgotten reset-on-save — the dirty flag stays true forever.
 //
-//   2. Forgetting the dirty flag. Without an "is dirty?" check, the
-//      Save button is always live, which both confuses users (am I
-//      saving anything?) and triggers unnecessary Firestore writes
-//      that flush the realtime subscription and re-render everyone.
-//
-//   3. Forgetting the reset-on-save. After a successful save, local
-//      state and the upstream server-derived value should reconcile.
-//      Without a reset, the dirty flag stays true forever until the
-//      component unmounts.
-//
-// What this provides
-// ──────────────────
+// Usage
+// ─────
 //   const { value, setValue, isDirty, save, reset } = useDirtyForm({
 //     initialValue: configFromServer,
-//     onSave: async (currentValue) => { await saveConfig(currentValue); },
+//     onSave: async (current) => { await saveConfig(current); },
 //   });
 //
-//   • `value`     — local working copy of the form's data
-//   • `setValue`  — update working copy; flips isDirty true
-//   • `isDirty`   — true when value differs from initialValue (deep
-//                   compared via JSON.stringify), false otherwise.
-//                   Driven by content, not setValue calls — so bouncing
-//                   value out and back to initialValue correctly clears
-//                   dirty.
-//   • `save`      — async; calls onSave(currentValue), then resets
-//                   initialValue snapshot to currentValue so isDirty
-//                   becomes false. Returns the onSave result.
-//   • `reset`     — drop local edits, snap value back to initialValue.
+//   • value     — local working copy
+//   • setValue  — update working copy (accepts a value or an updater fn,
+//                 matching useState); flips isDirty when content differs
+//   • isDirty   — true when value differs from the clean snapshot, deep-
+//                 compared via key-sorted JSON so insertion-order changes
+//                 in nested objects don't false-positive
+//   • save      — async; calls onSave(value), then reconciles the clean
+//                 snapshot so isDirty flips false on the next render
+//   • reset     — discard edits, snap value back to the clean snapshot
 //
-// initialValue tracking
-// ─────────────────────
-// The server-side value is the caller's prop or upstream state. It can
-// change while the form is open (e.g., another commissioner saves a
-// concurrent edit). The hook syncs to incoming initialValue when the
-// form is NOT dirty. When the form IS dirty, incoming changes are
-// ignored — letting the user finish their edits without losing them
-// to a real-time update. Save then reconciles by snapping initialValue
-// to the saved value.
+// Incoming initialValue changes sync into local state ONLY when not
+// dirty — if the user is mid-edit, their work is preserved and save()
+// reconciles. That matters here because a config document re-emits on
+// every unrelated change to the same singleton, and a naive sync would
+// wipe whatever the commissioner was halfway through typing.
 //
-// Stable-stringify
-// ────────────────
-// Uses the same key-sorted JSON.stringify pattern as App.jsx's
-// saveLeagueConfig dirty check, so insertion-order changes in nested
-// objects don't false-positive as "dirty." Non-trivial perf cost for
-// huge objects, but for typical form data (config blobs, seed weeks)
-// it's negligible.
+// ── Why the clean snapshot is state and not a ref ───────────────────
+// It was a ref, on the reasoning that nothing in the render tree depended
+// on it. That reasoning was wrong twice over, and WBC — which adopted this
+// hook and put it in front of a real form — hit both:
+//
+//   1. `isDirty` IS derived from it and IS rendered. Writing the ref in
+//      save() therefore changed the answer without scheduling a render, so
+//      a saved form kept showing its Save button lit until something else
+//      happened to re-render it.
+//   2. Reading a ref during render is a side effect. React Compiler
+//      responds by giving up on memoizing the whole component.
+//
+// Making it state fixes both: save() now schedules the re-render that
+// clears the flag. The sync is likewise done DURING RENDER rather than in
+// an effect — React re-runs the component immediately without committing
+// the first pass, so the inputs never paint a frame of stale text, and no
+// synchronous setState-inside-an-effect cascade is created. The old effect
+// also listed `value` as a dependency, so it re-ran on every keystroke to
+// decide it had nothing to do.
+//
+// Bourbon Cup and WBC both carry this version; MnQ was the last copy on
+// the old shape.
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useCallback } from "react";
 
 function stableStringify(obj) {
   return JSON.stringify(obj, (_k, v) => {
@@ -79,54 +74,38 @@ function stableStringify(obj) {
 
 export function useDirtyForm({ initialValue, onSave }) {
   const [value, setValueRaw] = useState(initialValue);
-  // Snapshot of the "clean" value — what's currently committed on the
-  // server side. Updated when:
-  //   1. initialValue changes upstream AND we're not dirty (sync).
-  //   2. save() succeeds (reconcile).
-  // A ref instead of state because nothing in the render tree directly
-  // depends on this value — only the dirty check reads it.
-  const cleanRef = useRef(initialValue);
+  // The committed ("clean") snapshot. See the header for why this is state.
+  const [clean, setClean] = useState(initialValue);
 
-  // initialValueRef tracks the most recent initialValue prop, used by
-  // the sync effect below to know when to overwrite local state.
-  const initialValueRef = useRef(initialValue);
+  const cleanKey = stableStringify(clean);
+  const isDirty = stableStringify(value) !== cleanKey;
 
-  // Sync incoming initialValue → local state ONLY when not dirty.
-  // If dirty, the user is mid-edit; preserving their work matters more
-  // than reflecting a concurrent server-side change. Save will reconcile.
-  useEffect(() => {
-    initialValueRef.current = initialValue;
-    const isCurrentlyDirty = stableStringify(value) !== stableStringify(cleanRef.current);
-    if (!isCurrentlyDirty) {
-      cleanRef.current = initialValue;
-      setValueRaw(initialValue);
-    }
-  }, [initialValue, value]);
+  // Sync incoming initialValue → local state ONLY when not dirty, so a user
+  // mid-edit keeps their work and save() reconciles.
+  //
+  // Compared on the STRINGIFIED values rather than on identity, so a caller
+  // that builds initialValue inline — a new object every render — syncs once
+  // and then stops, instead of looping forever.
+  const initKey = stableStringify(initialValue);
+  if (!isDirty && cleanKey !== initKey) {
+    setClean(initialValue);
+    setValueRaw(initialValue);
+  }
 
   const setValue = useCallback((next) => {
-    // Accept either a plain next value or an updater function (matches
-    // useState's behavior). Updater receives the current value.
     setValueRaw(prev => typeof next === "function" ? next(prev) : next);
   }, []);
 
-  const isDirty = stableStringify(value) !== stableStringify(cleanRef.current);
-
   const save = useCallback(async () => {
-    // Snapshot the value at the moment of save — protects against the
-    // user editing further while the save is in flight. The snapshot
-    // becomes the new clean state after success.
+    // Snapshot the value at save time — protects against further edits
+    // while the save is in flight. The snapshot becomes the new clean state.
     const snapshot = value;
     const result = await onSave(snapshot);
-    // Reconcile — incoming initialValue update will catch up via the
-    // sync effect, but we also update cleanRef immediately so isDirty
-    // flips to false on the very next render.
-    cleanRef.current = snapshot;
+    setClean(snapshot);
     return result;
   }, [value, onSave]);
 
-  const reset = useCallback(() => {
-    setValueRaw(cleanRef.current);
-  }, []);
+  const reset = useCallback(() => { setValueRaw(clean); }, [clean]);
 
   return { value, setValue, isDirty, save, reset };
 }

@@ -1,5 +1,12 @@
 import { useState, useMemo, useCallback, useRef, useEffect } from "react";
-import { K, Pill, EmptyState, lastNamesOnly, getWeekSide, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, buildSeedMap, buildPlayoffSeedMap, buildStandingsForSeed, recordPoints, LoadingPanel, SkeletonList, buildHistoricalPlayers, isIndivGroupMatch, currentPlayoffRoundIdx, orderByBracketIdx, FS, FW } from "../theme";
+import { K, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, FS, FW } from "../theme";
+import { Pill, EmptyState, LoadingPanel, SkeletonList } from "../components/ui";
+import { buildHistoricalPlayers } from "../lib/handicap";
+import { getWeekSide } from "../lib/leagueConfig";
+import { isIndivGroupMatch } from "../lib/matches";
+import { lastNamesOnly } from "../lib/playerNames";
+import { buildSeedMap, buildPlayoffSeedMap, currentPlayoffRoundIdx, orderByBracketIdx } from "../lib/seeding";
+import { buildStandingsForSeed, recordPoints } from "../lib/standings";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { readScoreEffective, getStrokesForHole, resultLetterFor } from "../lib/matchCalc";
 import { autoHealMatchResults } from "../lib/autoHealMatchResults";
@@ -10,7 +17,7 @@ import { isSeasonComplete } from "../lib/seasonPhase";
 import { useIndividualScores } from "../lib/useIndividualScores";
 import { TeamMatchupCard } from "../TeamMatchupCard";
 
-// Standings calculation lives in theme.jsx as buildStandingsForSeed — see
+// Standings calculation lives in lib/league.js as buildStandingsForSeed — see
 // imports above. Standings.jsx used to have a local copy of nearly the same
 // logic with subtly different semantics (slightly different tiebreaker
 // chain, different field name for games-played). The audit found the two
@@ -445,7 +452,7 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
         // scores, no VS pill — just seed badge + name with winner highlight. The green
         // tint on the whole card (instead of just one half) makes advancement obvious.
         const BracketCard = ({ mu, configMu }) => {
-          const teamRow = (seed, name, isWinner, isLoser, isConsolation) => {
+          const teamRow = (seed, name, isWinner, isLoser) => {
             // Unified blue seed badge (Full League style) — matches the card
             // view and the rest of the app. isConsolation no longer alters the
             // badge color; advancement is still shown via the green winner tint.
@@ -722,7 +729,6 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                             let nextCardDeltaY = 0;
                             let shouldDrawConnector = false;
                             if (ri >= 1 && ri < bracketData.length - 1 && !isConsolation) {
-                              const nextRound = bracketData[ri + 1];
                               const nextPrevCount = matchCount;
                               const nextAdvCount = Math.max(1, Math.ceil(nextPrevCount / 2));
                               const nextTargetIdx = Math.floor(mi / 2);
@@ -788,7 +794,6 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                   1st-and-2nd is the same as 3rd-and-4th by design. */}
               {(() => {
                 const lastIdx = bracketData.length - 1;
-                const lastRound = bracketData[lastIdx];
                 const lastG = geom[lastIdx] || { topPad: 0, gap: BASE_GAP };
                 const lastAdvCount = Math.max(1, Math.ceil((lastIdx > 0 ? bracketData[lastIdx - 1] : { matchups: [], config: [] }).matchups.length / 2) || 1);
                 const trophyCardY = (mi) => {
@@ -910,7 +915,7 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
       })()}
 
       {/* PER-ROUND VIEW — stacked matchup cards, non-playoff matches below */}
-      {view !== "bracket" && roundsToRender.map((round, idx) => {
+      {view !== "bracket" && roundsToRender.map((round) => {
         const ri = bracketData.indexOf(round);
         const matchCount = Math.max(round.matchups.length, round.config.length, 1);
         return (
@@ -1226,7 +1231,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
   // (and the expanded per-week list) with games that were never part of the
   // regular-season race. Same rule the rest of the app already applies for
   // playoff seeding — see buildPlayoffSeedMap / computeRegularSeasonSeeds in
-  // theme.jsx, which filter on `locked === true && isPlayoff !== true`.
+  // lib/league.js, which filter on `locked === true && isPlayoff !== true`.
   const rsLockedWeeks = useMemo(() => {
     const set = new Set();
     (schedule || []).forEach(wk => { if (wk.locked && wk.isPlayoff !== true) set.add(wk.week); });
@@ -1318,9 +1323,6 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     const wkScores = weekScores[mr.week];
     if (!wkScores) return <LoadingPanel size="compact" />;
 
-    const myTeamObj = teams.find(t => t.id === teamId);
-    const oppTeamId = mr.team1Id === teamId ? mr.team2Id : mr.team1Id;
-    const oppTeamObj = teams.find(t => t.id === oppTeamId);
     const t1Pids = [teams.find(t => t.id === mr.team1Id)?.player1, teams.find(t => t.id === mr.team1Id)?.player2].filter(Boolean);
     const t2Pids = [teams.find(t => t.id === mr.team2Id)?.player1, teams.find(t => t.id === mr.team2Id)?.player2].filter(Boolean);
 
@@ -1580,7 +1582,7 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
             const results = isExp ? getTeamResults(s.teamId) : [];
             const curPos = i + 1;
             // Displayed Pts comes from the canonical recordPoints helper in
-            // theme.jsx (2 per win, 1 per tie) — the same function the
+            // lib/league.js (2 per win, 1 per tie) — the same function the
             // record-mode sort in buildStandingsForSeed uses, so the Pts
             // column and the row order can never disagree.
             const recordPts = recordPoints(s);

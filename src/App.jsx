@@ -1,7 +1,13 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { db, LF, LEAGUE_ID, _auth, _googleProvider, nativeGoogleSignIn, nativeAppleSignIn, NATIVE_APPLE_ENABLED, nativeAuthSignOut, deleteAccount, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, signOut, updateProfile, sendPasswordResetEmail } from "./firebase";
 import { Capacitor } from "@capacitor/core";
-import { K, I, DEFAULT_SCORING, applyTheme, getCSS, calcPlayerHcp, classifyScoreHole, LoadingPanel, serializeSeedWeeks, deserializeLeagueConfig, weekFullyAttested, FS, FW } from "./theme";
+import { K, applyTheme, getCSS, FS, FW } from "./theme";
+import { LoadingPanel } from "./components/ui";
+import { I } from "./components/icons";
+import { calcPlayerHcp } from "./lib/handicap";
+import { classifyScoreHole } from "./lib/individualRounds";
+import { DEFAULT_SCORING, serializeSeedWeeks, deserializeLeagueConfig } from "./lib/leagueConfig";
+import { weekFullyAttested } from "./lib/matches";
 import { usePullToRefresh } from "./lib/usePullToRefresh";
 import { computeUpcomingBanner } from "./lib/upcomingBanner";
 import { autoSeedIfReady as autoSeedIfReadyLib } from "./lib/scheduleAutoSeed";
@@ -123,7 +129,7 @@ export default function GolfLeagueApp() {
   const [ctpData, setCtpData] = useState([]);
   const [matchResults, setMatchResults] = useState([]);
   // Signature + attestation records for playoff individual groups. Separate
-  // collection from match results — see theme.jsx:indivGroupKey for why a
+  // collection from match results — see lib/league.js:indivGroupKey for why a
   // teamless record can't safely share league_match_results.
   const [groupResults, setGroupResults] = useState([]);
   // Casual tee times outside the official schedule ("fun" rounds). Their
@@ -177,7 +183,9 @@ export default function GolfLeagueApp() {
 
   const [members, setMembers] = useState([]);
   const [membersLoaded, setMembersLoaded] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+  // The flag itself is never rendered — only the setter is called, to drive the
+  // sync banner through a ref. Holding the slot keeps useState's shape.
+  const [, setSyncing] = useState(false);
   const [liveWeek, setLiveWeek] = useState(null);
   const validTabs = ["standings", "scoring", "schedule", "players", "stats", "ctp", "admin", "notifications"];
   const getTabFromHash = () => {
@@ -1486,7 +1494,7 @@ export default function GolfLeagueApp() {
       } else {
         appToast?.(`Couldn't enable: ${result.error || result.state}`, "error");
       }
-    } catch (e) {
+    } catch {
       appToast?.("Couldn't enable notifications", "error");
     } finally {
       setNotifBannerBusy(false);

@@ -39,7 +39,9 @@
 // isolation is structural rather than a filter someone has to remember.
 
 import { useState, useEffect, useMemo } from "react";
-import { K, Pill, EmptyState, SubLabel, initialLastName, LIST_GAP, CARD_RADIUS, FS, FW } from "../theme";
+import { K, LIST_GAP, CARD_RADIUS, FS, FW } from "../theme";
+import { Pill, EmptyState, SubLabel } from "./ui";
+import { initialLastName } from "../lib/playerNames";
 import { Popup, ConfirmModal } from "./Popup";
 import {
   splitFunRounds,

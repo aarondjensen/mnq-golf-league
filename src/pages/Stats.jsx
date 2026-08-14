@@ -1,6 +1,52 @@
 import { useState, useEffect, useMemo, useRef, memo } from "react";
-import { K, EmptyState, SubLabel, LIST_GAP, CARD_RADIUS, getWeekSide, LoadingPanel, resolvePlayerHcpForWeek, resolveIndivRound } from "../theme";
+import { K, LIST_GAP, CARD_RADIUS } from "../theme";
+import { EmptyState, SubLabel, LoadingPanel } from "../components/ui";
+import { resolvePlayerHcpForWeek } from "../lib/handicap";
+import { resolveIndivRound } from "../lib/individualRounds";
+import { getWeekSide } from "../lib/leagueConfig";
 import { buildStrokesMap, resultLetterFor } from "../lib/matchCalc";
+
+// ══════════════════════════════════════════════════════════════════
+//  Hoisted out of the page component.
+// ══════════════════════════════════════════════════════════════════
+// Both of these were declared INSIDE the page, which gives them a new
+// identity on every render — React then unmounts and remounts them rather
+// than updating, throwing away whatever DOM state they held. Harmless-looking
+// until one of them wraps something stateful.
+//
+// Section took `sectionRefs` off the closure; it is a prop now.
+const Section = ({ title, refKey, sectionRefs }) => (
+  <div ref={refKey ? sectionRefs[refKey] : undefined}>
+    <div style={{
+      fontSize: 9, fontWeight: 800, color: K.t3,
+      letterSpacing: 2, textTransform: "uppercase",
+      margin: "8px 0 10px", paddingBottom: 6,
+      borderBottom: `1px solid ${K.bdr}40`,
+    }}>{title}</div>
+  </div>
+);
+
+const MiniToggle = ({ value, onChange, options }) => (
+  <div style={{ display: "flex", background: K.inp, borderRadius: 5, padding: 1 }}>
+    {options.map(opt => (
+      <button
+        key={opt.value}
+        onClick={() => onChange(opt.value)}
+        style={{
+          padding: "3px 8px", borderRadius: 4, border: "none",
+          background: value === opt.value ? K.acc : "transparent",
+          color: value === opt.value ? K.bg : K.t3,
+          fontSize: 9, fontWeight: 800, cursor: "pointer",
+          letterSpacing: .8, textTransform: "uppercase",
+          transition: "all .15s",
+        }}
+      >
+        {opt.label}
+      </button>
+    ))}
+  </div>
+);
+
 
 // Parse the defeat margin out of a match-play result string. The result text
 // is golf shorthand produced by computeMatchResult:
@@ -72,10 +118,16 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
   const [birdiesAgg, setBirdiesAgg] = useState("total");
   const [eaglesAgg,  setEaglesAgg]  = useState("total");
 
+  // `loading` already starts true, so this only matters when the fetcher changes
+  // identity and we go round again. Done during render rather than synchronously
+  // inside the effect, which is what the rule is about — an effect that sets state
+  // on the way in commits one render, then immediately schedules another.
+  const [syncedFetcher, setSyncedFetcher] = useState(fetchSeasonScores);
+  if (fetchSeasonScores !== syncedFetcher) { setSyncedFetcher(fetchSeasonScores); setLoading(true); }
+
   useEffect(() => {
     if (!fetchSeasonScores) return;
     let cancelled = false;
-    setLoading(true);
     fetchSeasonScores().then(s => {
       if (cancelled) return;
       setScores(s);
@@ -604,26 +656,6 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
   //  Total/Avg switch. Visual weight kept low so it doesn't compete with
   //  the leaderboard rows below.
   // ──────────────────────────────────────────────────────────────────────
-  const MiniToggle = ({ value, onChange, options }) => (
-    <div style={{ display: "flex", background: K.inp, borderRadius: 5, padding: 1 }}>
-      {options.map(opt => (
-        <button
-          key={opt.value}
-          onClick={() => onChange(opt.value)}
-          style={{
-            padding: "3px 8px", borderRadius: 4, border: "none",
-            background: value === opt.value ? K.acc : "transparent",
-            color: value === opt.value ? K.bg : K.t3,
-            fontSize: 9, fontWeight: 800, cursor: "pointer",
-            letterSpacing: .8, textTransform: "uppercase",
-            transition: "all .15s",
-          }}
-        >
-          {opt.label}
-        </button>
-      ))}
-    </div>
-  );
 
   // ──────────────────────────────────────────────────────────────────────
   //  Gross/Net toggle — segmented pill at the top of the page. Drives
@@ -697,16 +729,6 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
   // The `id` prop attaches a ref so the section nav pills can scroll to it.
   // The label keeps its uppercase styling; the wrapper holds the ref so
   // measurements include any leading margin.
-  const Section = ({ title, refKey }) => (
-    <div ref={refKey ? sectionRefs[refKey] : undefined}>
-      <div style={{
-        fontSize: 9, fontWeight: 800, color: K.t3,
-        letterSpacing: 2, textTransform: "uppercase",
-        margin: "8px 0 10px", paddingBottom: 6,
-        borderBottom: `1px solid ${K.bdr}40`,
-      }}>{title}</div>
-    </div>
-  );
 
   // ── Section nav pills (1.6A) ─────────────────────────────────────
   // Three-pill row that jumps to Rounds / Holes / Specialists. Sits
@@ -759,7 +781,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
       {Toggle}
       {SectionNav}
 
-      <Section title="Rounds" refKey="rounds" />
+      <Section title="Rounds" refKey="rounds" sectionRefs={sectionRefs} />
       {board({
         title: `Round Average — ${modeLabel}`,
         valueFn: s => isNet ? s.avgNet : s.avgGross,
@@ -772,7 +794,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         sortDir: 'asc',
       })}
 
-      <Section title="Holes" refKey="holes" />
+      <Section title="Holes" refKey="holes" sectionRefs={sectionRefs} />
       {board({
         title: `Pars — ${modeLabel}`,
         headerToggle: <MiniToggle value={parsAgg} onChange={setParsAgg} options={totalAvgOptions} />,
@@ -815,7 +837,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         valueFmt: v => v > 0 ? `${v}` : "—",
       })}
 
-      <Section title="Specialists" refKey="specialists" />
+      <Section title="Specialists" refKey="specialists" sectionRefs={sectionRefs} />
       {board({
         title: `Par-3 Specialist — ${modeLabel}`,
         valueFn: s => isNet ? s.par3AvgNet : s.par3AvgGross,
@@ -843,7 +865,7 @@ export default function StatsView({ players, course, schedule, scoringRules, fet
         valueFmt: v => v.toFixed(2),
       })}
 
-      <Section title="Bad Day" refKey="badday" />
+      <Section title="Bad Day" refKey="badday" sectionRefs={sectionRefs} />
       {board({
         title: `Worst Round — ${modeLabel}`,
         valueFn: s => isNet ? s.highestNet : s.highestGross,

@@ -28,7 +28,11 @@
 //     so there is nothing to vouch for.
 
 import { useState, useEffect, useRef } from "react";
-import { K, Card, BackBtn, FS, FW, IND_WITHDRAW, indivGroupResultId, resolveIndivRound } from "../theme";
+import { K, FS, FW } from "../theme";
+import { Card, BackBtn } from "./ui";
+import { useConfirm } from "../lib/useConfirm";
+import { IND_WITHDRAW, resolveIndivRound } from "../lib/individualRounds";
+import { indivGroupResultId } from "../lib/matches";
 import { LEAGUE_ID } from "../firebase";
 import { buildStrokesMap } from "../lib/matchCalc";
 import { computeRoundLine } from "../lib/indivGroups";
@@ -99,7 +103,12 @@ export function GroupScoring({
   const [confirmUnsign, setConfirmUnsign] = useState(false);
   // Own confirm state: this view returns before the parent renders its
   // ConfirmModal, so it needs its own instance of the shared component.
-  const [groupConfirm, setGroupConfirm] = useState(null);
+  // useConfirm rather than a bespoke piece of state per destructive action.
+  // The hand-rolled shape works, but it puts the question, the answer and the
+  // dismissal in three different places — and it is the shape this file would
+  // have grown a fourth copy of on the next confirm. Ported from Bourbon Cup,
+  // which is where WBC took it from for the same reason.
+  const { confirm, confirmModal } = useConfirm();
 
   const getScore = (pid, h) =>
     scoreStore ? (scoreStore.get(pid, h) || 0) : (holeScores[`w${week}_p${pid}_h${h}`] || 0);
@@ -594,21 +603,23 @@ export function GroupScoring({
         const attnBtns = (allowAttendance && !scoresLocked && !hasAnyScore) ? (
           <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
             <button
-              onClick={() => setGroupConfirm({
-                title: `Mark ${pl.name} as making up?`,
-                message: `${pl.name} will post their individual round later. The rest of the group can sign tonight; their makeup is entered when it's played.`,
-                onConfirm: () => { markMakingUp(pid); setGroupConfirm(null); },
-              })}
+              onClick={async () => {
+                if (await confirm({
+                  title: `Mark ${pl.name} as making up?`,
+                  message: `${pl.name} will post their individual round later. The rest of the group can sign tonight; their makeup is entered when it's played.`,
+                })) markMakingUp(pid);
+              }}
               style={{ fontSize: FS.xs, fontWeight: FW.semibold, color: K.t3, background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, padding: "3px 8px", cursor: "pointer", flexShrink: 0 }}
             >
               Makeup
             </button>
             <button
-              onClick={() => setGroupConfirm({
-                title: `Mark ${pl.name} as absent?`,
-                message: `${pl.name} is out of the individual tournament for Week ${week} — no round is recorded and the group can sign without them.`,
-                onConfirm: () => { markAbsent(pid); setGroupConfirm(null); },
-              })}
+              onClick={async () => {
+                if (await confirm({
+                  title: `Mark ${pl.name} as absent?`,
+                  message: `${pl.name} is out of the individual tournament for Week ${week} — no round is recorded and the group can sign without them.`,
+                })) markAbsent(pid);
+              }}
               style={{ fontSize: FS.xs, fontWeight: FW.semibold, color: K.t3, background: "none", border: `1px solid ${K.bdr}`, borderRadius: 6, padding: "3px 8px", cursor: "pointer", flexShrink: 0 }}
             >
               Absent
@@ -641,7 +652,7 @@ export function GroupScoring({
         );
       })}
 
-      <ConfirmModal modal={groupConfirm && { ...groupConfirm, onCancel: () => setGroupConfirm(null) }} />
+      <ConfirmModal modal={confirmModal} />
       <ScoringToast toast={toast} />
     </div>
   );

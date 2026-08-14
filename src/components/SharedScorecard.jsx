@@ -33,14 +33,14 @@
 //
 //  Dependencies
 //  ────────────
-//    • K from theme.jsx         — color tokens (dark/light aware)
+//    • K from theme.js          — color tokens (dark/light aware)
 //    • parseTiebreakerResult    — used by MatchRow's clinch cell to
 //      from TeamMatchupCard       split "TIE (Hole 5)" into stacked
 //                                 "TIE" + "Hole 5" lines.
 // ══════════════════════════════════════════════════════════════════
 
 import { K, FS, FW } from "../theme";
-import { parseTiebreakerResult } from "../TeamMatchupCard";
+import { parseTiebreakerResult } from "../lib/matches";
 
 // ═══════════════════════════════════════════════════════════════
 //  ScoreCell — golf scorecard notation (circles, squares, dots)
@@ -145,8 +145,6 @@ export function SharedScorecard({
   showTotals = false,           // show TOT column
   showMatchRow = true,
   matchGrn,
-  team1Label,                   // team name for allMatches
-  team2Label,
 }) {
   const colBdr = COL_BDR_STYLE(K.bdr);
   const gridLine = GRID_LINE_STYLE(K.bdr);
@@ -192,12 +190,12 @@ export function SharedScorecard({
 
   const PlayerRow = ({ pid }) => {
     const absent = isAbsent ? isAbsent(pid) : false;
-    let grossTotal = 0;
-    const cells = Array.from({ length: 9 }, (_, h) => {
-      const s = getScore(pid, h); const st = getStrokes(pid, h);
-      if (s > 0) grossTotal += s;
-      return { s, st };
-    });
+    // Built first, then reduced. This used to accumulate `grossTotal` from
+    // inside the mapper, which mutates a value captured across a callback
+    // during render — legal today, and the kind of thing the React Compiler
+    // gives up memoizing a component over.
+    const cells = Array.from({ length: 9 }, (_, h) => ({ s: getScore(pid, h), st: getStrokes(pid, h) }));
+    const grossTotal = cells.reduce((a, c) => (c.s > 0 ? a + c.s : a), 0);
     return (
       <div style={{ display: "flex", alignItems: "center", borderBottom: gridLine }}>
         <div style={{ ...lblStyle, height: 38, paddingTop: 10 }}>
@@ -215,15 +213,23 @@ export function SharedScorecard({
   };
 
   const TeamNetRow = ({ pids, isTeam1Side }) => {
-    let netTotal = 0;
     const isAM = variant === "allMatches";
+    // Per-hole team nets, computed before the render rather than accumulated
+    // during it. `ok` is false when anybody in the pair has no score on that
+    // hole, and one incomplete hole makes the whole total meaningless — which
+    // is what the NaN below means, and why it is a total rather than a sum of
+    // the holes that happen to be filled in.
+    const holes = Array.from({ length: 9 }, (_, h) => {
+      let tNet = 0; let ok = true;
+      pids.forEach(pid => { const s = getScore(pid, h); if (s <= 0) ok = false; else tNet += s - getStrokes(pid, h); });
+      return { tNet, ok };
+    });
+    const netTotal = holes.some(x => !x.ok) ? NaN : holes.reduce((a, x) => a + x.tNet, 0);
     return (
       <div style={{ display: "flex", ...(isAM ? { alignItems: "center", background: K.act + "0c" } : {}) }}>
         <div style={{ ...lblStyle, height: isAM ? 28 : 38, fontSize: FS.micro, fontWeight: FW.heavy }}>{isAM ? "NET" : "TEAM"}</div>
         {Array.from({ length: 9 }, (_, h) => {
-          let tNet = 0; let ok = true;
-          pids.forEach(pid => { const s = getScore(pid, h); if (s <= 0) ok = false; else tNet += s - getStrokes(pid, h); });
-          if (ok) netTotal += tNet; else netTotal = NaN;
+          const { tNet, ok } = holes[h];
           const won = holeResults && holeResults[h] === (isTeam1Side ? 1 : -1);
 
           if (isAM) {

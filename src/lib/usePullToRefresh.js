@@ -77,6 +77,13 @@ import { useState, useRef, useCallback, useEffect } from "react";
 const PULL_THRESHOLD = 80;
 const MAX_PULL = 120;
 const DRAG_RATE = 0.4;
+// Both of these were inline numbers here (1 and 10) while Bourbon Cup and WBC
+// used 2 and 5 as named constants. Naming them is half the point; the other
+// half is that the values themselves were wrong, and wrong in a way that made
+// the gesture feel worse on a phone than it does in the other two apps. See
+// the comments at each use site.
+const AT_TOP_TOL = 2;        // scrollTop <= this counts as "at top" (iOS subpixel)
+const START_SLOP = 5;        // downward px before the pull actually begins
 const HARD_SAFETY_MS = 8000;
 const SOFT_WATCHDOG_MS = 2000;
 const REFRESH_DELAY_MS = 600;
@@ -168,13 +175,15 @@ export function usePullToRefresh({ popupOpenRef, hasNewBundle, refetchOneTimeRea
         return;
       }
 
-      // "At top" check: scrollTop ≤ 1px (≤ instead of === to absorb
-      // sub-pixel rounding on iOS).
+      // "At top" check. The tolerance was 1px here; Bourbon Cup found that too
+      // strict — with safe-area-inset plus momentum cleanup, scrollTop reports
+      // around 1.5 while the list is VISUALLY at the top, so the gesture just
+      // failed to start and the user pulled again harder. 2px absorbs it.
       let atTop;
       if (insidePopup) {
-        atTop = popupScrollEl ? popupScrollEl.scrollTop <= 1 : true;
+        atTop = popupScrollEl ? popupScrollEl.scrollTop <= AT_TOP_TOL : true;
       } else {
-        atTop = activeScrollEl ? activeScrollEl.scrollTop <= 1 : true;
+        atTop = activeScrollEl ? activeScrollEl.scrollTop <= AT_TOP_TOL : true;
       }
 
       const currentY = e.touches[0].clientY;
@@ -194,15 +203,28 @@ export function usePullToRefresh({ popupOpenRef, hasNewBundle, refetchOneTimeRea
           pullYRef.current = val;
           setPullY(val);
         }
-      } else if (atTop && diff > 10) {
-        // Threshold to start: downward drag of 10+ px while at top.
-        // Reset touchStartY to current so the first frame of pull
-        // doesn't include the 10px primer distance.
-        touchStartY.current = currentY;
-        pullingRef.current = true;
+      } else if (atTop && diff > 0) {
+        // CRITICAL iOS fix, carried over from Bourbon Cup. preventDefault has
+        // to run on EVERY at-top downward touchmove, not only once the pull
+        // has passed its threshold. iOS Safari starts its native overscroll
+        // bounce on the very FIRST downward move at scrollTop 0, and once that
+        // animation is running every later preventDefault is ignored — the
+        // bounce wins and the custom pull never gets the gesture. Waiting for
+        // the threshold, which is what this did, is precisely late enough to
+        // lose it, and the symptom is a pull that feels stuck or dead
+        // depending on which element it started from.
         e.preventDefault();
-        pullYRef.current = 0;
-        setPullY(0);
+        // Then the threshold, at the same 5px the other two apps use rather
+        // than 10 — far enough not to fire on a tap's jitter, close enough
+        // that the indicator answers the finger. touchStartY moves up to the
+        // current position so the first frame of pull doesn't jump by the
+        // primer distance.
+        if (diff > START_SLOP) {
+          touchStartY.current = currentY;
+          pullingRef.current = true;
+          pullYRef.current = 0;
+          setPullY(0);
+        }
       } else if (!atTop) {
         // Scrolled inside content — keep updating touchStartY so a
         // later drag from a settled position can re-trigger pull.

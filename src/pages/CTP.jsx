@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
-import { K, Card, EmptyState, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, CHEVRON_SIZE, FS, FW } from "../theme";
+import { K, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, HERO_NUM_SIZE, HERO_NUM_WEIGHT, RANK_BADGE_SIZE, RANK_BADGE_RADIUS, RANK_BADGE_FONT, CHEVRON_SIZE, FS, FW } from "../theme";
+import { Card, EmptyState } from "../components/ui";
 
 export default function CTPView({ ctpData, players, isComm, saveCtp }) {
   const [view, setView] = useState("players"); // "players" | "weeks"
