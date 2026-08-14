@@ -414,8 +414,18 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
   const [orig, setOrig] = useState(null); // snapshot for dirty detection
   const [showInactive, setShowInactive] = useState(false);
   const { confirm, confirmModal } = useConfirm();
+  // `ed` is deliberately a dependency even though the body never reads it. A ref
+  // callback runs when its IDENTITY changes, so keying it on which row is open
+  // is what re-attaches it — and re-focuses the name field — when the editor
+  // moves to a different player. Drop the dep and it focuses once, ever.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const nameRef = useCallback(node => { if (node) setTimeout(() => node.focus(), 50); }, [ed]);
-  const teeBoxes = course?.teeBoxes || [{ name: "White", color: "#e2e8f0", slope: 113, rating: 67 }];
+  // Memoised because the fallback is an array LITERAL: without this the default
+  // is a new array every render, and every hook downstream of it re-runs.
+  const teeBoxes = useMemo(
+    () => course?.teeBoxes || [{ name: "White", color: "#e2e8f0", slope: 113, rating: 67 }],
+    [course?.teeBoxes],
+  );
   const teeColor = (name) => (teeBoxes.find(t => t.name === name) || {}).color || K.bdr;
   const isWhiteTee = (name) => { const c = teeColor(name).toLowerCase(); return c === "#fff" || c === "#ffffff" || c === "#e2e8f0" || c === "white"; };
   const teeBoxNames = teeBoxes.map(t => t.name);
@@ -1044,11 +1054,14 @@ function AdminCourse({ course, saveCourseData, onBack }) {
 
   // Store hole values in refs so editing never triggers re-render
   const holeRefs = useRef({});
-  const getRef = (key, i) => {
+  // useCallback with no deps: this reads holeRefs and nothing else, so it is
+  // stable by construction — but a fresh identity every render is what the
+  // ref-poking effect below sees, which made it re-run on every render.
+  const getRef = useCallback((key, i) => {
     const k = `${key}_${i}`;
     if (!holeRefs.current[k]) holeRefs.current[k] = { current: null };
     return holeRefs.current[k];
-  };
+  }, []);
 
   // ── Why this one is NOT on useDirtyForm ──
   // The other two admin forms are. This one deliberately keeps half its state
@@ -1342,6 +1355,10 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, applySchedule
       setLocalWk(null);
       setWeekDirty(false);
     }
+    // weekDirty is read but deliberately not a dependency: it guards against
+    // clobbering a half-finished edit, and re-running this when the guard itself
+    // flips would re-seed the form the moment somebody starts typing.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editWeek, schedule]);
 
   const saveWeekEdits = async () => {

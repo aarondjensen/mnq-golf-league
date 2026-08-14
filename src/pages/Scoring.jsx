@@ -137,6 +137,10 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
       setActiveMatch(null);
       if (onAllMatchesOpened) onAllMatchesOpened();
     }
+    // Keyed on the flag, not on the callback. This exists to consume a one-shot
+    // request from the parent; depending on the callback would re-fire it every
+    // time the parent re-created that function.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [openAllMatches]);
   const [editing, setEditing] = useState(false);
   const [showScorecard, setShowScorecard] = useState(false);
@@ -203,18 +207,28 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
     }
     const playable = schedule.filter(wk => !wk.rainedOut && wk.matches && wk.matches.length > 0);
     return playable.length ? playable[playable.length - 1].week : 0;
-  }, [schedule, matchResults, forceWeek]);
+    // schedule and forceWeek only — this walks weeks by rainedOut / matches /
+    // locked, all of which live on the schedule. matchResults was never read.
+  }, [schedule, forceWeek]);
 
   const week = currentWeek;
   useEffect(() => { setLiveWeek(week); }, [week, setLiveWeek]);
-  // Clear the forceWeek after it's been consumed
+  // Clear the forceWeek after it's been consumed. Keyed on the flag rather than
+  // the callback, as above.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (forceWeek && onForceWeekUsed) onForceWeekUsed(); }, [forceWeek]);
 
   const weekSch = schedule.find(s => s.week === week);
   const matches = weekSch?.matches || [];
   const side = weekSch?.side || getWeekSide(week);
   const pars = course ? (side === 'front' ? course.frontPars : course.backPars) : [4,4,4,3,5,4,4,3,5];
-  const hcps = course ? (side === 'front' ? course.frontHcps : course.backHcps) : [1,3,5,7,9,11,13,15,17];
+  // Memoised because the fallback is an array LITERAL: without this it is a new
+  // array on every render for a league with no course set, and the memo below
+  // that depends on it never gets to cache anything.
+  const hcps = useMemo(
+    () => (course ? (side === 'front' ? course.frontHcps : course.backHcps) : [1,3,5,7,9,11,13,15,17]),
+    [course, side],
+  );
   const myTeam = teams.find(t => t.player1 === leagueUser.playerId || t.player2 === leagueUser.playerId);
   // "What am I playing this week" — normally my team's match, but once my team
   // is knocked out of the playoff bracket its players are regrouped into an
@@ -403,20 +417,27 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
   const scoringFormat = leagueConfig?.scoringFormat || "lowHighBonus";
   const isTeamNet = scoringFormat === "teamNetTotal";
 
-  const t1Players = t1 ? [t1.player1, t1.player2] : [];
-  const t2Players = t2 ? [t2.player1, t2.player2] : [];
+  // Memoised for the same reason as hcps above: these are array literals, so
+  // without this they are new arrays every render and getTeammate below — which
+  // depends on them — can never be stable either.
+  const t1Players = useMemo(() => (t1 ? [t1.player1, t1.player2] : []), [t1]);
+  const t2Players = useMemo(() => (t2 ? [t2.player1, t2.player2] : []), [t2]);
   const getHcp = (pid) => {
     const p = playerMap[pid];
     return p ? Math.round(p.handicapIndex || 0) : 0;
   };
 
   // Absent player helpers
-  const getTeammate = (pid) => {
+  // Both wrapped so the hooks that call them can depend on the FUNCTIONS rather
+  // than on a hand-copied list of what those functions happen to read. getInitials
+  // listed playerMap and absentPlayers and not t1Players/t2Players, which is the
+  // gap: a roster change did not re-derive the initials.
+  const getTeammate = useCallback((pid) => {
     if (t1Players.includes(pid)) return t1Players.find(p => p !== pid);
     if (t2Players.includes(pid)) return t2Players.find(p => p !== pid);
     return null;
-  };
-  const isPlayerAbsent = (pid) => !!absentPlayers[pid];
+  }, [t1Players, t2Players]);
+  const isPlayerAbsent = useCallback((pid) => !!absentPlayers[pid], [absentPlayers]);
 
   // ── Attendance integration (Phase 2 of Mark Out feature) ──
   // Reads from the attendance prop populated by App.jsx subscribing to
@@ -936,7 +957,7 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
     const effectivePid = isPlayerAbsent(pid) ? (getTeammate(pid) || pid) : pid;
     const pl = playerMap[effectivePid];
     return pl ? pl.name.split(' ').map(n => n[0]).join('') : "?";
-  }, [playerMap, absentPlayers]);
+  }, [playerMap, isPlayerAbsent, getTeammate]);
 
   // ── Commish: force-attest all signed-but-unattested matches for this week ──
   // Normal flow requires every present non-signer to tap Attest individually.

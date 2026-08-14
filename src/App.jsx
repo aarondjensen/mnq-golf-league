@@ -97,6 +97,22 @@ const warmRouteChunk = (tab) => { ROUTE_CHUNKS[tab]?.().catch(() => {}); };
 }
 
 
+// The season this app is playing, and the localStorage key for the historical
+// rounds cache. Both were declared inside the component, which made them look
+// like dependencies to every hook that read them. They depend on nothing the
+// component holds, so they are constants at module scope, where they belong.
+const CURRENT_SEASON = 2026;
+const HIST_CACHE_KEY = `mnq_hist_rounds_v1_${LEAGUE_ID}_${CURRENT_SEASON}`;
+
+// Which tab the URL hash is asking for. Reads window and nothing else, so it
+// lives at module scope — inside the component it looked like a dependency to
+// the hashchange effect, which would have re-bound the listener on every render.
+const VALID_TABS = ["standings", "scoring", "schedule", "players", "stats", "ctp", "admin", "notifications"];
+const getTabFromHash = () => {
+  const hash = window.location.hash.replace("#", "").toLowerCase();
+  return VALID_TABS.includes(hash) ? hash : "standings";
+};
+
 export default function GolfLeagueApp() {
   const [authUser, setAuthUser] = useState(undefined);
   const [leagueUser, setLeagueUser] = useState(null);
@@ -187,12 +203,6 @@ export default function GolfLeagueApp() {
   // sync banner through a ref. Holding the slot keeps useState's shape.
   const [, setSyncing] = useState(false);
   const [liveWeek, setLiveWeek] = useState(null);
-  const validTabs = ["standings", "scoring", "schedule", "players", "stats", "ctp", "admin", "notifications"];
-  const getTabFromHash = () => {
-    const hash = window.location.hash.replace("#", "").toLowerCase();
-    return validTabs.includes(hash) ? hash : "standings";
-  };
-
   const [tab, setTabState] = useState(getTabFromHash);
   const setTab = (newTab) => {
     setTabState(newTab);
@@ -516,6 +526,11 @@ export default function GolfLeagueApp() {
     refetchOneTimeReads();
 
     return () => unsubs.forEach(u => u && u());
+    // Keyed on authUser?.uid, not authUser. The body only reads the object to
+    // check it exists; what this subscription is keyed on is WHICH user, and
+    // depending on the object would tear down and rebuild ten Firestore
+    // listeners every time its identity changed without the uid moving.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authUser?.uid, refetchOneTimeReads]);
 
   useEffect(() => {
@@ -547,6 +562,9 @@ export default function GolfLeagueApp() {
       setTimeout(() => setSyncing(false), 500);
     });
     return () => unsub();
+    // As above: keyed on which user and which week, not on the auth object's
+    // identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [liveWeek, authUser?.uid]);
 
   // Auth actions
@@ -764,7 +782,6 @@ export default function GolfLeagueApp() {
     await sendPasswordResetEmail(_auth, email);
   };
 
-  const CURRENT_SEASON = 2026;
 
   // ── Hole-score read caching ──────────────────────────────────────────
   // WHY: league_hole_scores is by far the largest collection (~7.5K
@@ -809,7 +826,6 @@ export default function GolfLeagueApp() {
   // Versioned key: bump v1 if the stored shape ever changes. Scoped to
   // CURRENT_SEASON because "historical" means "seasons before this one" —
   // rolling the season constant forward naturally invalidates the cache.
-  const HIST_CACHE_KEY = `mnq_hist_rounds_v1_${LEAGUE_ID}_${CURRENT_SEASON}`;
 
   // Aggregate raw hole-score docs into completed 9-hole rounds, keyed by
   // player. Docs are classified by their `hole` field (classifyScoreHole) so
