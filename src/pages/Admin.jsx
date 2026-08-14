@@ -12,6 +12,135 @@ import { useConfirm } from "../lib/useConfirm";
 import { ConfirmModal } from "../components/Popup";
 import NotificationsAdmin from "./NotificationsAdmin";
 
+// ══════════════════════════════════════════════════════════════════
+//  EditCard, hoisted out of AdminPlayers.
+// ══════════════════════════════════════════════════════════════════
+// It was declared inside AdminPlayers, so it got a new identity on every
+// render and React remounted it rather than updating it. That matters here
+// because it holds the name and handicap TEXT INPUTS: every keystroke
+// re-rendered the parent, which destroyed the input and built a new one,
+// taking the cursor and the selection with it.
+//
+// Everything it took off the closure is a prop now. The call sites pass one
+// `{...editProps}` bundle rather than thirteen attributes each.
+const EditCard = ({ isNew, f, setF, ed, setEd, setOrig, nameRef, inputStyle, isDirty, save, players, toggleStatus, confirm, teeBoxes, isWhiteTee }) => {
+  return (
+    <Card style={{ padding: "10px 12px", marginBottom: 8 }}>
+      {/* Row 1: Name input + close */}
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+        <input ref={nameRef} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Player name" style={{ ...inputStyle, padding: "7px 10px", fontWeight: FW.semibold }} />
+        <button onClick={() => { setEd(null); setOrig(null); }} style={{ background: "none", border: "none", color: K.t3, fontSize: FS.base, cursor: "pointer", padding: "2px 4px", lineHeight: 1, flexShrink: 0 }}>✕</button>
+      </div>
+      {/* Row 1b: Handicap index manual override. Normally recalculated automatically when
+          a week is locked; this input lets the commissioner set a starting HCP for a mid-
+          season joiner or correct a miscalculated value. */}
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+        <span style={{ fontSize: FS.xs, color: K.t3, fontWeight: FW.semibold, letterSpacing: .8, textTransform: "uppercase", flexShrink: 0, width: 60 }}>HCP Index</span>
+        <input
+          type="number"
+          inputMode="decimal"
+          step="0.1"
+          value={f.handicapIndex ?? ""}
+          onChange={e => setF({ ...f, handicapIndex: e.target.value })}
+          onFocus={e => setTimeout(() => e.target.select(), 10)}
+          placeholder="0"
+          style={{ ...inputStyle, padding: "7px 10px", fontWeight: FW.bold, textAlign: "center", flex: 1 }}
+        />
+      </div>
+      {/* Row 1c: Starting HCP. The handicap the player had when they FIRST played
+          (or joined the league). Used by autoHealMatchResults as the fallback for
+          historical match recomputation when the player has no prior rounds —
+          i.e., for week 1 and for mid-season joiners' first played week. Unlike
+          HCP Index above, this value is not overwritten by recalcHandicaps and
+          stays sticky across the season. Leave blank if you don't need historical
+          recomputation accuracy (today's HCP Index will be used as last resort). */}
+      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
+        <span style={{ fontSize: FS.xs, color: K.t3, fontWeight: FW.semibold, letterSpacing: .8, textTransform: "uppercase", flexShrink: 0, width: 60 }}>Start HCP</span>
+        <input
+          type="number"
+          inputMode="decimal"
+          step="0.1"
+          value={f.startingHandicapIndex ?? ""}
+          onChange={e => setF({ ...f, startingHandicapIndex: e.target.value })}
+          onFocus={e => setTimeout(() => e.target.select(), 10)}
+          placeholder="Optional"
+          style={{ ...inputStyle, padding: "7px 10px", fontWeight: FW.bold, textAlign: "center", flex: 1 }}
+        />
+      </div>
+      {/* Row 2: Tee box selection + Deactivate */}
+      <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
+        <div style={{ display: "flex", gap: 4, flex: 1 }}>
+          {teeBoxes.map(t => {
+            const sel = f.teeBox === t.name;
+            const white = isWhiteTee(t.name);
+            return (
+              <button key={t.name} onClick={() => setF({ ...f, teeBox: t.name })} style={{ flex: 1, padding: "6px 0", borderRadius: 6, fontSize: FS.xs, fontWeight: FW.semibold, cursor: "pointer", border: sel ? `1.5px solid ${white ? K.t3 : t.color}` : `1px solid ${K.bdr}`, background: sel ? (white ? K.t3 + "30" : t.color + "20") : K.inp, color: sel ? (white ? "#fff" : t.color) : K.t2 }}>{t.name}</button>
+            );
+          })}
+        </div>
+        {!isNew && (
+          <button onClick={async () => {
+            if (await confirm({
+              title: `Deactivate ${f.name}?`,
+              message: "They'll be hidden from active rosters but their historical scores are preserved. You can reactivate later.",
+              confirmLabel: "Deactivate",
+            })) {
+              toggleStatus(players.find(p => p.id === ed));
+              setEd(null); setOrig(null);
+            }
+          }} style={{ padding: "5px 8px", borderRadius: 6, border: `1px solid ${K.red}30`, background: K.red + "10", color: K.red, fontSize: FS.micro, fontWeight: FW.bold, cursor: "pointer", flexShrink: 0 }}>Deactivate</button>
+        )}
+      </div>
+      {/* Row 3: Save */}
+      <button onClick={isDirty ? save : undefined} style={{ width: "100%", padding: "8px 0", borderRadius: 6, background: isDirty ? K.act : K.inp, border: isDirty ? "none" : `1px solid ${K.bdr}`, color: isDirty ? K.bg : K.t3, fontSize: FS.sm, fontWeight: FW.bold, cursor: isDirty ? "pointer" : "default", letterSpacing: .5, transition: "all .2s" }}>{isDirty ? "Save" : "Saved"}</button>
+    </Card>
+  );
+};
+
+
+// ══════════════════════════════════════════════════════════════════
+//  Scoring-rules controls, hoisted out of AdminConfig.
+// ══════════════════════════════════════════════════════════════════
+// Declared inside the component, these got a new identity on every render, so
+// React unmounted and remounted them instead of updating.
+//
+// For F that was a real bug rather than a slow path: it wraps an <input>, and
+// every keystroke re-rendered AdminConfig — which destroyed the input and
+// built a new one, taking focus and the cursor with it. Typing a scoring value
+// meant one character, then tapping the field again.
+//
+// What they took off the closure is passed in now: F gets the config and its
+// two setters, Radio gets setDirty.
+const F = ({ label, field, lc, setLc, setDirty }) => (
+  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${K.bdr}15` }}>
+    <span style={{ fontSize: FS.sm, color: K.t2 }}>{label}</span>
+    <input value={lc[field]} onChange={e => { setLc({ ...lc, [field]: parseFloat(e.target.value) || 0 }); setDirty(true); }} onFocus={e => setTimeout(() => e.target.select(), 10)} type="number" inputMode="decimal" step="0.5" style={{ width: 58, padding: "5px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.sm, textAlign: "center" }} />
+  </div>
+);
+
+const Radio = ({ items, value, onChange, setDirty }) => (
+  <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 12 }}>
+    {items.map(f => (
+      <button key={f.id} onClick={() => { onChange(f.id); setDirty(true); }} style={{
+        background: value === f.id ? K.act + "15" : K.card,
+        border: `1.5px solid ${value === f.id ? K.act : K.bdr}`,
+        borderRadius: 8, padding: "10px 12px", cursor: "pointer", textAlign: "left", width: "100%",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 16, height: 16, borderRadius: "50%", border: `2px solid ${value === f.id ? K.act : K.t3}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            {value === f.id && <div style={{ width: 8, height: 8, borderRadius: "50%", background: K.act }} />}
+          </div>
+          <div>
+            <div style={{ fontSize: FS.sm, fontWeight: FW.semibold, color: value === f.id ? K.t1 : K.t2 }}>{f.label}</div>
+            {f.desc && <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 1 }}>{f.desc}</div>}
+          </div>
+        </div>
+      </button>
+    ))}
+  </div>
+);
+
+
 // NOTE: confirmations here go through useConfirm, which returns a promise:
 //
 //   if (await confirm({ title, message, confirmLabel, destructive })) { ... }
@@ -344,6 +473,10 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
   const rowStyle = { display: "flex", alignItems: "center", background: K.card, borderRadius: 8, border: `1px solid ${K.bdr}`, padding: "8px 10px", gap: 8 };
   const inputStyle = { padding: "8px 10px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.lg, width: "100%" };
 
+  // One bundle rather than thirteen attributes on each of EditCard's two
+  // call sites. EditCard lives at module scope now — see the note on it.
+  const editProps = { f, setF, ed, setEd, setOrig, nameRef, inputStyle, isDirty, save, players, toggleStatus, confirm, teeBoxes, isWhiteTee };
+
   // Per-player missing-data flags. Used to render the red dot on the row and to decide
   // whether the row needs visual attention. Keep this in sync with the dashboard's
   // playersWithIssues calculation.
@@ -358,79 +491,6 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
   // Note: Commissioner toggle removed from this card. It now lives only on the Accounts
   // page, which is where commissioner status conceptually belongs (it's a property of a
   // member account, not a player).
-  const EditCard = ({ isNew }) => {
-    return (
-      <Card style={{ padding: "10px 12px", marginBottom: 8 }}>
-        {/* Row 1: Name input + close */}
-        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-          <input ref={nameRef} value={f.name} onChange={e => setF({ ...f, name: e.target.value })} placeholder="Player name" style={{ ...inputStyle, padding: "7px 10px", fontWeight: FW.semibold }} />
-          <button onClick={() => { setEd(null); setOrig(null); }} style={{ background: "none", border: "none", color: K.t3, fontSize: FS.base, cursor: "pointer", padding: "2px 4px", lineHeight: 1, flexShrink: 0 }}>✕</button>
-        </div>
-        {/* Row 1b: Handicap index manual override. Normally recalculated automatically when
-            a week is locked; this input lets the commissioner set a starting HCP for a mid-
-            season joiner or correct a miscalculated value. */}
-        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-          <span style={{ fontSize: FS.xs, color: K.t3, fontWeight: FW.semibold, letterSpacing: .8, textTransform: "uppercase", flexShrink: 0, width: 60 }}>HCP Index</span>
-          <input
-            type="number"
-            inputMode="decimal"
-            step="0.1"
-            value={f.handicapIndex ?? ""}
-            onChange={e => setF({ ...f, handicapIndex: e.target.value })}
-            onFocus={e => setTimeout(() => e.target.select(), 10)}
-            placeholder="0"
-            style={{ ...inputStyle, padding: "7px 10px", fontWeight: FW.bold, textAlign: "center", flex: 1 }}
-          />
-        </div>
-        {/* Row 1c: Starting HCP. The handicap the player had when they FIRST played
-            (or joined the league). Used by autoHealMatchResults as the fallback for
-            historical match recomputation when the player has no prior rounds —
-            i.e., for week 1 and for mid-season joiners' first played week. Unlike
-            HCP Index above, this value is not overwritten by recalcHandicaps and
-            stays sticky across the season. Leave blank if you don't need historical
-            recomputation accuracy (today's HCP Index will be used as last resort). */}
-        <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
-          <span style={{ fontSize: FS.xs, color: K.t3, fontWeight: FW.semibold, letterSpacing: .8, textTransform: "uppercase", flexShrink: 0, width: 60 }}>Start HCP</span>
-          <input
-            type="number"
-            inputMode="decimal"
-            step="0.1"
-            value={f.startingHandicapIndex ?? ""}
-            onChange={e => setF({ ...f, startingHandicapIndex: e.target.value })}
-            onFocus={e => setTimeout(() => e.target.select(), 10)}
-            placeholder="Optional"
-            style={{ ...inputStyle, padding: "7px 10px", fontWeight: FW.bold, textAlign: "center", flex: 1 }}
-          />
-        </div>
-        {/* Row 2: Tee box selection + Deactivate */}
-        <div style={{ display: "flex", gap: 6, alignItems: "center", marginBottom: 8 }}>
-          <div style={{ display: "flex", gap: 4, flex: 1 }}>
-            {teeBoxes.map(t => {
-              const sel = f.teeBox === t.name;
-              const white = isWhiteTee(t.name);
-              return (
-                <button key={t.name} onClick={() => setF({ ...f, teeBox: t.name })} style={{ flex: 1, padding: "6px 0", borderRadius: 6, fontSize: FS.xs, fontWeight: FW.semibold, cursor: "pointer", border: sel ? `1.5px solid ${white ? K.t3 : t.color}` : `1px solid ${K.bdr}`, background: sel ? (white ? K.t3 + "30" : t.color + "20") : K.inp, color: sel ? (white ? "#fff" : t.color) : K.t2 }}>{t.name}</button>
-              );
-            })}
-          </div>
-          {!isNew && (
-            <button onClick={async () => {
-              if (await confirm({
-                title: `Deactivate ${f.name}?`,
-                message: "They'll be hidden from active rosters but their historical scores are preserved. You can reactivate later.",
-                confirmLabel: "Deactivate",
-              })) {
-                toggleStatus(players.find(p => p.id === ed));
-                setEd(null); setOrig(null);
-              }
-            }} style={{ padding: "5px 8px", borderRadius: 6, border: `1px solid ${K.red}30`, background: K.red + "10", color: K.red, fontSize: FS.micro, fontWeight: FW.bold, cursor: "pointer", flexShrink: 0 }}>Deactivate</button>
-          )}
-        </div>
-        {/* Row 3: Save */}
-        <button onClick={isDirty ? save : undefined} style={{ width: "100%", padding: "8px 0", borderRadius: 6, background: isDirty ? K.act : K.inp, border: isDirty ? "none" : `1px solid ${K.bdr}`, color: isDirty ? K.bg : K.t3, fontSize: FS.sm, fontWeight: FW.bold, cursor: isDirty ? "pointer" : "default", letterSpacing: .5, transition: "all .2s" }}>{isDirty ? "Save" : "Saved"}</button>
-      </Card>
-    );
-  };
 
   const PlayerRow = ({ p, inactive }) => {
     const issues = inactive ? [] : playerIssues(p);
@@ -483,7 +543,7 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
         <BackBtn onClick={onBack} /><span style={{ fontFamily: "'League Spartan', sans-serif", fontSize: FS.lg, color: K.t1 }}>Players ({activePlayers.length} active)</span>
         <button onClick={() => { startEdit({ name: "", handicapIndex: "", startingHandicapIndex: "", teeBox: defaultTeeBox, status: "active" }); setEd("new"); }} style={{ background: K.act, border: "none", borderRadius: 8, color: K.bg, fontSize: FS.xs, padding: "6px 12px", cursor: "pointer", fontWeight: FW.bold }}>+ Add</button>
       </div>
-      {ed === "new" && <EditCard isNew />}
+      {ed === "new" && <EditCard isNew {...editProps} />}
       {/* Empty state with link to next action */}
       {activePlayers.length === 0 && ed !== "new" && (
         <div style={{ background: K.card, border: `1px dashed ${K.bdr}`, borderRadius: 10, padding: "24px 16px", textAlign: "center" }}>
@@ -503,7 +563,7 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
             {activePlayers.map(p => (
               <div key={p.id}>
                 <PlayerRow p={p} />
-                {ed === p.id && <div style={{ marginTop: 4 }}><EditCard /></div>}
+                {ed === p.id && <div style={{ marginTop: 4 }}><EditCard {...editProps} /></div>}
               </div>
             ))}
           </div>
@@ -3982,38 +4042,14 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
     }
   };
 
-  const F = ({ label, field }) => (
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 0", borderBottom: `1px solid ${K.bdr}15` }}>
-      <span style={{ fontSize: FS.sm, color: K.t2 }}>{label}</span>
-      <input value={lc[field]} onChange={e => { setLc({ ...lc, [field]: parseFloat(e.target.value) || 0 }); setDirty(true); }} onFocus={e => setTimeout(() => e.target.select(), 10)} type="number" inputMode="decimal" step="0.5" style={{ width: 58, padding: "5px 6px", borderRadius: 6, background: K.inp, border: `1px solid ${K.bdr}`, color: K.t1, fontSize: FS.sm, textAlign: "center" }} />
-    </div>
-  );
+
+  // One bundle rather than three attributes on fifteen call sites.
+  const fieldProps = { lc, setLc, setDirty };
 
   const format = cfg.scoringFormat;
   const isLowHigh = format === "lowHighBonus";
   const isPoints = cfg.standingsMethod === "points";
 
-  const Radio = ({ items, value, onChange }) => (
-    <div style={{ display: "flex", flexDirection: "column", gap: 5, marginBottom: 12 }}>
-      {items.map(f => (
-        <button key={f.id} onClick={() => { onChange(f.id); setDirty(true); }} style={{
-          background: value === f.id ? K.act + "15" : K.card,
-          border: `1.5px solid ${value === f.id ? K.act : K.bdr}`,
-          borderRadius: 8, padding: "10px 12px", cursor: "pointer", textAlign: "left", width: "100%",
-        }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <div style={{ width: 16, height: 16, borderRadius: "50%", border: `2px solid ${value === f.id ? K.act : K.t3}`, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-              {value === f.id && <div style={{ width: 8, height: 8, borderRadius: "50%", background: K.act }} />}
-            </div>
-            <div>
-              <div style={{ fontSize: FS.sm, fontWeight: FW.semibold, color: value === f.id ? K.t1 : K.t2 }}>{f.label}</div>
-              {f.desc && <div style={{ fontSize: FS.xs, color: K.t3, marginTop: 1 }}>{f.desc}</div>}
-            </div>
-          </div>
-        </button>
-      ))}
-    </div>
-  );
 
   const handleBack = async () => {
     if (!dirty) { onBack(); return; }
@@ -4037,7 +4073,7 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
       </div>
 
       <SubLabel>Match Format</SubLabel>
-      <Radio items={[
+      <Radio setDirty={setDirty} items={[
         { id: "lowHighBonus", label: "Low/High Match + Bonus", desc: "Low HCP match, high HCP match, plus a bonus category" },
         { id: "teamNetTotal", label: "Team Net Match Play", desc: "Combined team net per hole — winner of each hole earns 1 up; match-play status (1UP, 3&2, TIED) decides points" },
       ]} value={format} onChange={v => setCfg({ ...cfg, scoringFormat: v })} />
@@ -4073,7 +4109,7 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
       </Card>
 
       <SubLabel>Standings Method</SubLabel>
-      <Radio items={[
+      <Radio setDirty={setDirty} items={[
         { id: "points", label: "Points-Based", desc: "Teams accumulate points each week — most points wins" },
         { id: "record", label: "Win-Loss-Tie Record", desc: "Standings by win percentage — like a traditional sports league" },
       ]} value={cfg.standingsMethod} onChange={v => setCfg({ ...cfg, standingsMethod: v })} />
@@ -4086,7 +4122,7 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
           deterministic rule for deciding who advances when the overall match is even.
           Handled separately from regular-season ties which are allowed. */}
       <SubLabel>Playoff Tiebreaker</SubLabel>
-      <Radio items={[
+      <Radio setDirty={setDirty} items={[
         { id: "hardestHole", label: "Hardest Handicap Hole", desc: "Winner decided by score on the hole with HCP index 1 on the nine played. Most common playoff tiebreaker." },
         { id: "sumHoleHcpLosses", label: "Sum of HCP Indexes on Holes Lost", desc: "Lower total wins (losing on easy holes hurts more than losing on hard ones)." },
         { id: "lowestNet", label: "Lowest Team Net Total", desc: "Combined team net score — lowest wins." },
@@ -4100,32 +4136,32 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
             <div>
               <SubLabel>Low/High Match Points</SubLabel>
               <Card style={{ padding: "2px 14px" }}>
-                <F label="Win" field="matchWin" />
-                <F label="Tie" field="matchTie" />
-                <F label="Loss" field="matchLoss" />
+                <F label="Win" field="matchWin" {...fieldProps} />
+                <F label="Tie" field="matchTie" {...fieldProps} />
+                <F label="Loss" field="matchLoss" {...fieldProps} />
               </Card>
             </div>
             <div>
               <SubLabel>Bonus — Type</SubLabel>
-              <Radio items={[
+              <Radio setDirty={setDirty} items={[
                 { id: "teamNetTotal", label: "Team Net Total", desc: "Combined net of both teammates" },
                 { id: "lowestNet", label: "Lowest Individual Net", desc: "Lowest single net score between all 4" },
                 { id: "totalGross", label: "Total Gross", desc: "Combined gross of both teammates" },
               ]} value={cfg.bonusType || "teamNetTotal"} onChange={v => setCfg({ ...cfg, bonusType: v })} />
               <SubLabel>Bonus — Points</SubLabel>
               <Card style={{ padding: "2px 14px" }}>
-                <F label="Win" field="totalNetBonusWin" />
-                <F label="Tie" field="totalNetBonusTie" />
-                <F label="Loss" field="totalNetBonusLoss" />
+                <F label="Win" field="totalNetBonusWin" {...fieldProps} />
+                <F label="Tie" field="totalNetBonusTie" {...fieldProps} />
+                <F label="Loss" field="totalNetBonusLoss" {...fieldProps} />
               </Card>
             </div>
           </>) : (
             <div>
               <SubLabel>Match Points</SubLabel>
               <Card style={{ padding: "2px 14px" }}>
-                <F label="Win" field="matchWin" />
-                <F label="Tie" field="matchTie" />
-                <F label="Loss" field="matchLoss" />
+                <F label="Win" field="matchWin" {...fieldProps} />
+                <F label="Tie" field="matchTie" {...fieldProps} />
+                <F label="Loss" field="matchLoss" {...fieldProps} />
               </Card>
             </div>
           )}
@@ -4133,9 +4169,9 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
           <div>
             <SubLabel color={K.warn}>Playoff — Match</SubLabel>
             <Card style={{ padding: "2px 14px" }}>
-              <F label="Win" field="playoffMatchWin" />
-              <F label="Tie" field="playoffMatchTie" />
-              <F label="Loss" field="playoffMatchLoss" />
+              <F label="Win" field="playoffMatchWin" {...fieldProps} />
+              <F label="Tie" field="playoffMatchTie" {...fieldProps} />
+              <F label="Loss" field="playoffMatchLoss" {...fieldProps} />
             </Card>
           </div>
 
@@ -4143,9 +4179,9 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
             <div>
               <SubLabel color={K.warn}>Playoff — Bonus</SubLabel>
               <Card style={{ padding: "2px 14px" }}>
-                <F label="Win" field="playoffBonusWin" />
-                <F label="Tie" field="playoffBonusTie" />
-                <F label="Loss" field="playoffBonusLoss" />
+                <F label="Win" field="playoffBonusWin" {...fieldProps} />
+                <F label="Tie" field="playoffBonusTie" {...fieldProps} />
+                <F label="Loss" field="playoffBonusLoss" {...fieldProps} />
               </Card>
             </div>
           )}
