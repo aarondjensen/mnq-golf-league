@@ -29,7 +29,7 @@
 //    <div style={{ position: "fixed", inset: 0, zIndex: 550, display:
 //      "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
 //      <div onClick={e => e.stopPropagation()} style={{ background: K.bg,
-//        border: `1px solid ${K.bdr}`, borderRadius: 14, padding: 20,
+//        border: `1px solid ${K.bdr}`, borderRadius: R.modal, padding: 20,
 //        width: "100%", maxWidth: 360 }}>
 //        {/* contents */}
 //      </div>
@@ -53,7 +53,7 @@
 
 import { useEffect } from "react";
 import { createPortal } from "react-dom";
-import { K, FS, FW } from "../theme";
+import { K, FS, FW, R } from "../theme";
 
 const Z_MAP = { content: 500, modal: 900 };
 const STD_BACKDROP = "rgba(0, 0, 0, 0.65)";
@@ -121,7 +121,7 @@ export function Popup({
         style={{
           background: K.bg,
           border: `1px solid ${K.bdr}`,
-          borderRadius: 14,
+          borderRadius: R.modal,
           width: "100%",
           maxWidth,
           // The card is the height-capped frame; the SCROLLER is inside it.
@@ -145,7 +145,7 @@ export function Popup({
               right: 8,
               width: 32,
               height: 32,
-              borderRadius: 8,
+              borderRadius: R.md,
               background: K.bg,
               border: "none",
               color: K.t3,
@@ -261,7 +261,7 @@ export function ConfirmModal(props) {
         <button
           onClick={handleCancel}
           style={{
-            flex: 1, padding: 12, borderRadius: 10,
+            flex: 1, padding: 12, borderRadius: R.lg,
             background: K.inp, border: `1px solid ${K.bdr}`,
             color: K.t2, fontSize: FS.base, fontWeight: FW.bold,
             cursor: "pointer",
@@ -272,7 +272,7 @@ export function ConfirmModal(props) {
         <button
           onClick={m.onConfirm}
           style={{
-            flex: 1, padding: 12, borderRadius: 10,
+            flex: 1, padding: 12, borderRadius: R.lg,
             background: confirmBg, border: "none",
             color: confirmFg, fontSize: FS.base, fontWeight: FW.bold,
             cursor: "pointer",

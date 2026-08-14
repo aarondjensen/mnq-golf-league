@@ -98,4 +98,43 @@ export default defineConfig([
       globals: { ...globals.serviceworker, firebase: 'readonly' },
     },
   },
+  // ── The radius scale is the only source of these numbers, in the files that
+  //    have been migrated onto it ──
+  // WBC enforces this across its whole src/. Here it is scoped to the shared
+  // chrome, because the rest of the app still carries ~340 loose radii and
+  // snapping those onto rungs is a VISUAL decision on every one of them — not
+  // something to do behind a lint rule.
+  //
+  // The fix is never a new number. It is the rung whose ROLE matches what you
+  // are drawing; if none fits, add one in theme.js with a note on what it is
+  // for, the way R.modal exists.
+  //
+  // Widen `files` as more of the app is migrated. theme.js is where the numbers
+  // live, so it is not in the list.
+  {
+    files: ['src/components/Popup.jsx', 'src/components/ui.jsx'],
+    rules: {
+      'no-restricted-syntax': ['error',
+        // Two selectors, not one. A bare descendant match reaches every number
+        // in the value expression — the 0 in a comparison, an arithmetic operand
+        // — and flags things that were never a radius. A direct-child match
+        // alone misses the other half: `cond ? 10 : 8` hides its literals one
+        // level down. So: the value itself, plus the BRANCHES of any ternary.
+        //
+        // Only values at or above the smallest rung (4) are flagged. A 1-3px
+        // corner is part of a DRAWING — the nested rings on a score marker, a
+        // hairline rule — not a component corner somebody chose off-scale, and
+        // no rung is that small on purpose. 0 is exempt for the same reason: a
+        // squared-off corner is the absence of a radius.
+        {
+          selector: 'Property[key.name="borderRadius"] > Literal[value=type(number)][value>=4]',
+          message: 'Use a rung off the R scale (R.sm, R.md, R.modal, …) rather than a raw px radius — see theme.js.',
+        },
+        {
+          selector: 'Property[key.name="borderRadius"] ConditionalExpression > Literal[value=type(number)][value>=4]',
+          message: 'Use a rung off the R scale (R.sm, R.md, R.modal, …) rather than a raw px radius — see theme.js.',
+        },
+      ],
+    },
+  },
 ])

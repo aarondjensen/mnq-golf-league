@@ -11,7 +11,7 @@
 // the dependency runs one way: tokens, then components. Do not import a page or
 // a domain module into this file.
 
-import { K, FS, FW, LIST_GAP, CARD_RADIUS } from "../theme";
+import { K, FS, FW, LIST_GAP, CARD_RADIUS, R } from "../theme";
 import { I } from "./icons";
 
 
@@ -24,13 +24,13 @@ import { I } from "./icons";
 
 // SharedScorecard renderer.
 export const Pill = ({ children, color = K.acc, style, ...rest }) => (
-  <span style={{ fontSize: 11, fontWeight: 600, color, background: color + "14", padding: "2px 8px", borderRadius: 4, letterSpacing: 1.0, textTransform: "uppercase", ...style }} {...rest}>{children}</span>
+  <span style={{ fontSize: 11, fontWeight: 600, color, background: color + "14", padding: "2px 8px", borderRadius: R.xs, letterSpacing: 1.0, textTransform: "uppercase", ...style }} {...rest}>{children}</span>
 );
 export const BackBtn = ({ onClick }) => (
-  <button onClick={onClick} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.t2, fontSize: 13, padding: "7px 14px", cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: 5, letterSpacing: .8 }}>{I.arrowLeft(13, K.t2)} Back</button>
+  <button onClick={onClick} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: R.sm, color: K.t2, fontSize: 13, padding: "7px 14px", cursor: "pointer", fontWeight: 500, display: "flex", alignItems: "center", gap: 5, letterSpacing: .8 }}>{I.arrowLeft(13, K.t2)} Back</button>
 );
 export const SaveBtn = ({ onClick, label = "Save" }) => (
-  <button onClick={onClick} style={{ background: K.act, border: "none", borderRadius: 6, color: K.bg, fontSize: 13, padding: "7px 16px", cursor: "pointer", fontWeight: 600, letterSpacing: .8 }}>{label}</button>
+  <button onClick={onClick} style={{ background: K.act, border: "none", borderRadius: R.sm, color: K.bg, fontSize: 13, padding: "7px 16px", cursor: "pointer", fontWeight: 600, letterSpacing: .8 }}>{label}</button>
 );
 export const SectionTitle = ({ children }) => (
   <div style={{ fontFamily: "'League Spartan', sans-serif", fontSize: 22, fontWeight: 700, color: K.t1, letterSpacing: 1.0, marginBottom: 14 }}>{children}</div>
@@ -39,7 +39,7 @@ export const SubLabel = ({ children, color = K.acc, style }) => (
   <div style={{ fontSize: 11, fontWeight: 600, color, textTransform: "uppercase", letterSpacing: 1.8, marginBottom: 6, ...style }}>{children}</div>
 );
 export const Card = ({ children, highlight, style, ...rest }) => (
-  <div style={{ background: K.card, borderRadius: 10, border: `1px solid ${highlight ? K.acc + '40' : K.bdr}`, padding: "13px 15px", ...style }} {...rest}>{children}</div>
+  <div style={{ background: K.card, borderRadius: R.lg, border: `1px solid ${highlight ? K.acc + '40' : K.bdr}`, padding: "13px 15px", ...style }} {...rest}>{children}</div>
 );
 export const EmptyState = ({ icon, title, subtitle }) => (
   <div style={{ textAlign: "center", padding: 40 }}>
