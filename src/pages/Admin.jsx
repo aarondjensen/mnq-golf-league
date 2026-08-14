@@ -5,18 +5,24 @@ import { Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState } from
 import { I } from "../components/icons";
 import { getWeekSide, formatTeeTime as fmtTeeTimeUtil, lastNamesOnly, buildStandingsForSeed as sharedBuildStandingsForSeed, buildSeedMap, buildPlayoffSeedMap, computeRegularSeasonSeeds, isIndivGroupMatch, weekFullyAttested, findGroupResult, orderByBracketIdx } from "../lib/league";
 import { buildPlayoffNonBracketMatches } from "../lib/indivGroups";
+import { useConfirm } from "../lib/useConfirm";
 import { ConfirmModal } from "../components/Popup";
 import NotificationsAdmin from "./NotificationsAdmin";
 
-// NOTE: ConfirmModal used to live in this file as a local helper. It's now
-// imported from components/Popup.jsx so every confirm in the app (Admin,
-// Scoring, etc.) shares the same chrome. The shared component supports the
-// `<ConfirmModal modal={state} />` API this file uses at 9 call sites, so
-// none of those sites need to change. State shape supported:
-//   { title, message, confirmLabel, cancelLabel, destructive, onConfirm, onCancel }
-// (plus an optional `eyebrow` for the branded "MnQ Golf League" callout
-// used in Scoring's confirms — Admin doesn't pass that, so its modals
-// render without an eyebrow, identical to today.)
+// NOTE: confirmations here go through useConfirm, which returns a promise:
+//
+//   if (await confirm({ title, message, confirmLabel, destructive })) { ... }
+//
+// and one `<ConfirmModal modal={confirmModal} />` per component renders it.
+// This file used to hold a piece of `confirmModal` state per component — seven
+// of them, twenty-two call sites — each with an onConfirm that had to remember
+// to clear the state and an onCancel that existed only to do the same. The
+// question, the answer and the dismissal lived in three different places, and
+// every new confirm started by copying that shape again.
+//
+// The unsaved-changes handlers are the ones worth reading first: their cancel
+// branch does real work (leave without saving), which is why they read as
+// if/else rather than a bare guard.
 
 
 export default function AdminView(props) {
@@ -274,7 +280,7 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
   const [f, setF] = useState({ name: "", handicapIndex: "", startingHandicapIndex: "", teeBox: "Blue" });
   const [orig, setOrig] = useState(null); // snapshot for dirty detection
   const [showInactive, setShowInactive] = useState(false);
-  const [confirmModal, setConfirmModal] = useState(null);
+  const { confirm, confirmModal } = useConfirm();
   const nameRef = useCallback(node => { if (node) setTimeout(() => node.focus(), 50); }, [ed]);
   const teeBoxes = course?.teeBoxes || [{ name: "White", color: "#e2e8f0", slope: 113, rating: 67 }];
   const teeColor = (name) => (teeBoxes.find(t => t.name === name) || {}).color || K.bdr;
@@ -405,18 +411,15 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
             })}
           </div>
           {!isNew && (
-            <button onClick={() => {
-              setConfirmModal({
+            <button onClick={async () => {
+              if (await confirm({
                 title: `Deactivate ${f.name}?`,
                 message: "They'll be hidden from active rosters but their historical scores are preserved. You can reactivate later.",
                 confirmLabel: "Deactivate",
-                onConfirm: () => {
-                  setConfirmModal(null);
-                  toggleStatus(players.find(p => p.id === ed));
-                  setEd(null); setOrig(null);
-                },
-                onCancel: () => setConfirmModal(null),
-              });
+              })) {
+                toggleStatus(players.find(p => p.id === ed));
+                setEd(null); setOrig(null);
+              }
             }} style={{ padding: "5px 8px", borderRadius: 6, border: `1px solid ${K.red}30`, background: K.red + "10", color: K.red, fontSize: FS.micro, fontWeight: FW.bold, cursor: "pointer", flexShrink: 0 }}>Deactivate</button>
           )}
         </div>
@@ -453,15 +456,15 @@ function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, member
         {inactive ? (
           <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
             <button onClick={() => toggleStatus(p)} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.grn, fontSize: FS.xs, padding: "4px 8px", cursor: "pointer", fontWeight: FW.semibold }}>Reactivate</button>
-            <button onClick={() => {
-              setConfirmModal({
+            <button onClick={async () => {
+              if (await confirm({
                 title: `Delete ${p.name}?`,
                 message: "This permanently removes the player record. Historical scores and match results remain in the database but won't be attributable by name. This cannot be undone.",
                 confirmLabel: "Delete",
                 destructive: true,
-                onConfirm: () => { setConfirmModal(null); deletePlayer(p.id); },
-                onCancel: () => setConfirmModal(null),
-              });
+              })) {
+                deletePlayer(p.id);
+              }
             }} style={{ background: K.inp, border: `1px solid ${K.bdr}`, borderRadius: 6, color: K.red, fontSize: FS.xs, padding: "4px 8px", cursor: "pointer", fontWeight: FW.semibold }}>Delete</button>
           </div>
         ) : (
@@ -548,7 +551,7 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
 
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
-  const [confirmModal, setConfirmModal] = useState(null);
+  const { confirm, confirmModal } = useConfirm();
   const [dragPlayer, setDragPlayer] = useState(null); // { playerId, source: { type: "pool" } | { type: "slot", teamIdx, slot } }
   // Tap-to-swap state — alternative to drag, works great on mobile and is more discoverable.
   // Tap a player to "select" it, then tap a slot or another player to swap/place.
@@ -686,16 +689,19 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
     setDirty(false);
   };
 
-  const handleBack = () => {
+  const handleBack = async () => {
     if (!dirty) { onBack(); return; }
-    setConfirmModal({
+    if (await confirm({
       title: "Unsaved changes",
       message: "You have unsaved team changes. Save before leaving?",
       confirmLabel: "Save",
       cancelLabel: "Discard",
-      onConfirm: async () => { setConfirmModal(null); await saveAll(); onBack(); },
-      onCancel: () => { setConfirmModal(null); onBack(); },
-    });
+    })) {
+      await saveAll();
+      onBack();
+    } else {
+      onBack();
+    }
   };
 
   // Find drop target from coordinates
@@ -969,7 +975,7 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
 function AdminCourse({ course, saveCourseData, onBack }) {
   const [lc, setLc] = useState(course || { name: "", frontPars: [4,4,4,3,5,4,4,3,5], backPars: [4,3,5,4,4,4,5,3,4], frontHcps: [7,3,1,9,5,13,11,17,15], backHcps: [8,14,2,10,4,16,6,18,12], teeBoxes: [{ name: "White", color: "#e2e8f0", slope: 113, rating: 67 }] });
   const [dirty, setDirty] = useState(false);
-  const [confirmModal, setConfirmModal] = useState(null);
+  const { confirm, confirmModal } = useConfirm();
   const upT = (ti, f, v) => { const t = [...lc.teeBoxes]; t[ti] = { ...t[ti], [f]: f === 'slope' || f === 'rating' ? parseFloat(v) || 0 : v }; setLc({ ...lc, teeBoxes: t }); setDirty(true); };
 
   // Store hole values in refs so editing never triggers re-render
@@ -1065,16 +1071,19 @@ function AdminCourse({ course, saveCourseData, onBack }) {
     );
   };
 
-  const handleBack = () => {
+  const handleBack = async () => {
     if (!dirty) { onBack(); return; }
-    setConfirmModal({
+    if (await confirm({
       title: "Unsaved changes",
       message: "You have unsaved course changes. Save before leaving?",
       confirmLabel: "Save",
       cancelLabel: "Discard",
-      onConfirm: async () => { setConfirmModal(null); await saveWithRefs(); onBack(); },
-      onCancel: () => { setConfirmModal(null); onBack(); },
-    });
+    })) {
+      await saveWithRefs();
+      onBack();
+    } else {
+      onBack();
+    }
   };
 
   return (
@@ -1171,7 +1180,7 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
   const [generating, setGenerating] = useState(false);
   const [setupDirty, setSetupDirty] = useState(false);
   const [savingSetup, setSavingSetup] = useState(false);
-  const [confirmModal, setConfirmModal] = useState(null);
+  const { confirm, confirmModal } = useConfirm();
   // Local editing state for seeded-matchups pairings. Swaps update this; Save commits
   // to Firestore. Prior design auto-saved on every tap but stale closures were silently
   // overwriting saves. This pattern matches the rest of the Setup tab's Save flow.
@@ -1230,16 +1239,19 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
     setSeedsDirty(false);
   };
 
-  const handleOnBack = () => {
+  const handleOnBack = async () => {
     if (!setupDirty && !seedsDirty) { onBack(); return; }
-    setConfirmModal({
+    if (await confirm({
       title: "Unsaved setup changes",
       message: "You have unsaved schedule setup changes. Save before leaving?",
       confirmLabel: "Save",
       cancelLabel: "Discard",
-      onConfirm: async () => { setConfirmModal(null); await saveSetup(); onBack(); },
-      onCancel: () => { setConfirmModal(null); onBack(); },
-    });
+    })) {
+      await saveSetup();
+      onBack();
+    } else {
+      onBack();
+    }
   };
 
   // Sync localWk when editWeek changes or schedule updates
@@ -1260,16 +1272,19 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
     }
   };
 
-  const handleWeekBack = () => {
+  const handleWeekBack = async () => {
     if (!weekDirty) { setEditWeek(null); return; }
-    setConfirmModal({
+    if (await confirm({
       title: "Unsaved changes",
       message: "You have unsaved week changes. Save before leaving?",
       confirmLabel: "Save",
       cancelLabel: "Discard",
-      onConfirm: async () => { setConfirmModal(null); await saveWeekEdits(); setEditWeek(null); },
-      onCancel: () => { setConfirmModal(null); setEditWeek(null); },
-    });
+    })) {
+      await saveWeekEdits();
+      setEditWeek(null);
+    } else {
+      setEditWeek(null);
+    }
   };
 
   // Derived week counts — all configurable by admin
@@ -1356,13 +1371,13 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
       if (locked) parts.push(`${locked} finalized`);
       if (rained) parts.push(`${rained} rained-out`);
       if (makeup) parts.push(`${makeup} makeup`);
-      setConfirmModal({
+      if (await confirm({
         title: "Regenerate schedule?",
         message: `Preserved weeks: ${parts.join(", ")}. All other weeks will be regenerated from the current setup.`,
         confirmLabel: "Regenerate",
-        onConfirm: () => { setConfirmModal(null); runGenerate(preservedWeekNums); },
-        onCancel: () => setConfirmModal(null),
-      });
+      })) {
+        runGenerate(preservedWeekNums);
+      }
       return;
     }
 
@@ -2571,79 +2586,76 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
               );
               const anyLocked = schedule.some(s => s.locked);
               if (anyLocked || rrWeeks.length < 2) return null;
-              const doShuffle = () => {
-                setConfirmModal({
+              const doShuffle = async () => {
+                if (await confirm({
                   title: "Shuffle round-robin order?",
                   message: "Randomizes which week each matchup is played AND each team's tee-time slot across weeks. Only available before any week is locked.",
                   confirmLabel: "Shuffle",
-                  onConfirm: async () => {
-                    setConfirmModal(null);
-                    // Two-level shuffle:
-                    //  1. Fisher-Yates on the weeks (which matchup set is played which week)
-                    //  2. Within each week, re-balance tee-time slots across teams using the
-                    //     same permutation-search algorithm generate() uses. This ensures
-                    //     shuffle actively fixes tee-time fairness instead of just preserving
-                    //     whatever order each week originally had.
-                    const matchups = rrWeeks.map(w => w.matches || []);
-                    for (let i = matchups.length - 1; i > 0; i--) {
-                      const j = Math.floor(Math.random() * (i + 1));
-                      [matchups[i], matchups[j]] = [matchups[j], matchups[i]];
+                })) {
+                  // Two-level shuffle:
+                  //  1. Fisher-Yates on the weeks (which matchup set is played which week)
+                  //  2. Within each week, re-balance tee-time slots across teams using the
+                  //     same permutation-search algorithm generate() uses. This ensures
+                  //     shuffle actively fixes tee-time fairness instead of just preserving
+                  //     whatever order each week originally had.
+                  const matchups = rrWeeks.map(w => w.matches || []);
+                  for (let i = matchups.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [matchups[i], matchups[j]] = [matchups[j], matchups[i]];
+                  }
+                  // Tee-time balancing across the shuffled week order
+                  const tc = {};
+                  teams.forEach(t => { tc[t.id] = []; });
+                  const bump = (tid, slot) => {
+                    if (!tid) return;
+                    if (!tc[tid]) tc[tid] = [];
+                    tc[tid][slot] = (tc[tid][slot] || 0) + 1;
+                  };
+                  const permuteLocal = (arr) => {
+                    if (arr.length <= 1) return [arr];
+                    const out = [];
+                    for (let i = 0; i < arr.length; i++) {
+                      const rest = arr.slice(0, i).concat(arr.slice(i + 1));
+                      for (const p of permuteLocal(rest)) out.push([arr[i], ...p]);
                     }
-                    // Tee-time balancing across the shuffled week order
-                    const tc = {};
-                    teams.forEach(t => { tc[t.id] = []; });
-                    const bump = (tid, slot) => {
-                      if (!tid) return;
-                      if (!tc[tid]) tc[tid] = [];
-                      tc[tid][slot] = (tc[tid][slot] || 0) + 1;
-                    };
-                    const permuteLocal = (arr) => {
-                      if (arr.length <= 1) return [arr];
-                      const out = [];
-                      for (let i = 0; i < arr.length; i++) {
-                        const rest = arr.slice(0, i).concat(arr.slice(i + 1));
-                        for (const p of permuteLocal(rest)) out.push([arr[i], ...p]);
+                    return out;
+                  };
+                  const scorePermLocal = (perm) => {
+                    let s = 0;
+                    for (let slot = 0; slot < perm.length; slot++) {
+                      const m = perm[slot];
+                      for (const tid of [m.team1, m.team2]) {
+                        if (!tid) continue;
+                        const c = (tc[tid]?.[slot] || 0) + 1;
+                        s += c * c;
                       }
-                      return out;
-                    };
-                    const scorePermLocal = (perm) => {
-                      let s = 0;
-                      for (let slot = 0; slot < perm.length; slot++) {
-                        const m = perm[slot];
-                        for (const tid of [m.team1, m.team2]) {
-                          if (!tid) continue;
-                          const c = (tc[tid]?.[slot] || 0) + 1;
-                          s += c * c;
-                        }
-                      }
-                      return s;
-                    };
-                    const balanced = matchups.map(round => {
-                      if (!round || round.length <= 1) return round || [];
-                      let best = round;
-                      if (round.length <= 7) {
-                        let bestScore = scorePermLocal(round);
-                        for (const perm of permuteLocal(round)) {
-                          const s = scorePermLocal(perm);
-                          if (s < bestScore) { bestScore = s; best = perm; }
-                        }
-                      } else {
-                        // Perf fallback for very large rounds
-                        best = [...round];
-                        for (let i = best.length - 1; i > 0; i--) {
-                          const j = Math.floor(Math.random() * (i + 1));
-                          [best[i], best[j]] = [best[j], best[i]];
-                        }
-                      }
-                      best.forEach((m, slot) => { bump(m.team1, slot); bump(m.team2, slot); });
-                      return best;
-                    });
-                    for (let i = 0; i < rrWeeks.length; i++) {
-                      await saveWeekSchedule({ ...rrWeeks[i], matches: balanced[i] });
                     }
-                  },
-                  onCancel: () => setConfirmModal(null),
-                });
+                    return s;
+                  };
+                  const balanced = matchups.map(round => {
+                    if (!round || round.length <= 1) return round || [];
+                    let best = round;
+                    if (round.length <= 7) {
+                      let bestScore = scorePermLocal(round);
+                      for (const perm of permuteLocal(round)) {
+                        const s = scorePermLocal(perm);
+                        if (s < bestScore) { bestScore = s; best = perm; }
+                      }
+                    } else {
+                      // Perf fallback for very large rounds
+                      best = [...round];
+                      for (let i = best.length - 1; i > 0; i--) {
+                        const j = Math.floor(Math.random() * (i + 1));
+                        [best[i], best[j]] = [best[j], best[i]];
+                      }
+                    }
+                    best.forEach((m, slot) => { bump(m.team1, slot); bump(m.team2, slot); });
+                    return best;
+                  });
+                  for (let i = 0; i < rrWeeks.length; i++) {
+                    await saveWeekSchedule({ ...rrWeeks[i], matches: balanced[i] });
+                  }
+                }
               };
               return (
                 <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
@@ -2666,22 +2678,19 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
               const emptySeededWeeks = schedule.filter(s => s.seeded === true && !s.isPlayoff && !s.rainedOut && (!s.matches || s.matches.length === 0));
               if (emptySeededWeeks.length === 0) return null;
               const lastRRLockedWeek = Math.max(...rrWeeks.map(s => s.week));
-              const doRecoverySeed = () => {
-                setConfirmModal({
+              const doRecoverySeed = async () => {
+                if (await confirm({
                   title: `Seed ${emptySeededWeeks.length} empty week${emptySeededWeeks.length === 1 ? "" : "s"}?`,
                   message: "Generates matchups for the listed seeded weeks from current standings.",
                   confirmLabel: "Seed",
-                  onConfirm: async () => {
-                    setConfirmModal(null);
-                    const count = (await autoSeedIfReady(lastRRLockedWeek)) || 0;
-                    if (count > 0) {
-                      alert(`Seeded ${count} week${count === 1 ? "" : "s"}.`);
-                    } else {
-                      alert("No weeks needed seeding, or not enough data to seed.");
-                    }
-                  },
-                  onCancel: () => setConfirmModal(null),
-                });
+                })) {
+                  const count = (await autoSeedIfReady(lastRRLockedWeek)) || 0;
+                  if (count > 0) {
+                    alert(`Seeded ${count} week${count === 1 ? "" : "s"}.`);
+                  } else {
+                    alert("No weeks needed seeding, or not enough data to seed.");
+                  }
+                }
               };
               return (
                 <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}>
@@ -3133,16 +3142,13 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
         msg = `${roundName}:\n\n${matches.map(fmtPair).join("\n")}`;
       }
 
-      setConfirmModal({
+      if (await confirm({
         title: `Seed Week ${wk.week}?`,
         message: msg,
         confirmLabel: "Seed",
-        onConfirm: async () => {
-          setConfirmModal(null);
-          await saveWeekSchedule({ ...wk, matches });
-        },
-        onCancel: () => setConfirmModal(null),
-      });
+      })) {
+        await saveWeekSchedule({ ...wk, matches });
+      }
     };
 
     const handleRainOut = async () => {
@@ -3167,17 +3173,14 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
       const msgDetail = isRoundRobin
         ? `This will skip this week, insert a makeup at week ${makeupWeekNum}, push unlocked future weeks forward, and extend the season by one week.`
         : `This will skip this week, insert makeup matchups at week ${makeupWeekNum}, push unlocked future weeks forward, and extend the season by one week.`;
-      setConfirmModal({
+      if (await confirm({
         title: `Rain out Week ${wk.week}?`,
         message: msgDetail,
         confirmLabel: "Rain Out",
         destructive: true,
-        onConfirm: async () => {
-          setConfirmModal(null);
-          await doRainOut();
-        },
-        onCancel: () => setConfirmModal(null),
-      });
+      })) {
+        await doRainOut();
+      }
     };
 
     // Body of rain-out flow extracted from handleRainOut so confirm + action can be split.
@@ -3302,87 +3305,83 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
             <span style={{ fontSize: FS.sm, fontWeight: FW.bold, color: K.warn }}>Rained Out</span>
             {wk.makeupFor && <span style={{ fontSize: FS.xs, color: K.t3, marginLeft: 6 }}>(Makeup for Week {wk.makeupFor})</span>}
             <div style={{ marginTop: 8 }}>
-              <button onClick={() => {
-                setConfirmModal({
+              <button onClick={async () => {
+                if (await confirm({
                   title: `Undo rain out for Week ${wk.week}?`,
                   message: "Restores the week and reverses all week-number shifts. Locked weeks stay put.",
                   confirmLabel: "Undo Rain Out",
-                  onConfirm: async () => {
-                    setConfirmModal(null);
+                })) {
+                  const year = leagueConfig?.year || new Date().getFullYear();
+                      const parseDate = (dateStr) => {
+                        if (!dateStr) return null;
+                        const d = new Date(`${dateStr}, ${year}`);
+                        return isNaN(d.getTime()) ? null : d;
+                      };
+                      const fmtDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 
-                    const year = leagueConfig?.year || new Date().getFullYear();
-                    const parseDate = (dateStr) => {
-                      if (!dateStr) return null;
-                      const d = new Date(`${dateStr}, ${year}`);
-                      return isNaN(d.getTime()) ? null : d;
-                    };
-                    const fmtDate = (d) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+                      // All schedule writes are collected and committed in ONE
+                      // atomic batch (applyScheduleOps) — the delete-and-renumber
+                      // below must never half-apply.
+                      const ops = [];
 
-                    // All schedule writes are collected and committed in ONE
-                    // atomic batch (applyScheduleOps) — the delete-and-renumber
-                    // below must never half-apply.
-                    const ops = [];
+                      // Un-mark the rain out and restore matches if they were cleared
+                      const makeupWeek = schedule.find(s => s.makeupFor === wk.week);
+                      const restoredMatches = makeupWeek?.matches || wk.matches || [];
+                      ops.push({ type: "set", id: wk.id, data: { ...wk, rainedOut: false, matches: restoredMatches }, merge: true });
 
-                    // Un-mark the rain out and restore matches if they were cleared
-                    const makeupWeek = schedule.find(s => s.makeupFor === wk.week);
-                    const restoredMatches = makeupWeek?.matches || wk.matches || [];
-                    ops.push({ type: "set", id: wk.id, data: { ...wk, rainedOut: false, matches: restoredMatches }, merge: true });
+                      if (makeupWeek) {
+                        // Delete the makeup week, then shift weeks after it down by 1 — but skip over locked weeks.
+                        ops.push({ type: "delete", id: makeupWeek.id });
 
-                    if (makeupWeek) {
-                      // Delete the makeup week, then shift weeks after it down by 1 — but skip over locked weeks.
-                      ops.push({ type: "delete", id: makeupWeek.id });
+                    // Build shift map: for each non-locked week after makeupWeek.week, find the next lower available slot.
+                    const lockedWeekNums = new Set(schedule.filter(s => s.locked === true && s.week !== wk.week).map(s => s.week));
+                    const weeksToShift = schedule
+                      .filter(s => s.week > makeupWeek.week && s.locked !== true && s.week !== wk.week)
+                      .sort((a, b) => a.week - b.week);
 
-                  // Build shift map: for each non-locked week after makeupWeek.week, find the next lower available slot.
-                  const lockedWeekNums = new Set(schedule.filter(s => s.locked === true && s.week !== wk.week).map(s => s.week));
-                  const weeksToShift = schedule
-                    .filter(s => s.week > makeupWeek.week && s.locked !== true && s.week !== wk.week)
-                    .sort((a, b) => a.week - b.week);
+                    const shiftMap = {};
+                    const reserved = new Set(lockedWeekNums);
+                    reserved.add(wk.week);
+                    reserved.add(makeupWeek.week); // this is now being vacated
+                    // Actually remove makeupWeek from reserved since we just deleted it
+                    reserved.delete(makeupWeek.week);
 
-                  const shiftMap = {};
-                  const reserved = new Set(lockedWeekNums);
-                  reserved.add(wk.week);
-                  reserved.add(makeupWeek.week); // this is now being vacated
-                  // Actually remove makeupWeek from reserved since we just deleted it
-                  reserved.delete(makeupWeek.week);
-
-                  let cursor = makeupWeek.week;
-                  for (const fw of weeksToShift) {
-                    while (reserved.has(cursor)) cursor++;
-                    if (cursor < fw.week) {
-                      shiftMap[fw.week] = cursor;
-                      reserved.add(cursor);
+                    let cursor = makeupWeek.week;
+                    for (const fw of weeksToShift) {
+                      while (reserved.has(cursor)) cursor++;
+                      if (cursor < fw.week) {
+                        shiftMap[fw.week] = cursor;
+                        reserved.add(cursor);
+                      }
+                      cursor++;
                     }
-                    cursor++;
+
+                    // Apply shifts ascending by old week (so we free slots before we need them)
+                    const shiftEntries = Object.entries(shiftMap).map(([oldW, newW]) => ({ oldW: parseInt(oldW), newW })).sort((a, b) => a.oldW - b.oldW);
+                    for (const { oldW, newW } of shiftEntries) {
+                      const fw = schedule.find(s => s.week === oldW);
+                      if (!fw) continue;
+                      let newDate = fw.date || "";
+                      const parsed = parseDate(fw.date);
+                      if (parsed) {
+                        parsed.setDate(parsed.getDate() + (newW - oldW) * 7);
+                        newDate = fmtDate(parsed);
+                      }
+                      ops.push({ type: "delete", id: fw.id });
+                      ops.push({ type: "set", id: `${LEAGUE_ID}_w${newW}`, data: { ...fw, id: `${LEAGUE_ID}_w${newW}`, week: newW, date: newDate } });
+                    }
                   }
 
-                  // Apply shifts ascending by old week (so we free slots before we need them)
-                  const shiftEntries = Object.entries(shiftMap).map(([oldW, newW]) => ({ oldW: parseInt(oldW), newW })).sort((a, b) => a.oldW - b.oldW);
-                  for (const { oldW, newW } of shiftEntries) {
-                    const fw = schedule.find(s => s.week === oldW);
-                    if (!fw) continue;
-                    let newDate = fw.date || "";
-                    const parsed = parseDate(fw.date);
-                    if (parsed) {
-                      parsed.setDate(parsed.getDate() + (newW - oldW) * 7);
-                      newDate = fmtDate(parsed);
-                    }
-                    ops.push({ type: "delete", id: fw.id });
-                    ops.push({ type: "set", id: `${LEAGUE_ID}_w${newW}`, data: { ...fw, id: `${LEAGUE_ID}_w${newW}`, week: newW, date: newDate } });
+                  try {
+                    await applyScheduleOps(ops);
+                  } catch (e) {
+                    console.error("undo rain out: schedule write failed — nothing was changed:", e);
+                    alert(`Undo rain out failed — no changes were saved.\n\n${e?.message || e}`);
+                    return;
                   }
-                }
 
-                try {
-                  await applyScheduleOps(ops);
-                } catch (e) {
-                  console.error("undo rain out: schedule write failed — nothing was changed:", e);
-                  alert(`Undo rain out failed — no changes were saved.\n\n${e?.message || e}`);
-                  return;
+                  setEditWeek(null);
                 }
-
-                setEditWeek(null);
-                  },
-                  onCancel: () => setConfirmModal(null),
-                });
               }} style={{ padding: "6px 16px", borderRadius: 6, background: K.card, border: `1px solid ${K.warn}40`, color: K.warn, fontSize: FS.sm, fontWeight: FW.bold, cursor: "pointer" }}>
                 Undo Rain Out
               </button>
@@ -3523,21 +3522,18 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
                 <div style={{ fontSize: FS.sm, color: K.t2, marginBottom: 10, lineHeight: 1.4 }}>
                   {dupeNames} {dupes.size === 1 ? "appears" : "appear"} in more than one match this week. This happens when the bracket configuration has "seed N" and "winner of prior round" both resolving to the same team. Fix the bracket config in League Setup, then repair this week to clear scores and re-seed.
                 </div>
-                <button onClick={() => {
-                  setConfirmModal({
+                <button onClick={async () => {
+                  if (await confirm({
                     title: `Repair Week ${wk.week}?`,
                     message: `This will DELETE all match results, hole scores, and CTP entries for Week ${wk.week}, then clear the pairings so you can re-seed.\n\nUse this only after you've fixed the bracket configuration in League Setup. This action cannot be undone.`,
                     confirmLabel: "Repair Week",
                     destructive: true,
-                    onConfirm: async () => {
-                      setConfirmModal(null);
-                      if (clearWeekData) await clearWeekData(wk.week);
-                      const cleaned = { ...wk, matches: [], locked: false, seeded: true };
-                      await saveWeekSchedule(cleaned);
-                      setLocalWk(cleaned);
-                    },
-                    onCancel: () => setConfirmModal(null),
-                  });
+                  })) {
+                    if (clearWeekData) await clearWeekData(wk.week);
+                    const cleaned = { ...wk, matches: [], locked: false, seeded: true };
+                    await saveWeekSchedule(cleaned);
+                    setLocalWk(cleaned);
+                  }
                 }} style={{ width: "100%", padding: 10, borderRadius: 8, background: K.red, border: "none", color: "#fff", fontSize: FS.sm, fontWeight: FW.heavy, cursor: "pointer", letterSpacing: .3 }}>
                   Repair Week — Clear Scores & Pairings
                 </button>
@@ -3565,18 +3561,15 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
           </div>
           {/* Re-seed button for seeded-type weeks (non-RR, non-makeup, or playoff) that aren't finalized */}
           {!isFinalized && (wk.isPlayoff || wk.seeded === true) && wk.matches?.length > 0 && (
-            <button onClick={() => {
-              setConfirmModal({
+            <button onClick={async () => {
+              if (await confirm({
                 title: "Re-seed this week?",
                 message: "Replaces current matchups with fresh pairings from current standings. Does nothing if the week is already finalized.",
                 confirmLabel: "Re-seed",
-                onConfirm: async () => {
-                  setConfirmModal(null);
-                  await saveWeekSchedule({ ...wk, matches: [], seeded: true });
-                  setLocalWk({ ...wk, matches: [], seeded: true });
-                },
-                onCancel: () => setConfirmModal(null),
-              });
+              })) {
+                await saveWeekSchedule({ ...wk, matches: [], seeded: true });
+                setLocalWk({ ...wk, matches: [], seeded: true });
+              }
             }} style={{ width: "100%", padding: 8, borderRadius: 8, marginBottom: 8, background: K.logoBright + "12", border: `1px solid ${K.logoBright}30`, color: K.logoBright, fontSize: FS.xs, fontWeight: FW.bold, cursor: "pointer" }}>
               Re-seed from Standings
             </button>
@@ -3994,7 +3987,7 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
   const [lc, setLc] = useState({ ...scoring });
   const [cfg, setCfg] = useState({ scoringFormat: "lowHighBonus", bonusType: "teamNetTotal", standingsMethod: "points", ...leagueConfig });
   const [dirty, setDirty] = useState(false);
-  const [confirmModal, setConfirmModal] = useState(null);
+  const { confirm, confirmModal } = useConfirm();
 
   // Keep local form state in sync when Firestore updates — as long as the user isn't
   // mid-edit. Prevents silently overwriting concurrent changes on Save.
@@ -4049,16 +4042,18 @@ function AdminScoring({ scoring, saveScoringRules, leagueConfig, saveLeagueConfi
     </div>
   );
 
-  const handleBack = () => {
+  const handleBack = async () => {
     if (!dirty) { onBack(); return; }
-    setConfirmModal({
+    if (await confirm({
       title: "Unsaved changes",
       message: "You have unsaved scoring rules changes. Save before leaving?",
       confirmLabel: "Save",
       cancelLabel: "Discard",
-      onConfirm: async () => { setConfirmModal(null); await save(); onBack(); },
-      onCancel: () => { setConfirmModal(null); onBack(); },
-    });
+    })) {
+      await save(); onBack();
+    } else {
+      onBack();
+    }
   };
 
   return (
@@ -4206,7 +4201,7 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
   // would fire a write per option tapped. Draft-then-save is consistent with the rest of
   // admin and dramatically less chatty with Firestore.
   const [drafts, setDrafts] = useState({}); // { [memberId]: { playerId, isCommissioner } }
-  const [confirmModal, setConfirmModal] = useState(null);
+  const { confirm, confirmModal } = useConfirm();
   const [saving, setSaving] = useState(false);
   // "Reset login" runs an async revoke + delete; busyId disables that row's
   // controls while it's in flight, and notice surfaces the outcome inline
@@ -4266,27 +4261,30 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
 
   const handleBack = async () => {
     if (dirty) {
-      setConfirmModal({
+      if (await confirm({
         title: "Unsaved changes",
         message: `You have ${dirtyCount} unsaved member change${dirtyCount === 1 ? "" : "s"}. Save before leaving?`,
         confirmLabel: "Save",
         cancelLabel: "Discard",
-        onConfirm: async () => { setConfirmModal(null); await saveAll(); onBack(); },
-        onCancel: () => { setConfirmModal(null); onBack(); },
-      });
+      })) {
+        await saveAll();
+      onBack();
+      } else {
+        onBack();
+      }
       return;
     }
     onBack();
   };
 
-  const handleDelete = (m) => {
-    setConfirmModal({
+  const handleDelete = async (m) => {
+    if (await confirm({
       title: `Remove ${m.name}?`,
       message: `This removes their sign-in access. Their player profile stays — if you want to remove that too, go to the Players page.`,
       confirmLabel: "Remove",
-      onConfirm: async () => { setConfirmModal(null); await deleteMember(m.id); },
-      onCancel: () => setConfirmModal(null),
-    });
+    })) {
+      await deleteMember(m.id);
+    }
   };
 
   // Reset login (Option A): one confirmed action that (1) revokes the
@@ -4299,33 +4297,30 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
   // their (now-available) name on the Join screen, and you re-grant Comm if
   // they had it. A missing uid (legacy doc) means there's no session to
   // revoke, so we skip straight to freeing the name.
-  const handleResetLogin = (m) => {
+  const handleResetLogin = async (m) => {
     const playerName = (players.find(p => p.id === m.playerId)?.name) || m.name || "this player";
-    setConfirmModal({
+    if (await confirm({
       title: `Reset login for ${m.name}?`,
       message: `Signs ${m.name} out everywhere and frees up "${playerName}" so they can sign in again with a different Google account. Their scores and profile are kept. They'll re-select their name on the sign-in screen${m.isCommissioner ? ", and you'll need to re-grant Commissioner after" : ""}.`,
       confirmLabel: "Reset login",
       destructive: true,
-      onConfirm: async () => {
-        setConfirmModal(null);
-        setNotice(null);
-        setResetBusyId(m.id);
-        try {
-          if (m.uid) {
-            await callFunction("revokeUserSession", { targetUid: m.uid });
-          }
-          const ok = await deleteMember(m.id);
-          if (ok === null) throw new Error("Couldn't free the player name (delete failed)");
-          setNotice({ type: "success", text: `${m.name} has been signed out and "${playerName}" is free to claim.` });
-        } catch (err) {
-          // Revoke failed → we never deleted, so nothing is half-done.
-          setNotice({ type: "error", text: `Reset failed: ${err?.message || err}. No changes were made.` });
-        } finally {
-          setResetBusyId(null);
+    })) {
+      setNotice(null);
+      setResetBusyId(m.id);
+      try {
+        if (m.uid) {
+          await callFunction("revokeUserSession", { targetUid: m.uid });
         }
-      },
-      onCancel: () => setConfirmModal(null),
-    });
+        const ok = await deleteMember(m.id);
+        if (ok === null) throw new Error("Couldn't free the player name (delete failed)");
+        setNotice({ type: "success", text: `${m.name} has been signed out and "${playerName}" is free to claim.` });
+      } catch (err) {
+        // Revoke failed → we never deleted, so nothing is half-done.
+        setNotice({ type: "error", text: `Reset failed: ${err?.message || err}. No changes were made.` });
+      } finally {
+        setResetBusyId(null);
+      }
+    }
   };
 
   return (
@@ -4450,7 +4445,7 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
         })}
       </div>
 
-      {confirmModal && <ConfirmModal modal={confirmModal} />}
+      <ConfirmModal modal={confirmModal} />
     </div>
   );
 }
@@ -4465,7 +4460,7 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
   const [attestResult, setAttestResult] = useState(null);
   const [recalcing, setRecalcing] = useState(false);
   const [recalcResult, setRecalcResult] = useState(null);
-  const [confirmModal, setConfirmModal] = useState(null);
+  const { confirm, confirmModal } = useConfirm();
 
   // Keep local form state in sync when the Firestore doc updates — as long as the user
   // hasn't started editing. Prevents silently overwriting a concurrent change made in
@@ -4485,77 +4480,70 @@ function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoric
 
   const handleBack = async () => {
     if (dirty) {
-      setConfirmModal({
+      if (await confirm({
         title: "Unsaved changes",
         message: "You have unsaved changes. Save before leaving?",
         confirmLabel: "Save",
         cancelLabel: "Discard",
-        onConfirm: async () => { setConfirmModal(null); await save(); onBack(); },
-        onCancel: () => { setConfirmModal(null); onBack(); },
-      });
+      })) {
+        await save(); onBack();
+      } else {
+        onBack();
+      }
       return;
     }
     onBack();
   };
 
-  const handleReset = () => {
-    setConfirmModal({
+  const handleReset = async () => {
+    if (!(await confirm({
       title: "Reset all season data?",
       message: "This permanently deletes all hole scores, match results, CTP data, and the entire schedule (all weeks, rainouts, makeups). After reset, you'll need to regenerate the schedule from scratch. This cannot be undone.",
       confirmLabel: "Reset",
       destructive: true,
-      onConfirm: () => {
-        // Two-step confirm for a genuinely destructive action
-        setConfirmModal({
-          title: "Really reset?",
-          message: "This wipes ALL season data including the schedule itself. Last chance to cancel.",
-          confirmLabel: "Yes, wipe everything",
-          destructive: true,
-          onConfirm: async () => {
-            setConfirmModal(null);
-            setResetting(true);
-            await resetSeasonData();
-            setResetting(false);
-          },
-          onCancel: () => setConfirmModal(null),
-        });
-      },
-      onCancel: () => setConfirmModal(null),
-    });
+    }))) return;
+    // Two-step confirm for a genuinely destructive action. Reads as two guards
+    // now rather than a confirm nested inside another confirm's callback.
+    if (!(await confirm({
+      title: "Really reset?",
+      message: "This wipes ALL season data including the schedule itself. Last chance to cancel.",
+      confirmLabel: "Yes, wipe everything",
+      destructive: true,
+    }))) return;
+    setResetting(true);
+    await resetSeasonData();
+    setResetting(false);
   };
 
-  const handleAttestAll = () => {
+  const handleAttestAll = async () => {
     const unattested = (matchResults || []).filter(r => r.attested !== true);
     if (unattested.length === 0) {
       setAttestResult({ updated: 0, message: "No unattested match results" });
       return;
     }
-    setConfirmModal({
+    if (await confirm({
       title: `Force-attest ${unattested.length} match${unattested.length === 1 ? "" : "es"}?`,
       message: "DEV BUILD ONLY — bypasses the opposing-team signature requirement.",
       confirmLabel: "Attest all",
-      onConfirm: async () => {
-        setConfirmModal(null);
-        setAttesting(true);
-        setAttestResult(null);
-        let completed = 0;
-        try {
-          for (const r of unattested) {
-            const t1 = (teams || []).find(t => t.id === r.team1Id);
-            const t2 = (teams || []).find(t => t.id === r.team2Id);
-            const allPids = [t1?.player1, t1?.player2, t2?.player1, t2?.player2].filter(Boolean);
-            const nonSignerPids = allPids.filter(pid => pid !== r.signedByPlayerId);
-            await saveMatchResult({ ...r, attested: true, attestedBy: nonSignerPids });
-            completed++;
-          }
-          setAttestResult({ updated: completed });
-        } catch (e) {
-          setAttestResult({ error: `${e.message} (${completed} of ${unattested.length} completed before error)` });
+    })) {
+      setAttesting(true);
+      setAttestResult(null);
+      let completed = 0;
+      try {
+        for (const r of unattested) {
+          const t1 = (teams || []).find(t => t.id === r.team1Id);
+          const t2 = (teams || []).find(t => t.id === r.team2Id);
+          const allPids = [t1?.player1, t1?.player2, t2?.player1, t2?.player2].filter(Boolean);
+          const nonSignerPids = allPids.filter(pid => pid !== r.signedByPlayerId);
+          await saveMatchResult({ ...r, attested: true, attestedBy: nonSignerPids });
+          completed++;
         }
-        setAttesting(false);
-      },
-      onCancel: () => setConfirmModal(null),
-    });
+        setAttestResult({ updated: completed });
+      } catch (e) {
+        setAttestResult({ error: `${e.message} (${completed} of ${unattested.length} completed before error)` });
+      }
+      setAttesting(false);
+    }
   };
 
   const handleRecalc = async () => {

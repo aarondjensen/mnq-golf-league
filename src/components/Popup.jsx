@@ -74,12 +74,19 @@ export function Popup({
 
   // ESC key closes the popup unless explicitly disabled. Only registers
   // when onClose is provided — keeps the listener footprint minimal.
+  //
+  // `noBackdropClose` implies it. A modal that refuses a stray click outside
+  // itself is a blocking or destructive one, and every reason it refuses the
+  // click applies to a stray keypress. Both flags stay because the reverse is
+  // not true: a popup can want ESC off while still dismissing on the backdrop.
+  // All three apps share this rule.
+  const escCloses = !noEscClose && !noBackdropClose;
   useEffect(() => {
-    if (!onClose || noEscClose) return;
+    if (!onClose || !escCloses) return;
     const onKey = (e) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose, noEscClose]);
+  }, [onClose, escCloses]);
 
   const handleBackdrop = () => {
     if (!noBackdropClose && onClose) onClose();
