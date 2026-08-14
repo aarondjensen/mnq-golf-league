@@ -28,7 +28,7 @@
 // not skip ahead to a later week, because a tee time three weeks out is not
 // what "current week" means.
 
-import { isIndivGroupMatch } from "./league";
+import { isIndivGroupMatch } from "./matches";
 
 // Last name only, matching the banner's compact two/three-line right column.
 const lastName = (name) => (name || "").trim().split(/\s+/).filter(Boolean).pop() || "";

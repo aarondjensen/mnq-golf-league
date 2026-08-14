@@ -23,7 +23,10 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { K, LIST_GAP, CARD_RADIUS, FS, FW } from "../theme";
 import { EmptyState, LoadingPanel } from "./ui";
-import { getWeekSide, calcPlayerHcp, lastNamesOnly, resolveIndivRound, buildHistoricalPlayers } from "../lib/league";
+import { calcPlayerHcp, buildHistoricalPlayers } from "../lib/handicap";
+import { resolveIndivRound } from "../lib/individualRounds";
+import { getWeekSide } from "../lib/leagueConfig";
+import { lastNamesOnly } from "../lib/playerNames";
 import { SharedScorecard } from "./SharedScorecard";
 import { buildStrokesMap } from "../lib/matchCalc";
 // computeRoundLine is the same per-round calc the leaderboard totals use, so

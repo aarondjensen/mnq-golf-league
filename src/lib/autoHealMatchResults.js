@@ -60,7 +60,8 @@
 // saveMatchResult, schedule, teams, players, seedMap.
 
 import { computeMatchResult } from "./matchCalc";
-import { getWeekSide, getPlayerHcpAtWeek } from "./league";
+import { getPlayerHcpAtWeek } from "./handicap";
+import { getWeekSide } from "./leagueConfig";
 
 /**
  * Detect drift in saved match_result docs and write corrections.

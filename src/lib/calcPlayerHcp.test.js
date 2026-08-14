@@ -23,7 +23,7 @@
 // over-weighted by their better one.
 
 import { describe, it, expect } from "vitest";
-import { calcPlayerHcp } from "./league";
+import { calcPlayerHcp } from "./handicap";
 
 describe("calcPlayerHcp", () => {
   describe("input handling", () => {

@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo, useRef, memo } from "react";
 import { K, LIST_GAP, CARD_RADIUS } from "../theme";
 import { EmptyState, SubLabel, LoadingPanel } from "../components/ui";
-import { getWeekSide, resolvePlayerHcpForWeek, resolveIndivRound } from "../lib/league";
+import { resolvePlayerHcpForWeek } from "../lib/handicap";
+import { resolveIndivRound } from "../lib/individualRounds";
+import { getWeekSide } from "../lib/leagueConfig";
 import { buildStrokesMap, resultLetterFor } from "../lib/matchCalc";
 
 // Parse the defeat margin out of a match-play result string. The result text

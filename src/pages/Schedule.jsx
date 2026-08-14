@@ -1,7 +1,12 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { K, LIST_GAP, CARD_RADIUS, NAME_SIZE, CHEVRON_SIZE, FS, FW } from "../theme";
 import { SubLabel, Pill, EmptyState, LoadingPanel, SkeletonList } from "../components/ui";
-import { lastNamesOnly, formatTeeTime, getWeekSide, buildSeedMap, buildPlayoffSeedMap, buildHistoricalPlayers, isIndivGroupMatch, findGroupResult, weekFullyScored, resolveIndivRound } from "../lib/league";
+import { buildHistoricalPlayers } from "../lib/handicap";
+import { resolveIndivRound } from "../lib/individualRounds";
+import { getWeekSide } from "../lib/leagueConfig";
+import { formatTeeTime, isIndivGroupMatch, findGroupResult, weekFullyScored } from "../lib/matches";
+import { lastNamesOnly } from "../lib/playerNames";
+import { buildSeedMap, buildPlayoffSeedMap } from "../lib/seeding";
 import { LEAGUE_ID } from "../firebase";
 import { SharedScorecard } from "../components/SharedScorecard";
 import { Popup } from "../components/Popup";

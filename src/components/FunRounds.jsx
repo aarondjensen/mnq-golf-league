@@ -41,7 +41,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { K, LIST_GAP, CARD_RADIUS, FS, FW } from "../theme";
 import { Pill, EmptyState, SubLabel } from "./ui";
-import { initialLastName } from "../lib/league";
+import { initialLastName } from "../lib/playerNames";
 import { Popup, ConfirmModal } from "./Popup";
 import {
   splitFunRounds,

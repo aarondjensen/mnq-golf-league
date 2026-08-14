@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo } from "react";
 import { K, LIST_GAP, CARD_RADIUS, NAME_SIZE, NAME_WEIGHT, CHEVRON_SIZE, FS, FW } from "../theme";
 import { EmptyState, LoadingPanel, SkeletonList } from "../components/ui";
-import { calcPlayerHcp, getWeekSide } from "../lib/league";
+import { calcPlayerHcp } from "../lib/handicap";
+import { getWeekSide } from "../lib/leagueConfig";
 
 // ── HcpTrendChart ─────────────────────────────────────────────────────
 // Inline SVG line chart of a player's handicap-over-time. Each x-axis

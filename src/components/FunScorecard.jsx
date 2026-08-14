@@ -20,7 +20,7 @@
 
 import { useMemo } from "react";
 import { K, FS, FW } from "../theme";
-import { lastNamesOnly } from "../lib/league";
+import { lastNamesOnly } from "../lib/playerNames";
 import { formatToPar } from "../lib/funScores";
 
 // ── Round leaderboard ─────────────────────────────────────────────
