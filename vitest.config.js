@@ -8,10 +8,21 @@
 //
 // Test discovery
 // ──────────────
-// Default pattern (`**/*.{test,spec}.{js,jsx,ts,tsx}`) is fine. Tests live
-// next to the code they cover (e.g., src/theme.jsx → src/theme.test.js,
-// src/lib/matchCalc.js → src/lib/matchCalc.test.js) so finding the test
-// file from the source is one click in any editor.
+// Scoped to src/ deliberately. Tests live next to the code they cover
+// (src/lib/matchCalc.js → src/lib/matchCalc.test.js) so finding the test from
+// the source is one click in any editor.
+//
+// The default pattern also swept up firestore.rules.test.mjs at the repo root,
+// which is an INTEGRATION test: it needs the Firestore emulator listening on
+// 127.0.0.1:8080 and dies with ECONNREFUSED without it. Inside the default glob
+// it made `npm test` red on a clean checkout, and a suite that is red by
+// default is one everybody learns to ignore. Bourbon Cup and WBC both carve it
+// out the same way.
+//
+// Run the rules suite deliberately, with the emulator up:
+//   npm i --no-save firebase-tools @firebase/rules-unit-testing
+//   npx firebase emulators:exec --only firestore --project mnq-rules-probe \
+//     "node firestore.rules.test.mjs"
 //
 // Environment
 // ───────────
@@ -41,6 +52,7 @@ export default defineConfig({
   // the test transform agree with it.
   esbuild: { jsx: 'automatic', jsxImportSource: 'react' },
   test: {
+    include: ['src/**/*.{test,spec}.{js,jsx}'],
     // Globals: false — keeps imports explicit (`import { describe, it,
     // expect } from "vitest"`). Avoids the "where did `expect` come
     // from?" question when reading tests cold.
