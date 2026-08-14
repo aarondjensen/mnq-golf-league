@@ -1,9 +1,10 @@
 import { initializeApp } from "firebase/app";
+import { resolveFirebaseConfig } from "./lib/firebaseConfig";
 import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, setDoc, getDocs, query, where, writeBatch, onSnapshot, deleteDoc } from "firebase/firestore";
 import { getAuth, initializeAuth, indexedDBLocalPersistence, browserLocalPersistence, browserPopupRedirectResolver, signInWithPopup, signInWithRedirect, getRedirectResult, signInWithCredential, linkWithCredential, linkWithPopup, GoogleAuthProvider, OAuthProvider, signInWithEmailAndPassword, createUserWithEmailAndPassword, fetchSignInMethodsForEmail, onAuthStateChanged, signOut, updateProfile, sendPasswordResetEmail, deleteUser, reauthenticateWithCredential, EmailAuthProvider } from "firebase/auth";
 import { Capacitor } from "@capacitor/core";
 
-const FIREBASE_CONFIG = {
+const PROD_FIREBASE_CONFIG = {
   apiKey: "AIzaSyDW3tTWxOlrPoKiflmlh_6JPLe8vbvVEUE",
   // authDomain points at our OWN app domain (not the default
   // mnq-golf-leage.firebaseapp.com) so the signInWithRedirect flow stays
@@ -22,6 +23,39 @@ const FIREBASE_CONFIG = {
   messagingSenderId: "367374056990",
   appId: "1:367374056990:web:70133948f9b2760558780f",
 };
+
+// ── Pointing a dev server at a different project ────────────────────
+// There is one Firebase project behind this app and it holds the real league.
+// Admin writes on edit, so a dev server aimed at production can corrupt a live
+// week with one stray click. Copy .env.example to .env.local and fill in every
+// VITE_FIREBASE_* var to aim that machine at a scratch Firebase project.
+//
+// The override is deliberately ALL-OR-NOTHING: a partial set throws at startup
+// rather than silently pairing a dev project id with the prod API key, which
+// would look like it worked and write to production anyway. That failure is the
+// entire reason the mechanism is shaped this way — a half-applied override is
+// worse than no override, because it reports success.
+//
+// Ported from Bourbon Cup, which has had this for a while. WBC and MnQ were
+// both hardcoded to their live projects, so neither had any way to work
+// against scratch data at all.
+const _resolveFirebaseConfig = () => {
+  let verdict;
+  try {
+    verdict = resolveFirebaseConfig(import.meta.env, PROD_FIREBASE_CONFIG, "real league data");
+  } catch (e) {
+    // Logged as well as re-thrown: this throws during module evaluation, before
+    // React (and ErrorBoundary) exists, so the only symptom on screen is a
+    // blank page.
+    console.error(e.message);
+    throw e;
+  }
+  if (verdict.warn) console.warn(verdict.warn);
+  if (verdict.source === "env") console.info(`[firebase] Using project "${verdict.config.projectId}" from env.`);
+  return verdict.config;
+};
+
+const FIREBASE_CONFIG = _resolveFirebaseConfig();
 
 export const LEAGUE_ID = "league_2026";
 
