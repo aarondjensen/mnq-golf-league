@@ -145,8 +145,6 @@ export function SharedScorecard({
   showTotals = false,           // show TOT column
   showMatchRow = true,
   matchGrn,
-  team1Label,                   // team name for allMatches
-  team2Label,
 }) {
   const colBdr = COL_BDR_STYLE(K.bdr);
   const gridLine = GRID_LINE_STYLE(K.bdr);

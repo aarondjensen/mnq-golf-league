@@ -10,7 +10,7 @@ export default function handler(req, res) {
     res.setHeader('Content-Type', 'text/calendar; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename || 'schedule.ics'}"`);
     res.status(200).send(ics);
-  } catch (e) {
+  } catch {
     res.status(500).json({ error: 'Failed to generate calendar file' });
   }
 }

@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from "react";
-import { LEAGUE_ID, db, callFunction } from "../firebase";
+import { LEAGUE_ID, callFunction } from "../firebase";
 import { K, LIST_GAP, CARD_RADIUS, FS, FW } from "../theme";
 import { Pill, BackBtn, SaveBtn, SectionTitle, SubLabel, Card, EmptyState } from "../components/ui";
 import { I } from "../components/icons";
-import { getWeekSide } from "../lib/leagueConfig";
 import { formatTeeTime as fmtTeeTimeUtil, isIndivGroupMatch, weekFullyAttested, findGroupResult } from "../lib/matches";
 import { lastNamesOnly } from "../lib/playerNames";
 import { buildSeedMap, buildPlayoffSeedMap, computeRegularSeasonSeeds, orderByBracketIdx } from "../lib/seeding";
@@ -30,7 +29,7 @@ import NotificationsAdmin from "./NotificationsAdmin";
 
 
 export default function AdminView(props) {
-  const { groupResults, players, savePlayer, deletePlayer, teams, saveTeam, deleteTeam, schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, course, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, members, saveMember, deleteMember, matchResults, saveMatchResult, clearWeekData, fetchSeasonScores, fetchAllScores } = props;
+  const { groupResults, players, savePlayer, deletePlayer, teams, saveTeam, schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, course, saveCourseData, scoringRules, saveScoringRules, leagueConfig, saveLeagueConfig, members, saveMember, deleteMember, matchResults, saveMatchResult, clearWeekData, fetchSeasonScores, fetchAllScores } = props;
   const [sec, setSec] = useState(null);
 
   // ── Derive actionable status for the dashboard banner ──
@@ -279,7 +278,7 @@ export default function AdminView(props) {
 }
 
 
-function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, members, saveMember, onBack }) {
+function AdminPlayers({ players, savePlayer, deletePlayer, course, teams, members, onBack }) {
   const [ed, setEd] = useState(null);
   const [f, setF] = useState({ name: "", handicapIndex: "", startingHandicapIndex: "", teeBox: "Blue" });
   const [orig, setOrig] = useState(null); // snapshot for dirty detection
@@ -741,7 +740,7 @@ function AdminTeams({ teams, saveTeam, players, onBack }) {
           transition: "opacity .1s, box-shadow .15s, background .15s",
           ...extraStyle,
         }}
-        onClick={(e) => {
+        onClick={() => {
           // onClick fires on tap completion. Fires after mouseup/touchend so a completed
           // drag's final mouseup won't mis-trigger this tap — the drag's onUp fires before
           // onClick and setDragPlayer(null) is called. But to be safe, if we're mid-drag,
@@ -1138,7 +1137,7 @@ function AdminCourse({ course, saveCourseData, onBack }) {
 }
 
 
-function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, applyScheduleOps, teams, players, course, scoringRules, leagueConfig, saveLeagueConfig, matchResults, autoSeedIfReady, clearWeekData, fetchSeasonScores, fetchAllScores, onBack }) {
+function AdminSchedule({ groupResults, schedule, saveWeekSchedule, applyScheduleOps, teams, players, course, scoringRules, leagueConfig, saveLeagueConfig, matchResults, autoSeedIfReady, clearWeekData, fetchSeasonScores, fetchAllScores, onBack }) {
   const [step, setStep] = useState(schedule.length > 0 ? "view" : "setup");
 
   // Single source of truth for "derive cfg from stored leagueConfig".
@@ -1174,7 +1173,6 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
   const [playoffView, setPlayoffView] = useState("setup"); // "setup" | "preview"
   const [localWk, setLocalWk] = useState(null); // local edits for the week being edited
   const [weekDirty, setWeekDirty] = useState(false);
-  const [dragIdx, setDragIdx] = useState(null);
   const [dragTeam, setDragTeam] = useState(null); // { matchIdx, slot: "team1"|"team2", teamId, ghostPos? }
   const dragTeamRef = useRef(null); // ref mirror for touch handlers (avoids stale closures)
   // Whole-row drag — reorders TEE TIMES, a different job from dragTeam's
@@ -1325,20 +1323,6 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
   };
 
   // Standings-based matchups: 1v10, 2v9, 3v8, etc.
-  const generateStandingsMatchups = () => {
-    const pts = {};
-    teams.forEach(t => { pts[t.id] = 0; });
-    (matchResults || []).forEach(r => {
-      if (pts[r.team1Id] !== undefined) pts[r.team1Id] += (r.team1Points || 0);
-      if (pts[r.team2Id] !== undefined) pts[r.team2Id] += (r.team2Points || 0);
-    });
-    const sorted = Object.entries(pts).sort((a, b) => b[1] - a[1]).map(e => e[0]);
-    const matches = [];
-    for (let i = 0; i < Math.floor(sorted.length / 2); i++) {
-      matches.push({ team1: sorted[i], team2: sorted[sorted.length - 1 - i] });
-    }
-    return matches;
-  };
 
   const formatTeeTime = (baseTime, idx) => fmtTeeTimeUtil(baseTime, idx, cfg.teeInterval);
 
@@ -1365,7 +1349,6 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
     const preservedWeeks = schedule.filter(s =>
       s.locked === true || s.rainedOut === true || (s.makeupFor && !s.rainedOut)
     );
-    const preservedWeekNums = new Set(preservedWeeks.map(s => s.week));
 
     if (preservedWeeks.length > 0) {
       const locked = schedule.filter(s => s.locked).length;
@@ -1380,17 +1363,20 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
         message: `Preserved weeks: ${parts.join(", ")}. All other weeks will be regenerated from the current setup.`,
         confirmLabel: "Regenerate",
       })) {
-        runGenerate(preservedWeekNums);
+        runGenerate();
       }
       return;
     }
 
-    runGenerate(preservedWeekNums);
+    runGenerate();
   };
 
   // Async body extracted from generate() so the confirmation prompt can be a themed modal
   // (which is async/callback-based) instead of window.confirm (which was sync).
-  const runGenerate = async (preservedWeekNums) => {
+  // Takes no argument. It used to be handed a set of preserved week numbers
+  // and never read it — preservation is decided inside, from each week's own
+  // locked / seeded / rainedOut flags off `cleanSchedule`.
+  const runGenerate = async () => {
     setGenerating(true);
 
     // Every schedule write is collected into `ops` and committed as ONE
@@ -1563,8 +1549,7 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
     ).length;
 
     // Total weeks: base schedule + rainouts (each rainout adds 1 dead slot)
-    const totalRainouts = cleanSchedule.filter(s => s.rainedOut === true).length;
-
+  
     // Walk through week positions sequentially, building each block in order
     let weekNum = 0;
     let rrCursor = 0;       // index into availableRounds for next new slot
@@ -1727,14 +1712,6 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
   };
 
   // Drag reorder for a week's matches
-  const moveMatch = async (weekData, fromIdx, toIdx) => {
-    if (fromIdx === toIdx) return;
-    const matches = [...weekData.matches];
-    const [moved] = matches.splice(fromIdx, 1);
-    matches.splice(toIdx, 0, moved);
-    await saveWeekSchedule({ ...weekData, matches });
-  };
-
   const gn = (id) => teams.find(t => t.id === id)?.name || "TBD";
   const days = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
 
@@ -2807,9 +2784,7 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
     const isRainedOut = wk.rainedOut === true;
     const isSeeded = wk.seeded === true && (!wk.matches || wk.matches.length === 0);
     const isPlayoff = wk.isPlayoff === true;
-    const regWeeks = computedRegularWeeks; // use the live computed value
-    const playoffWeeks = cfg.playoffWeeks;
-    // Determine playoff round by counting playoff weeks up to and including this one
+        // Determine playoff round by counting playoff weeks up to and including this one
     const playoffRound = isPlayoff ? schedule.filter(s => s.isPlayoff === true && s.week <= wk.week).length : 0;
 
     // Build current standings for seeding
@@ -2835,7 +2810,6 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
       // for non-bracket teams). For the Seed Week confirm modal we want to display them
       // separately so the commissioner understands why there are more matches than the
       // configured bracket has.
-      let bracketCount = 0;
 
       if (isPlayoff) {
         // Playoff weeks seed off the frozen PLAYOFF order (full regular season:
@@ -3055,8 +3029,6 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
           return;
         }
 
-        bracketCount = matches.length;
-
         // Add non-bracket matchups so teams not in the bracket still have tee
         // times — only when consolation is enabled. buildPlayoffNonBracketMatches
         // is SHARED with the auto-seed resolver (scheduleAutoSeed.js) so the
@@ -3217,9 +3189,6 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
 
       // Shift only NON-LOCKED weeks from makeupWeekNum onward. Locked weeks stay put.
       // We process descending to avoid id collisions as we renumber.
-      const weeksToShift = schedule
-        .filter(s => s.week >= makeupWeekNum && s.locked !== true && s.week !== wk.week)
-        .sort((a, b) => b.week - a.week);
 
       // We need to be careful: if we shift a week to position N, and N is occupied by a locked week,
       // we need to skip that position. Build a mapping: oldWeek → newWeek by walking forward.
@@ -3410,7 +3379,7 @@ function AdminSchedule({ groupResults, schedule, saveWeekSchedule, setWeekSchedu
 
           let previewPairings = [];
           if (isPlayoff && roundDef?.matchups?.length) {
-            roundDef.matchups.forEach((mu, i) => {
+            roundDef.matchups.forEach((mu) => {
               // Label generator — covers all slot types so the preview never shows
               // a bare "?" that leaves the commissioner wondering what's broken.
               // Unrecognized configs surface as "UNSET" with warning styling so the
@@ -4455,7 +4424,7 @@ function AdminMembers({ members, saveMember, deleteMember, players, onBack }) {
 }
 
 
-function AdminConfig({ config, saveLeagueConfig, resetSeasonData, importHistoricalScores, recalcHandicaps, matchResults, saveMatchResult, schedule, teams, scoringRules, saveScoringRules, onBack }) {
+function AdminConfig({ config, saveLeagueConfig, resetSeasonData, recalcHandicaps, matchResults, saveMatchResult, teams, scoringRules, saveScoringRules, onBack }) {
   const [lc, setLc] = useState({ ...config });
   const [sr, setSr] = useState({ ...(scoringRules || {}) });
   const [dirty, setDirty] = useState(false);

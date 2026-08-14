@@ -452,7 +452,7 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
         // scores, no VS pill — just seed badge + name with winner highlight. The green
         // tint on the whole card (instead of just one half) makes advancement obvious.
         const BracketCard = ({ mu, configMu }) => {
-          const teamRow = (seed, name, isWinner, isLoser, isConsolation) => {
+          const teamRow = (seed, name, isWinner, isLoser) => {
             // Unified blue seed badge (Full League style) — matches the card
             // view and the rest of the app. isConsolation no longer alters the
             // badge color; advancement is still shown via the green winner tint.
@@ -729,7 +729,6 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                             let nextCardDeltaY = 0;
                             let shouldDrawConnector = false;
                             if (ri >= 1 && ri < bracketData.length - 1 && !isConsolation) {
-                              const nextRound = bracketData[ri + 1];
                               const nextPrevCount = matchCount;
                               const nextAdvCount = Math.max(1, Math.ceil(nextPrevCount / 2));
                               const nextTargetIdx = Math.floor(mi / 2);
@@ -795,7 +794,6 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
                   1st-and-2nd is the same as 3rd-and-4th by design. */}
               {(() => {
                 const lastIdx = bracketData.length - 1;
-                const lastRound = bracketData[lastIdx];
                 const lastG = geom[lastIdx] || { topPad: 0, gap: BASE_GAP };
                 const lastAdvCount = Math.max(1, Math.ceil((lastIdx > 0 ? bracketData[lastIdx - 1] : { matchups: [], config: [] }).matchups.length / 2) || 1);
                 const trophyCardY = (mi) => {
@@ -917,7 +915,7 @@ function PlayoffBracketView({ teams, players, schedule, matchResults, leagueConf
       })()}
 
       {/* PER-ROUND VIEW — stacked matchup cards, non-playoff matches below */}
-      {view !== "bracket" && roundsToRender.map((round, idx) => {
+      {view !== "bracket" && roundsToRender.map((round) => {
         const ri = bracketData.indexOf(round);
         const matchCount = Math.max(round.matchups.length, round.config.length, 1);
         return (
@@ -1325,9 +1323,6 @@ export default function StandingsView({ teams, players, matchResults, leagueConf
     const wkScores = weekScores[mr.week];
     if (!wkScores) return <LoadingPanel size="compact" />;
 
-    const myTeamObj = teams.find(t => t.id === teamId);
-    const oppTeamId = mr.team1Id === teamId ? mr.team2Id : mr.team1Id;
-    const oppTeamObj = teams.find(t => t.id === oppTeamId);
     const t1Pids = [teams.find(t => t.id === mr.team1Id)?.player1, teams.find(t => t.id === mr.team1Id)?.player2].filter(Boolean);
     const t2Pids = [teams.find(t => t.id === mr.team2Id)?.player1, teams.find(t => t.id === mr.team2Id)?.player2].filter(Boolean);
 

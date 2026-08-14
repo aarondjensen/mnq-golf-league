@@ -221,7 +221,7 @@ export function autoHealMatchResults({
         healedIds.add(r.id);
         saveMatchResult({ ...r, ...calc });
       }
-    } catch (e) {
+    } catch {
       // Auto-heal is opportunistic. If computeMatchResult throws (e.g.
       // because a player record was deleted, a team was reassigned, etc.)
       // we just skip this record; the inline expanded scorecard will

@@ -398,8 +398,7 @@ export function IndividualLeaderboard({ players, teams, schedule, course, league
   const leaderboard = useMemo(() => {
     if (!course || !players.length) return [];
 
-    const teeBoxes = course.teeBoxes || [];
-    const frontPars = course.frontPars || [];
+      const frontPars = course.frontPars || [];
     const frontPar = frontPars.reduce((a, b) => a + b, 0);
     const recentN = scoringRules?.hcpRecentCount ?? 8;
     const bestN = scoringRules?.hcpBestCount ?? 6;
@@ -794,7 +793,7 @@ export function IndividualLeaderboard({ players, teams, schedule, course, league
       {/* Leaderboard */}
       <div style={{ display: "flex", flexDirection: "column", gap: LIST_GAP }}>
 
-        {displayBoard.map((p, i) => {
+        {displayBoard.map((p) => {
           // Payout is 1st place only, so 1st is the ONLY chip that reads
           // differently — gold, tie-aware (everyone sharing 1st/T1 gets it). Every
           // other position (2nd through last) is visually identical: no money, no

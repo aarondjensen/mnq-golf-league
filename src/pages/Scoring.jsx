@@ -41,7 +41,7 @@ function buildStrokesCache(hcps) {
 // ═══════════════════════════════════════════════════════════════
 //  Helper: compute hole results and clinch info
 // ═══════════════════════════════════════════════════════════════
-function computeMatchStatus(t1Pids, t2Pids, getScore, getStrokes, pars) {
+function computeMatchStatus(t1Pids, t2Pids, getScore, getStrokes) {
   const holeResults = [];
   for (let h = 0; h < 9; h++) {
     let n1 = 0, n2 = 0, ok1 = true, ok2 = true;
@@ -94,7 +94,7 @@ function computeMatchStatus(t1Pids, t2Pids, getScore, getStrokes, pars) {
 // ═══════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
-export default function LiveScoringView({ groupResults, saveGroupResult, deleteGroupResult, fetchSeasonScores, fetchAllScores, leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, fetchWeekScores, isComm, commMode, leagueConfig, saveWeekSchedule, setWeekSchedule, deleteWeekSchedule, applyScheduleOps, openAllMatches, onAllMatchesOpened, openFinalize, onFinalizeOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData, autoSeedIfReady, attendance, saveAttendance, funRounds, saveFunRound, deleteFunRound, funScores, saveFunScores, season, appToast }) {
+export default function LiveScoringView({ groupResults, saveGroupResult, deleteGroupResult, fetchSeasonScores, fetchAllScores, leagueUser, players, teams, course, schedule, holeScores, saveScore, scoringRules, matchResults, saveMatchResult, deleteMatchResult, ctpData, saveCtp, setLiveWeek, isComm, commMode, leagueConfig, saveWeekSchedule, applyScheduleOps, openAllMatches, onAllMatchesOpened, openFinalize, onFinalizeOpened, forceWeek, onForceWeekUsed, setPopupOpen, recalcHandicaps, clearWeekData, autoSeedIfReady, attendance, saveAttendance, funRounds, saveFunRound, deleteFunRound, funScores, saveFunScores, season, appToast }) {
   const [activeMatch, setActiveMatch] = useState(null);
   const [curHole, setCurHole] = useState(0);
   // 4-way view toggle: "myMatch" (default scoring view), "allMatches" (week
@@ -298,14 +298,10 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
   // group's signature lives in its own collection (see lib/league.js), but the
   // integrity bar is the same: signed by one player, attested by another,
   // because the individual tournament is a real competition too.
-  const isCardSigned = (m) => isIndivGroupMatch(m)
-    ? !!findGroupResult(groupResults, week, m)
-    : matchResults.some(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2);
   const isCardAttested = (m) => isIndivGroupMatch(m)
     ? findGroupResult(groupResults, week, m)?.attested === true
     : matchResults.some(r => r.week === week && r.team1Id === m.team1 && r.team2Id === m.team2 && r.attested === true);
 
-  const allMatchesFinalized = matches.every(isCardSigned);
   const allMatchesAttested = matches.every(isCardAttested);
 
   // Two banner states for the commish (all hidden when week is already locked):
@@ -686,12 +682,8 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
       setShowFinalize(false);
     }
   }, [isAlreadyFinalized, justSigned]);
-  const isAttested = existingResult?.attested === true;
-  const finalizedByTeamId = existingResult?.finalizedByTeamId || null;
   const signedByPlayerId = existingResult?.signedByPlayerId || null;
   const isTheSigner = leagueUser.playerId === signedByPlayerId;
-  const isOnFinalizingTeam = myTeam && (finalizedByTeamId === myTeam.id || isTheSigner);
-  const isOnOpposingTeam = myTeam && !isOnFinalizingTeam && (myTeam.id === (t1?.id) || myTeam.id === (t2?.id));
 
   // Multi-player attestation: all non-signing PRESENT players must attest
   const attestedBy = existingResult?.attestedBy || [];
@@ -1247,7 +1239,6 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
             }
 
             const isFinalOrSigned = !!res;
-            const isTied = isFinalOrSigned ? (res.matchResultText === "TIED") : (thru > 0 && dispCum === 0);
             const matchIsTied = res?.matchResultText === "TIED";
             // For finalized matches use the match-play winner (matchWinnerId via
             // resultLetterFor); for in-progress matches fall back to running cum.
@@ -1256,18 +1247,10 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
             const t1Leading = matchIsTied ? false : isFinalOrSigned ? (resultLetterFor(res, dispT1?.id) === "W") : (dispCum > 0);
             const t2Leading = matchIsTied ? false : isFinalOrSigned ? (resultLetterFor(res, dispT2?.id) === "W") : (dispCum < 0);
 
-            const isSigned = isFinalOrSigned && res && !res.attested;
-            const signerIsRawT1 = isSigned && res.finalizedByTeamId === rawT1.id;
-            const signerIsRawT2 = isSigned && res.finalizedByTeamId === rawT2.id;
             const resAttestedBy = res?.attestedBy || [];
             const resAllPids = [...mT1Pids, ...mT2Pids];
             const resAbsent = (pid) => holeScores[`w${week}_p${pid}_habsent`] === 1;
             const resNonSigners = resAllPids.filter(pid => pid !== res?.signedByPlayerId && !resAbsent(pid));
-            const resAttestedCount = resNonSigners.filter(pid => resAttestedBy.includes(pid)).length;
-            const attestNeededDispT1 = isSigned && (
-              (swapped && signerIsRawT1) || (!swapped && signerIsRawT2)
-            );
-            const attestNeededDispT2 = isSigned && !attestNeededDispT1;
 
             let centerText = "";
             let centerColor = K.t1;
@@ -2470,8 +2453,7 @@ export default function LiveScoringView({ groupResults, saveGroupResult, deleteG
           }
         }
 
-        const hasAnyStatus = holeStatuses.some(s => s !== null);
-
+      
         return (<>
           <div style={{ display: isAlreadyFinalized ? "none" : "flex", marginTop: 2, marginBottom: 4, width: "100%", background: K.card, border: `1px solid ${K.bdr}60`, borderRadius: 8, padding: "4px 0", alignItems: "center" }}>
             {holeStatuses.map((st, i) => {

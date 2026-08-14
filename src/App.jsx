@@ -183,7 +183,9 @@ export default function GolfLeagueApp() {
 
   const [members, setMembers] = useState([]);
   const [membersLoaded, setMembersLoaded] = useState(false);
-  const [syncing, setSyncing] = useState(false);
+  // The flag itself is never rendered — only the setter is called, to drive the
+  // sync banner through a ref. Holding the slot keeps useState's shape.
+  const [, setSyncing] = useState(false);
   const [liveWeek, setLiveWeek] = useState(null);
   const validTabs = ["standings", "scoring", "schedule", "players", "stats", "ctp", "admin", "notifications"];
   const getTabFromHash = () => {
@@ -1492,7 +1494,7 @@ export default function GolfLeagueApp() {
       } else {
         appToast?.(`Couldn't enable: ${result.error || result.state}`, "error");
       }
-    } catch (e) {
+    } catch {
       appToast?.("Couldn't enable notifications", "error");
     } finally {
       setNotifBannerBusy(false);
